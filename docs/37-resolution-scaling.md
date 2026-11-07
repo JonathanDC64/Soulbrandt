@@ -357,6 +357,19 @@ Asked for with resolution scaling, and independent of it:
 
 Both are part of the sampler-table key, so a change makes new tables.
 
+- **Mip levels (2026-11-07, issue #413).** Every guest texture was uploaded
+  with level 0 only, so the mipmapped filters had nothing smaller to read:
+  far walls and floors glittered and crawled at every resolution and filter
+  setting, where the PS3 and RPCS3 draw them smooth. The core now uploads the
+  levels the game stores (ps3recomp #260). In the first level, the distant
+  floor's fine detail (the mean difference between neighbouring pixels) went
+  from 8.1 to 5.0, the same on D3D12 and Vulkan. Settings > Display >
+  Mipmaps (`RSX_TEX_MIPS`, live) turns it off to compare: On (original) is
+  the default, Off uploads level 0 only, as before. Switching uploads the
+  textures in view again, so the frame after it can hitch. A linear texture
+  still gets level 0 only; none of Demon's Souls' mipmapped textures is
+  linear.
+
 ### Depth of field and bloom (2026-11-01)
 
 Above 100%, blurred areas looked wrong: distant things showed offset copies
