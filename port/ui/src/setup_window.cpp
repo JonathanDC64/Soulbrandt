@@ -44,8 +44,8 @@ constexpr ErrorKind kErrors[] = {
     {"rpcs3", Fix::TryAgain, "Try again. If it keeps failing, you can unlock the files yourself."},
     {"import", Fix::TryAgain, "The game is built, and nothing of yours was changed. Try again, or go on without it."},
     {"disc", Fix::CheckAgain,
-     "The game may crash or have no sound without them. Copy the game again from your disc or dump, then check again. "
-     "Or continue anyway: setup notes that you did."},
+     "Without these files the game may crash or have no sound. Copy the game again from your disc or dump, then check "
+     "again. Or continue anyway: setup notes that you did."},
     {"signature", Fix::Report, "Nothing was changed, so you can go on playing this version. Please report it."},
     {"internal", Fix::Report, "Try again. If it fails again, please report it."},
 };
