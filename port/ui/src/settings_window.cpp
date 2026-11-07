@@ -504,6 +504,9 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
             {"Original (4x)", "Off", "2x", "4x", "8x", "16x"},
             "Keeps floors and walls sharp into the distance. Original is the game's own, 4x on most surfaces."
             "<br/><br/>(RSX_ANISO)");
+        choice_row(leftPane, rightPane, "Mipmaps", "RSX_TEX_MIPS", {"1", "0"}, {"On (original)", "Off"},
+            "Smaller copies of each texture for distant surfaces, as on the PS3. Off draws them at full size, "
+            "so they shimmer.<br/><br/>(RSX_TEX_MIPS)");
         choice_row(leftPane, rightPane, "Anti-aliasing", "RSX_AA", {"0", "1", "2"},
             {"Off (original)", "FXAA", "SMAA"},
             "Smooths jagged edges and keeps the HUD sharp. FXAA softens textures a little; SMAA keeps them sharper "
