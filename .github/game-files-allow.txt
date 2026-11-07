@@ -9,3 +9,8 @@
 # The Vulkan backend's test shaders, in the ps3recomp source the release package carries: written for
 # test_gpu_vk.c (test_gpu_vk_spv.h holds them compiled), not a dumped shader. ps3recomp allows it too.
 */ps3recomp/libs/video/tests/test_gpu_vk_shaders.hlsl
+
+# Setup's lists of each supported disc's files (des_setup/disc.py, issue #418): every name under PS3_GAME with its
+# size, as text in a gzip, made by tools/setup/disc_list.py from the disc's public IRD. Names and sizes only, as
+# game_table.json has them for 55 files: no bytes of the game.
+tools/setup/des_setup/disc/*.txt.gz
