@@ -12,17 +12,18 @@
 
 Soulbrandt is a PC port of *Demon's Souls* (PS3, 2009). The game's original code has been converted to run directly on Windows and Linux, with no emulator.
 
-You need your own copy of the game: the US version, **BLUS30443** (version 1.00). This project includes no game files.
+You need your own copy of the game: the US version, **BLUS30443**, or the European version, **BLES00932** (both version 1.00). This project includes no game files.
 
 ## Status
 
-**0.1.0, the first release, is an alpha.** Download it from the [Releases](https://github.com/JonathanDC64/Soulbrandt/releases) page.
+**0.1.1, the current release, is an alpha.** Download it from the [Releases](https://github.com/JonathanDC64/Soulbrandt/releases) page.
 
 The game plays from start to finish (a tester has beaten it), but not every part has been tried on every setting, so expect bugs. What [isn't supported yet](#not-supported-yet) is below; please [report](#problems) anything you find. Questions and help: [Discord](https://discord.gg/BzmwDeca8s).
 
 ## Highlights
 
 - Up to 240 fps or unlocked, with the game's timing fixed. Up to 4K, ultrawide, 16:10 and HDR.
+- The US and European versions. The European version has all five of its languages.
 - Online play on this project's own server: messages, bloodstains, ghosts, co-op and invasions.
 - Roll in any direction while locked on, not only forward, back, left or right.
 - A stat respec in the Nexus (optional): get back the souls your levels cost and spend them again.
@@ -41,7 +42,7 @@ Press **F1** (or **L3 + R3** on a controller) at any time to open the menu. Most
 - HDR on HDR displays (Windows), with settings for brightness, peak and shadows.
 - Turn off the game's depth of field and motion blur.
 - Window or fullscreen (Alt+Enter switches).
-- Two renderers (Settings > Display > Renderer): DirectX 12 and Vulkan. Windows starts on DirectX 12, Linux on Vulkan.
+- Two renderers (Settings > Display > Renderer): DirectX 12 and Vulkan. Windows starts on DirectX 12, except with a GeForce GTX 10 series card or older, which starts on Vulkan. Linux starts on Vulkan.
 
 **Controls**
 - Xbox controllers, DualSense and DualShock 4, over USB or Bluetooth, with vibration. Pick which controller the game uses when several are connected.
@@ -59,9 +60,11 @@ Press **F1** (or **L3 + R3** on a controller) at any time to open the menu. Most
 - Skip the logos and the opening movie, and go straight into your last save.
 - **Stat respec**: the Maiden in Black, or the statue in front of where you wake in the Nexus, puts your stats back to your class's and gives back the souls your levels cost, to spend again. Off by default: turn on **Stat respec in the Nexus** in Settings > Game.
 - Use several soul items at once, as Drop does. On by default: turn off **Use several souls at once** in Settings > Game for the original's one at a time.
+- On the European version, choose its language in Settings > Game > Language: English, French, German, Spanish or Italian. It starts in your PC's language when that is one of the five. A change needs a restart.
 
 **Online**
 - On by default, on this project's own server: messages, bloodstains, ghosts, co-op and invasions.
+- Players of the US and European versions play together.
 - Setup asks for your online name. You can change it, or turn online play off, in Settings > Network.
 - A matchmaking password, so you meet only your friends.
 - Show or hide other players' messages, bloodstains and ghosts.
@@ -75,7 +78,7 @@ Press **F1** (or **L3 + R3** on a controller) at any time to open the menu. Most
 
 ## What you need
 
-- Your own copy of Demon's Souls for the PS3, US version (BLUS30443, version 1.00), as a folder with `PS3_GAME` in it. Setup cannot use ISO files yet.
+- Your own copy of Demon's Souls for the PS3, the US version (BLUS30443) or the European version (BLES00932), version 1.00, as a folder with `PS3_GAME` in it. Setup cannot use ISO files yet.
 - RPCS3, the free PS3 emulator. Setup has it unlock the game's encrypted files. You don't need the PS3 system software. (Or decrypt the files yourself: see below.)
 - Windows 10 or 11 (64-bit) with a graphics card that supports DirectX 12, or Linux (see [Linux](#linux)).
 - A processor with SSE4.1, which most have since about 2011.
@@ -96,6 +99,8 @@ These steps are for the release download.
 
 Then press **Play**.
 
+**A portable install:** put an empty file named `portable.txt` next to `Soulbrandt.exe` before its first start. Your settings, logs and setup's build then stay inside the program's folder, as your saves already do, and you can move or rename that folder.
+
 Windows may warn you the first time you start `Soulbrandt.exe` ("Windows protected your PC"), because the program isn't signed yet. Click **More info**, then **Run anyway**.
 
 If RPCS3 is set to run as administrator, setup cannot start it: untick that in `rpcs3.exe`'s Properties.
@@ -104,7 +109,7 @@ If RPCS3 is set to run as administrator, setup cannot start it: untick that in `
 
 CI builds the Linux program on every change, and each release includes a Linux download. It needs x86-64 Linux with glibc 2.35 or newer, a Vulkan driver, and `curl` and `tar`. Nothing else needs installing. The game renders on Vulkan, and setup prepares its shaders. If Vulkan can't start, the game falls back to its older renderer on vkd3d (DirectX 12 on Vulkan), which compiles shaders as it goes, with long pauses when a new area loads.
 
-Linux is newer and less tested than Windows. So far it has run in WSL (Ubuntu 24.04) and, on the older renderer, on one Steam Deck. The Vulkan renderer hasn't run on a real Linux graphics driver yet ([docs/106](docs/106-setup-on-linux.md)).
+Linux is newer and less tested than Windows. Players run it on desktop Linux and on the Steam Deck, on Vulkan ([docs/106](docs/106-setup-on-linux.md)).
 
 macOS is not supported.
 
@@ -112,13 +117,13 @@ On a Steam Deck, keys and the mouse stay out of the game while its controls are 
 
 ### Online play
 
-Online play is on by default and uses this project's own server. Setup asks for your online name; you can change it, or turn online play off, in Settings > Network. RPCS3 players use other servers, so you won't meet them. What the server keeps about you is in the [privacy note](PRIVACY.md).
+Online play is on by default and uses this project's own server. Setup asks for your online name; you can change it, or turn online play off, in Settings > Network. Players of the US and European versions meet on the same server. RPCS3 players use other servers, so you won't meet them. What the server keeps about you is in the [privacy note](PRIVACY.md).
 
 ### Not supported yet
 
-- Only the US version (BLUS30443) works. The European version is being looked at; other versions are not supported.
+- Only the US version (BLUS30443) and the European version (BLES00932), both version 1.00, work. The Asian and Japanese discs, the US demo and the PlayStation Store versions don't.
 - Setup can't read ISO files, and it needs RPCS3 to unlock the game's files (or files you decrypted yourself).
-- macOS isn't supported, and running the Windows download through CrossOver hasn't been tested all the way through. Linux is less tested than Windows, and the Steam Deck has had one test so far.
+- macOS isn't supported, and running the Windows download through CrossOver hasn't been tested all the way through. Linux and the Steam Deck are less tested than Windows.
 - On-screen button prompts always show PlayStation buttons, even with a keyboard or an Xbox controller.
 
 ### Problems
