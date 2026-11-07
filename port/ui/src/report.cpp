@@ -6,6 +6,7 @@
 #include "host.hpp"
 #include "portable.hpp"
 #include "settings.hpp"
+#include "setup_engine.hpp"  // (setup::disc_summary: what setup found of the disc copy)
 #include "setup_pc.hpp"  // (setup::hdr_on, for the displays' lines)
 #include "version.hpp"
 #include "../../des_rsx_route.h"  // the renderer calls below: through rsx_out in a PS3RECOMP_RSX_HAL build
@@ -689,6 +690,8 @@ void make_issue_report(std::vector<uint8_t> rgba, int width, int height, std::st
     files.push_back({"settings.ini", bytes(redact(settings_text))});
     files.push_back({"environment.txt", bytes(redact(environment_info()))});
     files.push_back({"runtime.txt", bytes(redact(runtime_snapshot()))});
+    if (auto disc = read_file(setup::disc_record()); !disc.empty())
+        files.push_back({"disc_check.txt", bytes(redact(std::string(disc.begin(), disc.end())))});
     if (!g_log_path.empty()) {
         flush_log();
         files.push_back({"des.log", bytes(redact_log(read_head_tail(g_log_path, 120, 512 << 10)))});
@@ -1191,6 +1194,7 @@ std::string system_info() {
     o << "DemonsSoulsRecomp " << version() << "\n";
     o << "ps3recomp: " << kPs3recompVersion << "\n";
     o << "Game dump (EBOOT.ELF SHA-256): " << (*kDumpSha256 ? kDumpSha256 : "unknown") << "\n";
+    o << "Disc copy: " << setup::disc_summary() << "\n";  // (setup/disc_check.txt: its files are in the zip)
     // The renderer that runs (the runtime's route switch, rsx_out.h), with why it is D3D12 when Vulkan was asked for.
     // None in a process that never started one (the crash dialog takes the game's from its report: renderer line).
     {

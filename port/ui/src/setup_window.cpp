@@ -43,6 +43,9 @@ constexpr ErrorKind kErrors[] = {
     {"step", Fix::Report, "Try again. If it fails again, please report it."},
     {"rpcs3", Fix::TryAgain, "Try again. If it keeps failing, you can unlock the files yourself."},
     {"import", Fix::TryAgain, "The game is built, and nothing of yours was changed. Try again, or go on without it."},
+    {"disc", Fix::CheckAgain,
+     "The game may crash or have no sound without them. Copy the game again from your disc or dump, then check again. "
+     "Or continue anyway: setup notes that you did."},
     {"signature", Fix::Report, "Nothing was changed, so you can go on playing this version. Please report it."},
     {"internal", Fix::Report, "Try again. If it fails again, please report it."},
 };
@@ -384,7 +387,8 @@ void SetupWindow::ask_stop() {
 
 void SetupWindow::draw_failed() {
     const ErrorKind& kind = error_kind(mStatus.errorCode);
-    set_heading(kind.fix == Fix::CheckAgain         ? "Some game files need fixing"
+    set_heading(mStatus.errorCode == "disc"           ? "Your copy is not complete"
+                : kind.fix == Fix::CheckAgain         ? "Some game files need fixing"
                 : mStatus.errorCode == "import" ? "The import from RPCS3 stopped"
                                                 : "The build stopped",
                 kind.todo);
@@ -395,8 +399,21 @@ void SetupWindow::draw_failed() {
                              ? "Report it with one click. The report has setup's log and this PC's details, and "
                                "nothing from the game."
                              : "";
-    auto* body = callout(mBody, "err", mStatus.errorText, report);
-    if (kind.fix == Fix::CheckAgain) {  // the files and what to do about each, from the check
+    const bool disc = mStatus.errorCode == "disc";  // (the disc copy's files: a warning, which Continue anyway passes)
+    auto* body = callout(mBody, disc ? "warn" : "err", mStatus.errorText, report);
+    if (disc) {  // the first files that are not right, from @discfile
+        std::string files;
+        int listed = 0;
+        for (const auto& [what, path] : mStatus.disc.list) {
+            if (listed++ == 5) {
+                files += "\n...";
+                break;
+            }
+            files += (files.empty() ? "" : "\n") + path +
+                     (what == "size" ? " (not the size it is on the disc)" : what == "case" ? " (other capitals)" : "");
+        }
+        if (!files.empty()) append(body, "setup-callout-text")->SetInnerRML(escape_lines(files));
+    } else if (kind.fix == Fix::CheckAgain) {  // the files and what to do about each, from the check
         std::string files;
         int listed = 0;
         for (const setup::Line& c : mStatus.checks) {
@@ -421,7 +438,17 @@ void SetupWindow::draw_failed() {
     } else {
         actions.push_back({again, [this] { start(); }, Look::Primary});
     }
-    if (mStatus.errorCode == "import") {  // (the build is done: the run again without the import, `run --no-import`)
+    if (disc) {  // (the build goes on past the disc copy's files, `run --disc-anyway`: the build notes it)
+        actions.push_back({"Continue anyway",
+                           [this] {
+                               std::fprintf(stderr, "[setup] the disc copy is not complete (%s): the player chose "
+                                                    "Continue anyway\n",
+                                            mStatus.disc.sentence.c_str());
+                               mProps.request.discAnyway = true;
+                               start();
+                           },
+                           Look::Plain});
+    } else if (mStatus.errorCode == "import") {  // (the build is done: the run again without the import, `run --no-import`)
         actions.push_back({"Go on without it",
                            [this] {
                                mProps.request.noImport = true;

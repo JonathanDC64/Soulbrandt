@@ -148,7 +148,7 @@ SetupRpcs3Window::SetupRpcs3Window(Props props)
 
 bool SetupRpcs3Window::focus() {
     if (asking()) return SetupPage::focus();
-    if (mStatus.result == "ok" && !mActions.empty() && mActions[0]->focus()) return true;
+    if (mStatus.result == "ok" && !mStatus.disc.incomplete() && !mActions.empty() && mActions[0]->focus()) return true;
     if (!mGameButtons.empty() && mGameButtons[0]->focus()) return true;
     if (!mRowButtons.empty() && mRowButtons[0]->focus()) return true;
     return SetupPage::focus();
@@ -321,6 +321,17 @@ void SetupRpcs3Window::draw() {
             if (wrong == disc.end()) {
                 auto* row = found(box, "setup-ok", name, title + " · " + where);
                 tag(row, "ok", "Supported");
+                // The rest of the disc's files, by name and size (tools/setup/des_setup/disc.py): a warning, which
+                // Continue anyway passes (the build notes it).
+                if (mStatus.disc.incomplete()) {
+                    auto* warn = found(box, "setup-warn", "Your copy is not complete",
+                                       mStatus.disc.sentence +
+                                           " The game may crash or have no sound without them. Copy the game again "
+                                           "from your disc or dump, then check again. Or continue anyway: setup notes "
+                                           "that you did.");
+                    tag(warn, "warn", "Warning");
+                    check_again(warn);
+                }
             } else {
                 auto* row = found(box, "setup-err", name, (*wrong)->text);
                 tag(row, "err", "Needs fixing");
@@ -349,19 +360,25 @@ void SetupRpcs3Window::draw() {
     }
 
     const bool ok = supported();
-    if (!mActions.empty()) mActions[0]->set_disabled(!ok);
-    if (ok && !mShownOk && visible() && !asking()) {
+    const bool warned = ok && mStatus.disc.incomplete();  // (Cross does not go past the warning by itself)
+    if (!mActions.empty()) {
+        mActions[0]->set_disabled(!ok);
+        mActions[0]->set_text(warned ? "Continue anyway" : "Continue");
+    }
+    if (ok && !warned && !mShownOk && visible() && !asking()) {
         mActions[0]->focus();
         reveal_focus();
     } else if (hadFocus && !button_focused() && visible() && !focus_at(place)) {
         focus();
     }
-    mShownOk = ok;
+    mShownOk = ok && !warned;
     if (!running && !mStatus.result.empty())
-        std::fprintf(stderr, "[setup] RPCS3's check: %s, %s; library %s, user %s of %lld\n", mStatus.result.c_str(),
+        std::fprintf(stderr, "[setup] RPCS3's check: %s, %s; library %s, user %s of %lld; the disc copy: %s\n",
+                     mStatus.result.c_str(),
                      mStatus.errorCode.empty() ? "-" : mStatus.errorCode.c_str(),
                      mStatus.libraryKind.empty() ? "-" : mStatus.libraryKind.c_str(),
-                     mStatus.userId.empty() ? "-" : mStatus.userId.c_str(), mStatus.users);
+                     mStatus.userId.empty() ? "-" : mStatus.userId.c_str(), mStatus.users,
+                     mStatus.disc.state.empty() ? "-" : mStatus.disc.sentence.c_str());
 }
 
 // "Bring across from RPCS3": a box for each, ticked when the engine found it, and not tickable when not. The save
@@ -442,6 +459,11 @@ void SetupRpcs3Window::go_on() {
     settings::store("rpcs3_dir", utf8(mProps.rpcs3.folder));
     setup::Request request = mRequest;
     request.imports.clear();
+    // Continue anyway, past files of the disc copy that are missing or of another size: the build notes it.
+    request.discAnyway = mStatus.disc.incomplete();
+    if (request.discAnyway)
+        std::fprintf(stderr, "[setup] the disc copy is not complete (%s): the player chose Continue anyway\n",
+                     mStatus.disc.sentence.c_str());
     static const char* const kNames[kItems] = {"save", "trophies", "settings"};
     for (int i = 0; i < kItems; ++i)
         if (mTicked[i]) request.imports.push_back(kNames[i]);

@@ -41,7 +41,7 @@ import traceback
 from pathlib import Path
 
 from . import compile as compile_step
-from . import exe_icon
+from . import disc, exe_icon
 from . import fetch, firmware, gamefiles, journal, lift, protocol, rpcs3, rpcs3_import, rpcs3_library
 
 READY = "ready.txt"
@@ -426,6 +426,8 @@ def _check(req, emit, total, table, data=None, unlocks=False):
     rep = _game_check(req, t, data, unlocks, progress=prog)
     for i in rep.items:
         emit.check(i)
+    if rep.disc is not None:
+        emit.disc(rep.disc)
     return rep
 
 
@@ -655,7 +657,7 @@ def _classify(phase, e: journal.StepFailed):
 def run(data, request=None, app="", jobs=0, check_only=False, emit=None, src=None, table=None,
         manifest=None, phases=None, compile_fn=None, quiet=True, cc=None, ld=None, unlock_only=False,
         rpcs3_path=None, unlock_kw=None, host=None, imports=None, no_import=False, gamedata=None,
-        from_library=False) -> int:
+        from_library=False, disc_anyway=False) -> int:
     """Every phase in order (or only the check), with the protocol on `emit`.
     request: make_request's dict, or None for the one the last run saved. app: the
     host's version, recorded in ready.txt (a new version is set up again). cc, ld:
@@ -670,6 +672,8 @@ def run(data, request=None, app="", jobs=0, check_only=False, emit=None, src=Non
     no_import drops a pending one; gamedata: the game's gamedata folder (the
     port's own save, which the check reports and the import replaces).
     from_library: the game is the one in RPCS3's library, not request's.
+    disc_anyway: build although files of the disc copy are missing or changed (disc.py), as the player chose; kept
+    in request.json for that game folder.
     Returns the exit status: 0 done, 1 something to fix or a failure."""
     data = Path(data)
     emit = emit or protocol.Emitter()
@@ -685,7 +689,7 @@ def run(data, request=None, app="", jobs=0, check_only=False, emit=None, src=Non
     try:
         emit.open_log(data / "setup" / "logs" / "run.log")
         emit.setup()
-        req = _request(data, request, rpcs3_path, imports, no_import, gamedata, from_library)
+        req = _request(data, request, rpcs3_path, imports, no_import, gamedata, from_library, disc_anyway)
         return _run(data, req, app, jobs, check_only, emit, src, table, manifest, phases, compile_fn, quiet, cc, ld,
                     unlock_only, unlock_kw, host, gamedata, from_library)
     finally:
@@ -693,12 +697,13 @@ def run(data, request=None, app="", jobs=0, check_only=False, emit=None, src=Non
         held.close()
 
 
-def _request(data, request, rpcs3_path, imports, no_import, gamedata, from_library):
+def _request(data, request, rpcs3_path, imports, no_import, gamedata, from_library, disc_anyway=False):
     """This run's request: the given one, or the last run's, with this run's RPCS3 and import choices. With the game
     from RPCS3's library, the last run's request is the base (a pending import stays) and the game is read later.
     --no-import drops a pending import at once, whatever this run does next. A new import gets its own ID ("asked"),
     which the import's journal steps carry; an import asked again with the same items keeps the pending one's, so
-    Try again carries on where it stopped."""
+    Try again carries on where it stopped. The player's word to build from an incomplete disc copy (disc_anyway) is
+    kept for the same game folder."""
     saved = load_request(data)
     if from_library:
         req = dict(saved or {})
@@ -714,6 +719,8 @@ def _request(data, request, rpcs3_path, imports, no_import, gamedata, from_libra
                 req["game"] = str(moved)
     if rpcs3_path:
         req["rpcs3"] = os.path.abspath(rpcs3_path)
+    if disc_anyway or (saved or {}).get("disc_anyway") and (saved or {}).get("game") == req.get("game"):
+        req["disc_anyway"] = True
     pending = (saved or {}).get("import") or {}
     if no_import:
         req.pop("import", None)
@@ -781,6 +788,19 @@ def _run(data, req, app, jobs, check_only, emit, src, table, manifest, phases, c
                     emit.error("rpcs3", "check", f"RPCS3 is not in {rpcs3.where(req['rpcs3'])} any more.")
                     emit.done("fix")
                     return 1
+                if not (check_only or unlock_only) and rep.disc is not None:
+                    # Files of the disc copy missing or changed (disc.py): the build waits for the player's word, and
+                    # each build notes what it found and whether they went on.
+                    anyway = bool(req.get("disc_anyway"))
+                    if disc.stops(rep.disc, anyway):
+                        emit.text(f"FIX  {rep.disc.sentence()} Copy the game again from your disc or dump, or go on "
+                                  f"anyway (run --disc-anyway).")
+                        emit.error("disc", "check", rep.disc.sentence())
+                        emit.done("fix")
+                        return 1
+                    disc.record(data, rep.title_id, rep.disc, anyway)
+                    if rep.disc.state == "incomplete":
+                        emit.text(f"note {rep.disc.sentence()} Going on anyway, as asked.")
                 save_request(data, req)
             elif phase == "unlock":
                 if unlocks:

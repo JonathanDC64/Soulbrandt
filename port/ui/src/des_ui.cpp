@@ -1307,6 +1307,13 @@ extern "C" int des_ui_launch(int* argc, char*** argv) {
         return -2;
     }
     work_in_exe_folder();
+    // What setup found of the disc copy, and whether the player went on anyway (tools/setup/des_setup/disc.py): a copy
+    // that lacks files the game reads crashes later, far from the cause (issue #418).
+    {
+        std::vector<std::string> files;
+        std::fprintf(stderr, "[setup] disc copy: %s\n", ui::setup::disc_summary(&files).c_str());
+        for (const std::string& f : files) std::fprintf(stderr, "[setup]   %s\n", f.c_str());
+    }
     // The game setup built (docs/88 section 7): its module, the game's folder and its EBOOT.elf as main's ELF.
     if (!std::getenv("PS3_GAME_MODULE")) ps3_setenv("PS3_GAME_MODULE", launch.module.string().c_str());
     ps3_setenv("PS3_VFS_ROOT", launch.game.string().c_str());
