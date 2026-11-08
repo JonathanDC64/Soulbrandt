@@ -77,3 +77,46 @@ Update 2026-10-21: docs/77 profiled image 8 on its own. It mostly waits for the 
 1. **A faster SPU path for Havok's image 8**, as was done for image 2 (docs/48, docs/60, docs/72). The step's tail is image 8's lifted code plus the runtime's per-hop cost (`spu_step_check`, `spu_drain_call` and the DMA helpers show in the pool workers' profiles). This needs a profile of image 8 on its own first, since the pool threads also run images 3-6, 9 and 10.
 2. **A spin-then-sleep wait** (spin for some tens of microseconds, then nap; start from `lr_wait.patch`) would keep the fast handoff and free the cores in long waits. The free cores showed no fps gain in these runs, so this is for CPU use, not frame rate.
 3. Stepping more often with smaller steps (`DES_PHYS_HZ=60`) does not help. The cost of a step does not shrink with dt (the solver iterates a fixed number of times), so it would double the physics work (inferred from docs/71).
+
+## CPUs with 2-4 cores (2026-11-07)
+
+Players with 4-thread CPUs (an i5-6500, and issue #310's i7-7700 with 8) saw frame drops every time they rolled into barrels or crates. The tests below hold the game to some of this PC's CPUs with `PS3_AFFINITY`. This PC's cores are about twice as fast as an i5-6500's, so 60 fps on 4 cores here is too easy to show it; those runs are uncapped.
+
+Each run warps to the 9 roll spots of `rep2.txt` and rolls into the obstacle there (circle), on a copy of the 10-20 break save. The numbers count the 4 s after each roll (measured).
+
+### The GETLLAR wait (ps3recomp #261)
+
+Image 8's waiting tasks (section "The image 8 wait loop") spun for 20,000 unchanged GETLLARs before the 2 ms nap. At 2-5 us a read that is 40-100 ms of a core per wait. With 16 threads there are cores to spare; with 4 the spinners take time from the threads that make the frame.
+
+ps3recomp #261 naps after 64 unchanged reads (`SPU_LLAR_NAP_AFTER`), about 130-320 us, the same order as RPCS3's spin before it sleeps (400k TSC ticks, about 100-130 us, read). Section "Tried and dropped" still holds: napping at once was slower, so the short spin stays.
+
+| CPUs | Cap | 20,000 reads | 64 reads |
+|---|---|---|---|
+| 2 cores (`PS3_AFFINITY=5`) | 60 fps | 32.5 and 39.0 fps; 388 and 278 frames over 25 ms | 56.6 and 56.9 fps; 107 and 86 |
+| 4 cores, no SMT (`55`) | none | 160.6 and 187.2 fps; 23 and 15 | 203.0 and 205.4 fps; 6 and 4 |
+| 16 threads | none | 261.7 fps | 259.7 fps |
+
+### Havok's threads at normal priority (port run default)
+
+With #261, 2 cores still felt choppy away from breaks: 2.6-2.8% of frames over 25 ms, and 3-4 ms of jitter between frames (4 cores: 0.1%, 0.33 ms). Standing outdoors used only 1.14 of the 2 cores, so this is the order threads run in, not the amount of work (measured).
+
+- **In a console trace,** the long frames are the main thread waiting 34-42 ms for the Havok step (cond 0x0D; median 1.35 ms). In each, the Havok PPU Thread makes no call for about 40 ms after it takes the step's event (measured, `sys_event_queue_receive` on queue 5).
+- **ps3recomp raises every thread below guest priority 1000** to above normal (`PPU_RAISE_BELOW`, `sys_ppu_thread.c`). It is meant for audio and I/O pollers that sleep between blocks. In this game those are Havok's: hkSpuUtil Helper (80), Havok PPU Thread (100) and SPURuntimeService (200). libmixer's threads go up by name, two steps, apart from this line.
+- **The Havok PPU Thread polls the job queue's lock with `usleep(1)`,** which waits in place since ps3recomp #97 (docs/77). Raised, on 2 CPUs it likely keeps the SPU tasks of its own step off the cores (inferred).
+
+2 cores at 60 fps, all with #261's 64 (two rounds, `PPU_RAISE_BELOW=<line>`; gaps from `AUDIO_GAPS=1`):
+
+| Raised (line) | Frames over 25 ms, away from breaks | Jitter | Frames over 25 ms after 9 breaks | Audio gaps |
+|---|---|---|---|---|
+| all three (1000, the runtime's) | 3.1%, 2.9% | 2.82, 2.78 ms | 68, 88 | 5, 12 |
+| Havok PPU + helper (150) | 2.1% | 2.44 ms | 84 | 6 |
+| helper only (90) | 0.4%, 0.5% | 0.89, 1.35 ms | 3, 12 | 2, 29 |
+| none (0) | 0.5%, 0.6% | 1.06, 1.16 ms | 8, 11 | 1, 4 |
+
+The port's run defaults (`run_defaults`, `port/des_options.cpp`) set `PPU_RAISE_BELOW=0` for this game. The runtime's line stays at 1000 for other titles, such as The Simpsons Arcade Game's music thread at priority 0.
+
+### Watch out
+
+- A 60 fps test on 4 of this PC's cores shows little: after a roll it uses 1.6-1.85 cores. Use 2 cores at 60 fps, or 4 cores uncapped.
+- The console `cpu` "os" column counts samples in ntdll and kernel32, and a thread just back from a block is there. Parked pool threads look like "os" time; it is not waste.
+- One run in three on 4 cores without SMT at 60 fps (20,000 reads) had frames of 1-5.6 s a few seconds after a roll; the same walk without rolls had none. It is not reproduced with 64 yet.
