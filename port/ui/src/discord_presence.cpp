@@ -30,7 +30,7 @@ namespace {
 
 // The application on Discord's developer portal whose name the profile shows ("Playing <name>"). Not a secret: every
 // program that shows a status sends its id in the clear. DES_DISCORD_APP replaces it (tests, another application).
-constexpr const char* kAppId = "";
+constexpr const char* kAppId = "1568951566017233079";
 constexpr const char* kProjectUrl = "https://github.com/JonathanDC64/Soulbrandt";
 
 // Discord takes 5 status changes per 20 s; a new area waits for the next free one.
