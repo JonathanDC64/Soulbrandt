@@ -11,6 +11,13 @@ the screens show the last ones under Details.
   @progress <step> <n>/<m>          the current step's own count
   @overall <n>/1000                 the whole run so far
   @check <state> <name> <text>      one checked file (gamefiles.Item: its state, table name and message)
+  @disc <state> <files> <missing> <differ> <text>
+                                    every file of the disc copy against the disc's list (disc.py): complete,
+                                    incomplete or unknown (no list); how many files the list has, how many the game
+                                    cannot open (missing, or on Linux named in other case) and how many have another
+                                    size; the finding in a sentence. After the @check lines; a warning, not a problem
+  @discfile missing|case|size <path>
+                                    one file that is not right, by its path on the disc, after @disc (SHOWN at most)
   @file <step> <path>               the file the step works on now (the unlock: its path under USRDIR)
   @rpcs3 <state> <path>             the RPCS3 in use (docs/90): own (it runs with setup's folder),
                                     shared (a portable install: starting it changes its log) or missing
@@ -38,7 +45,8 @@ line needs no new version; a changed meaning does. Version 2 added the RPCS3
 route (docs/90 3.8): the unlock and import phases, @file, @rpcs3, @user,
 @library, @found, @setting, and the rpcs3 and import codes. The update
 commands (update.py, docs/105) added @release and @note, and the download
-and install phases; the version stayed 2.
+and install phases; the check of the whole disc copy (issue #418) added @disc,
+@discfile and the disc code; the version stayed 2.
 
 Every line also goes to the run's log (setup/logs/run.log), so a run from a
 terminal leaves the same record as one from the screens.
@@ -46,13 +54,17 @@ terminal leaves the same record as one from the screens.
 import sys
 
 VERSION = 2
-KINDS = ("setup", "plan", "step", "progress", "overall", "check", "file", "rpcs3", "user", "library", "found",
-         "setting", "awake", "memory", "log", "error", "done", "release", "note")
+KINDS = ("setup", "plan", "step", "progress", "overall", "check", "disc", "discfile", "file", "rpcs3", "user",
+         "library", "found", "setting", "awake", "memory", "log", "error", "done", "release", "note")
 # game: the game folder or its files; busy: another setup is running; disk: not enough free space;
 # download: a download stopped or did not match; memory: out of memory; step: a build step failed;
 # rpcs3: the player's RPCS3 could not unlock the files; import: bringing the save, trophies or settings across from
-# RPCS3 failed (the game is built); internal: an error of the engine's own.
-ERRORS = ("game", "busy", "disk", "download", "memory", "step", "rpcs3", "import", "signature", "internal")
+# RPCS3 failed (the game is built); disc: files of the disc copy are missing or changed, and the player has not said to
+# go on anyway (run --disc-anyway); internal: an error of the engine's own.
+ERRORS = ("game", "busy", "disk", "download", "memory", "step", "rpcs3", "import", "disc", "signature", "internal")
+DISC_STATES = ("complete", "incomplete", "unknown")
+DISC_FILE_KINDS = ("missing", "case", "size")
+SHOWN = 100          # the @discfile lines after @disc, at most
 STEP_STATES = ("start", "done", "skip")
 RPCS3_STATES = ("own", "shared", "missing")
 LIBRARY_KINDS = ("folder", "iso", "store", "none")
@@ -138,6 +150,14 @@ class Emitter:
 
     def check(self, item):
         self._line("check", word(item.state), word(item.name), one_line(item.message))
+
+    def disc(self, d):
+        """@disc, then an @discfile line for each file that is not right (SHOWN at most). d: disc.Disc."""
+        assert d.state in DISC_STATES, d.state
+        self._line("disc", d.state, int(d.files), int(d.absent), len(d.differ), one_line(d.sentence()))
+        for kind, path in d.problems()[:SHOWN]:
+            assert kind in DISC_FILE_KINDS, kind
+            self._line("discfile", kind, one_line(path))
 
     def file(self, step, path):
         """Printed when the step's file changes."""

@@ -35,6 +35,8 @@ std::string send_report(const Status& failure) {
     std::vector<report::File> files;
     files.push_back({"system.txt", report::bytes(report::redact(report::system_info()))});
     files.push_back({"setup.log", tail_of(setupDir / "logs" / "run.log", 40, 256 * 1024)});
+    if (std::filesystem::is_regular_file(disc_record(), ec))  // (what the last build found of the disc copy)
+        files.push_back({"disc_check.txt", tail_of(disc_record(), 600, 64 * 1024)});
     const std::filesystem::path step = failure.logPath.empty() ? std::filesystem::path() : from_utf8(failure.logPath);
     if (!step.empty()) files.push_back({"step.log", tail_of(step, 20, 64 * 1024)});
     // After RPCS3 failed: the unlock's log (which RPCS3, its folder, the command and all RPCS3 printed), when it is not

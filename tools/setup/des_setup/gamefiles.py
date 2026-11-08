@@ -19,6 +19,9 @@ The table (game_table.json) holds sizes and SHA-256 sums only. A decrypted
 file whose sum is not in the table yet (null) is checked by its first bytes
 instead, and reported as such. Its top level is the US disc's; "titles" has the
 European disc's, as the files that differ from the US disc's (for_title).
+
+The rest of the disc's files are checked by name and size against the disc's
+list (disc.py, issue #418): Report.disc, a warning and not a problem.
 """
 import hashlib
 import json
@@ -26,6 +29,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import disc as disc_files
 from . import firmware as fwver
 from . import sfo
 
@@ -60,6 +64,8 @@ class Report:
     root: Path = None
     items: list = field(default_factory=list)
     table: dict = None   # the disc's table (for_title), once PARAM.SFO is read
+    disc: object = None  # every file of the disc copy against the disc's list (disc.py), once the title is known: a
+                         # warning only, so not one of problems()
 
     @property
     def title_id(self) -> str:
@@ -173,7 +179,8 @@ def for_title(t, tid):
     if o is None:
         return None
     files = o.get("files", {})
-    tt = dict(t, title_id=tid, app_ver=o["app_ver"], version=o["version"], disc=o["disc"])
+    tt = dict(t, title_id=tid, app_ver=o["app_ver"], version=o["version"], disc=o["disc"],
+              disc_files=o.get("disc_files"))
     for k in ("originals", "decrypted"):
         tt[k] = [dict(e, **files.get(e["path"], {})) for e in t[k]]
     return tt
@@ -302,6 +309,9 @@ def check(folder, decrypted_dirs=(), firmware=None, table=None, progress=None, u
             item = Item("firmware", item.name, "unused", f"{why} {LEFT_OUT}", item.found, item.sha256)
         item.unlock = unlockable
         rep.items.append(item)
+
+    # The rest of the disc's files, by name and size (disc.py): a warning, which the build asks the player about.
+    rep.disc = disc_files.check(root, t.get("disc_files"))
     return rep
 
 

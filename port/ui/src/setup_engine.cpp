@@ -229,6 +229,40 @@ bool folders_usable(const std::vector<std::filesystem::path>& folders, bool quie
     return true;
 }
 
+std::filesystem::path disc_record() {
+    return data_dir() / "setup" / "disc_check.txt";
+}
+
+std::string disc_summary(std::vector<std::string>* files, size_t most) {
+    std::ifstream f(disc_record(), std::ios::binary);
+    if (!f) return "not checked (built before setup checked every file of the copy)";
+    std::map<std::string, std::string> kv;
+    for (std::string line; std::getline(f, line);) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        const size_t eq = line.find('=');
+        if (line.empty() || line[0] == '#' || eq == std::string::npos) continue;
+        const std::string key = line.substr(0, eq);
+        if (key.size() > 5 && key.compare(key.size() - 5, 5, "_file") == 0) {  // missing_file, case_file, size_file
+            if (files && files->size() < most)
+                files->push_back(key.substr(0, key.size() - 5) + ": " + line.substr(eq + 1));
+            continue;
+        }
+        kv[key] = line.substr(eq + 1);
+    }
+    const std::string& state = kv["state"];
+    std::string out;
+    if (state == "complete")
+        out = "complete, " + kv["files"] + " files";
+    else if (state == "incomplete")
+        out = "NOT complete: " + kv["missing"] + " of " + kv["files"] + " files missing, " + kv["differ"] +
+              " of another size" + (kv["continued_anyway"] == "1" ? "; the player chose Continue anyway" : "");
+    else if (state == "unknown")
+        out = "not checked (setup has no list of this disc's files)";
+    else
+        return "not readable";
+    return out + " (" + kv["title"] + ", checked " + kv["checked"] + ")";
+}
+
 Launch launch_state() {
     Launch out;
     const auto setup = data_dir() / "setup";
@@ -363,6 +397,7 @@ bool Engine::start_engine(unsigned run) {
         args.insert(args.end(), {"--import", items});
     }
     if (mRequest.noImport) args.push_back("--no-import");
+    if (mRequest.discAnyway) args.push_back("--disc-anyway");
     args.insert(args.end(), {"--data", utf8(data_dir()), "--app", kVersion});
     // The shaders phase starts this program again, with no window (`--shaders`, des_prework.cpp).
     if (const auto self = report::program_path(); !self.empty()) args.insert(args.end(), {"--host", utf8(self)});

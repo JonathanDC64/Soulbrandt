@@ -80,6 +80,23 @@ Continue is pressable only after a check that ended `ok`; it then has the focus.
 - Then (10-23) the field reads "Disc copy: not chosen yet", a second field under it shows "Decrypted files: <folder>", the button is "Choose your disc copy", and a callout, "Now your disc copy", says why the disc copy is still needed (the rest of the game is there) and to pick the copy found on this PC if there is one. The focus goes to that copy, else to the button.
 - Before, the field still said "No folder chosen" after the pick, which read as if the pick had failed, and the player stopped there.
 
+**The whole disc copy (11-07, issue #418).** Setup reads 28 of the disc's files, but the game reads thousands more as it plays. A player's copy lacked some of its sound files. It passed the check and built. Then the game's sound engine never started, and the game broke its own memory at the first change of area (the warp at the end of the tutorial).
+
+So the check also compares every file under PS3_GAME with the disc's list, by name and size (`des_setup/disc.py`). It reads no file's bytes: on this PC it took 0.04 s for 12,509 files.
+- **The lists**, `des_setup/disc/BLUS30443.txt.gz` and `BLES00932.txt.gz` (about 74 KB each), are made from each disc's IRD by `tools/setup/disc_list.py`. An IRD is the record of a disc that dump tools check a dump with. game_table.json's `disc_files` names each disc's list. The lists hold names and sizes only, as the table does: no bytes of the game.
+- **Left out of the lists**: PS3_DISC.SFB and PS3_UPDATE/, which the game never reads and many dumps lack, and the one name that ends in a dot (`map/m99_99_98_06/m99_99_98_06mcp.`), which Windows cannot write, so unpackers rename it.
+- **How names are matched**: as the game opens them. On Linux that is exact; on Windows and macOS case is ignored, as their file systems do. On Linux, a file whose name differs only in case is reported as `case`, because the game cannot open it there. Extra files (the decrypted copies, a mod's) are not looked at.
+- **It is a warning.** The check's result stays `ok`, and the folder can still be used.
+  - The game folder page and the RPCS3 page show "Your copy is not complete", with the engine's sentence ("6 of the disc's 12,509 files are missing from the game folder.") and the first files.
+  - The main button then reads **Continue anyway** and does not take the focus, so Cross does not skip the warning. Pressing it sends `--disc-anyway`.
+  - Measured on this PC: the US and EU copies are complete. An older US copy with modded fonts and menu textures shows 39 files of another size.
+- **A build stops for it.** A `run` that would build from a copy that is not complete, without `--disc-anyway`, stops after the check with `@error disc check <sentence>` and `@done fix`. That covers Update now, Repair and Resume, which skip the game folder page. The progress page then reads "Your copy is not complete", lists the first files, and offers Check again and Continue anyway.
+- **The choice is kept** in `request.json` (`disc_anyway`) for that game folder, so a later Update now does not ask again. Choosing another folder drops it.
+- **The record.** Each build writes `setup/disc_check.txt`: `key=value` lines (`title`, `state`, `files`, `missing`, `differ`, `continued_anyway`, `checked`), then up to 500 `missing_file=`, `case_file=` or `size_file=` lines.
+  - The game logs it at every start: `[setup] disc copy: ...`, then the first 10 files.
+  - Reports carry it in two places. Their `system.txt` has a "Disc copy:" line (the issue, crash and setup reports). The issue and setup report zips also hold `disc_check.txt`.
+  - A build made before this check reads "not checked".
+
 **"How do I make these?"** (and "Show me how") opens the help page, "Getting your game's files". Since 10-23 (a player found the earlier one confusing: three ways side by side, each pointing at the others) it is three numbered steps and one other way:
 - Step 1, copy your disc to a folder (skip it with a folder already, as an RPCS3 player has): PS3 Disc Dumper with a Blu-ray drive, or multiMAN or IRISMAN on a PS3 with custom firmware; the result has PS3_GAME and PS3_DISC.SFB.
 - Step 2, get RPCS3 ready: download and unzip it; File, then Add Games with the disc copy. No PS3 system software (since 11-06, docs/133): RPCS3 unlocks the game's files without it (docs/90 I3), and the game does not need its libsre.
@@ -270,6 +287,8 @@ The engine prints one line for each event, UTF-8, ending in `\n` (a `\r` before 
 | `@progress <step> <n>/<m>` | The current step's own count: `check` and `download` in bytes, `ppu` in functions, `spu` in programs, `compile` in objects. Printed when the per cent changes. |
 | `@overall <n>/1000` | The whole run, by phase weights from CPU time (check 2, unlock 1, fetch 4, stage 1, lift 13, compile 80, import 1, shaders 2; docs/52 4.3). Never goes back within a run. |
 | `@check <state> <name> <text>` | One checked file: `ok`, `unmeasured`, `missing`, `mismatch`, `encrypted` or `wrong`; its table name; gamefiles.py's sentence. |
+| `@disc <state> <files> <missing> <differ> <text>` | Every file of the disc copy against the disc's list (section 2, "The whole disc copy"), after the `@check` lines: `complete`, `incomplete` or `unknown` (no list for this disc); the files in the list, the ones the game cannot open, the ones of another size; the finding in a sentence. A warning, not a problem. |
+| `@discfile missing\|case\|size <path>` | One file that is not right, by its path on the disc, after `@disc` (100 at most). |
 | `@file <step> <path>` | The file the step works on now: for `unlock`, the original's path under USRDIR. Printed when it changes. |
 | `@rpcs3 <state> <path>` | The RPCS3 route's RPCS3: `own` (it runs with setup's folder), `shared` (a portable install) or `missing`; its folder. |
 | `@user <id> <users> <name>` | The RPCS3 user the route reads, how many users RPCS3 has, and the user's name (`-` when it has none). |
@@ -278,7 +297,7 @@ The engine prints one line for each event, UTF-8, ending in `\n` (a `\r` before 
 | `@setting <key> <value>` | One RPCS3 setting the route would bring across, by its settings.ini name. |
 | `@awake` | The engine has asked Windows to keep the PC awake until it ends. |
 | `@log <path>` | The log of the step that failed. |
-| `@error <code> <step> <text>` | What failed, in one sentence for the player. Codes: `game`, `busy`, `disk`, `download`, `memory`, `step`, `rpcs3` (the player's RPCS3 could not unlock the files), `import` (bringing something across from RPCS3 failed; the step is `import-save`, `import-trophies` or `import-settings`), `internal`. `<step>` is the journal step, or `-`. |
+| `@error <code> <step> <text>` | What failed, in one sentence for the player. Codes: `game`, `busy`, `disk`, `download`, `memory`, `step`, `rpcs3` (the player's RPCS3 could not unlock the files), `import` (bringing something across from RPCS3 failed; the step is `import-save`, `import-trophies` or `import-settings`), `disc` (files of the disc copy are missing or of another size, and the player has not said to go on: `--disc-anyway`), `signature`, `internal`. `<step>` is the journal step, or `-`. |
 | `@done ok\|fix\|failed` | The last line. |
 
 - Names have no spaces; `<text>` and `<path>` are the rest of the line.
@@ -311,7 +330,7 @@ An example, a run resumed after the lift's PPU step failed once:
 @done ok
 ```
 
-`run` options: `run [GAME] [--decrypted DIR]... [--firmware FILE] [--rpcs3 PATH] [--data DIR] [-j N] [--app VERSION] [--check-only | --unlock-only] [--import ITEMS | --no-import] [--gamedata DIR] [--host EXE]` (`--rpcs3`, `--unlock-only` and the import: docs/90).
+`run` options: `run [GAME] [--decrypted DIR]... [--firmware FILE] [--rpcs3 PATH] [--data DIR] [-j N] [--app VERSION] [--check-only | --unlock-only] [--import ITEMS | --no-import] [--gamedata DIR] [--host EXE] [--disc-anyway]` (`--rpcs3`, `--unlock-only` and the import: docs/90; `--disc-anyway`: section 2, "The whole disc copy").
 
 ## 5. Running the engine
 

@@ -5,7 +5,7 @@
   python -m des_setup lift GAME [--decrypted DIR]... [--firmware FILE] [--data DIR] [-j N]
   python -m des_setup run [GAME] [--decrypted DIR]... [--firmware FILE] [--rpcs3 PATH] [--data DIR] [-j N]
                           [--app VERSION] [--check-only | --unlock-only] [--cc CLANG-CL --ld LLD-LINK]
-                          [--import ITEMS | --no-import] [--gamedata DIR] [--host EXE]
+                          [--import ITEMS | --no-import] [--gamedata DIR] [--host EXE] [--disc-anyway]
   python -m des_setup compile [--data DIR] [-j N] [--cc CLANG-CL --ld LLD-LINK]
   python -m des_setup status [--data DIR] [--json [--app VERSION]]
   python -m des_setup tools
@@ -36,6 +36,11 @@ PS3 system software the same way when RPCS3 has it (it is optional: the game
 does not need it, docs/133). `check --rpcs3` only says what RPCS3 has and
 which files it would unlock. `run --unlock-only` does the check and the unlock
 (the unlock page's run).
+
+The check also compares every file of the copy with the disc's list, by name
+and size (disc.py). Files missing or of another size stop `run` before the
+build until --disc-anyway says to go on (kept for that game folder); each build
+notes what it found in <data>/setup/disc_check.txt.
 
 --import save,trophies,settings brings those across from that RPCS3 once, at
 the end of the build (docs/90 3.5): the save into the game's gamedata folder
@@ -105,6 +110,17 @@ def _print_report(rep, unlocks=False):
                        for i in missing})
         print(f"FIX  {len(missing)} decrypted files are missing: {names(missing)}. Decrypt {' and '.join(srcs)} "
               f"first (in RPCS3: Utilities, Decrypt PS3 Binaries).")
+    d = rep.disc
+    if d is not None and d.state == "complete":
+        print(f"ok   {d.sentence()}")
+    elif d is not None and d.state == "incomplete":
+        print(f"WARN {d.sentence()} The game may crash or stay silent without them: copy it again from your disc or "
+              f"dump, or build anyway with `run --disc-anyway`.")
+        probs = d.problems()
+        for kind, path in probs[:20]:
+            print(f"       {kind:8} {path}")
+        if len(probs) > 20:
+            print(f"       and {len(probs) - 20} more")
     probs = pipeline.blocking(rep, unlocks)
     if probs or rep.root is None:
         print(f"{len(probs)} thing(s) to fix.")
@@ -237,7 +253,8 @@ def cmd_run(a) -> int:
     req = pipeline.make_request(a.game, a.decrypted, a.firmware, a.rpcs3) if a.game or from_library else None
     return pipeline.run(Path(a.data), req, app=a.app, jobs=a.jobs, check_only=a.check_only, cc=a.cc, ld=a.ld,
                         unlock_only=a.unlock_only, rpcs3_path=a.rpcs3, host=a.host, imports=a.imports,
-                        no_import=a.no_import, gamedata=a.gamedata, from_library=from_library)
+                        no_import=a.no_import, gamedata=a.gamedata, from_library=from_library,
+                        disc_anyway=a.disc_anyway)
 
 
 def import_items(text) -> list:
@@ -396,6 +413,8 @@ def main(argv=None) -> int:
                           "the end of the build")
     imp.add_argument("--no-import", action="store_true", help="drop an import that is still pending")
     gamedata_arg(sp)
+    sp.add_argument("--disc-anyway", action="store_true",
+                    help="build although files of the disc copy are missing or of another size (kept for that folder)")
     sp.set_defaults(fn=cmd_run)
     sp = sub.add_parser("compile", help="compile and link the lift into des_game.dll (resumes where it stopped)")
     data_arg(sp)

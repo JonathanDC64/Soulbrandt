@@ -16,6 +16,7 @@ struct KindName {
 constexpr KindName kKinds[] = {
     {"setup", Line::Kind::Setup},       {"plan", Line::Kind::Plan},   {"step", Line::Kind::Step},
     {"progress", Line::Kind::Progress}, {"overall", Line::Kind::Overall}, {"check", Line::Kind::Check},
+    {"disc", Line::Kind::Disc},         {"discfile", Line::Kind::DiscFile},
     {"file", Line::Kind::File},         {"rpcs3", Line::Kind::Rpcs3}, {"user", Line::Kind::User},
     {"library", Line::Kind::Library},   {"found", Line::Kind::Found}, {"setting", Line::Kind::Setting},
     {"awake", Line::Kind::Awake},       {"memory", Line::Kind::Memory}, {"log", Line::Kind::Log},
@@ -25,6 +26,7 @@ constexpr KindName kKinds[] = {
 
 constexpr size_t kTailLines = 200;
 constexpr size_t kNoteLines = 400;
+constexpr size_t kDiscFiles = 100;  // (protocol.py's SHOWN)
 
 // The next word of `rest` (up to a space), and `rest` moved past it and the space.
 std::string_view take_word(std::string_view& rest) {
@@ -91,6 +93,14 @@ Line parse_line(std::string_view text) {
         l.text = std::string(rest);
         if (l.key.empty() || l.key2.empty()) return plain;
         break;
+    case Line::Kind::Disc:  // <state> <files> <missing> <differ> <sentence>
+        l.key = take_word(rest);
+        if (l.key.empty() || !parse_number(take_word(rest), l.n) || !parse_number(take_word(rest), l.m) ||
+            !parse_number(take_word(rest), l.k))
+            return plain;
+        l.text = std::string(rest);
+        break;
+    case Line::Kind::DiscFile:  // <kind> <path>
     case Line::Kind::File:
     case Line::Kind::Rpcs3:
         l.key = take_word(rest);
@@ -183,6 +193,12 @@ void Status::apply(const Line& l) {
         break;
     case Line::Kind::Check:
         checks.push_back(l);
+        break;
+    case Line::Kind::Disc:
+        disc = {l.key, l.n, l.m, l.k, l.text, {}};
+        break;
+    case Line::Kind::DiscFile:
+        if (disc.list.size() < kDiscFiles) disc.list.emplace_back(l.key, l.text);
         break;
     case Line::Kind::File:
         file = l.text;

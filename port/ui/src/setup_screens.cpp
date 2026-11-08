@@ -671,7 +671,7 @@ SetupFilesWindow::SetupFilesWindow(Props props)
 bool SetupFilesWindow::focus() {
     // Continue once the files are good; else the first dump found while no folder is chosen; else Choose folder.
     if (asking()) return SetupPage::focus();
-    if (mStatus.result == "ok" && !mActions.empty() && mActions[0]->focus()) return true;
+    if (mStatus.result == "ok" && !mStatus.disc.incomplete() && !mActions.empty() && mActions[0]->focus()) return true;
     if (mRequest.game.empty() && !mPlaceButtons.empty() && mPlaceButtons[0]->focus()) return true;
     if (!mChooseButton.empty() && mChooseButton[0]->focus()) return true;
     return SetupPage::focus();
@@ -761,6 +761,11 @@ void SetupFilesWindow::check() {
 
 void SetupFilesWindow::start() {
     if (mStatus.result != "ok" || (mChecking && !mStatus.finished())) return;
+    // Continue anyway, past files of the disc copy that are missing or of another size: the build notes it.
+    mRequest.discAnyway = mStatus.disc.incomplete();
+    if (mRequest.discAnyway)
+        std::fprintf(stderr, "[setup] the disc copy is not complete (%s): the player chose Continue anyway\n",
+                     mStatus.disc.sentence.c_str());
     if (!mProps.onStart) {
         pop();
         return;
@@ -881,14 +886,16 @@ void SetupFilesWindow::draw_check() {
         const auto bad = [](const setup::Line* c) { return !good(c->key); };
         const bool isGame = !game.empty() && std::none_of(game.begin(), game.end(), bad);
         auto* box = panel(mCheck);
+        const setup::Status::Disc& whole = mStatus.disc;
         if (isGame) {
             std::string value = utf8(mRequest.game);
             if (!disc.empty()) {
                 const auto wrong = std::count_if(disc.begin(), disc.end(), bad);
-                value += wrong == 0 ? ". The disc's " + std::to_string(disc.size()) + " files match."
-                                    : ". " + (*std::find_if(disc.begin(), disc.end(), bad))->text;
+                value += wrong != 0                  ? ". " + (*std::find_if(disc.begin(), disc.end(), bad))->text
+                         : whole.state == "complete" ? ". All " + grouped(whole.files) + " of the disc's files are there."
+                                                     : ". The disc's " + std::to_string(disc.size()) + " files match.";
             }
-            found(box, "setup-ok", "Demon's Souls, US disc, version 1.00", value);
+            found(box, whole.incomplete() ? "setup-warn" : "setup-ok", "Demon's Souls, US disc, version 1.00", value);
         } else if (!game.empty()) {  // (a folder that is not the game's, or another copy: the line says why)
             found(box, "setup-err", "This is not a copy setup can use",
                   (*std::find_if(game.begin(), game.end(), bad))->text);
@@ -952,21 +959,50 @@ void SetupFilesWindow::draw_check() {
             if (good(c->key)) found(box, "setup-ok", "The PS3 system software's libsre.prx", "Found, matches");
             else found(box, "setup-info", "The PS3 system software's libsre.prx", c->text);
         }
+        // The rest of the disc's files, by name and size (tools/setup/des_setup/disc.py, issue #418): a copy that lacked
+        // some built, then broke in the game. A warning, with the first ones; Use this folder becomes Continue anyway,
+        // and the build notes the choice (setup/disc_check.txt).
+        if (isGame && mStatus.result == "ok" && whole.incomplete()) {
+            text(mCheck, "setup-heading", "Your copy is not complete");
+            text(mCheck, "setup-text",
+                 whole.sentence +
+                     " The game may crash or have no sound without them. Copy the game again from your disc or dump, "
+                     "then check again. Or continue anyway: setup notes that you did.")
+                ->SetClass("note", true);
+            auto* list = panel(mCheck);
+            const long long total = whole.missing + whole.differ;
+            int listed = 0;
+            for (const auto& [kind, path] : whole.list) {
+                if (listed++ == kListedFiles) {
+                    found(list, "setup-warn", "And " + grouped(total - kListedFiles) + " more", "");
+                    break;
+                }
+                found(list, "setup-warn", list_name(path),
+                      kind == "size"   ? "Not the size it is on the disc"
+                      : kind == "case" ? "Named with other capital letters"
+                                       : "Missing");
+            }
+        }
     }
 
     const bool ok = !running && mStatus.result == "ok";
+    const bool warned = ok && mStatus.disc.incomplete();  // (Cross does not go past the warning by itself)
     if (mLinkButtons.size() > 1) mLinkButtons[1]->set_disabled(mRequest.game.empty());
-    if (!mActions.empty()) mActions[0]->set_disabled(!ok);
-    if (ok && !mShownOk && visible() && !asking()) {  // (the files are good: Cross goes on)
+    if (!mActions.empty()) {
+        mActions[0]->set_disabled(!ok);
+        mActions[0]->set_text(warned ? "Continue anyway" : mProps.rebuild ? "Continue" : "Use this folder");
+    }
+    if (ok && !warned && !mShownOk && visible() && !asking()) {  // (the files are good: Cross goes on)
         mActions[0]->focus();
         reveal_focus();
     } else if (hadFocus && !button_focused() && visible()) {  // (its button went with the redraw)
         focus();
     }
-    mShownOk = ok;
+    mShownOk = ok && !warned;
     if (!running && !mStatus.result.empty())
-        std::fprintf(stderr, "[setup] the game files check: %s, %s\n", mStatus.result.c_str(),
-                     mStatus.errorCode.empty() ? "-" : mStatus.errorCode.c_str());
+        std::fprintf(stderr, "[setup] the game files check: %s, %s; the disc copy: %s\n", mStatus.result.c_str(),
+                     mStatus.errorCode.empty() ? "-" : mStatus.errorCode.c_str(),
+                     mStatus.disc.state.empty() ? "-" : mStatus.disc.sentence.c_str());
 }
 
 // ---- 4. Getting your game's files ----

@@ -20,18 +20,22 @@ inline constexpr int kProtocol = 2;
 // One line of the engine's output.
 struct Line {
     enum class Kind {
-        Text, Setup, Plan, Step, Progress, Overall, Check, File, Rpcs3, User, Library, Found, Setting, Awake, Memory, Log,
-        Error, Done, Release, Note
+        Text, Setup, Plan, Step, Progress, Overall, Check, Disc, DiscFile, File, Rpcs3, User, Library, Found, Setting,
+        Awake, Memory, Log, Error, Done, Release, Note
     };
     Kind kind = Kind::Text;
-    std::string key;                // Step, Progress, File: the step. Check, Rpcs3, Library: the state or kind. Error: the
-                                    // code. Memory: short or ok. Done: the result. User: the 8-digit ID. Found: what
-                                    // (save, current-save, trophies, settings). Setting: its settings.ini name.
+    std::string key;                // Step, Progress, File: the step. Check, Disc, Rpcs3, Library: the state or kind.
+                                    // DiscFile: missing, case or size. Error: the code. Memory: short or ok. Done: the
+                                    // result. User: the 8-digit ID. Found: what (save, current-save, trophies,
+                                    // settings). Setting: its settings.ini name.
     std::string key2;               // Step: start, done or skip. Check: the file. Error: the step. Found: its state.
     long long n = 0, m = 0;         // Progress, Overall: n/m. Setup: n is the version. User: n is RPCS3's user count.
                                     // Release: n is its time (Unix seconds, 0: not known). Release's key: its version.
+                                    // Disc: n is the files in the disc's list, m the ones missing.
+    long long k = 0;                // Disc: the files of another size.
     std::vector<std::string> list;  // Plan: the phases. Found: the words after its state.
-    std::string text;               // Check, Error: the sentence. File, Rpcs3, Log, Library: the path. User: the name.
+    std::string text;               // Check, Disc, Error: the sentence. File, DiscFile, Rpcs3, Log, Library: the path.
+                                    // User: the name.
                                     // Setting: the value. Release: its page. Note: the line, its indent kept (empty for
                                     // an empty line). A plain line: all of it.
 };
@@ -70,6 +74,15 @@ struct Status {
     bool awake = false;       // the engine keeps the PC from sleeping
     bool memoryShort = false; // the compile runs fewer jobs than it could, for want of memory (@memory)
     std::vector<Line> checks;  // the checked files
+    // Every file of the disc copy against the disc's list (@disc, tools/setup/des_setup/disc.py): a warning only, so
+    // the result stays ok. Empty state: the engine said nothing about it.
+    struct Disc {
+        std::string state;  // complete, incomplete or unknown (setup has no list for this disc)
+        long long files = 0, missing = 0, differ = 0;
+        std::string sentence;
+        std::vector<std::pair<std::string, std::string>> list;  // (missing, case or size; path), the first ones
+        bool incomplete() const { return state == "incomplete"; }
+    } disc;
     std::string errorCode, errorStep, errorText, logPath;
     std::string result;            // ok, fix or failed (the last line's), stopped (Cancel); empty while it runs
     std::deque<std::string> tail;  // the last plain lines, for Details

@@ -8,10 +8,14 @@ FAKE_SETUP_MODE (from the environment the host passes down):
   fail    the same until the compile is about half done, then a failed object and @done failed
   hold    the same, but it stops at 40% of the compile and waits there (until the host ends it)
   check   as `run --check-only`
+  disc    as a build from a copy that lacks some of the disc's files (des_setup/disc.py): it stops after the check with
+          @error disc, unless the host passed --disc-anyway (its Continue anyway), when it goes on as ok
 `run --check-only` reads the game's files for a second, then says each is fine (FAKE_SETUP_CHECK=ok: @done ok) or
 that 3 of the 27 decrypted files are missing (the default: @done fix). It says nothing of the firmware's libsre.prx,
 which is optional (docs/133), as when the player has none; FAKE_SETUP_CHECK=firmware: all fine, with a libsre.prx
-beside PS3_GAME that is not right, so setup leaves it out (@done ok). It does not count as a run below.
+beside PS3_GAME that is not right, so setup leaves it out (@done ok); FAKE_SETUP_CHECK=disc: all fine, but 9 of the
+disc's other files missing (@disc incomplete, then @discfile lines; @done ok, as it is only a warning). It does not count
+as a run below.
 FAKE_SETUP_MODES ("hold,fail,ok"): one mode for each run in turn, counted in fake_runs.txt in DES_SETUP_DATA (the last
 one repeats), so that one test goes through a stop, a failure and a finished run. A failed run writes its step's log
 in DES_SETUP_DATA/setup/logs. FAKE_SETUP_APP (the host's version, des_version.h's DES_VERSION): a finished run leaves
@@ -48,6 +52,7 @@ def pick_mode():
 
 
 CHECK_ONLY = "--check-only" in sys.argv
+DISC_ANYWAY = "--disc-anyway" in sys.argv
 MODE = "check" if CHECK_ONLY else pick_mode()
 TOTAL = float(os.environ.get("FAKE_SETUP_SECONDS", "60"))
 # Each phase's share of the run (pipeline.WEIGHTS) and its own steps.
@@ -86,6 +91,17 @@ DECRYPTED = ["PS3_GAME/USRDIR/EBOOT.elf"] + [
     for folder, n in (("chr", 9), ("chr/c0000", 1), ("menu", 3), ("script", 7), ("script/talk", 6))
     for i in range(n)]
 FIRMWARE = "libsre.prx"   # the firmware's file, beside PS3_GAME
+# Files of the disc that a copy lacks (issue #418's): its sound files.
+DISC_GONE = [f"PS3_GAME/USRDIR/sound/ds_se_{a}.{b}" for a in ("main", "m08") for b in ("mowb", "moib", "mosb")] + [
+    "PS3_GAME/USRDIR/sound/demonsmixer.momd", "PS3_GAME/USRDIR/sound/magicorchestra2.mgs",
+    "PS3_GAME/USRDIR/sound/rpcsetting.rpc"]
+DISC_SENTENCE = f"{len(DISC_GONE)} of the disc's 12,509 files are missing from the game folder."
+
+
+def disc_lines():
+    say(f"@disc incomplete 12509 {len(DISC_GONE)} 0 {DISC_SENTENCE}")
+    for p in sorted(DISC_GONE):
+        say(f"@discfile missing {p}")
 
 
 def check(missing):
@@ -103,6 +119,8 @@ def check(missing):
     if missing == "firmware":
         say(f"@check unused {FIRMWARE} {FIRMWARE} does not match the known good version. The game does not need it; "
             f"setup leaves it out.")
+    if missing == "disc":
+        disc_lines()
     if gone:
         say(f"@error game check {len(gone)} of the game files have a problem.")
         say("@done fix")
@@ -125,6 +143,13 @@ def main():
         say(f"[{phase}] started")
         if phase == "check":
             count("check", 0, 5100 << 20, w, seconds=2 * w * s)
+            if MODE == "disc":
+                disc_lines()
+                if not DISC_ANYWAY:
+                    say(f"@error disc check {DISC_SENTENCE}")
+                    say("@done fix")
+                    return 1
+                say(f"note {DISC_SENTENCE} Going on anyway, as asked.")
         elif phase == "fetch":
             say("@step fetch skip")
             done_w += w

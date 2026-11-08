@@ -72,6 +72,8 @@ struct Request {
                                        // rpcs3_arg); empty: the folder route
     std::vector<std::string> imports;  // what comes across from that RPCS3 after the build: save, trophies, settings
     bool noImport = false;             // drop an import still pending (its failure's "Go on without it")
+    bool discAnyway = false;           // build although files of the disc copy are missing or of another size (the
+                                       // check's Continue anyway: `run --disc-anyway`, kept for that game folder)
 };
 // For DES_UI_OPEN=setup and setup-run (a developer's test of the screens): DES_SETUP_GAME, DES_SETUP_DECRYPTED (folders
 // split by ';'), DES_SETUP_FIRMWARE, DES_SETUP_RPCS3 and DES_SETUP_IMPORT (save,trophies,settings).
@@ -96,6 +98,14 @@ struct Launch {
     std::filesystem::path game, eboot, module;  // from ready.txt
 };
 Launch launch_state();
+
+// What setup's last build found of the disc copy (setup/disc_check.txt, tools/setup/des_setup/disc.py), in words for
+// the log and the reports: "complete, 12509 files (BLUS30443, checked ...)", "NOT complete: 6 of 12509 files missing, 0
+// of another size; the player chose Continue anyway (...)", or "not checked" for a build made before setup checked the
+// whole copy. files: the first `most` files that are not right ("missing: PS3_GAME/USRDIR/sound/ds_se_main.mowb").
+std::string disc_summary(std::vector<std::string>* files = nullptr, size_t most = 10);
+// That record's file, for the reports to carry.
+std::filesystem::path disc_record();
 
 // False when one of `folders` has a name the game cannot be given on this Windows, after saying so on standard error
 // and, unless `quiet`, in a message box. The programs ask for UTF-8 as their code page (des_utf8.manifest), which
