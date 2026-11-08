@@ -1067,7 +1067,7 @@ SetupHelpWindow::SetupHelpWindow(Props props) : SetupPage("setup-help"), mProps(
     guide(callout(stack, "info", "Step 2: get RPCS3 ready",
                   "RPCS3 is the free PS3 emulator. Setup has it unlock the game's encrypted files; setup never "
                   "decrypts anything itself."),
-          {"Download RPCS3 from rpcs3.net and unzip it into a folder of its own, for example C:\\RPCS3.",
+          {"Download RPCS3 and unzip it into a folder of its own, for example C:\\RPCS3.",
            "Start RPCS3. Choose File, then Add Games, and pick your disc copy. Demon's Souls shows in RPCS3's list. "
            "You do not need to play it there."});
     callout(stack, "info", "Step 3: come back here",

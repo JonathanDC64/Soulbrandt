@@ -145,7 +145,7 @@ On Windows, step 4 downloads FFmpeg's MPEG-2 video decoder for the game's movies
 **From your copy of the game**
 
 - The game disc's files (`PS3_GAME`)
-- [RPCS3](https://rpcs3.net), to decrypt the game's `EBOOT.BIN`
+- RPCS3, to decrypt the game's `EBOOT.BIN`
 - Optional: `libsre.prx` from your PS3 firmware, decrypted. The game doesn't need it; it is only for the `LIBSRE_OWN=0` fallback ([docs/88](docs/88-setup-screens.md)).
 
 **Steps**
@@ -199,7 +199,7 @@ This project contains only its own code, scripts and documentation. It has no ga
 ## Credits
 
 - [ps3recomp](https://github.com/sp00nznet/ps3recomp) by sp00nznet and its contributors: the recompiler and runtime this port is built on
-- [RPCS3](https://github.com/RPCS3/rpcs3): a reference for how the PS3 behaves (no RPCS3 code is copied)
+- RPCS3: a reference for how the PS3 behaves (no RPCS3 code is copied)
 - [RmlUi](https://github.com/mikke89/RmlUi) and [FreeType](https://freetype.org) for the menus, adapted from [Dusklight](https://github.com/TwilitRealm/dusklight)'s interface code
 - [SMAA](https://www.iryoku.com/smaa/) for the SMAA setting, [FFmpeg](https://ffmpeg.org) for the movies, and [vkd3d](https://gitlab.winehq.org/wine/vkd3d) and [SDL](https://www.libsdl.org) for Linux
 

@@ -376,7 +376,7 @@ constexpr Credit kCredits[] = {
     {"SMAA", "The SMAA anti-aliasing setting. By Jorge Jimenez, Jose I. Echevarria, Belen Masia, Fernando Navarro "
              "and Diego Gutierrez.",
      "MIT", "https://www.iryoku.com/smaa/"},
-    {"RPCS3", "A behavioural reference for the PS3 system libraries. No RPCS3 code is copied.", "", "https://rpcs3.net"},
+    {"RPCS3", "A behavioural reference for the PS3 system libraries. No RPCS3 code is copied.", "", ""},
 };
 
 // ps3emu/ps3_net_signin.h (declared here: des_ui does not take ps3recomp's include paths). Its outcome comes back
