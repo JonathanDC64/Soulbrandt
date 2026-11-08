@@ -174,6 +174,18 @@ def _magic(path: Path, n=4) -> bytes:
         return f.read(n)
 
 
+def plain_forms(t) -> dict:
+    """{a .sdat's path in the update: the table's entry for its decrypted form}. RPCS3 decrypts these as it installs an
+    update and keeps their names, so that is the form they have in a folder it installed (game_update.py)."""
+    return {d["of"].split("PS3_GAME/", 1)[-1]: d for d in t["decrypted"] if d["of"].endswith(".sdat")}
+
+
+def _plain_in_update(up: Path, rel: str):
+    """The update's file `rel` if it is there and not encrypted, else None."""
+    p = _resolve(up, rel)
+    return p if p is not None and p.is_file() and _magic(p) not in ENCRYPTED_MAGIC else None
+
+
 def titles(t) -> list:
     """The TITLE_IDs of the discs the port supports: the US disc first."""
     return [t["title_id"]] + list(t.get("titles", {}))
@@ -255,8 +267,9 @@ def check(folder, decrypted_dirs=(), firmware=None, table=None, progress=None, u
     rep.items.append(Item("game", "TITLE_ID", "ok", f"{t['title_id']}, version {t['app_ver']} ({disc})."))
     needed = t.get("update")
     up = Path(update) if update and needed else None
+    plain = plain_forms(t) if needed else {}
     if needed:
-        wrong = game_update.bad_files(up, needed) if up else None
+        wrong = game_update.bad_files(up, needed, plain=plain) if up else None
         state, why = (("ok", f"Its update, {needed['app_ver']}, is there.") if up and not wrong else
                       ("missing", UPDATE_MISSING.format(disc=disc, ver=needed["app_ver"])) if not up else
                       ("mismatch", f"{len(wrong)} of the update's files do not match. Get the update again."))
@@ -267,6 +280,8 @@ def check(folder, decrypted_dirs=(), firmware=None, table=None, progress=None, u
         from_update = e.get("from") == "update"
         place = up if from_update else root
         rel = e["path"].split("PS3_GAME/", 1)[-1] if from_update else e["path"]
+        if from_update and rel in plain and up and _plain_in_update(up, rel):
+            e = dict(plain[rel], path=e["path"])    # (RPCS3 installed it: compared as the plain file it now is)
         rep.items.append(_check_file("original", e, _resolve(place, rel) if place else None, progress,
                                      missing=f"{e['path']} is missing from the " +
                                              ("update." if from_update else "game folder."),
@@ -287,6 +302,9 @@ def check(folder, decrypted_dirs=(), firmware=None, table=None, progress=None, u
         places = [_resolve(root, e["path"])] + [_find_decrypted(Path(d), e["path"]) for d in decrypted_dirs]
         if up:   # (RPCS3 writes beside what it was given, so beside the update's files too)
             places.append(_resolve(up, e["path"].split("PS3_GAME/", 1)[-1]))
+            of = e["of"].split("PS3_GAME/", 1)[-1]
+            if of in plain:                     # (or an update RPCS3 installed has it, under the .sdat's own name)
+                places.append(_plain_in_update(up, of))
         places += [Path(p) for p in (also or {}).get(e["path"], ())]
         first = None
         for p in places:

@@ -48,6 +48,7 @@ READY = "ready.txt"
 REQUEST = "request.json"
 CHOICE = "setup-folder.txt"        # in the usual folder: the build folder the player chose (the host's kChoiceFile)
 UNLOCK = "unlock"                  # setup/unlock: the unlock's copies, RPCS3's folder, then its outputs until the stage
+UPDATE_WORK = "update-install"     # in setup/: where RPCS3 installs an update's package, removed afterwards
 GB = 1 << 30
 # Each phase's share of a whole run, from its CPU time (docs/52 4.3: the compile is most of it).
 WEIGHTS = {"check": 2, "unlock": 1, "fetch": 4, "stage": 1, "lift": 13, "compile": 80, "import": 1, "shaders": 2}
@@ -503,17 +504,26 @@ def _install_update(req, data, jr, emit, total, table):
                                           "or the folder your PS3 or RPCS3 installed it to.")
         return                                  # (none found: the check says so, and the screens ask for it)
     emit.text(f"ok   the {want['app_ver']} update found: {found[1]}")
-    size = found[1].stat().st_size if found[0] == "pkg" else 0
-    seen = [0]
 
-    def prog(n):
-        seen[0] += n
-        if size:
-            emit.progress("update", min(seen[0], size), size)
+    def run():
+        folder = found[1]
+        work = Path(data) / "setup" / UPDATE_WORK
+        if found[0] == "pkg":                   # (the player's RPCS3 opens it: setup has no key, docs/51)
+            if exe is None or rpcs3.is_shared(data, exe):
+                raise game_update.UpdateError("Setup needs RPCS3 to open a .pkg file. " +
+                                              rpcs3.INSTALL_BY_HAND.format(title=tid))
+            folder = rpcs3.install_package(exe, found[1], tid, work, Path(data) / "setup" / "logs" / "update.log")
+        game_update.install(folder, dest, want, plain=gamefiles.plain_forms(tt))
+        shutil.rmtree(work, ignore_errors=True)
+        return {"files": len(want["files"])}
 
     fp = journal.fingerprint("update", [tid, want["pkg"]["sha256"]])
-    jr.run("update", fp, lambda: (game_update.install(found, dest, want, prog) or {"files": len(want["files"])}),
-           outputs=[dest / "PARAM.SFO"])
+    try:
+        jr.run("update", fp, run, outputs=[dest / "PARAM.SFO"])
+    except journal.StepFailed as e:             # (the journal wraps it; the screens want the player's sentence)
+        if isinstance(e.__cause__, game_update.UpdateError):
+            raise e.__cause__
+        raise
 
 
 def blocking(rep, unlocks=False) -> list:

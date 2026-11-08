@@ -26,8 +26,17 @@ Setup looks for the update, in this order:
 It accepts the package itself (`.pkg`) or an installed folder. A folder counts if its `PARAM.SFO` names this disc and
 version 01.04. Either way each file is checked against the table's sizes and sums.
 
-A package is unpacked by Python alone, with no extra install (`game_update.py`; AES-128-CTR in pure Python, about half
-a minute). The files go to `<setup data>/update/<TITLE_ID>`, and `ready.txt` gets `update=update/<TITLE_ID>`.
+Setup has no key and no decryptor (docs/51), so it never opens a package itself. The player's RPCS3 installs it, with
+`--headless --installpkg`, in a folder of setup's own that is removed afterwards. Nothing is written in the player's
+RPCS3. RPCS3 exits with an error status in this mode whether or not it installed anything, so setup goes by the folder
+and its files. Without an RPCS3 that setup can start, it asks the player to install the package in RPCS3 and choose the
+folder.
+
+The files go to `<setup data>/update/<TITLE_ID>`, and `ready.txt` gets `update=update/<TITLE_ID>`.
+
+RPCS3 decrypts the 14 `.sdat` files as it installs them and keeps their names. Those plain files equal the table's
+decrypted files, so setup accepts either form and does not decrypt them again. The runtime reads a plain `.sdat` as it
+is (`edat_resolve`).
 
 15 of the game's encrypted originals come from the update: `EBOOT.BIN` and 14 `.sdat` files. The other 12 `.sdat` files
 come from the disc.
