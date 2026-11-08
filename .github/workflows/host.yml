@@ -355,6 +355,14 @@ jobs:
           cmake --build build/host --target discord_check
           build/host/ui/discord_check.exe
 
+      # The button icons' pages on their own (port/ui/tests/button_icons_check.cpp): made-up font and menu files read,
+      # decoded and drawn for each device, PlayStation's moved buttons too (docs/138). No game data.
+      - name: The button icons' pages
+        shell: bash
+        run: |
+          cmake --build build/host --target button_icons_check
+          build/host/ui/button_icons_check.exe
+
       # Both routes: the runtime has the Vulkan backend, and des_host links the route switch, the core on D3D12
       # and on Vulkan, and the Vulkan start's fallback (the port finds PS3RECOMP_RSX_HAL itself, DES_RSX_HAL=AUTO).
       - name: Both routes in des_host
@@ -824,6 +832,12 @@ jobs:
         run: |
           cmake --build build/host --target discord_check
           build/host/ui/discord_check
+
+      # The button icons' pages, as on Windows above.
+      - name: The button icons' pages
+        run: |
+          cmake --build build/host --target button_icons_check
+          build/host/ui/button_icons_check
 
       # The libraries under their sonames, each finding the others beside it, and their licences (package.py puts
       # the folder at the top of the Linux tarball).
