@@ -21,6 +21,7 @@ enum class Sound {
     RingOpen,        // the spell radial comes up
     RingMove,        // it points at another element
     RingClose,       // it goes away
+    Trophy,          // a trophy earned (Settings, Interface, Trophy sound)
 };
 
 constexpr Sound kSoundClick = Sound::Click;

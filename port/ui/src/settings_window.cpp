@@ -1023,6 +1023,8 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
             "After Play, a note says how to open this menu.");
         bool_row(leftPane, rightPane, "Trophy pop-ups", "trophy_popups",
             "Shows a note when you earn a trophy. Off only hides the note.");
+        bool_row(leftPane, rightPane, "Trophy sound", "trophy_sound",
+            "Plays a short tune from the game when you earn a trophy.");
         bool_row(leftPane, rightPane, "Sword cursor", "DES_CURSOR3D",
             "The cursor in these menus is a sword from the game. Off uses the usual arrow.");
         {

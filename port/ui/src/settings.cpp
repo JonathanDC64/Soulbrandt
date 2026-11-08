@@ -116,6 +116,7 @@ constexpr Def kDefs[] = {
     {"rpcs3_dir", "", Apply::UiOnly},          // the RPCS3 setup last imported from (setup_rpcs3.hpp, docs/90 3.2)
     {"menu_hint", "1", Apply::UiOnly},
     {"trophy_popups", "1", Apply::UiOnly},     // trophy_toasts.cpp; off hides the toast, the unlock is still kept
+    {"trophy_sound", "1", Apply::UiOnly},      // trophy_toasts.cpp; off = no tune when a trophy is earned
     {"DES_CURSOR3D", "1", Apply::Live},        // host.cpp, each frame: 0 = the system's arrow, not the sword (docs/112)
     {"DES_CURSOR_SWORD", "moonlight", Apply::Live},  // host.cpp, each frame: which sword (souls_model.hpp's swords())
     {"DES_CURSOR_SIZE", "64", Apply::Live},    // host.cpp, each frame: the sword's length in dp

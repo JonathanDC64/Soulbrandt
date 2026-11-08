@@ -122,6 +122,15 @@ pass IDs from the table**; for the wrapper UI that is {0, 100, 200, 300, 400,
 999999999}. ID -1 is a safe no-op. The menus pass -1 when there is "no sound"
 (the DsMenuDlgInfo plates at 0x888040/0x888088).
 
+## The tune for a trophy
+
+A trophy plays cue `m777777777` (`ds_bgm_other`, wave 5, 8.27 s), the tune after the Monumental's first talk. Settings,
+Interface, Trophy sound turns it off. The cue has no slot in the table above, so `des_menu_tick` starts it with the calls
+`0x72D538` ends with: `0x00D68218` (name string), `0x003DBBB0` (play in 2D), `0x00D67F80` (free the string), and
+`0x003DBA18` first if an earlier tune has a handle. The game's own `m000011111`, in the same bank, takes the same path through `0x0072D950`.
+
+The names of the waves answer question 3 below: `f000000300` is `ITEMGET` and `f999999999` is `GAMESTART`.
+
 ## What each ID means
 
 Evidence: the input handlers that call `0x0072D970` with a constant. The

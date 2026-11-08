@@ -86,9 +86,21 @@ void queue_menu_sound(int32_t id)
     s_head.store(h + 1, std::memory_order_release);
 }
 
+/* The tune for a trophy: cue m777777777, about 8 s, in the bank ds_bgm_other. It has no slot in the
+ * game's table, so 0x72D538 cannot play it (the wild write above); play_trophy_tune starts it the way that function ends.
+ * Asked for on the render thread like the menu sounds, but only one can wait, and it may wait longer: a trophy earned
+ * during a stall still gets its tune. */
+constexpr int64_t kTrophyMaxAgeMs = 5000;
+std::atomic<int64_t> s_trophy_at{0};   /* when it was asked for; 0 = not asked */
+uint32_t s_trophy_cue[4];              /* the last tune's handle object (main thread), so a new trophy restarts it */
+
 /* The UI's sounds (DES_UI_SOUND_*) to the game's. */
 void ui_sound(int ui)
 {
+    if (ui == DES_UI_SOUND_TROPHY) {
+        s_trophy_at.store(now_ms(), std::memory_order_release);
+        return;
+    }
     static const int32_t map[] = {
         kSeConfirm,   /* CLICK */
         kSeConfirm,   /* PLAY */
@@ -112,6 +124,40 @@ void ui_sound(int ui)
 bool s_test;
 int64_t s_test_next;
 int s_test_i;
+
+void call_guest(ppu_context* ctx, void (*fn)(ppu_context*), uint64_t r3, uint64_t r4 = 0, uint64_t r5 = 0)
+{
+    ctx->gpr[3] = r3;
+    ctx->gpr[4] = r4;
+    ctx->gpr[5] = r5;
+    ctx->lr = DES_AT(0x00724E40u);
+    fn(ctx);
+    while (g_trampoline_fn) {
+        void (*tf)(void*) = g_trampoline_fn;
+        g_trampoline_fn = nullptr;
+        tf(ctx);
+    }
+}
+
+/* What 0x72D538 does once it has a slot: stop the slot's sound (here an earlier tune), build the name string, play the
+ * cue in 2D, free the string. Its objects sit in a frame below the caller's red zone. The caller puts r1 back. */
+void play_trophy_tune(ppu_context* ctx)
+{
+    static const char kCue[] = "m777777777";
+    const uint32_t frame = (uint32_t)ctx->gpr[1] - 0x1000u;
+    const uint32_t str = frame + 0x200u, cue = frame + 0x300u, old = frame + 0x340u, text = frame + 0x380u;
+    ctx->gpr[1] = frame;
+    for (unsigned i = 0; i < sizeof kCue; i++) vm_write8(text + i, (uint8_t)kCue[i]);
+    if (s_trophy_cue[1]) {
+        for (int i = 0; i < 4; i++) vm_write32(old + 4 * i, s_trophy_cue[i]);
+        call_guest(ctx, func_003DBA18, old);
+    }
+    call_guest(ctx, func_00D68218, str, text);
+    call_guest(ctx, func_003DBBB0, cue, str, 0xFFFFFFFFu);
+    call_guest(ctx, func_00D67F80, str);
+    for (int i = 0; i < 4; i++) s_trophy_cue[i] = vm_read32(cue + 4 * i);
+    fprintf(stderr, "[des] trophy sound: cue %s, handle %08x\n", kCue, s_trophy_cue[1]);
+}
 
 } // namespace
 
@@ -143,7 +189,8 @@ extern "C" void des_menu_tick(ppu_context* ctx)
         }
     }
     uint32_t t = s_tail.load(std::memory_order_relaxed);
-    if (t != s_head.load(std::memory_order_acquire)) {
+    const int64_t trophy = s_trophy_at.load(std::memory_order_acquire) ? s_trophy_at.exchange(0, std::memory_order_acq_rel) : 0;
+    if (t != s_head.load(std::memory_order_acquire) || trophy) {
         /* 0x72D538 is a normal ABI function: r1, r2, r13-r31, f14-f31 and
          * CR2-4 survive it. Keep the volatile ones too, f1 = dt above all,
          * which the menu update below still needs. */
@@ -176,6 +223,7 @@ extern "C" void des_menu_tick(ppu_context* ctx)
                         (int)id, before[0], before[1], before[2], before[3], vm_read32(slot_ea),
                         vm_read32(slot_ea + 4), vm_read32(slot_ea + 8), vm_read32(slot_ea + 12));
         }
+        if (trophy && now - trophy <= kTrophyMaxAgeMs && vm_read32(DES_AT(kMenuSeMgr)) != 0) play_trophy_tune(ctx);
         memcpy(ctx->gpr, g, sizeof g);
         memcpy(ctx->fpr, f, sizeof f);
         ctx->lr = lr;
