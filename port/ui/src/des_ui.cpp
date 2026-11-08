@@ -937,7 +937,11 @@ void watch_thread() {
 
 // Display mode (DES_FULLSCREEN) and the window follow each other. A change of the setting asks the window thread
 // for it; a change of the window that nobody here asked for (Alt+Enter, handled on the window thread) becomes the
-// setting, and is saved with it. Borderless fullscreen, not exclusive: the overlay and Alt+Tab work as windowed.
+// setting, and is saved with it. 0 window, 1 borderless fullscreen, 2 exclusive fullscreen (Windows only).
+const char* display_mode_name(int mode) {
+    return mode == 2 ? "exclusive fullscreen" : mode == 1 ? "borderless fullscreen" : "window";
+}
+
 void sync_fullscreen() {
     static int sSeen = -1;   // the window's state as last seen here
     static int sWant = -1;   // the setting as last acted on
@@ -951,14 +955,18 @@ void sync_fullscreen() {
     }
     const bool pinned = ui::settings::pinned("DES_FULLSCREEN");
     const std::string v = pinned ? ui::settings::pinned_value("DES_FULLSCREEN") : ui::settings::get("DES_FULLSCREEN");
-    const int want = !v.empty() && v != "0";
+#ifdef _WIN32
+    const int want = v == "2" ? 2 : !v.empty() && v != "0" ? 1 : 0;
+#else
+    const int want = !v.empty() && v != "0" ? 1 : 0;
+#endif
     if (sSeen >= 0 && now != sSeen) {  // Alt+Enter
         sSeen = now;
-        std::fprintf(stderr, "[ui] display mode: %s (Alt+Enter)%s\n", now ? "fullscreen" : "window",
+        std::fprintf(stderr, "[ui] display mode: %s (Alt+Enter)%s\n", display_mode_name(now),
                      pinned ? "; DES_FULLSCREEN is set in the environment, so the setting stays" : "");
         if (pinned) return;  // (set on the command line: Alt+Enter still switches, the setting stays)
         sWant = now;
-        if (now != want) ui::settings::set("DES_FULLSCREEN", now ? "1" : "0");
+        if (now != want) ui::settings::set("DES_FULLSCREEN", std::to_string(now));
         return;
     }
     sSeen = now;
@@ -967,7 +975,7 @@ void sync_fullscreen() {
         if (now != want) {
             sAsked = want;
             sWaited = 0;
-            std::fprintf(stderr, "[ui] display mode: %s (setting)\n", want ? "fullscreen" : "window");
+            std::fprintf(stderr, "[ui] display mode: %s (setting)\n", display_mode_name(want));
             rsx_d3d12_set_borderless(want);
         }
     }

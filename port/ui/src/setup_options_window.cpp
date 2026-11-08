@@ -134,7 +134,7 @@ SetupPresetWindow::SetupPresetWindow()
          {"60 fps, with the fixes for high frame rates",
           mHeight > 0 ? "Sharper picture, set for your display: " + setup::scale_label(matched)
                       : std::string("The picture at 720p (the display's size is not known)"),
-          "Sharp distant textures and sharp scaling", "Fullscreen"}},
+          "Sharp distant textures and sharp scaling", "Borderless fullscreen"}},
         mRpcs3.empty() ? Card{setup::Preset::Custom, "Custom", nullptr, "Starts from the settings you have now.",
                               {"Pick the frame rate, resolution and more on the next page"}}
                        : Card{setup::Preset::Custom, "Custom", nullptr, "Starts from your RPCS3 settings.",
@@ -280,7 +280,12 @@ SetupChoicesWindow::SetupChoicesWindow(Props props)
 
     const setup::Display& d = mDisplay;
     auto* opts = append(content(), "setup-opts");
-    add_opt(opts, "Display mode", "DES_FULLSCREEN", {{"0", "Window"}, {"1", "Fullscreen"}});
+#ifdef _WIN32
+    add_opt(opts, "Display mode", "DES_FULLSCREEN",
+            {{"0", "Window"}, {"1", "Borderless fullscreen"}, {"2", "Exclusive fullscreen"}});
+#else
+    add_opt(opts, "Display mode", "DES_FULLSCREEN", {{"0", "Window"}, {"1", "Borderless fullscreen"}});
+#endif
 
     std::vector<int> rates = {60, 120};
     if (d.hz > 60 && d.hz <= 500 && d.hz != 120) rates.push_back(d.hz);
