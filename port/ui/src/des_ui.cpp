@@ -18,6 +18,7 @@
 
 #include "app.hpp"
 #include "crash_report.hpp"
+#include "discord_presence.hpp"
 #include "game_menu.hpp"
 #include "host.hpp"
 #include "input.hpp"
@@ -987,6 +988,7 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
     if (script) script_keys_for_frame(sFrame);
     ui::trophies::poll_test_knob();  // DES_TROPHY_TEST
     ui::net_notices::poll();          // what the online sign-in has to tell the player
+    ui::discord::poll();              // the Discord status's row (discord_presence.hpp)
 
     // A menu of the game with the pointer over it (game_menu.cpp) keeps the UI running too.
     const bool gameMenu = ui::game_menu::poll();
@@ -1385,5 +1387,6 @@ extern "C" void des_ui_early_init(void) {
     cellOskDialog_set_host(&kOsk);
     if (sSetupOnly) return;  // (no game: no trophies, and no frames to watch)
     ui::trophies::install();
+    ui::discord::start();  // (the Discord status: discord_presence.hpp)
     std::thread(watch_thread).detach();
 }

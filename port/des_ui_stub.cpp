@@ -28,4 +28,6 @@ int des_ui_start_screen_up(void) {
     return 0;
 }
 
+void des_discord_map(int) {}  // (no UI: no Discord status)
+
 }  // extern "C"

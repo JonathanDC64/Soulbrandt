@@ -347,6 +347,14 @@ jobs:
           cmake --build build/host --target setup_folder_check
           build/host/ui/setup_folder_check.exe
 
+      # The Discord status's connection on its own (port/ui/tests/discord_check.cpp): frames, JSON, and an exchange
+      # with a stand-in for Discord on a pipe of the test's own (docs/137). Linux runs it below on a Unix socket.
+      - name: The Discord status's connection
+        shell: bash
+        run: |
+          cmake --build build/host --target discord_check
+          build/host/ui/discord_check.exe
+
       # Both routes: the runtime has the Vulkan backend, and des_host links the route switch, the core on D3D12
       # and on Vulkan, and the Vulkan start's fallback (the port finds PS3RECOMP_RSX_HAL itself, DES_RSX_HAL=AUTO).
       - name: Both routes in des_host
@@ -810,6 +818,12 @@ jobs:
         run: |
           cmake --build build/host --target setup_folder_check
           build/host/ui/setup_folder_check
+
+      # The Discord status's connection, as on Windows above: on a Unix socket.
+      - name: The Discord status's connection
+        run: |
+          cmake --build build/host --target discord_check
+          build/host/ui/discord_check
 
       # The libraries under their sonames, each finding the others beside it, and their licences (package.py puts
       # the folder at the top of the Linux tarball).

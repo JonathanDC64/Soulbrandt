@@ -733,6 +733,10 @@ void auto_continue_on_open(const char* path)
 {
     des_respec_on_open(path);
     des_route_on_open(path);
+    /* A level's script archive, /script/mNN.luabnd...: the map that is loading, for the Discord status. */
+    if (const char* s = strstr(path, "/script/m"); s && strstr(s, ".luabnd") && s[9] >= '0' && s[9] <= '9' &&
+                                                   s[10] >= '0' && s[10] <= '9')
+        des_discord_map((s[9] - '0') * 10 + (s[10] - '0'));
     if (!s_auto_done && strstr(path, "/script/m") && strstr(path, ".luabnd")) {
         s_auto_done = true;   /* on or not: from the first level on there is nothing left to press through */
         if (auto_continue_on()) fprintf(stderr, "[des] DES_AUTO_CONTINUE: level loading (%s), pad released\n", path);

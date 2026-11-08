@@ -47,6 +47,11 @@ void des_mouse_take(int* dx, int* dy);
  * mouse to match, soon after. Any thread. */
 void des_mouse_refresh(void);
 
+/* A level's script archive opened (des_options.cpp's file hook, the file
+ * thread): map is its mNN. The Discord status shows that map's area
+ * (port/ui/src/discord_presence.hpp). Any thread. */
+void des_discord_map(int map);
+
 /* At each of the game's flip requests (des_options.cpp, the game's thread):
  * the report test knob DES_HANG_AT_FRAME (port/ui/src/report.hpp). */
 void des_report_flip_hook(void);
