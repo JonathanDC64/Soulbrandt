@@ -383,6 +383,7 @@ jobs:
           if grep -qE "[ _]edat_decrypt_file( |$)" build/host/des_host.map; then
             echo "::error::des_host has edat_decrypt_file"; exit 1
           fi
+          python tools/release/package.py check-keys --rev HEAD --ps3recomp ps3recomp --file build/host/des_host.exe
 
       - name: Import check, self-test
         run: python tools/ci/check_host_imports.py --self-test
@@ -857,6 +858,7 @@ jobs:
           if grep -qE "[ _]edat_decrypt_file( |$)" build/host/des_host.map; then
             echo "::error::des_host has edat_decrypt_file"; exit 1
           fi
+          python3 tools/release/package.py check-keys --rev HEAD --ps3recomp ps3recomp --file build/host/des_host
 
       # The libraries under their sonames, each finding the others beside it, and their licences (package.py puts
       # the folder at the top of the Linux tarball).

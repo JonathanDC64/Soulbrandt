@@ -3,11 +3,14 @@
   python -m unittest discover -s tools/release/tests
 """
 import io
+import os
 import re
 import sys
 import tarfile
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import package as p  # noqa: E402
@@ -78,6 +81,60 @@ class Check(unittest.TestCase):
         for source in p.KEY_SOURCES:
             self.assertTrue(any(rx.search(source) for rx in p.PS3RECOMP_SKIP), source)
         self.assertFalse(any(rx.search("libs/filesystem/edat.c") for rx in p.PS3RECOMP_SKIP))
+
+
+def port_tar(files):
+    out = io.BytesIO()
+    with tarfile.open(fileobj=out, mode="w") as tar:
+        for name, data in files.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    return out.getvalue()
+
+
+class CheckKeys(unittest.TestCase):
+    """The workflow's command, with git and the fork replaced."""
+
+    def go(self, tree=b"clean", added=b"clean", **kw):
+        def fake_git(args, **_kw):
+            if args[0] == "rev-parse":
+                return "abc"
+            if args[0] == "archive":
+                return port_tar({"tools/x.py": tree})
+            if args[0] == "rev-list":
+                return "b1 tools/y.py\nt1 tools\nr1"
+            if args[:2] == ["cat-file", "blob"]:
+                return added
+            raise AssertionError(args)
+
+        args = mock.Mock(rev="HEAD", ps3recomp=None, range=kw.get("range"), file=kw.get("file", []))
+        with mock.patch.object(p, "git", fake_git), mock.patch.object(p, "read_pin", lambda rev: ({"commit": "c"}, "")), \
+                mock.patch.object(p, "fork_tar", lambda pin, checkout: fork()), \
+                mock.patch.object(p, "try_git", lambda a, **_k: "blob" if a[-1] == "b1" else "tree"):
+            return p.cmd_check_keys(args)
+
+    def test_clean(self):
+        self.assertEqual(self.go(range="a..b"), 0)
+
+    def test_a_tracked_file(self):
+        with self.assertRaisesRegex(p.Error, "tools/x.py holds SDAT_KEY"):
+            self.go(tree=b"x" + C_KEY)
+
+    def test_a_commit_of_the_range(self):
+        with self.assertRaisesRegex(p.Error, "tools/y.py holds PS3_GPKG_KEY"):
+            self.go(added=HEX_KEY.hex().encode(), range="a..b")
+
+    def test_the_range_is_only_read_when_asked(self):
+        self.assertEqual(self.go(added=C_KEY), 0)
+
+    def test_a_built_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            exe = os.path.join(d, "host.exe")
+            with open(exe, "wb") as f:
+                f.write(b"MZ" + LIST_KEY)
+            with self.assertRaisesRegex(p.Error, "host.exe holds EDAT_KEY_0"):
+                self.go(file=[exe])
 
 
 if __name__ == "__main__":
