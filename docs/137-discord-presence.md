@@ -1,7 +1,7 @@
 # 137. The Discord status
 
-Date: 2026-11-07. Status: built and checked against a stand-in for Discord. It shows nothing until the project has
-its Discord application (below).
+Date: 2026-11-07. Status: built and checked against a stand-in for Discord; the project's Discord application is in
+since 11-08 (below).
 
 ## What it shows
 
@@ -43,7 +43,7 @@ An application on Discord's developer portal (discord.com/developers/application
    status. Use the project's own art, not the game's or the publisher's. Then set the key as the status's large image
    (today DES_DISCORD_IMAGE=<key> for a try).
 
-Until step 2 there is no id, so the thread does nothing.
+Steps 1 and 2 are done (11-08): the application is 1568951566017233079. Without an id the thread does nothing.
 
 ## What else it can do
 
