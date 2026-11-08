@@ -8,8 +8,23 @@
 #include "window.hpp"
 
 #include <array>
+#include <string>
 
 namespace ui {
+
+// A keyboard or mouse input as cellPad codes it (a Windows virtual-key code; 0x100-0x104 the mouse buttons, 0x105 and
+// 0x106 the wheel), and the modifier held with it in a chord (0 = none).
+struct KeyInput {
+    int in = 0;
+    int mod = 0;
+    bool operator==(const KeyInput&) const = default;
+};
+// The first input bound to cellPad's target `name` ("cross", "up", "ls_up", ...) outside menus, as the PAD_KEYS
+// setting has it; in = 0 when it has none. On the UI thread (the button icons, button_icons.cpp).
+KeyInput first_key(const char* target);
+// A key's name for a key cap: "E", "Space", "Esc", "F5"; empty for the arrows, mouse buttons and wheel, which are
+// drawn as pictures.
+std::string key_cap_label(int vk);
 
 class ControlsWindow : public Window {
 public:

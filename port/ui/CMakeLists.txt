@@ -175,6 +175,18 @@ if(MSVC)
   target_compile_options(setup_folder_check PRIVATE /EHsc /W3 /wd4100)
 endif()
 
+# The button page on its own (tests/button_icons_check.cpp): the font files read, a page decoded and drawn again for
+# each device, from made-up files (no game data). With --ccm and --tpf, the player's own, and --png <folder> writes the
+# pages drawn, to look at (docs/138). Built on demand:
+#   cmake --build <build> --target button_icons_check, then button_icons_check
+add_executable(button_icons_check EXCLUDE_FROM_ALL tests/button_icons_check.cpp src/button_pages.cpp)
+target_include_directories(button_icons_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${stb_SOURCE_DIR})
+target_compile_definitions(button_icons_check PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX
+  DES_UI_FONT="${CMAKE_CURRENT_SOURCE_DIR}/res/fonts/AlegreyaSans-Bold.ttf")
+if(MSVC)
+  target_compile_options(button_icons_check PRIVATE /EHsc /W3)
+endif()
+
 # The first Python's fetch on its own (tests/setup_fetch_check.cpp), the data folder and the free space stubbed: curl
 # and tar against the host's own download and unzip (what Wine and CrossOver get), a stopped download carried on, and
 # the zip reader's refusals. It downloads python.org's embeddable zip three times. Windows only. Built on demand:

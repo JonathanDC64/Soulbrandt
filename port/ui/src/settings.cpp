@@ -74,6 +74,7 @@ constexpr Def kDefs[] = {
     {"RSX_ANISO", "0", Apply::Live},           // 0 = the game's own level
     {"RSX_TEX_MIPS", "1", Apply::Live},        // 0 = each texture's full-size level only; the core's upload, per bind
     {"DES_ASPECT", "", Apply::Live},           // "" = 16:9; des_aspect.cpp, at start and at the next flip after a change
+    {"DES_GLYPHS", "auto", Apply::Live},       // button_icons.cpp: the prompts' buttons; auto = the device used last
     {"DES_HUD", "", Apply::Live},              // "" = corners, "centre" = centred at 16:9, "stretch"; des_aspect.cpp
     {"DES_HUD_SIZE", "100", Apply::Live},      // percent; des_hud.cpp, after any change
     {"DES_HUD_BARS", "1", Apply::Live},        // 0 hides health, magic and stamina; des_hud.cpp, as DES_HUD_SIZE

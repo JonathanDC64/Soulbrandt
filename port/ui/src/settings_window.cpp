@@ -641,6 +641,12 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
             "Where the HUD goes when Aspect ratio is wider than 16:9. Corners puts each part in its corner of the "
             "screen. Centred keeps the HUD in a 16:9 area in the middle. Stretched spreads it across.<br/><br/>"
             "(DES_HUD)");
+        choice_row(leftPane, rightPane, "Button icons", "DES_GLYPHS",
+            {"auto", "playstation", "xbox", "nintendo", "keyboard"},
+            {"Automatic", "PlayStation", "Xbox", "Nintendo", "Keyboard and mouse"},
+            "The buttons in the game's prompts. Automatic shows the controller or keyboard you used last and "
+            "changes when you switch. Keyboard and mouse shows the keys you set in Controls. PlayStation is the "
+            "game's own.<br/><br/>(DES_GLYPHS)");
         bool_row(leftPane, rightPane, "Health, magic, stamina", "DES_HUD_BARS",
             "The bars at the top left.<br/><br/>(DES_HUD_BARS)");
         bool_row(leftPane, rightPane, "Area name", "DES_HUD_AREA",
