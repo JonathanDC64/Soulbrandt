@@ -373,6 +373,43 @@ bool input_neutral() {
 
 }  // namespace
 
+KeyInput first_key(const char* target) {
+    const int t = target_index(target);
+    if (t < 0) return {};
+    for (const Binding& b : key_map()[t]) {
+        if (!b.menu) return {b.in, b.mod};
+    }
+    return {};
+}
+
+std::string key_cap_label(int vk) {
+    switch (vk) {
+    case VK_UP: case VK_DOWN: case VK_LEFT: case VK_RIGHT: return {};
+    case VK_SPACE: return "Space";
+    case VK_RETURN: return "Enter";
+    case VK_TAB: return "Tab";
+    case VK_ESCAPE: return "Esc";
+    case VK_BACK: return "Bksp";
+    case VK_SHIFT: case VK_LSHIFT: case VK_RSHIFT: return "Shift";
+    case VK_CONTROL: case VK_LCONTROL: case VK_RCONTROL: return "Ctrl";
+    case VK_MENU: case VK_LMENU: case VK_RMENU: return "Alt";
+    case VK_INSERT: return "Ins";
+    case VK_DELETE: return "Del";
+    case VK_HOME: return "Home";
+    case VK_END: return "End";
+    case VK_PRIOR: return "PgUp";
+    case VK_NEXT: return "PgDn";
+    case VK_CAPITAL: return "Caps";
+    default: break;
+    }
+    if (vk >= kInMouse) return {};
+    if ((vk >= 'A' && vk <= 'Z') || (vk >= '0' && vk <= '9')) return std::string(1, char(vk));
+    if (vk >= VK_F1 && vk <= VK_F24) return "F" + std::to_string(vk - VK_F1 + 1);
+    std::string name = keys::key_name(vk);
+    if (name.size() > 5) name.resize(5);
+    return name;
+}
+
 ControlsWindow::ControlsWindow() {
     add_tab("Buttons", [this](Rml::Element* content) { build_tab(content); });
 }
