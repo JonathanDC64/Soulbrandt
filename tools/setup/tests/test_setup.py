@@ -133,7 +133,7 @@ class EuropeanDiscTest(unittest.TestCase):
 
     def test_real_table(self):
         tb = gamefiles.load_table()
-        self.assertEqual(gamefiles.titles(tb), ["BLUS30443", "BLES00932"])
+        self.assertEqual(gamefiles.titles(tb), ["BLUS30443", "BLES00932", "BCJS30022", "BCAS20071"])
         eu = gamefiles.for_title(tb, "BLES00932")
         self.assertNotIn("BLES00932", tb["other_titles"])
         by_path = {e["path"]: e for e in eu["originals"] + eu["decrypted"]}

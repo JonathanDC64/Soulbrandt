@@ -56,10 +56,10 @@ LIFT = pathlib.Path(__file__).resolve().parent.parent / "work" / "recomp"
 # Patch 2 (force-build singleton X) stays DISABLED -- it was obsoleted by the rotl-UB fix
 # and corrupts a downstream singleton (see _OBSOLETE_PATCHES / commit history).
 def patches(title=des_region.US):
-    """The patches for a lift of the disc `title`, by the lifted names of its functions (the European
-    disc's functions are at other addresses: scripts/des_region.py)."""
-    f = des_region.func_name(des_region.load_table(), 0x00AC8078, title) if title != des_region.US \
-        else "func_00AC8078"
+    """The patches for a lift of the disc `title`, by the lifted names of its functions (the other
+    discs' functions are at other addresses: scripts/des_region.py)."""
+    f = des_region.func_name(des_region.load_table(des_region.table_of(title)), 0x00AC8078, title) \
+        if title != des_region.US else "func_00AC8078"
     return [
         (
             f"{f} NULL-heap -> ds_heap",

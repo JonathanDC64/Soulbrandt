@@ -1321,6 +1321,8 @@ extern "C" int des_ui_launch(int* argc, char*** argv) {
     // The game setup built (docs/88 section 7): its module, the game's folder and its EBOOT.elf as main's ELF.
     if (!std::getenv("PS3_GAME_MODULE")) ps3_setenv("PS3_GAME_MODULE", launch.module.string().c_str());
     ps3_setenv("PS3_VFS_ROOT", launch.game.string().c_str());
+    // A disc with an update (the Japanese and Asian discs' 1.04): the game reads the update's files in place of the disc's.
+    if (!launch.update.empty() && !std::getenv("PS3_VFS_UPDATE")) ps3_setenv("PS3_VFS_UPDATE", launch.update.string().c_str());
     // The game's folder is only read (docs/90 section 4): its .sdat files are opened as the decrypted copies setup
     // staged, and the runtime's own decryption, if a file has no copy, and the game's HDD cache (/dev_hdd1) go to
     // setup's data folder.

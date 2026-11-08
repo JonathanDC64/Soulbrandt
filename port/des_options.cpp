@@ -178,10 +178,12 @@ namespace {
 
 constexpr uint32_t kLogoUpdate   = 0x008EF430u;
 constexpr uint32_t kElapseTime   = 0x0F8u;
-constexpr uint32_t kCurLogType   = 0x0FCu;
-constexpr uint32_t kAnimState    = 0x100u;
-/* The last boot logo's m_curLogType: the European disc has one logo more. */
-uint32_t last_log_type() { return des_region() == DesRegion::EU ? 5u : 4u; }
+/* The Japanese and Asian programs' dialog has a word more before these two. */
+uint32_t cur_log_type_at() { return des_region_asian() ? 0x100u : 0x0FCu; }
+uint32_t anim_state_at() { return des_region_asian() ? 0x104u : 0x100u; }
+/* The last boot logo's m_curLogType: the European disc has one logo more, the
+ * Japanese and Asian discs one less. */
+uint32_t last_log_type() { return des_region() == DesRegion::EU ? 5u : des_region_asian() ? 3u : 4u; }
 constexpr const char* kOpeningMovie = "ds_advertise.pam";   /* PS3_SAIL_SKIP_FIRST for DES_SKIP_INTRO_MOVIE */
 
 bool env_on(const char* name)
@@ -214,17 +216,17 @@ void logo_update_skip(ppu_context* ctx)
     const uint32_t dlg = (uint32_t)ctx->gpr[3];
     const int mode = skip_intro();
     if (dlg && mode == 1) {
-        vm_write32(dlg + kAnimState, 3);   /* to the next logo, or out after the last */
+        vm_write32(dlg + anim_state_at(), 3);   /* to the next logo, or out after the last */
     } else if (dlg && mode == 2) {
-        const uint32_t state = vm_read32(dlg + kAnimState);
-        if (state == 0 && vm_read32(dlg + kCurLogType) < last_log_type()) {
+        const uint32_t state = vm_read32(dlg + anim_state_at());
+        if (state == 0 && vm_read32(dlg + cur_log_type_at()) < last_log_type()) {
             static bool said = false;
             if (!said) {
                 said = true;
                 fprintf(stderr, "[des] DES_SKIP_INTRO: logo %u -> last logo\n",
-                        vm_read32(dlg + kCurLogType));
+                        vm_read32(dlg + cur_log_type_at()));
             }
-            vm_write32(dlg + kCurLogType, last_log_type());
+            vm_write32(dlg + cur_log_type_at(), last_log_type());
         }
         if (state == 2) {
             const float done = 1.0e9f;   /* past any hold threshold */
@@ -846,7 +848,7 @@ void load_souls_rate(ppu_context* ctx)
             if (cell < kSoulCells) vm_write32(obj + off, soul_cell_before(cell, n));
         }
         /* 0x0015AE10's constants: the fade's step and the fade-out flag */
-        const uint32_t consts = vm_read32((uint32_t)ctx->gpr[2] - 0x7C90u);
+        const uint32_t consts = vm_read32(DES_AT(0x019AD3B0u));
         const float more = vm_readf(consts - 0x7EE4u) * (dt * 30.0f - 1.0f);
         const bool out = vm_read8(vm_read32(consts - 0x7F7Cu)) != 0;
         vm_writef(obj + kSoulFade, vm_readf(obj + kSoulFade) + (out ? -more : more));
@@ -905,7 +907,7 @@ void scroll_msg_rate(ppu_context* ctx)
     const float was = obj ? vm_readf(obj + kScrollOffset) : 0.0f;
     const uint32_t last = obj ? vm_read32(obj + kScrollMsgLast) : 0u;
     /* 0x00798CD8's constants: the step */
-    const float step = vm_readf(vm_read32((uint32_t)ctx->gpr[2] - 0x7208u) - 0x7FA0u);
+    const float step = vm_readf(vm_read32(DES_AT(0x019ADE38u)) - 0x7FA0u);
     func_00798CD8(ctx);
     if (!obj || !ui_fix_on() || !(steps > 0.0f && steps < 30.0f) || steps == 1.0f) return;
     /* stepped: the same message as at the last call, and nothing else moved the offset */

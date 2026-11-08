@@ -47,9 +47,10 @@ bool good(const std::string& state) {
 }
 
 // A @check line's part, by its table name, as the game folder page sorts them (setup_screens.cpp).
-enum class Part { Game, Disc, Eboot, Script, Firmware };
+enum class Part { Game, Disc, Eboot, Script, Firmware, Update };
 
 Part part_of(const std::string& name) {
+    if (name == "update") return Part::Update;
     if (ends_with(name, ".prx")) return Part::Firmware;
     if (ends_with(name, ".elf")) return Part::Eboot;
     if (ends_with(name, ".unedat")) return Part::Script;
@@ -275,10 +276,10 @@ void SetupRpcs3Window::draw() {
                   (mStatus.userName.empty() ? std::string("User") : mStatus.userName) + " (" + mStatus.userId +
                       "). RPCS3 has " + std::to_string(mStatus.users) + " users; this is the one it uses now.");
 
-        std::vector<const setup::Line*> game, disc, other;
+        std::vector<const setup::Line*> game, disc, other, update;
         for (const setup::Line& c : mStatus.checks) {
             const Part p = part_of(c.key2);
-            (p == Part::Game ? game : p == Part::Disc ? disc : other).push_back(&c);
+            (p == Part::Game ? game : p == Part::Disc ? disc : p == Part::Update ? update : other).push_back(&c);
         }
         const auto bad = [](const setup::Line* c) { return !good(c->key); };
         const bool isGame = !game.empty() && std::none_of(game.begin(), game.end(), bad);
@@ -299,8 +300,9 @@ void SetupRpcs3Window::draw() {
             check_again(row);
         } else if (mRequest.game.empty() && mStatus.libraryKind == "store") {
             auto* row = found(box, "setup-err", "Demon's Souls, PlayStation Store version (NPUB30910)",
-                              "Only the disc versions, BLUS30443 (US) and BLES00932 (Europe), are supported. The "
-                              "store version is packaged and locked differently.");
+                              "Only the disc versions are supported: BLUS30443 (US), BLES00932 (Europe), and "
+                              "BCJS30022 (Japan) and BCAS20071 (Asia) with their 1.04 update. The store version is "
+                              "packaged and locked differently.");
             tag(row, "err", "Not supported");
         } else if (mRequest.game.empty() && (mStatus.libraryKind == "none" || mStatus.libraryKind.empty()) &&
                    game.empty()) {
@@ -317,8 +319,12 @@ void SetupRpcs3Window::draw() {
             const setup::Disc* which = setup::disc_of(std::string_view(game.front()->text).substr(0, 9));
             const std::string title = which ? which->title : setup::kDiscs[0].title;
             const std::string name = std::string("Demon's Souls, ") + (which ? which->name : setup::kDiscs[0].name) +
-                                     ", version 1.00";
-            if (wrong == disc.end()) {
+                                     ", " + (which ? which->version : setup::kDiscs[0].version);
+            if (!update.empty() && !good(update.front()->key)) {  // (a disc that needs its update, and it is not there)
+                auto* row = found(box, "setup-err", name, update.front()->text);
+                tag(row, "err", "Needs the update");
+                check_again(row);
+            } else if (wrong == disc.end()) {
                 auto* row = found(box, "setup-ok", name, title + " · " + where);
                 tag(row, "ok", "Supported");
                 // The rest of the disc's files, by name and size (tools/setup/des_setup/disc.py): a warning, which

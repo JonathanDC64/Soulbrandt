@@ -185,7 +185,7 @@ extern "C" void des_menu_tick(ppu_context* ctx)
     }
     /* The original 0x00724E40: r9 = the menu system's global (0x01B4B114,
      * through the TOC), r3 = *r9, tail-call 0x00724AD0 with f1 untouched. */
-    ctx->gpr[9] = vm_read32(vm_read32((uint32_t)ctx->gpr[2] - 0x72F0u) - 0x8000u);
+    ctx->gpr[9] = vm_read32(vm_read32(DES_AT(0x019ADD50u)) - 0x8000u);
     ctx->gpr[3] = vm_read32((uint32_t)ctx->gpr[9]);
     g_trampoline_fn = (void (*)(void*))func_00724AD0;
 }

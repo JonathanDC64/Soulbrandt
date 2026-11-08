@@ -38,9 +38,11 @@ class Title:
     trophy_file: str    # the port's own trophy file (ps3recomp sceNpTrophy.c)
 
 
-US_ID, EU_ID = "BLUS30443", "BLES00932"
+US_ID, EU_ID, JP_ID, ASIA_ID = "BLUS30443", "BLES00932", "BCJS30022", "BCAS20071"
 TITLES = {US_ID: Title(US_ID, "BLUS30443DEMONSS005", "NPWR00881_00", "NPWR00881.json"),
-          EU_ID: Title(EU_ID, "BLES00932DEMONSS005", "NPWR01249_00", "NPWR01249.json")}
+          EU_ID: Title(EU_ID, "BLES00932DEMONSS005", "NPWR01249_00", "NPWR01249.json"),
+          JP_ID: Title(JP_ID, "BCJS30022DEMONSS005", "NPWR00245_00", "NPWR00245.json"),
+          ASIA_ID: Title(ASIA_ID, "BCAS20071DEMONSS005", "NPWR00245_00", "NPWR00245.json")}
 SAVE_DIR, TROPHY_DIR, TROPHY_FILE = TITLES[US_ID].save_dir, TITLES[US_ID].trophy_dir, TITLES[US_ID].trophy_file
 TROPHY_COUNT = 38                   # the trophies the set has (both discs' sets)
 STORE_ID = "NPUB30910"              # the US PlayStation Store version

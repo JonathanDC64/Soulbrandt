@@ -17,7 +17,7 @@ uint8_t g_des_region = static_cast<uint8_t>(DesRegion::US);
 
 const char* des_region_title_id(DesRegion r)
 {
-    return r == DesRegion::EU ? "BLES00932" : "BLUS30443";
+    return r == DesRegion::EU ? "BLES00932" : r == DesRegion::JP ? "BCJS30022" : r == DesRegion::ASIA ? "BCAS20071" : "BLUS30443";
 }
 
 extern "C" const char* cellGame_get_title_id(void);   /* cellGame.c: PARAM.SFO's TITLE_ID */
@@ -31,7 +31,7 @@ extern "C" void des_region_check_title(void)
     const DesRegion r = des_region();
     const char* want = des_region_title_id(r);
     const char* id = cellGame_get_title_id();
-    fprintf(stderr, "[des] disc: %s (%s)\n", want, r == DesRegion::EU ? "Europe" : "US");
+    fprintf(stderr, "[des] disc: %s (%s)\n", want, r == DesRegion::EU ? "Europe" : r == DesRegion::JP ? "Japan" : r == DesRegion::ASIA ? "Asia" : "US");
     if (id && *id && strcmp(id, want) != 0)
         fprintf(stderr, "[des] the game folder's PARAM.SFO is %s, but the game was set up from %s's EBOOT\n", id, want);
 }
@@ -41,7 +41,8 @@ namespace {
 /* The discs' languages: DES_LANGUAGE's values, the PS3 system language each
  * one sets (PS3_SYS_LANG, ps3recomp's ps3emu/sys_lang.h), and for Japanese,
  * Chinese and Korean the game's language index (use_asian_text). The European
- * disc has all of them; the US disc has English and Japanese (on_this_disc). */
+ * disc has all of them; the US disc has English and Japanese; the Asian disc
+ * English, Chinese and Korean; the Japanese disc Japanese (on_this_disc). */
 struct Language {
     const char* code;   /* DES_LANGUAGE */
     const char* sys;    /* PS3_SYS_LANG */
@@ -68,7 +69,12 @@ const Language* language_of(const std::string& code)
 
 bool on_this_disc(const Language& l)
 {
-    return des_region() == DesRegion::EU || strcmp(l.code, "en") == 0 || strcmp(l.code, "ja") == 0;
+    switch (des_region()) {
+    case DesRegion::EU: return true;
+    case DesRegion::JP: return strcmp(l.code, "ja") == 0;
+    case DesRegion::ASIA: return strcmp(l.code, "en") == 0 || strcmp(l.code, "ko") == 0 || strcmp(l.code, "zh-tw") == 0;
+    default: return strcmp(l.code, "en") == 0 || strcmp(l.code, "ja") == 0;
+    }
 }
 
 /* The disc's language for the PC's language tag ("fr-fr", "zh-hant-tw"): the
@@ -177,7 +183,9 @@ extern "C" void des_region_language(void)
         if (!from_pc) fprintf(stderr, "[des] DES_LANGUAGE=%s is not one of the disc's languages\n", chosen);
         l = &kLanguages[0];
     }
-    if (l->index >= 0 && !use_asian_text(l->index)) {
+    /* The Japanese and Asian programs pick their language from the PS3 system
+     * language themselves, so only the system language is set for them. */
+    if (l->index >= 0 && !des_region_asian() && !use_asian_text(l->index)) {
         fprintf(stderr, "[des] language: the game's language is already set, so not %s; English\n", l->name);
         l = &kLanguages[0];
     }

@@ -39,18 +39,20 @@ void (*find_lifted(const lift_entry* t, uint64_t n, uint64_t addr))(ppu_context*
     return nullptr;
 }
 
-/* Every game call's European address, checked at compile time. */
-#define DES_GAME_CALL_EU_(a)                                                     \
-    constexpr uint32_t kEu_##a = des_region_detail::eu_of(0x##a##u);              \
-    static_assert(kEu_##a != 0, "func_" #a " is not in port/regions/BLES00932.inc");
-DES_GAME_CALLS(DES_GAME_CALL_EU_)
-#undef DES_GAME_CALL_EU_
+/* Every game call's address on each disc, checked at compile time. */
+#define DES_GAME_CALL_AT_(a)                                                                                   \
+    constexpr uint32_t kAt_##a[kDesRegions] = {0x##a##u, des_region_detail::on_disc(DesRegion::EU, 0x##a##u),   \
+                                               des_region_detail::on_disc(DesRegion::JP, 0x##a##u),            \
+                                               des_region_detail::on_disc(DesRegion::ASIA, 0x##a##u)};         \
+    static_assert(kAt_##a[1] != 0 && kAt_##a[2] != 0 && kAt_##a[3] != 0, "func_" #a " is not in every table in port/regions/");
+DES_GAME_CALLS(DES_GAME_CALL_AT_)
+#undef DES_GAME_CALL_AT_
 
 /* How many game calls are in the table at the region's addresses. */
 int count_found(const lift_entry* t, uint64_t n, DesRegion r)
 {
     int found = 0;
-#define DES_GAME_CALL_COUNT_(a) found += find_lifted(t, n, r == DesRegion::EU ? kEu_##a : 0x##a##ull) != nullptr;
+#define DES_GAME_CALL_COUNT_(a) found += find_lifted(t, n, kAt_##a[static_cast<int>(r)]) != nullptr;
     DES_GAME_CALLS(DES_GAME_CALL_COUNT_)
 #undef DES_GAME_CALL_COUNT_
     return found;
@@ -64,18 +66,26 @@ constexpr int kGameCalls = 0 DES_GAME_CALLS(DES_GAME_CALL_ONE_);
 extern "C" int ps3_game_title_loaded(const void* func_table, uint64_t count)
 {
     const lift_entry* t = static_cast<const lift_entry*>(func_table);
-    /* The US disc unless every call is at its European address and not all at
-     * their US ones; a DLL that fits neither is reported against the US list. */
-    const int us = count_found(t, count, DesRegion::US);
-    const int eu = us == kGameCalls ? 0 : count_found(t, count, DesRegion::EU);
-    const DesRegion r = eu == kGameCalls ? DesRegion::EU : DesRegion::US;
+    /* The disc whose addresses have every call, the US disc's first. A DLL that
+     * fits none is reported and treated as the US disc's. */
+    DesRegion r = DesRegion::US;
+    int found[kDesRegions] = {};
+    bool any = false;
+    for (int i = 0; i < kDesRegions && !any; i++) {
+        found[i] = count_found(t, count, static_cast<DesRegion>(i));
+        if (found[i] == kGameCalls) {
+            r = static_cast<DesRegion>(i);
+            any = true;
+        }
+    }
     g_des_region = static_cast<uint8_t>(r);
-    if (us != kGameCalls && eu != kGameCalls)
-        std::fprintf(stderr, "[des_game] the game DLL is neither disc's lift: %d of %d calls at the US addresses, "
-                     "%d at the European ones%c", us, kGameCalls, eu, 10);
+    if (!any)
+        std::fprintf(stderr, "[des_game] the game DLL is no disc's lift: of %d calls, %d at the US addresses, %d at the "
+                     "European ones, %d at the Japanese ones, %d at the Asian ones%c",
+                     kGameCalls, found[0], found[1], found[2], found[3], 10);
     int missing = 0;
 #define DES_GAME_CALL_RESOLVE_(a)                                                \
-    if (!(des_game_calls::p_##a = find_lifted(t, count, r == DesRegion::EU ? kEu_##a : 0x##a##ull))) { \
+    if (!(des_game_calls::p_##a = find_lifted(t, count, kAt_##a[static_cast<int>(r)]))) { \
         std::fprintf(stderr, "[des_game] func_%s is not in the game DLL's function table%c", #a, 10); \
         missing++;                                                               \
     }

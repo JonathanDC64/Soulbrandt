@@ -105,7 +105,7 @@ const char* state_name(setup::State s) {
 // the disc's own files are paths under PS3_GAME; the rest (PS3_GAME, PARAM.SFO, TITLE_ID, APP_VER) are the folder and
 // the title. The firmware's file is optional (docs/133): the engine names it only when it found one, good or "unused"
 // (not right, so setup leaves it out).
-enum class Part { Game, Disc, Decrypted, Firmware };
+enum class Part { Game, Disc, Decrypted, Firmware, Update };
 
 bool ends_with(const std::string& s, const char* tail) {
     const size_t n = std::strlen(tail);
@@ -116,6 +116,7 @@ bool ends_with(const std::string& s, const char* tail) {
 }
 
 Part part_of(const std::string& name) {
+    if (name == "update") return Part::Update;
     if (ends_with(name, ".prx")) return Part::Firmware;
     if (ends_with(name, ".elf") || ends_with(name, ".unedat")) return Part::Decrypted;
     return name.find('/') == std::string::npos ? Part::Game : Part::Disc;
@@ -275,8 +276,9 @@ void SetupStartWindow::refresh() {
                         ". If its drive is unplugged, plug it in and start setup again. Or change the folder.");
         auto* box = panel(mBody);
         found(box, "setup-info", "You need your copy of the game",
-              "The US disc (BLUS30443) or the European disc (BLES00932), version 1.00, copied to a folder. If you "
-              "already play it in RPCS3, that is enough. If not, setup shows you how.");
+              "The US disc (BLUS30443) or the European disc (BLES00932), version 1.00, or the Japanese "
+              "(BCJS30022) or Asian (BCAS20071) disc with its 1.04 update, copied to a folder. If you already play it "
+              "in RPCS3, that is enough. If not, setup shows you how.");
         found(box, "setup-info", "Setup downloads its build tools once",
               "The compiler and the tools it needs, each checked before it is used. Later builds use the same copy.");
         found(box, "setup-info", "You can stop and come back",
@@ -694,6 +696,7 @@ std::vector<std::vector<Button*>> SetupFilesWindow::nav_lines() const {
     out.push_back(line(mChooseButton));
     for (const auto& b : mPlaceButtons) out.push_back({b.get()});
     if (!mDecryptedButton.empty()) out.push_back(line(mDecryptedButton));
+    if (!mUpdateButton.empty()) out.push_back(line(mUpdateButton));
     if (!mReportButton.empty()) out.push_back(line(mReportButton));
     out.push_back(line(mLinkButtons));
     out.push_back(line(mActions));
@@ -728,7 +731,10 @@ void SetupFilesWindow::choose(Picking what) {
     const bool game = what == Picking::Game;
     std::filesystem::path from = game || mRequest.decrypted.empty() ? mRequest.game : mRequest.decrypted[0];
     if (from.empty()) from = mProps.moved.parent_path();
-    pick_folder(from, game ? "Choose the folder of your disc copy" : "Choose the folder with the decrypted files",
+    pick_folder(from,
+                game                          ? "Choose the folder of your disc copy"
+                : what == Picking::Update     ? "Choose the folder with the update's .pkg file"
+                                              : "Choose the folder with the decrypted files",
                 host::window(), [box = mPicked](PickedFolder folder) { box->put(std::move(folder)); });
 }
 
@@ -746,6 +752,8 @@ void SetupFilesWindow::picked(const PickedFolder& folder) {
         mRequest.decrypted = {folder.folder};
     } else if (what == Picking::Game) {
         mRequest.game = folder.folder;
+    } else if (what == Picking::Update) {
+        mRequest.update = folder.folder;
     } else {
         mRequest.decrypted = {folder.folder};
     }
@@ -859,6 +867,7 @@ void SetupFilesWindow::draw_check() {
 
     const bool hadFocus = has_focus();
     mDecryptedButton.clear();  // (their listeners go before their elements)
+    mUpdateButton.clear();
     mReportButton.clear();
     clear_children(mCheck);
     if (!mPickProblem.empty()) {
@@ -886,13 +895,14 @@ void SetupFilesWindow::draw_check() {
         append(row, "setup-spin");
         text(row, "setup-note", line);
     } else {
-        std::vector<const setup::Line*> game, disc, files, firmware;
+        std::vector<const setup::Line*> game, disc, files, firmware, update;
         for (const setup::Line& c : mStatus.checks) {
             switch (part_of(c.key2)) {
             case Part::Game: game.push_back(&c); break;
             case Part::Disc: disc.push_back(&c); break;
             case Part::Decrypted: files.push_back(&c); break;
             case Part::Firmware: firmware.push_back(&c); break;
+            case Part::Update: update.push_back(&c); break;
             }
         }
         const auto bad = [](const setup::Line* c) { return !good(c->key); };
@@ -907,7 +917,22 @@ void SetupFilesWindow::draw_check() {
                          : whole.state == "complete" ? ". All " + grouped(whole.files) + " of the disc's files are there."
                                                      : ". The disc's " + std::to_string(disc.size()) + " files match.";
             }
-            found(box, whole.incomplete() ? "setup-warn" : "setup-ok", "Demon's Souls, US disc, version 1.00", value);
+            // The game's line starts with its TITLE_ID ("BLES00932, version 01.00 (the European disc).").
+            const setup::Disc* which = setup::disc_of(std::string_view(game.front()->text).substr(0, 9));
+            if (!which) which = &setup::kDiscs[0];
+            found(box, whole.incomplete() ? "setup-warn" : "setup-ok",
+                  std::string("Demon's Souls, ") + which->name + ", " + which->version, value);
+            // A disc that needs its update (the Japanese and Asian discs): found and checked, or how to give it.
+            if (!update.empty() && good(update.front()->key)) {
+                found(box, "setup-ok", "Its update", update.front()->text);
+            } else if (!update.empty()) {
+                text(mCheck, "setup-heading", "This disc needs its update");
+                text(mCheck, "setup-text", update.front()->text)->SetClass("note", true);
+                auto* where = actions_row(mCheck);
+                where->SetClass("near", true);
+                set_buttons(mUpdateButton, where,
+                            {{"Choose the update", [this] { choose(Picking::Update); }, Look::Plain}});
+            }
         } else if (!game.empty()) {  // (a folder that is not the game's, or another copy: the line says why)
             found(box, "setup-err", "This is not a copy setup can use",
                   (*std::find_if(game.begin(), game.end(), bad))->text);
@@ -1024,7 +1049,8 @@ SetupHelpWindow::SetupHelpWindow(Props props) : SetupPage("setup-help"), mProps(
     set_rail({{"Your game", "", S::Now}, {"Build", build_time(), S::Todo}, options_step(), {"Play", "", S::Todo}});
     set_heading("Getting your game's files",
                 "Setup builds the game from your own copy of Demon's Souls: the US disc (BLUS30443) or the European "
-                "disc (BLES00932), version 1.00. It takes three steps, once.");
+                "disc (BLES00932), version 1.00, or the Japanese (BCJS30022) or Asian (BCAS20071) disc with its 1.04 "
+                "update. It takes three steps, once.");
     const auto guide = [](Rml::Element* body, std::initializer_list<const char*> steps) {
         auto* list = append(body, "setup-guide");
         int n = 0;

@@ -125,7 +125,7 @@ int32_t selected(uint32_t dlg)
 
 uint32_t menu_state()
 {
-    const uint32_t t = vm_read32(DES_AT(kToc) - 0x72F0u);
+    const uint32_t t = vm_read32(DES_AT(0x019ADD50u));
     const uint32_t holder = guest_ok(t) ? vm_read32(t - 0x8000u) : 0;
     return guest_ok(holder) ? vm_read32(holder) : 0;
 }
@@ -233,7 +233,7 @@ uint32_t use_arg(ppu_context* ctx)
 {
     static uint32_t s_arg = 0;
     if (!s_arg && !(s_arg = guest_alloc(ctx, 16))) return 0;
-    const uint32_t menus = vm_read32(DES_AT(kToc) - 0x7134u);
+    const uint32_t menus = vm_read32(DES_AT(0x019ADF0Cu));
     vm_write32(s_arg, guest_ok(menus) ? vm_read32(menus - 0x7F6Cu) : 0);
     vm_write32(s_arg + 4, 0);
     vm_write32(s_arg + 8, 2);
@@ -243,7 +243,7 @@ uint32_t use_arg(ppu_context* ctx)
 /* The inventory dialog the menus hold now (*(*(menus - 0x8000)), 0x0081E110's), 0 if none. */
 uint32_t inventory()
 {
-    const uint32_t menus = vm_read32(DES_AT(kToc) - 0x7134u);
+    const uint32_t menus = vm_read32(DES_AT(0x019ADF0Cu));
     const uint32_t holder = guest_ok(menus) ? vm_read32(menus - 0x8000u) : 0;
     const uint32_t inv = guest_ok(holder) ? vm_read32(holder) : 0;
     return guest_ok(inv) ? inv : 0;
@@ -331,7 +331,7 @@ void cmd_choice(ppu_context* ctx)   /* for 0x0081E110 */
 {
     const uint32_t cmd = (uint32_t)ctx->gpr[3];
     if (on() && vm_read32(cmd + kCmdRow) == 0 && vm_read8(cmd + kCmdUseOff) == 0) {
-        const uint32_t menus = vm_read32(DES_AT(kToc) - 0x7134u);
+        const uint32_t menus = vm_read32(DES_AT(0x019ADF0Cu));
         const uint32_t mode = guest_ok(menus) && guest_ok(vm_read32(menus - 0x7FFCu)) ? vm_read32(vm_read32(menus - 0x7FFCu)) : 2;
         const uint32_t inv = inventory();
         if (inv && offer(ctx, inv, mode)) return;

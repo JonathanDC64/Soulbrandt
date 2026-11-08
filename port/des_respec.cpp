@@ -112,7 +112,7 @@ uint32_t player_chr()
 
 uint32_t menus()
 {
-    const uint32_t t = vm_read32(DES_AT(kToc) - 0x72F0u);
+    const uint32_t t = vm_read32(DES_AT(0x019ADD50u));
     const uint32_t h = guest_ok(t) ? vm_read32(t - 0x8000u) : 0;
     const uint32_t m = guest_ok(h) ? vm_read32(h) : 0;
     return guest_ok(m) ? m : 0;

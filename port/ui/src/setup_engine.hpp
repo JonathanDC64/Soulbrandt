@@ -68,6 +68,8 @@ struct Request {
     std::filesystem::path game;                    // the folder of the disc dump
     std::vector<std::filesystem::path> decrypted;  // more folders to look in for the decrypted files
     std::filesystem::path firmware;                // the decrypted libsre.prx, while libsre is lifted
+    std::filesystem::path update;                  // the disc's update, for a disc that needs one: its .pkg file or a
+                                                   // folder with it (des_setup/game_update.py); empty: looked for
     std::string rpcs3;                 // the RPCS3 route (docs/90): the RPCS3 that unlocks the files (setup_rpcs3.hpp's
                                        // rpcs3_arg); empty: the folder route
     std::vector<std::string> imports;  // what comes across from that RPCS3 after the build: save, trophies, settings
@@ -76,7 +78,7 @@ struct Request {
                                        // check's Continue anyway: `run --disc-anyway`, kept for that game folder)
 };
 // For DES_UI_OPEN=setup and setup-run (a developer's test of the screens): DES_SETUP_GAME, DES_SETUP_DECRYPTED (folders
-// split by ';'), DES_SETUP_FIRMWARE, DES_SETUP_RPCS3 and DES_SETUP_IMPORT (save,trophies,settings).
+// split by ';'), DES_SETUP_FIRMWARE, DES_SETUP_UPDATE, DES_SETUP_RPCS3 and DES_SETUP_IMPORT (save,trophies,settings).
 Request request_from_env();
 
 // The game's gamedata folder for this install: beside the exe, where a player's start works and keeps its saves (the
@@ -96,6 +98,7 @@ enum class State {
 struct Launch {
     State state = State::Missing;
     std::filesystem::path game, eboot, module;  // from ready.txt
+    std::filesystem::path update;               // the disc's update, when it has one (PS3_VFS_UPDATE); from ready.txt
 };
 Launch launch_state();
 
