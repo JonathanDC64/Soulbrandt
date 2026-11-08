@@ -19,6 +19,7 @@
 #include "app.hpp"
 #include "button_icons.hpp"
 #include "crash_report.hpp"
+#include "discord_presence.hpp"
 #include "game_menu.hpp"
 #include "host.hpp"
 #include "input.hpp"
@@ -989,6 +990,7 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
     ui::trophies::poll_test_knob();  // DES_TROPHY_TEST
     ui::net_notices::poll();          // what the online sign-in has to tell the player
     ui::button_icons::poll();         // the device used last, Button icons (button_icons.hpp)
+    ui::discord::poll();              // the Discord status's row (discord_presence.hpp)
 
     // A menu of the game with the pointer over it (game_menu.cpp) keeps the UI running too.
     const bool gameMenu = ui::game_menu::poll();
@@ -1388,5 +1390,6 @@ extern "C" void des_ui_early_init(void) {
     if (sSetupOnly) return;  // (no game: no trophies, and no frames to watch)
     ui::trophies::install();
     ui::button_icons::start();  // (the button icons in the game's prompts: button_icons.hpp)
+    ui::discord::start();  // (the Discord status: discord_presence.hpp)
     std::thread(watch_thread).detach();
 }

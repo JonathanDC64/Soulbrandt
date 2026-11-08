@@ -187,6 +187,20 @@ if(MSVC)
   target_compile_options(button_icons_check PRIVATE /EHsc /W3)
 endif()
 
+# discord_ipc.cpp on its own (tests/discord_check.cpp): the Discord status's frames and JSON, and a whole exchange with
+# a stand-in for Discord on a pipe or socket of the test's own (docs/137). The same on every platform; CI runs it on
+# both (host.yml). Built on demand:
+#   cmake --build <build> --target discord_check, then discord_check
+add_executable(discord_check EXCLUDE_FROM_ALL tests/discord_check.cpp src/discord_ipc.cpp)
+target_include_directories(discord_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_definitions(discord_check PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
+if(MSVC)
+  target_compile_options(discord_check PRIVATE /EHsc /W3)
+elseif(NOT WIN32)
+  find_package(Threads REQUIRED)
+  target_link_libraries(discord_check PRIVATE Threads::Threads)
+endif()
+
 # The first Python's fetch on its own (tests/setup_fetch_check.cpp), the data folder and the free space stubbed: curl
 # and tar against the host's own download and unzip (what Wine and CrossOver get), a stopped download carried on, and
 # the zip reader's refusals. It downloads python.org's embeddable zip three times. Windows only. Built on demand:
