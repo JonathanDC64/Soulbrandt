@@ -3,73 +3,44 @@
   cd tools/setup && python -m unittest discover -s tests -p "test_game_update.py"
 """
 import hashlib
-import struct
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from des_setup import game_update, gamefiles, sfo  # noqa: E402
+from des_setup import game_update, gamefiles, journal, pipeline, rpcs3, sfo  # noqa: E402
 
 TITLE = "BCJS30022"
 EBOOT_U = b"SCE\0" + b"u" * 60
 EBOOT_ELF = b"\x7fELF" + b"v" * 60
 SDAT_D = b"NPD\0" + b"d" * 28   # a file the update does not change
 SDAT_DEC = b"DCX\0" + b"w" * 20
+SDAT_U = b"NPD\0" + b"e" * 28   # a .sdat of the update, and what RPCS3 leaves when it installs it
+SDAT_U_PLAIN = b"DCX\0" + b"p" * 20
 BONUS = b"only in the update"
+
+# A stand-in for `rpcs3 --headless --installpkg <file>`: its folder as RPCS3 finds it, the option's path checked, then
+# what the mode beside it says. It ends with an error status when it did install, as RPCS3 does.
+FAKE = r"""
+import os, sys
+mode = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "mode.txt")).read().strip()
+if mode == "old":
+    sys.stderr.write("Unknown option 'installpkg'.\n")
+    sys.exit(1)
+assert sys.argv[1:3] == ["--headless", "--installpkg"] and os.path.isabs(sys.argv[3]) and os.path.isfile(sys.argv[3])
+home = os.environ.get("RPCS3_CONFIG_DIR") or os.path.join(os.environ["XDG_CONFIG_HOME"], "rpcs3")
+if mode == "ok":
+    game = os.path.join(home, "dev_hdd0", "game", "BCJS30022")
+    os.makedirs(game)
+    open(os.path.join(game, "PARAM.SFO"), "wb").close()
+sys.exit(9)
+"""
 
 
 def sha(b):
     return hashlib.sha256(b).hexdigest()
-
-
-def make_pkg(files, iv=b"\x11" * 16):
-    """A retail package of {name: bytes, or None for a folder}, as Sony's servers make them."""
-    names = list(files)
-    table_size = 32 * len(names)
-    blob = bytearray(table_size)
-    entries = []
-    for name in names:
-        n = name.encode("utf-8")
-        no = len(blob)
-        blob += n + bytes(-len(n) % 16)
-        body = files[name]
-        fo = len(blob)
-        if body is not None:
-            blob += body + bytes(-len(body) % 16)
-        entries.append((no, len(n), fo, len(body or b""), 4 if body is None else 3))
-    for i, (no, ns, fo, fs, fl) in enumerate(entries):
-        blob[i * 32:(i + 1) * 32] = struct.pack(">IIQQII", no, ns, fo, fs, fl, 0)
-    data = game_update.aes128_ctr(game_update.PKG_KEY, iv, bytes(blob))
-    off = 0xC0
-    head = bytearray(off)
-    struct.pack_into(">IHHIIII", head, 0, game_update.PKG_MAGIC, game_update.RETAIL, 1, 0xC0, 0, 0, len(names))
-    struct.pack_into(">QQQ", head, 0x18, off + len(data), off, len(data))
-    head[0x70:0x80] = iv
-    return bytes(head) + data
-
-
-class AesTest(unittest.TestCase):
-    def test_fips_block(self):
-        got = game_update.aes128_ctr(bytes(range(16)), bytes.fromhex("00112233445566778899aabbccddeeff"), bytes(16))
-        self.assertEqual(got.hex(), "69c4e0d86a7b0430d8cdb78070b4c55a")
-
-    def test_sp800_38a_ctr(self):
-        k = bytes.fromhex("2b7e151628aed2a6abf7158809cf4f3c")
-        iv = bytes.fromhex("f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff")
-        pt = bytes.fromhex("6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e51")
-        ct = "874d6191b620e3261bef6864990db6ce9806f66b7970fdff8617187bb9fffdff"
-        self.assertEqual(game_update.aes128_ctr(k, iv, pt).hex(), ct)
-
-    def test_counter_carries_across_blocks_and_chunks(self):
-        k, iv = bytes(16), b"\xff" * 15 + b"\xfe"   # (the counter wraps inside the data)
-        data = b"x" * (game_update.CHUNK + 40)
-        seen = []
-        out = game_update.aes128_ctr(k, iv, data, seen.append)
-        self.assertEqual(sum(seen), len(data))
-        self.assertEqual(game_update.aes128_ctr(k, iv, out), data)
-        self.assertNotEqual(out[:16], out[16:32])
 
 
 class Update(unittest.TestCase):
@@ -80,7 +51,7 @@ class Update(unittest.TestCase):
         self.sfo_u = sfo.build({"TITLE_ID": TITLE, "APP_VER": "01.04", "VERSION": "01.03", "CATEGORY": "GD"})
         self.files = {"USRDIR": None, "PARAM.SFO": self.sfo_u, "USRDIR/EBOOT.BIN": EBOOT_U, "USRDIR/msg": None,
                       "USRDIR/msg/bonus.bin": BONUS}
-        self.pkg = make_pkg(self.files)
+        self.pkg = b"as far as setup can tell, a package is its size and its sum"
         self.want = {"app_ver": "01.04", "pkg": {"size": len(self.pkg), "sha256": sha(self.pkg)},
                      "files": [{"path": k, "size": len(v), "sha256": sha(v)} for k, v in self.files.items() if v is not None]}
 
@@ -91,40 +62,81 @@ class Update(unittest.TestCase):
         return p
 
 
-class PackageTest(Update):
-    def test_unpack(self):
+class NoKeyTest(unittest.TestCase):
+    def test_setup_has_no_package_key_or_cipher(self):
+        for name in ("PKG_KEY", "aes128_ctr", "pkg_items", "unpack"):
+            self.assertFalse(hasattr(game_update, name), name)
+
+
+class InstallPackageTest(Update):
+    """rpcs3.install_package, with a stand-in for RPCS3."""
+
+    def run_it(self, mode):
+        self.put("fake/mode.txt", mode.encode())
+        fake = self.put("fake/fake.py", FAKE.encode())
         pkg = self.put("u.pkg", self.pkg)
-        out = self.dir / "out"
-        self.assertEqual(game_update.unpack(pkg, out), 3)
-        self.assertEqual((out / "USRDIR" / "EBOOT.BIN").read_bytes(), EBOOT_U)
-        self.assertEqual((out / "PARAM.SFO").read_bytes(), self.sfo_u)
-        self.assertEqual((out / "USRDIR" / "msg" / "bonus.bin").read_bytes(), BONUS)
+        return rpcs3.install_package("unused", pkg, TITLE, self.dir / "work", self.dir / "logs" / "update.log",
+                                     launch=[sys.executable, "-I", str(fake)], stall=10.0, poll=0.02)
 
-    def test_a_name_that_leaves_the_folder_is_refused(self):
-        pkg = self.put("u.pkg", make_pkg({"../evil.bin": b"x"}))
-        with self.assertRaises(game_update.UpdateError):
-            game_update.unpack(pkg, self.dir / "out")
-        self.assertFalse((self.dir / "evil.bin").exists())
+    def test_the_installed_folder_counts_whatever_the_exit_status(self):
+        folder = self.run_it("ok")
+        self.assertTrue((folder / "PARAM.SFO").is_file())
+        self.assertEqual(folder.parts[-3:], ("dev_hdd0", "game", TITLE))
+        self.assertTrue(str(folder).startswith(str((self.dir / "work" / "rpcs3").absolute())))
+        self.assertIn("exit status 9", (self.dir / "logs" / "update.log").read_text(encoding="utf-8"))
 
-    def test_not_a_package(self):
-        with self.assertRaises(game_update.UpdateError):
-            game_update.pkg_items(b"not a package" * 40)
+    def test_nothing_installed(self):
+        with self.assertRaises(game_update.UpdateError) as c:
+            self.run_it("nothing")
+        self.assertIn("RPCS3 could not install the update", str(c.exception))
+        self.assertIn("dev_hdd0/game/" + TITLE, str(c.exception))
 
-    def test_install_from_the_package(self):
-        pkg = self.put("u.pkg", self.pkg)
+    def test_an_rpcs3_without_the_option(self):
+        with self.assertRaises(game_update.UpdateError) as c:
+            self.run_it("old")
+        self.assertIn("too old", str(c.exception))
+
+
+class InstallTest(Update):
+    def installed(self, where):
+        for name, body in self.files.items():
+            if body is not None:
+                self.put(f"{where}/{name}", body)
+        return self.dir / where
+
+    def test_install_from_the_folder(self):
+        f = self.installed("hdd/game/" + TITLE)
         dest = self.dir / "data" / "update" / TITLE
-        game_update.install(("pkg", pkg), dest, self.want)
+        game_update.install(f, dest, self.want)
         self.assertEqual(game_update.bad_files(dest, self.want), [])
         self.assertFalse(dest.with_name(dest.name + ".tmp").exists())
 
     def test_install_refuses_files_that_differ(self):
-        pkg = self.put("u.pkg", self.pkg)
+        f = self.installed("hdd/game/" + TITLE)
         want = dict(self.want, files=[dict(self.want["files"][0], sha256="0" * 64)] + self.want["files"][1:])
         dest = self.dir / "dest"
         with self.assertRaises(game_update.UpdateError):
-            game_update.install(("pkg", pkg), dest, want)
+            game_update.install(f, dest, want)
         self.assertFalse(dest.exists())
         self.assertFalse(dest.with_name(dest.name + ".tmp").exists())
+
+    def test_a_sdat_rpcs3_decrypted_is_good_with_its_plain_form_only(self):
+        self.want["files"].append({"path": "USRDIR/u.sdat", "size": len(SDAT_U), "sha256": sha(SDAT_U)})
+        plain = {"USRDIR/u.sdat": {"size": len(SDAT_U_PLAIN), "sha256": sha(SDAT_U_PLAIN)}}
+        self.files["USRDIR/u.sdat"] = SDAT_U_PLAIN
+        f = self.installed("hdd/game/" + TITLE)
+        self.assertEqual(game_update.bad_files(f, self.want), ["USRDIR/u.sdat"])
+        self.assertEqual(game_update.bad_files(f, self.want, plain=plain), [])
+        dest = self.dir / "dest"
+        game_update.install(f, dest, self.want, plain=plain)
+        self.assertEqual((dest / "USRDIR" / "u.sdat").read_bytes(), SDAT_U_PLAIN)
+
+    def test_a_plain_sdat_of_other_bytes_is_not_good(self):
+        self.want["files"].append({"path": "USRDIR/u.sdat", "size": len(SDAT_U), "sha256": sha(SDAT_U)})
+        plain = {"USRDIR/u.sdat": {"size": len(SDAT_U_PLAIN), "sha256": sha(SDAT_U_PLAIN)}}
+        self.files["USRDIR/u.sdat"] = b"DCX\0" + b"q" * 20
+        f = self.installed("hdd/game/" + TITLE)
+        self.assertEqual(game_update.bad_files(f, self.want, plain=plain), ["USRDIR/u.sdat"])
 
 
 class FindTest(Update):
@@ -160,12 +172,6 @@ class FindTest(Update):
         self.files["PARAM.SFO"] = sfo.build({"TITLE_ID": TITLE, "APP_VER": "01.03", "VERSION": "01.03", "CATEGORY": "GD"})
         f = self.installed("hdd/game/" + TITLE)
         self.assertIsNone(game_update.find_in(f, TITLE, self.want))
-
-    def test_install_from_the_folder(self):
-        f = self.installed("hdd/game/" + TITLE)
-        dest = self.dir / "dest"
-        game_update.install(("folder", f), dest, self.want)
-        self.assertEqual(game_update.bad_files(dest, self.want), [])
 
     def test_places(self):
         got = game_update.places(Path("D:/roms/ps3/game"), "D:/u", "D:/hdd0/")
@@ -229,6 +235,50 @@ class CheckTest(Update):
         self.put("update/USRDIR/EBOOT.elf", EBOOT_ELF)
         rep = gamefiles.check(self.dir / "dump", table=t, update=f)
         self.assertTrue(rep.ok, [i.message for i in rep.problems()])
+
+    def with_update_sdat(self, form):
+        """A table with a .sdat the update brings, as the real ones are, and the update's folder holding it in `form`."""
+        self.want["files"].append({"path": "USRDIR/u.sdat", "size": len(SDAT_U), "sha256": sha(SDAT_U)})
+        t = self.game()
+        t["originals"].append({"path": "PS3_GAME/USRDIR/u.sdat", "size": len(SDAT_U), "sha256": sha(SDAT_U)})
+        t["decrypted"].append({"path": "PS3_GAME/USRDIR/u.sdat.unedat", "of": "PS3_GAME/USRDIR/u.sdat",
+                               "size": len(SDAT_U_PLAIN), "sha256": sha(SDAT_U_PLAIN), "magic": "44435800"})
+        t["titles"][TITLE]["files"]["PS3_GAME/USRDIR/u.sdat"] = {"from": "update"}
+        f = self.unpacked()
+        self.put("update/USRDIR/u.sdat", form)
+        return t, f
+
+    def test_a_sdat_as_rpcs3_installs_it(self):
+        t, f = self.with_update_sdat(SDAT_U_PLAIN)
+        rep = gamefiles.check(self.dir / "dump", table=t, update=f)
+        self.assertTrue(rep.ok, [i.message for i in rep.problems()])
+        item = next(i for i in rep.items if i.name == "PS3_GAME/USRDIR/u.sdat.unedat")
+        self.assertTrue(item.good)
+        self.assertEqual(Path(item.found).name, "u.sdat")
+
+    def test_a_sdat_still_encrypted_is_for_the_unlock(self):
+        t, f = self.with_update_sdat(SDAT_U)
+        rep = gamefiles.check(self.dir / "dump", table=t, update=f, unlocks=True)
+        self.assertEqual(next(i for i in rep.items if i.kind == "update").state, "ok")
+        self.assertTrue(next(i for i in rep.items if i.name == "PS3_GAME/USRDIR/u.sdat").good)
+        self.assertEqual(next(i for i in rep.items if i.name == "PS3_GAME/USRDIR/u.sdat.unedat").state, "missing")
+
+    def test_a_plain_sdat_of_other_bytes(self):
+        t, f = self.with_update_sdat(b"DCX\0" + b"q" * 20)
+        rep = gamefiles.check(self.dir / "dump", table=t, update=f)
+        self.assertFalse(rep.ok)
+        self.assertEqual(next(i for i in rep.items if i.kind == "update").state, "mismatch")
+
+    def test_a_package_needs_rpcs3(self):
+        t = self.game()
+        pkg = self.put("u.pkg", self.pkg)
+        jr = journal.Journal(self.dir / "journal.json")
+        emit = types.SimpleNamespace(text=lambda s: None)
+        with self.assertRaises(game_update.UpdateError) as c:
+            pipeline._install_update({"game": str(self.dir / "dump"), "update": str(pkg)}, self.dir, jr, emit, None, t)
+        self.assertIn("needs RPCS3", str(c.exception))
+        self.assertIn("dev_hdd0/game/" + TITLE, str(c.exception))
+        self.assertFalse((self.dir / "update").exists())
 
     def test_a_changed_update_file(self):
         t = self.game()

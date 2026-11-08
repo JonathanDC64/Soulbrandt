@@ -34,9 +34,11 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import firmware, gamefiles, journal
+from . import firmware, game_update, gamefiles, journal
 
-STALL = 30.0                  # seconds without a new or growing output before the watchdog ends RPCS3 (docs/90 2.7)
+# The end of the sentence when setup cannot have RPCS3 install an update's package.
+INSTALL_BY_HAND = "Install it in RPCS3 (File, Install Packages/Raps/Edats), then choose the folder dev_hdd0/game/{title}."
+STALL = 30.0                 # seconds without a new or growing output before the watchdog ends RPCS3 (docs/90 2.7)
 POLL = 0.25                   # how often the outputs are looked at
 ABORTS = (3, 0xC0000409, -6)  # abort() and a fast fail on Windows, SIGABRT on Linux: RPCS3's fatal errors
 SDAT_FLAG = 0x01000000        # in the big-endian flags word at 0x80 of an NPD file
@@ -347,6 +349,69 @@ def _parent_death_signal():
     except (OSError, AttributeError):
         return None
     return lambda: prctl(1, 9)                      # PR_SET_PDEATHSIG, SIGKILL
+
+
+def _size_of(folder: Path) -> int:
+    """The bytes under `folder`, as far as they can be read while RPCS3 writes there."""
+    total = 0
+    for top, _dirs, names in os.walk(folder):
+        for n in names:
+            try:
+                total += os.path.getsize(os.path.join(top, n))
+            except OSError:
+                pass
+    return total
+
+
+def install_package(exe, pkg, title, work, log, launch=None, stall=STALL, poll=POLL) -> Path:
+    """The folder `title`'s update package `pkg` installs to, made by the player's RPCS3 in `work`, a folder of setup's
+    own: setup has no key and no decryptor (docs/51), and nothing is written in the player's RPCS3. It gets a copy of
+    the package, by its full path: RPCS3 opens this option's path as it is given, and its file calls need a full one.
+
+    With no window RPCS3 stops at a failed check as it exits, whether or not it installed anything (status 0xC0000409,
+    rpcs3.cpp returns without ending its emulator object). So the status says nothing and the folder does; the caller
+    checks every file in it. Raises game_update.UpdateError with the sentence for the player."""
+    work = Path(work).absolute()
+    if work.exists():
+        shutil.rmtree(work)
+    home = work / "rpcs3"
+    home.mkdir(parents=True)
+    copy = work / "update.pkg"
+    shutil.copyfile(pkg, copy)
+    redirected, _ = redirect(home)
+    cmd = list(launch or [str(exe)]) + ["--headless", "--installpkg", str(copy)]
+    out = work / OUTPUT
+    with open(out, "wb") as f:
+        try:
+            child = _Child(cmd, dict(os.environ, **NO_MESSAGE_BOXES, **redirected), work, f)
+        except OSError as e:
+            raise game_update.UpdateError(NEEDS_ADMIN if getattr(e, "winerror", None) == ERROR_ELEVATION_REQUIRED
+                                          else "RPCS3 could not start.")
+        try:
+            seen, since = -1, time.monotonic()
+            while True:
+                code = child.wait(poll)
+                if code is not None:
+                    break
+                size = _size_of(home)
+                if size != seen:
+                    seen, since = size, time.monotonic()
+                elif time.monotonic() - since >= stall:
+                    child.end()
+                    code = child.wait(None)
+                    break
+        finally:
+            child.close()
+    text = out.read_text(encoding="utf-8", errors="replace")
+    Path(log).parent.mkdir(parents=True, exist_ok=True)
+    with open(log, "a", encoding="utf-8") as f:
+        f.write(f"$ {subprocess.list2cmdline(cmd)}\n{text}\nexit status {code}\n")
+    if "Unknown option" in text:
+        raise game_update.UpdateError("This RPCS3 is too old to install the update. Update RPCS3.")
+    for folder in home.rglob(f"dev_hdd0/game/{title}"):
+        if (folder / "PARAM.SFO").is_file():
+            return folder
+    raise game_update.UpdateError("RPCS3 could not install the update. " + INSTALL_BY_HAND.format(title=title))
 
 
 @dataclass
