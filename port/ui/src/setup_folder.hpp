@@ -1,7 +1,8 @@
 // Written for Demon's Souls. Where setup builds the game (docs/88 section 3, "The build folder"): the usual folder, or
 // one the player chose on setup's screens. The choice is a small file in the usual folder, setup-folder.txt, that
-// names the chosen one, so that every later start (the game's own too) finds it. Only std::filesystem, so the same
-// on every platform: setup_engine.cpp decides with these, and tests/setup_folder_check.cpp checks them on their own.
+// names the chosen one, so that every later start (the game's own too) finds it. And whether setup's own files are
+// beside the program. Only std::filesystem, so the same on every platform: setup_engine.cpp decides with these, and
+// tests/setup_folder_check.cpp checks them on their own.
 #pragma once
 
 #include <filesystem>
@@ -52,5 +53,19 @@ std::string cannot_use(const std::filesystem::path& folder, const std::filesyste
 // be moved or renamed as one folder), else in full. False, with why (for the player), when the file cannot be written.
 bool keep_choice(const std::filesystem::path& usual, const std::filesystem::path& folder,
                  const std::filesystem::path& program, std::string& why);
+
+// The engine's entry in a player's install, beside the program (tools/release/package.py: setup/ mirrors the source
+// tree).
+inline constexpr const char* kEngineEntry = "setup/tools/setup/run_setup.py";
+// How the engine's files are missing beside the program, when they are (issue #431).
+enum class EngineGone {
+    No,             // the entry is there
+    FromArchive,    // no setup folder, and the program is in the system's temporary folder: it was started from inside
+                    // the download's archive, and the archive tool took out the program alone
+    NoSetupFolder,  // no setup folder beside the program: the program was copied or moved on its own
+    Incomplete,     // a setup folder without the entry: part of the download extracted, or files removed (an antivirus)
+};
+// program: the program's folder. temp: the system's temporary folder (empty: not known).
+EngineGone engine_gone(const std::filesystem::path& program, const std::filesystem::path& temp);
 
 }  // namespace ui::setup
