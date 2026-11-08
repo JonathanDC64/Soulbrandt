@@ -276,7 +276,7 @@ jobs:
             }
           }
           cmake -S ps3recomp -B ps3recomp/build_split -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl `
-            -DCMAKE_BUILD_TYPE=Release -DPS3RECOMP_GAME_SPLIT=ON -DPS3RECOMP_STATIC_CRT=ON -DPS3RECOMP_RSX_HAL=ON `
+            -DCMAKE_BUILD_TYPE=Release -DPS3RECOMP_GAME_SPLIT=ON -DPS3RECOMP_STATIC_CRT=ON -DPS3RECOMP_RSX_HAL=ON -DPS3RECOMP_NO_DECRYPT=ON `
             -DPS3RECOMP_FFMPEG_RUNTIME=ON "-DPS3RECOMP_FFMPEG_INCLUDE_DIR=${{ runner.temp }}/ffmpeg/include" @src
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -373,6 +373,16 @@ jobs:
           for s in rsx_out_backend_init rsxc_route_d3d12 rsxc_route_vk rsxc_vk_start_failed; do
             grep -qE "[ _]$s( |$)" build/host/des_host.map || { echo "::error::des_host has no $s"; exit 1; }
           done
+
+      # The player's program has no decryptor and no keys: it opens the decrypted copies setup made.
+      - name: No decryptor in des_host
+        shell: bash
+        run: |
+          grep -q "^PS3RECOMP_NO_DECRYPT:BOOL=ON" ps3recomp/build_split/CMakeCache.txt \
+            || { echo "::error::the runtime was built with its decryptor"; exit 1; }
+          if grep -qE "[ _]edat_decrypt_file( |$)" build/host/des_host.map; then
+            echo "::error::des_host has edat_decrypt_file"; exit 1
+          fi
 
       - name: Import check, self-test
         run: python tools/ci/check_host_imports.py --self-test
@@ -772,7 +782,7 @@ jobs:
             done
           fi
           cmake -S ps3recomp -B ps3recomp/build_split -G Ninja -DCMAKE_BUILD_TYPE=Release -DPS3RECOMP_BUILD_TESTS=OFF \
-            -DPS3RECOMP_RSX_D3D12_VKD3D=ON -DPS3RECOMP_RSX_HAL=ON -DPS3RECOMP_GAME_SPLIT=ON \
+            -DPS3RECOMP_RSX_D3D12_VKD3D=ON -DPS3RECOMP_RSX_HAL=ON -DPS3RECOMP_GAME_SPLIT=ON -DPS3RECOMP_NO_DECRYPT=ON \
             -DPS3RECOMP_FFMPEG_RUNTIME=ON "-DPS3RECOMP_FFMPEG_INCLUDE_DIR=$FFMPEG_DIR/include" "${src[@]}" | tee rt_cfg.log
           grep -q "D3D12: *RSX backend on vkd3d" rt_cfg.log
           grep -q "Renderer: *the GPU layer's Vulkan backend" rt_cfg.log
@@ -838,6 +848,15 @@ jobs:
         run: |
           cmake --build build/host --target button_icons_check
           build/host/ui/button_icons_check
+
+      # The player's program has no decryptor and no keys: it opens the decrypted copies setup made.
+      - name: No decryptor in des_host
+        run: |
+          grep -q "^PS3RECOMP_NO_DECRYPT:BOOL=ON" ps3recomp/build_split/CMakeCache.txt \
+            || { echo "::error::the runtime was built with its decryptor"; exit 1; }
+          if grep -qE "[ _]edat_decrypt_file( |$)" build/host/des_host.map; then
+            echo "::error::des_host has edat_decrypt_file"; exit 1
+          fi
 
       # The libraries under their sonames, each finding the others beside it, and their licences (package.py puts
       # the folder at the top of the Linux tarball).
