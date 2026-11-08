@@ -5,6 +5,7 @@
       TAG is v<VERSION> (VERSION as committed at the tag), on origin/master, and the ps3recomp.pin committed with it
       names one of the fork's release tags.
   package.py build --rev REV [--ps3recomp DIR] [--host EXE] [--linux-host DIR] [--out DIR] [--dry-run]
+  package.py check-keys [--rev REV] [--ps3recomp DIR] [--range BASE..HEAD] [--file FILE ...]
       Writes <out>/DemonsSoulsRecomp-<version>-source.zip and <out>/SHA256SUMS, and leaves the zipped files in
       <out>/stage for the game-file check. REV is the release tag, or any commit for a dry run. --host: also
       <out>/DemonsSoulsRecomp-<version>-windows.zip, the player's download (the next paragraph but one), and
@@ -56,8 +57,18 @@ TAG_RE = re.compile(r"^v([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?)$")
 VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$")
 FORK_TAG_RE = re.compile(r"^des-[0-9]+\.[0-9]+\.[0-9]+-[0-9]+$")
 PORT_SKIP = (re.compile(r"^\.github/"), re.compile(r"^\.claude/"), re.compile(r"^\.trail/"), re.compile(r"^docs/"))
+# The fork's files that no download takes: the runtime's decryptor and the tools that read encrypted packages. The
+# program only opens the decrypted copies setup made (host.yml builds it with PS3RECOMP_NO_DECRYPT), and the fork builds
+# the same way without the file. check_no_keys holds every download to that, and the workflow no-keys.yml every pull
+# request.
+KEY_SOURCES = ("libs/filesystem/edat_decrypt.c", "tools/extract_jobmods.py", "tools/pkg_extract.py")
+KEY_RE = (re.compile(rb'\b(\w*KEY\w*)(?:\[16\])?\s*=\s*(?:\{|bytes\(\[|bytes\.fromhex\(")([^}\])"]*)'),
+          re.compile(rb'"(NP_\w+)",\s*\{([^}]*)\}'))
+HEX_NOISE = re.compile(rb"0[xX]|[,\s]")
 PS3RECOMP_SKIP = (re.compile(r"^\.github/"), re.compile(r"^\.trail/"), re.compile(r"^docs/"), re.compile(r"^scratch/"),
-                  re.compile(r"^packaging/"), re.compile(r"^runtime/spu/tests/out_[^/]+/"))
+                  re.compile(r"^packaging/"), re.compile(r"^runtime/spu/tests/out_[^/]+/"),
+                  re.compile(r"^libs/filesystem/tests/test_edat_paths\.c$"), re.compile(r"^tools/test_pkg_extract\.py$"),
+                  *(re.compile("^" + re.escape(p) + "$") for p in KEY_SOURCES))
 PLAYER_LIST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "player-files.txt")
 PLAYER_TOP = ("LICENSE", "README.md")   # of the tree's files, those at the top of the player's download
 SETUP = "setup"                         # the folder beside the program with the rest (setup_engine.cpp, update.py)
@@ -144,6 +155,72 @@ def fork_tar(pin, checkout):
         return git(["archive", "--format=tar", commit], cwd=tmp, binary=True)
     finally:
         remove_tree(tmp)
+
+
+def fork_keys(tar_bytes):
+    """(name, bytes) of each key KEY_SOURCES declare in the fork. A file or a key that has moved stops the packaging, so
+    check_no_keys can never pass for having nothing to look for."""
+    sources = {name: data for name, _mode, data in tree_files(tar_bytes, "", ()) if name in KEY_SOURCES}
+    keys = []
+    for source in KEY_SOURCES:
+        if source not in sources:
+            raise Error(f"ps3recomp has no {source}: KEY_SOURCES needs updating")
+        found = []
+        for rx in KEY_RE:
+            for m in rx.finditer(sources[source]):
+                digits = HEX_NOISE.sub(b"", m.group(2))
+                if re.fullmatch(rb"[0-9a-fA-F]{32}", digits):
+                    found.append((m.group(1).decode(), bytes.fromhex(digits.decode())))
+        if not found:
+            raise Error(f"{source}: no key found in it: KEY_RE needs updating")
+        keys += found
+    return keys
+
+
+def check_no_keys(download, files, keys):
+    """Stops the packaging if a download holds one of the keys, as bytes or written out in hex. It names the key and never
+    prints one."""
+    for path, _mode, data in files:
+        written = HEX_NOISE.sub(b"", data).lower()
+        for name, key in keys:
+            if key in data or key.hex().encode() in written:
+                raise Error(f"{download}: {path} holds {name}")
+
+
+def range_blobs(rev_range):
+    """(path, mode, data) of each file version that the commits of rev_range add to the history."""
+    blobs = []
+    for line in git(["rev-list", "--objects", rev_range]).splitlines():
+        sha, _, name = line.partition(" ")
+        if name and try_git(["cat-file", "-t", sha]) == "blob":
+            blobs.append((name, 0o644, git(["cat-file", "blob", sha], binary=True)))
+    return blobs
+
+
+def cmd_check_keys(args):
+    """No tracked file at REV, no file a download would take from the pinned fork, no file version added by --range and
+    no --file holds a key."""
+    sha = git(["rev-parse", "--verify", f"{args.rev}^{{commit}}"])
+    pin, _text = read_pin(sha)
+    if pin is None:
+        raise Error(f"there is no ps3recomp.pin at {args.rev}")
+    tar = fork_tar(pin, args.ps3recomp)
+    keys = fork_keys(tar)
+    port = tree_files(git(["archive", "--format=tar", sha], binary=True), "", ())
+    fork = tree_files(tar, "ps3recomp/", PS3RECOMP_SKIP)
+    check_no_keys("the repository", port, keys)
+    check_no_keys("the files a download takes from ps3recomp", fork, keys)
+    count = len(port) + len(fork)
+    if args.range:
+        blobs = range_blobs(args.range)
+        check_no_keys(f"the commits {args.range}", blobs, keys)
+        count += len(blobs)
+    for path in args.file:
+        with open(path, "rb") as f:
+            check_no_keys(path, [(os.path.basename(path), 0o644, f.read())], keys)
+        count += 1
+    print(f"package: no key in {count} files ({len(keys)} checked for)")
+    return 0
 
 
 def write_zip(path, files, when):
@@ -361,6 +438,7 @@ def cmd_build(args):
     top = f"{NAME}-{version}/"
     files = tree_files(git(["archive", "--format=tar", sha], binary=True), top, PORT_SKIP)
     pin, pin_text = read_pin(sha)
+    keys = []
     info = [f"# Written by tools/release/package.py: which source this is (docs/54). Builds read it where there is",
             f"# no git (port/cmake/DesVersion.cmake).", f"version={version}", f"commit={sha}"]
     if pin is None:
@@ -368,7 +446,9 @@ def cmd_build(args):
             raise Error(f"there is no ps3recomp.pin at {args.rev}: a release needs one")
         print(f"note: no ps3recomp.pin at {args.rev}; the dry run packages the port alone")
     else:
-        fork = tree_files(fork_tar(pin, args.ps3recomp), f"{top}ps3recomp/", PS3RECOMP_SKIP)
+        tar = fork_tar(pin, args.ps3recomp)
+        keys = fork_keys(tar)
+        fork = tree_files(tar, f"{top}ps3recomp/", PS3RECOMP_SKIP)
         files += fork
         files.append((f"{top}ps3recomp/ps3recomp.pin", 0o644, pin_text.encode()))
         info += [f"ps3recomp_tag={pin.get('tag', 'none')}", f"ps3recomp_commit={pin['commit']}"]
@@ -406,6 +486,7 @@ def cmd_build(args):
                      [(f"{NAME}-{version}-symbols/{rel}", 0o644, data) for rel, data in maps]))
     sums = []
     for zip_name, zipped in zips:
+        check_no_keys(zip_name, zipped, keys)
         write_zip(os.path.join(out, zip_name), zipped, when)
         with open(os.path.join(out, zip_name), "rb") as f:
             digest = hashlib.sha256(f.read()).hexdigest()
@@ -420,6 +501,7 @@ def cmd_build(args):
         if len(names) != len(set(names)):
             raise Error("--linux-host: a file of the host folder has the path of a packaged file")
         tarred.append(manifest(tarred, top))   # the update's list of program files, as in the Windows zip
+        check_no_keys(tar_name, tarred, keys)
         write_tar_xz(os.path.join(out, tar_name), tarred, when)
         with open(os.path.join(out, tar_name), "rb") as f:
             digest = hashlib.sha256(f.read()).hexdigest()
@@ -445,9 +527,14 @@ def main(argv=None):
     b.add_argument("--linux-host", help="host.yml's host-linux folder: also write the Linux tar.xz with it")
     b.add_argument("--out", default=os.path.join(ROOT, "dist"), help="output folder (default dist/)")
     b.add_argument("--dry-run", action="store_true", help="allow a revision without ps3recomp.pin")
+    k = sub.add_parser("check-keys", help="check that the repository and the downloads hold no key")
+    k.add_argument("--rev", default="HEAD", help="the commit to check (default HEAD)")
+    k.add_argument("--ps3recomp", help="a checkout of the fork that has the pinned commit (default: fetch it)")
+    k.add_argument("--range", help="also every file version these commits add (BASE..HEAD)")
+    k.add_argument("--file", action="append", default=[], help="also this file, such as the built program")
     args = ap.parse_args(argv)
     try:
-        return cmd_check_tag(args) if args.cmd == "check-tag" else cmd_build(args)
+        return {"check-tag": cmd_check_tag, "check-keys": cmd_check_keys, "build": cmd_build}[args.cmd](args)
     except Error as e:
         print(f"package: {e}", file=sys.stderr)
         return 2

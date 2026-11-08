@@ -1,0 +1,51 @@
+# Fails when a key is in the repository, in a pull request's commits, or in the files a download takes from the pinned
+# ps3recomp. tools/release/package.py check-keys does the work: it reads the list from the pinned fork and prints only
+# the key's name. host.yml runs the same check on the built program, and package.py on every download of a release.
+#
+# Every commit of a pull request is checked, not only its last tree: a file added and removed again inside a pull
+# request is still published by the merge, in the history.
+name: No keys
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: No keys
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0      # the pull request's commits, not only its tip
+
+      # The check has to find made-up keys in each form, or a pass would mean nothing.
+      - name: Self-test
+        run: python3 -m unittest discover -s tools/release/tests -p test_package_downloads.py
+
+      - name: Every tracked file, and what a download takes from ps3recomp
+        run: python3 tools/release/package.py check-keys --rev HEAD
+
+      - name: Every commit of the pull request
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 tools/release/package.py check-keys --rev HEAD --range "$BASE_SHA..$HEAD_SHA"
+
+      # (A force-push leaves "before" unreachable; the tree check above still ran.)
+      - name: Every commit of the push
+        if: github.event_name == 'push'
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            python3 tools/release/package.py check-keys --rev HEAD --range "$BEFORE..$GITHUB_SHA"
+          else
+            echo "::notice::No earlier commit to compare with ($BEFORE); only the tree was checked."
+          fi

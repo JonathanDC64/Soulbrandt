@@ -9,6 +9,7 @@ Labels: **measured** (a run says so), **read** (seen in the code or a doc), **in
 ## Short answer
 
 - **Setup runs the player's own RPCS3 with `--decrypt` on copies of the 27 files**, kept in setup's own folder (`<data>/setup/unlock/`). Setup ships no keys and no decryptor. It reads only a few header bytes, to make sure RPCS3 gets the right files. It checks each result's size and SHA-256 against the table it already has: game_table.json holds all 27 sums (read). RPCS3's exit code is not trusted, because it is 0 after a failure too (read).
+- **The program has no decryptor and no keys either.** It only opens the decrypted copies setup made. Release builds use ps3recomp's `PS3RECOMP_NO_DECRYPT`, and `package.py` stops if any download (player's, source or symbols) holds one of the fork's keys.
 - **RPCS3 is given a folder of setup's own for its files.** On Windows this is **measured** (one run, section 5): RPCS3 wrote everything in setup's folder and nothing in its own. Linux is still inferred.
   - On Windows, `RPCS3_CONFIG_DIR` points at `<data>/setup/unlock/rpcs3/`. On Linux, `XDG_CONFIG_HOME` and `XDG_CACHE_HOME` do.
   - RPCS3 writes a log, a lock, a config file and a dev_hdd0 tree at every start. With this, all of them land in setup's folder.
