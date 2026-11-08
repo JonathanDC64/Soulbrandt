@@ -174,7 +174,7 @@ void chrins_thread(ppu_context* ctx)
 
     const uint32_t obj = (uint32_t)ctx->gpr[3];
     const uint32_t queue = (uint32_t)ctx->gpr[4];
-    const uint32_t toc = vm_read32(ctx->gpr[2] - 0x7AE0);
+    const uint32_t toc = vm_read32(DES_AT(0x019AD560u));
     const uint32_t reg = vm_read32(toc - 0x7FBC);
     ctx->gpr[23] = reg;
     ctx->gpr[24] = ctx->gpr[25] = obj;

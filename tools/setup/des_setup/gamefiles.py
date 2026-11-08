@@ -1,4 +1,5 @@
-"""Check the player's game folder: BLUS30443 or BLES00932, version 1.00, by SHA-256.
+"""Check the player's game folder: BLUS30443 or BLES00932, version 1.00, or BCJS30022 or BCAS20071 with their 1.04
+update, by SHA-256.
 
 Setup accepts only files the player has already decrypted (docs/51, plan (c)):
 EBOOT.elf beside EBOOT.BIN and a .sdat.unedat beside each of the 26 .sdat
@@ -22,6 +23,11 @@ European disc's, as the files that differ from the US disc's (for_title).
 
 The rest of the disc's files are checked by name and size against the disc's
 list (disc.py, issue #418): Report.disc, a warning and not a problem.
+
+A disc whose table has an "update" (the Japanese and Asian discs, docs/139) is
+used with that update: the files marked "from": "update" are looked for in
+the update's folder (game_update.py), and an item of kind "update" says
+whether it is there.
 """
 import hashlib
 import json
@@ -31,6 +37,7 @@ from pathlib import Path
 
 from . import disc as disc_files
 from . import firmware as fwver
+from . import game_update
 from . import sfo
 
 TABLE = Path(__file__).with_name("game_table.json")
@@ -39,11 +46,13 @@ TABLE = Path(__file__).with_name("game_table.json")
 ENCRYPTED_MAGIC = {b"SCE\0": "an encrypted SELF", b"NPD\0": "an encrypted SDATA file"}
 # The end of an optional file's sentence when setup leaves it out (the firmware's, docs/133).
 LEFT_OUT = "The game does not need it; setup leaves it out."
+UPDATE_MISSING = ("{disc} needs its {ver} update. Put the update's .pkg file beside your disc copy, or choose it or the "
+                  "folder your PS3 or RPCS3 installed it to.")
 
 
 @dataclass
 class Item:
-    kind: str        # "game", "original", "decrypted", "firmware"
+    kind: str        # "game", "update", "original", "decrypted", "firmware"
     name: str        # the table's path or name
     state: str       # "ok", "unmeasured", "missing", "mismatch", "encrypted", "wrong", or "unused": an optional
                      # file (the firmware's) that is not right, so the build goes on without it
@@ -180,7 +189,7 @@ def for_title(t, tid):
         return None
     files = o.get("files", {})
     tt = dict(t, title_id=tid, app_ver=o["app_ver"], version=o["version"], disc=o["disc"],
-              disc_files=o.get("disc_files"))
+              disc_files=o.get("disc_files"), update=o.get("update"))
     for k in ("originals", "decrypted"):
         tt[k] = [dict(e, **files.get(e["path"], {})) for e in t[k]]
     return tt
@@ -198,7 +207,7 @@ def other_title(t, tid) -> str:
 
 
 def check(folder, decrypted_dirs=(), firmware=None, table=None, progress=None, unlocks=False, also=None,
-          firmware_unlock=None) -> Report:
+          firmware_unlock=None, update=None) -> Report:
     """Check a game folder. decrypted_dirs: more folders to look in for the
     decrypted files, by file name. firmware: the decrypted libsre.prx, or None
     to look for it by name in the game's folder and in decrypted_dirs (and
@@ -211,7 +220,9 @@ def check(folder, decrypted_dirs=(), firmware=None, table=None, progress=None, u
     software, so the unlock makes a missing or wrong libsre.prx; False when it
     has none (or the unlock has run). None: the folder route. libsre.prx is
     optional (the module's docstring): unless the unlock makes it, none found
-    gives no item, and one that is not right an "unused" one."""
+    gives no item, and one that is not right an "unused" one.
+    update: the folder holding the update's files (game_update.py), for a disc
+    that needs one."""
     t = table or load_table()
     rep = Report()
     root = find_root(folder)
@@ -242,11 +253,23 @@ def check(folder, decrypted_dirs=(), firmware=None, table=None, progress=None, u
         return rep
     disc = t.get("disc", "the US disc")
     rep.items.append(Item("game", "TITLE_ID", "ok", f"{t['title_id']}, version {t['app_ver']} ({disc})."))
+    needed = t.get("update")
+    up = Path(update) if update and needed else None
+    if needed:
+        wrong = game_update.bad_files(up, needed) if up else None
+        state, why = (("ok", f"Its update, {needed['app_ver']}, is there.") if up and not wrong else
+                      ("missing", UPDATE_MISSING.format(disc=disc, ver=needed["app_ver"])) if not up else
+                      ("mismatch", f"{len(wrong)} of the update's files do not match. Get the update again."))
+        rep.items.append(Item("update", "update", state, why, str(up or "")))
 
-    # The disc's own files: proof that the dump is this version and intact.
+    # The disc's own files, and the update's: proof that the dump is this version and intact.
     for e in t["originals"]:
-        rep.items.append(_check_file("original", e, _resolve(root, e["path"]), progress,
-                                     missing=f"{e['path']} is missing from the game folder.",
+        from_update = e.get("from") == "update"
+        place = up if from_update else root
+        rel = e["path"].split("PS3_GAME/", 1)[-1] if from_update else e["path"]
+        rep.items.append(_check_file("original", e, _resolve(place, rel) if place else None, progress,
+                                     missing=f"{e['path']} is missing from the " +
+                                             ("update." if from_update else "game folder."),
                                      mismatch=f"{e['path']} does not match {disc}, version {t['app_ver']}. The dump may "
                                               f"be damaged: dump the disc again."))
 
@@ -262,6 +285,8 @@ def check(folder, decrypted_dirs=(), firmware=None, table=None, progress=None, u
                                  f"Decrypt PS3 Binaries).",
                          mismatch=f"{base} does not match: decrypt {src} again.")
         places = [_resolve(root, e["path"])] + [_find_decrypted(Path(d), e["path"]) for d in decrypted_dirs]
+        if up:   # (RPCS3 writes beside what it was given, so beside the update's files too)
+            places.append(_resolve(up, e["path"].split("PS3_GAME/", 1)[-1]))
         places += [Path(p) for p in (also or {}).get(e["path"], ())]
         first = None
         for p in places:

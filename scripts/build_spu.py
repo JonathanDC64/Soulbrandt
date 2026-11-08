@@ -157,9 +157,9 @@ def cut(eboot, elf_dir, job_dir, ps3recomp, table=TABLE):
     each (none: everything matched).
 
     An image is the table's by its fingerprint and keeps the table's name, the
-    US EBOOT's index and offset: the European EBOOT has the same images at other
-    offsets, so both discs lift them alike. A job is looked for at its vaddr,
-    then at its vaddr_eu."""
+    US EBOOT's index and offset: the other EBOOTs have the same images at other
+    offsets, so every disc lifts them alike. A job is looked for at its vaddr,
+    then at the other discs' (vaddr_eu, vaddr_jp, vaddr_asia)."""
     sys.path.insert(0, os.path.join(ps3recomp, "tools"))
     from extract_spu_images import find_spu_images
     t = json.load(open(table, encoding="utf-8"))
@@ -180,7 +180,7 @@ def cut(eboot, elf_dir, job_dir, ps3recomp, table=TABLE):
     segs = _load_segments(buf)
     for name, j in t["jobs"].items():
         size, raw = j["size"], None
-        for key in ("vaddr", "vaddr_eu"):
+        for key in ("vaddr", "vaddr_eu", "vaddr_jp", "vaddr_asia"):
             if key not in j:
                 continue
             va = int(j[key], 16)

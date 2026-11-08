@@ -97,7 +97,7 @@ class CheckTest(unittest.TestCase):
         self.assertIn("is not after", errors[0])
         errors = self.run_check(BASE + [(0x00500000, 0x00401000)],
                                 {"des_x.cpp": "void f(ppu_context* ctx) { ctx->lr = DES_AT(0x00500000u); }\n"})
-        self.assertEqual(errors, ["BLES00932.inc: European address 0x00401000 is on 2 lines"])
+        self.assertEqual(errors, ["BLES00932.inc: address 0x00401000 is on 2 lines"])
 
     def test_hook_reading_its_key_is_caught(self):
         src = ("static void helper(ppu_context* ctx, uint32_t addr) { ctx->fpr[1] = vm_readf(addr + 4); }\n"

@@ -208,6 +208,7 @@ Request request_from_env() {
     r.game = from_utf8(env("DES_SETUP_GAME"));
     r.decrypted = split_paths(env("DES_SETUP_DECRYPTED"));
     r.firmware = from_utf8(env("DES_SETUP_FIRMWARE"));
+    r.update = from_utf8(env("DES_SETUP_UPDATE"));
     r.rpcs3 = env("DES_SETUP_RPCS3");
     for (std::string s = env("DES_SETUP_IMPORT"); !s.empty();) {
         const size_t comma = s.find(',');
@@ -286,6 +287,7 @@ Launch launch_state() {
     out.game = ready_path(ready["game"], eboot);
     out.eboot = ready_path(ready["eboot"], eboot);
     out.module = ready_path(ready["module"], eboot);
+    if (!ready["update"].empty()) out.update = ready_path(ready["update"], eboot);
     const auto size = std::filesystem::file_size(out.module, ec);
     bool whole = !ec && std::to_string(size) == ready["module_size"] && std::filesystem::is_regular_file(out.eboot, ec);
     // A game built with libsre reads its image at its start. Without it the game runs on, on a black screen (issue
@@ -427,6 +429,10 @@ bool Engine::start_engine(unsigned run) {
         if (!mRequest.firmware.empty()) {
             args.push_back("--firmware");
             args.push_back(utf8(mRequest.firmware));
+        }
+        if (!mRequest.update.empty()) {
+            args.push_back("--update");
+            args.push_back(utf8(mRequest.update));
         }
     }
     if (!mRequest.rpcs3.empty()) {  // the RPCS3 route (docs/90 3.2): without a game folder, the game in its library

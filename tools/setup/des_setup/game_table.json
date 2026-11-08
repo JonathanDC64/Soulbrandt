@@ -1,5 +1,5 @@
 {
- "comment": "BLUS30443 version 1.00, the US disc, and BLES00932 version 1.00, the European disc: the versions the port supports (docs/51 appendix A). SHA-256 sums and sizes only: no bytes of the game. sha256 null = not measured yet; then the file is checked by its magic instead.",
+ "comment": "BLUS30443 version 1.00, the US disc, BLES00932 version 1.00, the European disc, and BCJS30022 and BCAS20071, the Japanese and Asian discs with their 1.04 update: the versions the port supports (docs/51 appendix A). SHA-256 sums and sizes only: no bytes of the game. sha256 null = not measured yet; then the file is checked by its magic instead.",
  "title_id": "BLUS30443",
  "app_ver": "01.00",
  "version": "01.00",
@@ -26,11 +26,1217 @@
      "sha256": "ad67e0b852faa2b459a2344f80dbae21ce3c92263ebea67c643231c653e30ed3"
     }
    }
+  },
+  "BCJS30022": {
+   "comment": "The japanese disc with its 1.04 update, which brings the program and its data to the US disc's build (docs/139 section 7.1).",
+   "disc": "the Japanese disc",
+   "app_ver": "01.00",
+   "version": "01.00",
+   "disc_files": "BCJS30022.txt.gz",
+   "update": {
+    "app_ver": "01.04",
+    "pkg": {
+     "size": 48414800,
+     "sha256": "ae65e62e30606ea7a6022135a1533abbc71b32d139a1318d373f5e991eba01f6"
+    },
+    "files": [
+     {
+      "path": "ICON0.PNG",
+      "size": 105294,
+      "sha256": "e6a91b3f1583b51faeaeef6b35d135cba0b7c8f0b2117611f97fcc80d1cea893"
+     },
+     {
+      "path": "PARAM.SFO",
+      "size": 380,
+      "sha256": "5a6d85b7b22ae72d5b05a9039117b81d26c97e139e9f2a873db546b3ed306b00"
+     },
+     {
+      "path": "PS3LOGO.DAT",
+      "size": 5120,
+      "sha256": "e08430957ac3f4ee719dc2ed04d3443c395dd3b997d8f34f68a1b5c37d92f425"
+     },
+     {
+      "path": "TROPDIR/NPWR00245_00/TROPHY.TRP",
+      "size": 2607488,
+      "sha256": "d9be26c6ae397e4b8fa09a909c707661d1da0f25fcc5afff44164009f3f13d06"
+     },
+     {
+      "path": "USRDIR/EBOOT.BIN",
+      "size": 28225232,
+      "sha256": "e8d203c2629517366b10f786ea271734dc38cc97baf217d89d08b53c0f269e11"
+     },
+     {
+      "path": "USRDIR/chr/c0000/c0000.esd.dcx.sdat",
+      "size": 33568,
+      "sha256": "2736dc6cd4f70f587835955aa7fc87c74831815f9f534a8554906505835df542"
+     },
+     {
+      "path": "USRDIR/chr/c5020/c5020.anibnd.dcx",
+      "size": 660160,
+      "sha256": "1331129399229648d6c1a7005e27f8e2518250ef7526bed2ac745d59e9ef21c1"
+     },
+     {
+      "path": "USRDIR/chr/c6040/c6040.anibnd.dcx",
+      "size": 353952,
+      "sha256": "bdc34543102b18682e5a119fd4c4db624077e45706832e0e8de5b5b4b135fc49"
+     },
+     {
+      "path": "USRDIR/menu/00.tpf.dcx",
+      "size": 509328,
+      "sha256": "2652acf990630a95652b74d1f59a5bbbecf8fe205413f33e7e2fb833a7128280"
+     },
+     {
+      "path": "USRDIR/menu/01.tpf.dcx",
+      "size": 480080,
+      "sha256": "cdea0f29ed1e50bad2a6bbaece15d160c0742a63bd976df4fa5029e18e6be243"
+     },
+     {
+      "path": "USRDIR/menu/02.tpf.dcx",
+      "size": 492512,
+      "sha256": "f0b9e9742dcbd0b89723b330c3461335713df42d05fbe9229c967c905b1fdea4"
+     },
+     {
+      "path": "USRDIR/menu/03.tpf.dcx",
+      "size": 504640,
+      "sha256": "d957138e595f7f8a6a80551292d120119be7969996b80d32f6e335733fbdcc77"
+     },
+     {
+      "path": "USRDIR/menu/04.tpf.dcx",
+      "size": 496944,
+      "sha256": "6f475edf8cea2c3b9a0945e49bc05353b7116981fa938cbd6358926bfaf7793e"
+     },
+     {
+      "path": "USRDIR/menu/05.tpf.dcx",
+      "size": 490448,
+      "sha256": "e43f7f66f26c612c01a74617303d6d45660da49fab6e989eb93408c86be239c3"
+     },
+     {
+      "path": "USRDIR/menu/06.tpf.dcx",
+      "size": 501104,
+      "sha256": "d1ed168061e7d77db24528cb7dbc73e6d833a1e75d86ff662f440d25ed3a42ac"
+     },
+     {
+      "path": "USRDIR/menu/07.tpf.dcx",
+      "size": 501552,
+      "sha256": "14d1a7a6f4f69386dee09ef76fa5384dd60cdd7c4539ac848e61435bfd50f740"
+     },
+     {
+      "path": "USRDIR/menu/08.tpf.dcx",
+      "size": 472944,
+      "sha256": "55247fb3bbf3ba0a04db5b9316288c2fe757b5a9956152d7c6ceb05a0ab3e5ea"
+     },
+     {
+      "path": "USRDIR/menu/09.tpf.dcx",
+      "size": 426352,
+      "sha256": "9b7ac80f28db50d50f11475df5625987701c5d487275888db4e752d7deb76a23"
+     },
+     {
+      "path": "USRDIR/menu/10.tpf.dcx",
+      "size": 484832,
+      "sha256": "8888839d15a04b93a37d3fd2c115f4bef90263dee9e765c41acc556717396a38"
+     },
+     {
+      "path": "USRDIR/menu/11.tpf.dcx",
+      "size": 500608,
+      "sha256": "0aa15742a82879f7cb72c90a590a09bdac8c3ef104da1e5212548715867a90d7"
+     },
+     {
+      "path": "USRDIR/menu/12.tpf.dcx",
+      "size": 495328,
+      "sha256": "5b343a01a38a209908733973d056268ef7f04280166ec9f74e4d44e3d14cd315"
+     },
+     {
+      "path": "USRDIR/menu/13.tpf.dcx",
+      "size": 491696,
+      "sha256": "bb3c27cb4ca3d33eba22d8a6754496d638534e5175d94b376fa6d03159856c0e"
+     },
+     {
+      "path": "USRDIR/menu/14.tpf.dcx",
+      "size": 481600,
+      "sha256": "281e96335a22645d3126bf4ca8511493b7454dcd4876a6394db33691eb2d4a02"
+     },
+     {
+      "path": "USRDIR/menu/15.tpf.dcx",
+      "size": 485504,
+      "sha256": "c3f0e3612745a9365edc85d5cc8f60c495f3eedc9dca076f2502d950062a93e7"
+     },
+     {
+      "path": "USRDIR/menu/16.tpf.dcx",
+      "size": 477712,
+      "sha256": "4ef48cfbf6beb7407e6abf0ce9281494349eb459c54ad9311e5aa0e16d5de380"
+     },
+     {
+      "path": "USRDIR/menu/fade.drb",
+      "size": 496,
+      "sha256": "f9002e644dbc41e0d38878069453a7f0bd57d74a6a02491cbda315442d802824"
+     },
+     {
+      "path": "USRDIR/menu/i99.drb",
+      "size": 720,
+      "sha256": "64cb662c4ca488d1e5f15d2fe88abc4915eb91e9c2de2eedb9c299a62961b7b7"
+     },
+     {
+      "path": "USRDIR/menu/i99.tpf.dcx",
+      "size": 266144,
+      "sha256": "8d4bb49ecaa04b47a85c628b1d7c1b120bdd9e62d030396eaa83580a06b216b3"
+     },
+     {
+      "path": "USRDIR/menu/icon.drb",
+      "size": 56272,
+      "sha256": "295ffa1e6af7538793ca46027b85e7a3332d8c2d3912cccf4af737962ee2845b"
+     },
+     {
+      "path": "USRDIR/menu/icon.tpf.dcx",
+      "size": 514864,
+      "sha256": "17105b241bdb3815daabdb5e345eb0c253079b3ceceb45bf1868403c6a46abed"
+     },
+     {
+      "path": "USRDIR/menu/mapshot.drb",
+      "size": 3104,
+      "sha256": "400f81451570b1e98667ad116519c5e9421be7dfa0027f46f9cd6dc6fefab439"
+     },
+     {
+      "path": "USRDIR/menu/mapshot.tpf.dcx",
+      "size": 1074528,
+      "sha256": "dbd691d3786cf7c4dbde5492a6d635ba0ffe7475a56b1d34aff084d6b1d3d1fe"
+     },
+     {
+      "path": "USRDIR/menu/menu.drb",
+      "size": 562800,
+      "sha256": "5873977889d2f1bd0e6cefdd87909918799c86c85cf39652e1c82133d67928e0"
+     },
+     {
+      "path": "USRDIR/menu/menu.tpf.dcx",
+      "size": 2375344,
+      "sha256": "7ace31a20b2d51476c3962ab7dedab0b4dac70f4d11df303e1424bc0e4bcb601"
+     },
+     {
+      "path": "USRDIR/menu/nowloading00.drb",
+      "size": 18752,
+      "sha256": "29d4bd1ab6f5a63bb672a09a5c0bdf9a9b8c7cba75e8e113ca7b4aea2dbf9903"
+     },
+     {
+      "path": "USRDIR/menu/nowloading00.tpf.dcx",
+      "size": 55888,
+      "sha256": "724ac2596c1454c37a8eec58c3f2e582a2316c408678b5e823cfdfb68f4b506d"
+     },
+     {
+      "path": "USRDIR/menu/nowloading01.drb",
+      "size": 18784,
+      "sha256": "6aa37de76e92c8d16e5e08b0a425cc0904d69ece5515499846a3c88363d7309a"
+     },
+     {
+      "path": "USRDIR/menu/nowloading01.tpf.dcx",
+      "size": 55888,
+      "sha256": "724ac2596c1454c37a8eec58c3f2e582a2316c408678b5e823cfdfb68f4b506d"
+     },
+     {
+      "path": "USRDIR/menu/nowloading02.drb",
+      "size": 18752,
+      "sha256": "b462245717110e3c3060c616009dba6bfd9361bb0325c8f063a38588062bd9db"
+     },
+     {
+      "path": "USRDIR/menu/nowloading02.tpf.dcx",
+      "size": 55888,
+      "sha256": "724ac2596c1454c37a8eec58c3f2e582a2316c408678b5e823cfdfb68f4b506d"
+     },
+     {
+      "path": "USRDIR/menu/nowloading03.drb",
+      "size": 10672,
+      "sha256": "9fee1fb0b3172fd8ef2c4d4654ffc3df567fb7294f0ecddeb81530ba9066fbca"
+     },
+     {
+      "path": "USRDIR/menu/nowloading03.tpf.dcx",
+      "size": 55888,
+      "sha256": "724ac2596c1454c37a8eec58c3f2e582a2316c408678b5e823cfdfb68f4b506d"
+     },
+     {
+      "path": "USRDIR/menu/nowloading04.drb",
+      "size": 18752,
+      "sha256": "2b6eadcb2e9de7b75012777f2df020ae7e3a56b020aa2683fe5e676271e1f83d"
+     },
+     {
+      "path": "USRDIR/menu/nowloading04.tpf.dcx",
+      "size": 55888,
+      "sha256": "724ac2596c1454c37a8eec58c3f2e582a2316c408678b5e823cfdfb68f4b506d"
+     },
+     {
+      "path": "USRDIR/menu/nowloading05.drb",
+      "size": 18752,
+      "sha256": "f3575465600986e61869698c0b33b9d431176dcc08aa981dae12542bb5540e37"
+     },
+     {
+      "path": "USRDIR/menu/nowloading05.tpf.dcx",
+      "size": 55888,
+      "sha256": "724ac2596c1454c37a8eec58c3f2e582a2316c408678b5e823cfdfb68f4b506d"
+     },
+     {
+      "path": "USRDIR/menu/nowloading06.drb",
+      "size": 18752,
+      "sha256": "b42c5f244cf2a001bdacead586930cbaa1acb109901b39a5ab0973c39d9e0575"
+     },
+     {
+      "path": "USRDIR/menu/nowloading06.tpf.dcx",
+      "size": 55888,
+      "sha256": "724ac2596c1454c37a8eec58c3f2e582a2316c408678b5e823cfdfb68f4b506d"
+     },
+     {
+      "path": "USRDIR/menu/nowloading07.drb",
+      "size": 18752,
+      "sha256": "94820090ddee7a8d91eb5c966b2267886bf742d2f64976f98b74b0a2a233740a"
+     },
+     {
+      "path": "USRDIR/menu/nowloading07.tpf.dcx",
+      "size": 59664,
+      "sha256": "0943ada8aac3ff81361ad289fb828f9f5d5420582756a98411acf176df415657"
+     },
+     {
+      "path": "USRDIR/menu/nowloading08.drb",
+      "size": 18752,
+      "sha256": "ddd14659bbe7a5d76a8f5e0f8ef24d7ab78a295c5de94ca3fdc868b4b036bc70"
+     },
+     {
+      "path": "USRDIR/menu/nowloading08.tpf.dcx",
+      "size": 59664,
+      "sha256": "0943ada8aac3ff81361ad289fb828f9f5d5420582756a98411acf176df415657"
+     },
+     {
+      "path": "USRDIR/menu/nowloading09.drb",
+      "size": 18752,
+      "sha256": "47e4b6198f0e519d43b4b445d651da0f8d6d2e10e8b8a9fa9b6feb48c832ba2b"
+     },
+     {
+      "path": "USRDIR/menu/nowloading09.tpf.dcx",
+      "size": 59664,
+      "sha256": "0943ada8aac3ff81361ad289fb828f9f5d5420582756a98411acf176df415657"
+     },
+     {
+      "path": "USRDIR/menu/nowloading10.drb",
+      "size": 18752,
+      "sha256": "f669c2755ab20774923772ea5ac9638e54c10f18c0c71255fc0b9681f3d9d828"
+     },
+     {
+      "path": "USRDIR/menu/nowloading10.tpf.dcx",
+      "size": 59664,
+      "sha256": "0943ada8aac3ff81361ad289fb828f9f5d5420582756a98411acf176df415657"
+     },
+     {
+      "path": "USRDIR/menu/nowloading11.drb",
+      "size": 18752,
+      "sha256": "bbb87de793c1e320a5c0fe96718c10f3814e8bcbfbf6cccfcb05b25ffcb9028c"
+     },
+     {
+      "path": "USRDIR/menu/nowloading11.tpf.dcx",
+      "size": 59664,
+      "sha256": "0943ada8aac3ff81361ad289fb828f9f5d5420582756a98411acf176df415657"
+     },
+     {
+      "path": "USRDIR/menu/nowloading12.drb",
+      "size": 18752,
+      "sha256": "c29889f2bdd48420b5cfc273a3c1a91e01feb4be417b2078489c6b61a12625aa"
+     },
+     {
+      "path": "USRDIR/menu/nowloading12.tpf.dcx",
+      "size": 59664,
+      "sha256": "0943ada8aac3ff81361ad289fb828f9f5d5420582756a98411acf176df415657"
+     },
+     {
+      "path": "USRDIR/menu/nowloading13.drb",
+      "size": 18752,
+      "sha256": "4b9b3c9306ce76b6176892e7c95f8d854dc593f7df6290186ec3d25db9f6995a"
+     },
+     {
+      "path": "USRDIR/menu/nowloading13.tpf.dcx",
+      "size": 59664,
+      "sha256": "0943ada8aac3ff81361ad289fb828f9f5d5420582756a98411acf176df415657"
+     },
+     {
+      "path": "USRDIR/menu/nowloading14.drb",
+      "size": 18752,
+      "sha256": "6c937b3b47ba0ae8738fef7136ca3fbd2103830b9a55c5de9fcf5bc85262785a"
+     },
+     {
+      "path": "USRDIR/menu/nowloading14.tpf.dcx",
+      "size": 59664,
+      "sha256": "0943ada8aac3ff81361ad289fb828f9f5d5420582756a98411acf176df415657"
+     },
+     {
+      "path": "USRDIR/menu/nowloading15.drb",
+      "size": 18752,
+      "sha256": "437972688a915b8be0a9c65f90b01f7ae3eed99de3e97f8913acfb77f941db1d"
+     },
+     {
+      "path": "USRDIR/menu/nowloading15.tpf.dcx",
+      "size": 59664,
+      "sha256": "0943ada8aac3ff81361ad289fb828f9f5d5420582756a98411acf176df415657"
+     },
+     {
+      "path": "USRDIR/menu/nowloading16.drb",
+      "size": 18752,
+      "sha256": "533907616480b873d46f1b1f3bfef675cc3cfa72248218bbf431111187f2b87a"
+     },
+     {
+      "path": "USRDIR/menu/nowloading16.tpf.dcx",
+      "size": 59664,
+      "sha256": "0943ada8aac3ff81361ad289fb828f9f5d5420582756a98411acf176df415657"
+     },
+     {
+      "path": "USRDIR/menu/soul_sequence.tpf.dcx",
+      "size": 79584,
+      "sha256": "a26553c04dbfd35508054ff57c3835055a248ba49bb330dc0225f0c5f3ce21d9"
+     },
+     {
+      "path": "USRDIR/msg/asia_english/item.msgbnd.dcx",
+      "size": 75088,
+      "sha256": "db5bee40b9844d835eae2d4080bca7f7e2e68d4ecfb88240b9119d0ca04e1032"
+     },
+     {
+      "path": "USRDIR/msg/asia_english/menu.msgbnd.dcx",
+      "size": 72240,
+      "sha256": "a01579852e48541118df60136566fb2747991fe9eed258212b46fb3b4f0f2059"
+     },
+     {
+      "path": "USRDIR/msg/item.msgbnd.dcx",
+      "size": 59440,
+      "sha256": "85052b5631f2e7954df1819dbb3743482fffa0c951271dd08ff08a2b4245c2f1"
+     },
+     {
+      "path": "USRDIR/msg/korean/item.msgbnd.dcx",
+      "size": 61840,
+      "sha256": "4153e24ad5a867f255a7801769d43ac3a512391155e61fe113ed6c7b701aa7b3"
+     },
+     {
+      "path": "USRDIR/msg/korean/menu.msgbnd.dcx",
+      "size": 64464,
+      "sha256": "f0f0393d4778e88f83034c8d68073f9a08cd9c4ada57c28c782b65d83760dd76"
+     },
+     {
+      "path": "USRDIR/msg/menu.msgbnd.dcx",
+      "size": 66160,
+      "sha256": "c2f4c201a6c2f458d004771eaa3786778b9a05aad8328f09005ac43cda5f19d6"
+     },
+     {
+      "path": "USRDIR/msg/tchinese/item.msgbnd.dcx",
+      "size": 56576,
+      "sha256": "7dbb214b3524afe6e683472743e4e5077f6c46652bd90d67b72c34ffe31f3f02"
+     },
+     {
+      "path": "USRDIR/msg/tchinese/menu.msgbnd.dcx",
+      "size": 61120,
+      "sha256": "56cd6e1dd88978a525a8f6640ad637a10ba74f37f09680f16477a6e243544e2b"
+     },
+     {
+      "path": "USRDIR/param/gameparam/gameparam.parambnd.dcx",
+      "size": 269600,
+      "sha256": "548210fe6163d053f04c0c0c1cd8c5603519259859eb1c80627b74e6ea494b34"
+     },
+     {
+      "path": "USRDIR/script/m01.luabnd.dcx.sdat",
+      "size": 123504,
+      "sha256": "51d7ac7c73af67dc8804a3fc0184278722aaaaa3538267bf5d56669f21d57028"
+     },
+     {
+      "path": "USRDIR/script/m02.luabnd.dcx.sdat",
+      "size": 214352,
+      "sha256": "4c6ba28ebc7fb7e167a93a77ef6edd59a9948dde9e310c5d2eefd24152d5ed97"
+     },
+     {
+      "path": "USRDIR/script/m03.luabnd.dcx.sdat",
+      "size": 151568,
+      "sha256": "8a2a2e8564ee7d9a45f5b35b50800f542fe26c2a38935994edd12bd160585755"
+     },
+     {
+      "path": "USRDIR/script/m04.luabnd.dcx.sdat",
+      "size": 156608,
+      "sha256": "375742fcdb77b9cdfe521fe6d3405543431ded3d2eb7ce0d1fe326ff7f5b4fda"
+     },
+     {
+      "path": "USRDIR/script/m05.luabnd.dcx.sdat",
+      "size": 138208,
+      "sha256": "791aa605d0eaea56d1c145340969dfe4a8382be4a99d8933ebf099731f0bd089"
+     },
+     {
+      "path": "USRDIR/script/m06.luabnd.dcx.sdat",
+      "size": 154848,
+      "sha256": "e54e4703fd390ef42fd8ccf2927114c88e8aa68b9eeabf047cdeefe154ad3ee4"
+     },
+     {
+      "path": "USRDIR/script/m08.luabnd.dcx.sdat",
+      "size": 99616,
+      "sha256": "371d9fc11791974c6081c24b97271bef68b7a422016024bbcb1190d6dc9ccfa6"
+     },
+     {
+      "path": "USRDIR/script/talk/m01.talkesdbnd.dcx.sdat",
+      "size": 26384,
+      "sha256": "2d1b59ee8b20415e336bf47b160aa8319cd23f27a3c63b957a558b4d738385d1"
+     },
+     {
+      "path": "USRDIR/script/talk/m02.talkesdbnd.dcx.sdat",
+      "size": 12432,
+      "sha256": "56a585747882466e2ba5c53f2a0f218b2d36a5aff491e1af6dfa415f92510e77"
+     },
+     {
+      "path": "USRDIR/script/talk/m03.talkesdbnd.dcx.sdat",
+      "size": 7440,
+      "sha256": "c59dc4869fcab042989adc1f56aaefbfe19726ee7b8337f5f085558568f27119"
+     },
+     {
+      "path": "USRDIR/script/talk/m04.talkesdbnd.dcx.sdat",
+      "size": 5232,
+      "sha256": "db4566e53be86898317a9be6561da4fefbdbdb67ea5b3f9b94faf01e7f91d5f9"
+     },
+     {
+      "path": "USRDIR/script/talk/m05.talkesdbnd.dcx.sdat",
+      "size": 5920,
+      "sha256": "d62d4d4ade5dc50b1e816cf05558f5883eb3d53f85e596e2e9e4657f89c742ac"
+     },
+     {
+      "path": "USRDIR/script/talk/m06.talkesdbnd.dcx.sdat",
+      "size": 7872,
+      "sha256": "1509e3fdefc5917caaeb2e2efcf4283af5a3bf7c1f1932d97c17df26d9d2c25c"
+     }
+    ]
+   },
+   "files": {
+    "PS3_GAME/PARAM.SFO": {
+     "size": 1008,
+     "sha256": "d03ca4b5b2aef9c77d6d01b0e528ee03472e3f0150515a2e865554ba88cd5eeb"
+    },
+    "PS3_GAME/USRDIR/EBOOT.BIN": {
+     "size": 28225232,
+     "sha256": "e8d203c2629517366b10f786ea271734dc38cc97baf217d89d08b53c0f269e11",
+     "from": "update"
+    },
+    "PS3_GAME/USRDIR/EBOOT.elf": {
+     "size": 28222496,
+     "sha256": "bb0f6b39b7e40d52de7ba95c8fedf82d81c3808906fc87b8e774234918f22146"
+    },
+    "PS3_GAME/USRDIR/chr/c0000/c0000.esd.dcx.sdat": {
+     "size": 33568,
+     "sha256": "2736dc6cd4f70f587835955aa7fc87c74831815f9f534a8554906505835df542",
+     "from": "update"
+    },
+    "PS3_GAME/USRDIR/chr/enemycommon.esd.dcx.sdat": {
+     "size": 8912,
+     "sha256": "09da58e5028881f7e1491cd8e39411075761d95243999cdcd81622773f6637c8"
+    },
+    "PS3_GAME/USRDIR/chr/m01.chresdbnd.dcx.sdat": {
+     "size": 3264,
+     "sha256": "efb19f6bfef6e85f8f5f605687bfab2b19945001ec7950aa5dda8adf566b9bbe"
+    },
+    "PS3_GAME/USRDIR/chr/m02.chresdbnd.dcx.sdat": {
+     "size": 30784,
+     "sha256": "c11f25a7e183e01c827515c3b3aa15e821ec40dbc4c7a3a5975396f1b752cb49"
+    },
+    "PS3_GAME/USRDIR/chr/m03.chresdbnd.dcx.sdat": {
+     "size": 27168,
+     "sha256": "fda311345115b7101144665051f742a5a1cf3cd0a9f8a334a8ce2218cca9bf87"
+    },
+    "PS3_GAME/USRDIR/chr/m04.chresdbnd.dcx.sdat": {
+     "size": 13680,
+     "sha256": "20bab94e9bb4033a9654176a4187cce6b280bcb80a979c3ce3e12941f1e9d4d4"
+    },
+    "PS3_GAME/USRDIR/chr/m05.chresdbnd.dcx.sdat": {
+     "size": 13552,
+     "sha256": "e67fc9a66f6aa4c6330e1a0fc5659ca4db89bf1946faaae375143b69cc9cc567"
+    },
+    "PS3_GAME/USRDIR/chr/m06.chresdbnd.dcx.sdat": {
+     "size": 22320,
+     "sha256": "6e49baf88aa33e3e635d946feb1cd9ea4edfe3932ff28460b723602507915afd"
+    },
+    "PS3_GAME/USRDIR/chr/m08.chresdbnd.dcx.sdat": {
+     "size": 7984,
+     "sha256": "95e651468c7dbc2fdcb8862839e22e1ffa0d82437f3612740dbb4f7b78457c24"
+    },
+    "PS3_GAME/USRDIR/chr/m99.chresdbnd.dcx.sdat": {
+     "size": 105184,
+     "sha256": "8ca5e413332071dc8ecb7594761e2a2923344fc9b3c1f2fc7258ac836ded1434"
+    },
+    "PS3_GAME/USRDIR/menu/common.menuesdbnd.dcx.sdat": {
+     "size": 9616,
+     "sha256": "ed01e42e1fe9af9806a20af3e0ec8803498347b9df1e50315b35719c7faacbff"
+    },
+    "PS3_GAME/USRDIR/menu/ingame.menuesdbnd.dcx.sdat": {
+     "size": 27152,
+     "sha256": "8800c6dcd7c65556bf3bbe97666b16b82956d3e752db88c444df73908b93da99"
+    },
+    "PS3_GAME/USRDIR/menu/title.menuesdbnd.dcx.sdat": {
+     "size": 4304,
+     "sha256": "b141224c80b32abddb389114f47484949afceeafbbfec6100caaf451e623483f"
+    },
+    "PS3_GAME/USRDIR/script/m01.luabnd.dcx.sdat": {
+     "size": 123504,
+     "sha256": "51d7ac7c73af67dc8804a3fc0184278722aaaaa3538267bf5d56669f21d57028",
+     "from": "update"
+    },
+    "PS3_GAME/USRDIR/script/m02.luabnd.dcx.sdat": {
+     "size": 214352,
+     "sha256": "4c6ba28ebc7fb7e167a93a77ef6edd59a9948dde9e310c5d2eefd24152d5ed97",
+     "from": "update"
+    },
+    "PS3_GAME/USRDIR/script/m03.luabnd.dcx.sdat": {
+     "size": 151568,
+     "sha256": "8a2a2e8564ee7d9a45f5b35b50800f542fe26c2a38935994edd12bd160585755",
+     "from": "update"
+    },
+    "PS3_GAME/USRDIR/script/m04.luabnd.dcx.sdat": {
+     "size": 156608,
+     "sha256": "375742fcdb77b9cdfe521fe6d3405543431ded3d2eb7ce0d1fe326ff7f5b4fda",
+     "from": "update"
+    },
+    "PS3_GAME/USRDIR/script/m05.luabnd.dcx.sdat": {
+     "size": 138208,
+     "sha256": "791aa605d0eaea56d1c145340969dfe4a8382be4a99d8933ebf099731f0bd089",
+     "from": "update"
+    },
+    "PS3_GAME/USRDIR/script/m06.luabnd.dcx.sdat": {
+     "size": 154848,
+     "sha256": "e54e4703fd390ef42fd8ccf2927114c88e8aa68b9eeabf047cdeefe154ad3ee4",
+     "from": "update"
+    },
+    "PS3_GAME/USRDIR/script/m08.luabnd.dcx.sdat": {
+     "size": 99616,
+     "sha256": "371d9fc11791974c6081c24b97271bef68b7a422016024bbcb1190d6dc9ccfa6",
+     "from": "update"
+    },
+    "PS3_GAME/USRDIR/script/talk/m01.talkesdbnd.dcx.sdat": {
+     "size": 26384,
+     "sha256": "2d1b59ee8b20415e336bf47b160aa8319cd23f27a3c63b957a558b4d738385d1",
+     "from": "update"
+    },
+    "PS3_GAME/USRDIR/script/talk/m02.talkesdbnd.dcx.sdat": {
+     "size": 12432,
+     "sha256": "56a585747882466e2ba5c53f2a0f218b2d36a5aff491e1af6dfa415f92510e77",
+     "from": "update"
+    },
+    "PS3_GAME/USRDIR/script/talk/m03.talkesdbnd.dcx.sdat": {
+     "size": 7440,
+     "sha256": "c59dc4869fcab042989adc1f56aaefbfe19726ee7b8337f5f085558568f27119",
+     "from": "update"
+    },
+    "PS3_GAME/USRDIR/script/talk/m04.talkesdbnd.dcx.sdat": {
+     "size": 5232,
+     "sha256": "db4566e53be86898317a9be6561da4fefbdbdb67ea5b3f9b94faf01e7f91d5f9",
+     "from": "update"
+    },
+    "PS3_GAME/USRDIR/script/talk/m05.talkesdbnd.dcx.sdat": {
+     "size": 5920,
+     "sha256": "d62d4d4ade5dc50b1e816cf05558f5883eb3d53f85e596e2e9e4657f89c742ac",
+     "from": "update"
+    },
+    "PS3_GAME/USRDIR/script/talk/m06.talkesdbnd.dcx.sdat": {
+     "size": 7872,
+     "sha256": "1509e3fdefc5917caaeb2e2efcf4283af5a3bf7c1f1932d97c17df26d9d2c25c",
+     "from": "update"
+    }
+   }
+  },
+  "BCAS20071": {
+   "comment": "The asian disc with its 1.04 update, which brings the program and its data to the US disc's build (docs/139 section 7.1).",
+   "disc": "the Asian disc",
+   "app_ver": "01.00",
+   "version": "01.00",
+   "disc_files": "BCAS20071.txt.gz",
+   "update": {
+    "app_ver": "01.04",
+    "pkg": {
+     "size": 48414800,
+     "sha256": "0ed420cebb0495414a7a00c7b58c0fa94d380095703b70f6c7948ce3132afb9a"
+    },
+    "files": [
+     {
+      "path": "ICON0.PNG",
+      "size": 105294,
+      "sha256": "e6a91b3f1583b51faeaeef6b35d135cba0b7c8f0b2117611f97fcc80d1cea893"
+     },
+     {
+      "path": "PARAM.SFO",
+      "size": 380,
+      "sha256": "3a27f4552a76383c050cb9e95bac70013ce8fe449df04a94aa10ef05791c1d36"
+     },
+     {
+      "path": "PS3LOGO.DAT",
+      "size": 5120,
+      "sha256": "e08430957ac3f4ee719dc2ed04d3443c395dd3b997d8f34f68a1b5c37d92f425"
+     },
+     {
+      "path": "TROPDIR/NPWR00245_00/TROPHY.TRP",
+      "size": 2607488,
+      "sha256": "d9be26c6ae397e4b8fa09a909c707661d1da0f25fcc5afff44164009f3f13d06"
+     },
+     {
+      "path": "USRDIR/EBOOT.BIN",
+      "size": 28225232,
+      "sha256": "cfd4b8246015197affff5b07ab56af12c5083bedb6348475c8212bf03d61a22a"
+     },
+     {
+      "path": "USRDIR/chr/c0000/c0000.esd.dcx.sdat",
+      "size": 33568,
+      "sha256": "2736dc6cd4f70f587835955aa7fc87c74831815f9f534a8554906505835df542"
+     },
+     {
+      "path": "USRDIR/chr/c5020/c5020.anibnd.dcx",
+      "size": 660160,
+      "sha256": "1331129399229648d6c1a7005e27f8e2518250ef7526bed2ac745d59e9ef21c1"
+     },
+     {
+      "path": "USRDIR/chr/c6040/c6040.anibnd.dcx",
+      "size": 353952,
+      "sha256": "bdc34543102b18682e5a119fd4c4db624077e45706832e0e8de5b5b4b135fc49"
+     },
+     {
+      "path": "USRDIR/menu/00.tpf.dcx",
+      "size": 509328,
+      "sha256": "2652acf990630a95652b74d1f59a5bbbecf8fe205413f33e7e2fb833a7128280"
+     },
+     {
+      "path": "USRDIR/menu/01.tpf.dcx",
+      "size": 480080,
+      "sha256": "cdea0f29ed1e50bad2a6bbaece15d160c0742a63bd976df4fa5029e18e6be243"
+     },
+     {
+      "path": "USRDIR/menu/02.tpf.dcx",
+      "size": 492512,
+      "sha256": "f0b9e9742dcbd0b89723b330c3461335713df42d05fbe9229c967c905b1fdea4"
+     },
+     {
+      "path": "USRDIR/menu/03.tpf.dcx",
+      "size": 504640,
+      "sha256": "d957138e595f7f8a6a80551292d120119be7969996b80d32f6e335733fbdcc77"
+     },
+     {
+      "path": "USRDIR/menu/04.tpf.dcx",
+      "size": 496944,
+      "sha256": "6f475edf8cea2c3b9a0945e49bc05353b7116981fa938cbd6358926bfaf7793e"
+     },
+     {
+      "path": "USRDIR/menu/05.tpf.dcx",
+      "size": 490448,
+      "sha256": "e43f7f66f26c612c01a74617303d6d45660da49fab6e989eb93408c86be239c3"
+     },
+     {
+      "path": "USRDIR/menu/06.tpf.dcx",
+      "size": 501104,
+      "sha256": "d1ed168061e7d77db24528cb7dbc73e6d833a1e75d86ff662f440d25ed3a42ac"
+     },
+     {
+      "path": "USRDIR/menu/07.tpf.dcx",
+      "size": 501552,
+      "sha256": "14d1a7a6f4f69386dee09ef76fa5384dd60cdd7c4539ac848e61435bfd50f740"
+     },
+     {
+      "path": "USRDIR/menu/08.tpf.dcx",
+      "size": 472944,
+      "sha256": "55247fb3bbf3ba0a04db5b9316288c2fe757b5a9956152d7c6ceb05a0ab3e5ea"
+     },
+     {
+      "path": "USRDIR/menu/09.tpf.dcx",
+      "size": 426352,
+      "sha256": "9b7ac80f28db50d50f11475df5625987701c5d487275888db4e752d7deb76a23"
+     },
+     {
+      "path": "USRDIR/menu/10.tpf.dcx",
+      "size": 484832,
+      "sha256": "8888839d15a04b93a37d3fd2c115f4bef90263dee9e765c41acc556717396a38"
+     },
+     {
+      "path": "USRDIR/menu/11.tpf.dcx",
+      "size": 500608,
+      "sha256": "0aa15742a82879f7cb72c90a590a09bdac8c3ef104da1e5212548715867a90d7"
+     },
+     {
+      "path": "USRDIR/menu/12.tpf.dcx",
+      "size": 495328,
+      "sha256": "5b343a01a38a209908733973d056268ef7f04280166ec9f74e4d44e3d14cd315"
+     },
+     {
+      "path": "USRDIR/menu/13.tpf.dcx",
+      "size": 491696,
+      "sha256": "bb3c27cb4ca3d33eba22d8a6754496d638534e5175d94b376fa6d03159856c0e"
+     },
+     {
+      "path": "USRDIR/menu/14.tpf.dcx",
+      "size": 481600,
+      "sha256": "281e96335a22645d3126bf4ca8511493b7454dcd4876a6394db33691eb2d4a02"
+     },
+     {
+      "path": "USRDIR/menu/15.tpf.dcx",
+      "size": 485504,
+      "sha256": "c3f0e3612745a9365edc85d5cc8f60c495f3eedc9dca076f2502d950062a93e7"
+     },
+     {
+      "path": "USRDIR/menu/16.tpf.dcx",
+      "size": 477712,
+      "sha256": "4ef48cfbf6beb7407e6abf0ce9281494349eb459c54ad9311e5aa0e16d5de380"
+     },
+     {
+      "path": "USRDIR/menu/fade.drb",
+      "size": 496,
+      "sha256": "f9002e644dbc41e0d38878069453a7f0bd57d74a6a02491cbda315442d802824"
+     },
+     {
+      "path": "USRDIR/menu/i99.drb",
+      "size": 720,
+      "sha256": "64cb662c4ca488d1e5f15d2fe88abc4915eb91e9c2de2eedb9c299a62961b7b7"
+     },
+     {
+      "path": "USRDIR/menu/i99.tpf.dcx",
+      "size": 266144,
+      "sha256": "8d4bb49ecaa04b47a85c628b1d7c1b120bdd9e62d030396eaa83580a06b216b3"
+     },
+     {
+      "path": "USRDIR/menu/icon.drb",
+      "size": 56272,
+      "sha256": "295ffa1e6af7538793ca46027b85e7a3332d8c2d3912cccf4af737962ee2845b"
+     },
+     {
+      "path": "USRDIR/menu/icon.tpf.dcx",
+      "size": 514864,
+      "sha256": "17105b241bdb3815daabdb5e345eb0c253079b3ceceb45bf1868403c6a46abed"
+     },
+     {
+      "path": "USRDIR/menu/mapshot.drb",
+      "size": 3104,
+      "sha256": "400f81451570b1e98667ad116519c5e9421be7dfa0027f46f9cd6dc6fefab439"
+     },
+     {
+      "path": "USRDIR/menu/mapshot.tpf.dcx",
+      "size": 1074528,
+      "sha256": "dbd691d3786cf7c4dbde5492a6d635ba0ffe7475a56b1d34aff084d6b1d3d1fe"
+     },
+     {
+      "path": "USRDIR/menu/menu.drb",
+      "size": 562800,
+      "sha256": "5873977889d2f1bd0e6cefdd87909918799c86c85cf39652e1c82133d67928e0"
+     },
+     {
+      "path": "USRDIR/menu/menu.tpf.dcx",
+      "size": 2375344,
+      "sha256": "7ace31a20b2d51476c3962ab7dedab0b4dac70f4d11df303e1424bc0e4bcb601"
+     },
+     {
+      "path": "USRDIR/menu/nowloading00.drb",
+      "size": 18752,
+      "sha256": "29d4bd1ab6f5a63bb672a09a5c0bdf9a9b8c7cba75e8e113ca7b4aea2dbf9903"
+     },
+     {
+      "path": "USRDIR/menu/nowloading00.tpf.dcx",
+      "size": 55888,
+      "sha256": "724ac2596c1454c37a8eec58c3f2e582a2316c408678b5e823cfdfb68f4b506d"
+     },
+     {
+      "path": "USRDIR/menu/nowloading01.drb",
+      "size": 18784,
+      "sha256": "6aa37de76e92c8d16e5e08b0a425cc0904d69ece5515499846a3c88363d7309a"
+     },
+     {
+      "path": "USRDIR/menu/nowloading01.tpf.dcx",
+      "size": 55888,
+      "sha256": "724ac2596c1454c37a8eec58c3f2e582a2316c408678b5e823cfdfb68f4b506d"
+     },
+     {
+      "path": "USRDIR/menu/nowloading02.drb",
+      "size": 18752,
+      "sha256": "b462245717110e3c3060c616009dba6bfd9361bb0325c8f063a38588062bd9db"
+     },
+     {
+      "path": "USRDIR/menu/nowloading02.tpf.dcx",
+      "size": 55888,
+      "sha256": "724ac2596c1454c37a8eec58c3f2e582a2316c408678b5e823cfdfb68f4b506d"
+     },
+     {
+      "path": "USRDIR/menu/nowloading03.drb",
+      "size": 10672,
+      "sha256": "9fee1fb0b3172fd8ef2c4d4654ffc3df567fb7294f0ecddeb81530ba9066fbca"
+     },
+     {
+      "path": "USRDIR/menu/nowloading03.tpf.dcx",
+      "size": 55888,
+      "sha256": "724ac2596c1454c37a8eec58c3f2e582a2316c408678b5e823cfdfb68f4b506d"
+     },
+     {
+      "path": "USRDIR/menu/nowloading04.drb",
+      "size": 18752,
+      "sha256": "2b6eadcb2e9de7b75012777f2df020ae7e3a56b020aa2683fe5e676271e1f83d"
+     },
+     {
+      "path": "USRDIR/menu/nowloading04.tpf.dcx",
+      "size": 55888,
+      "sha256": "724ac2596c1454c37a8eec58c3f2e582a2316c408678b5e823cfdfb68f4b506d"
+     },
+     {
+      "path": "USRDIR/menu/nowloading05.drb",
+      "size": 18752,
+      "sha256": "f3575465600986e61869698c0b33b9d431176dcc08aa981dae12542bb5540e37"
+     },
+     {
+      "path": "USRDIR/menu/nowloading05.tpf.dcx",
+      "size": 55888,
+      "sha256": "724ac2596c1454c37a8eec58c3f2e582a2316c408678b5e823cfdfb68f4b506d"
+     },
+     {
+      "path": "USRDIR/menu/nowloading06.drb",
+      "size": 18752,
+      "sha256": "b42c5f244cf2a001bdacead586930cbaa1acb109901b39a5ab0973c39d9e0575"
+     },
+     {
+      "path": "USRDIR/menu/nowloading06.tpf.dcx",
+      "size": 55888,
+      "sha256": "724ac2596c1454c37a8eec58c3f2e582a2316c408678b5e823cfdfb68f4b506d"
+     },
+     {
+      "path": "USRDIR/menu/nowloading07.drb",
+      "size": 18752,
+      "sha256": "94820090ddee7a8d91eb5c966b2267886bf742d2f64976f98b74b0a2a233740a"
+     },
+     {
+      "path": "USRDIR/menu/nowloading07.tpf.dcx",
+      "size": 59664,
+      "sha256": "0943ada8aac3ff81361ad289fb828f9f5d5420582756a98411acf176df415657"
+     },
+     {
+      "path": "USRDIR/menu/nowloading08.drb",
+      "size": 18752,
+      "sha256": "ddd14659bbe7a5d76a8f5e0f8ef24d7ab78a295c5de94ca3fdc868b4b036bc70"
+     },
+     {
+      "path": "USRDIR/menu/nowloading08.tpf.dcx",
+      "size": 59664,
+      "sha256": "0943ada8aac3ff81361ad289fb828f9f5d5420582756a98411acf176df415657"
+     },
+     {
+      "path": "USRDIR/menu/nowloading09.drb",
+      "size": 18752,
+      "sha256": "47e4b6198f0e519d43b4b445d651da0f8d6d2e10e8b8a9fa9b6feb48c832ba2b"
+     },
+     {
+      "path": "USRDIR/menu/nowloading09.tpf.dcx",
+      "size": 59664,
+      "sha256": "0943ada8aac3ff81361ad289fb828f9f5d5420582756a98411acf176df415657"
+     },
+     {
+      "path": "USRDIR/menu/nowloading10.drb",
+      "size": 18752,
+      "sha256": "f669c2755ab20774923772ea5ac9638e54c10f18c0c71255fc0b9681f3d9d828"
+     },
+     {
+      "path": "USRDIR/menu/nowloading10.tpf.dcx",
+      "size": 59664,
+      "sha256": "0943ada8aac3ff81361ad289fb828f9f5d5420582756a98411acf176df415657"
+     },
+     {
+      "path": "USRDIR/menu/nowloading11.drb",
+      "size": 18752,
+      "sha256": "bbb87de793c1e320a5c0fe96718c10f3814e8bcbfbf6cccfcb05b25ffcb9028c"
+     },
+     {
+      "path": "USRDIR/menu/nowloading11.tpf.dcx",
+      "size": 59664,
+      "sha256": "0943ada8aac3ff81361ad289fb828f9f5d5420582756a98411acf176df415657"
+     },
+     {
+      "path": "USRDIR/menu/nowloading12.drb",
+      "size": 18752,
+      "sha256": "c29889f2bdd48420b5cfc273a3c1a91e01feb4be417b2078489c6b61a12625aa"
+     },
+     {
+      "path": "USRDIR/menu/nowloading12.tpf.dcx",
+      "size": 59664,
+      "sha256": "0943ada8aac3ff81361ad289fb828f9f5d5420582756a98411acf176df415657"
+     },
+     {
+      "path": "USRDIR/menu/nowloading13.drb",
+      "size": 18752,
+      "sha256": "4b9b3c9306ce76b6176892e7c95f8d854dc593f7df6290186ec3d25db9f6995a"
+     },
+     {
+      "path": "USRDIR/menu/nowloading13.tpf.dcx",
+      "size": 59664,
+      "sha256": "0943ada8aac3ff81361ad289fb828f9f5d5420582756a98411acf176df415657"
+     },
+     {
+      "path": "USRDIR/menu/nowloading14.drb",
+      "size": 18752,
+      "sha256": "6c937b3b47ba0ae8738fef7136ca3fbd2103830b9a55c5de9fcf5bc85262785a"
+     },
+     {
+      "path": "USRDIR/menu/nowloading14.tpf.dcx",
+      "size": 59664,
+      "sha256": "0943ada8aac3ff81361ad289fb828f9f5d5420582756a98411acf176df415657"
+     },
+     {
+      "path": "USRDIR/menu/nowloading15.drb",
+      "size": 18752,
+      "sha256": "437972688a915b8be0a9c65f90b01f7ae3eed99de3e97f8913acfb77f941db1d"
+     },
+     {
+      "path": "USRDIR/menu/nowloading15.tpf.dcx",
+      "size": 59664,
+      "sha256": "0943ada8aac3ff81361ad289fb828f9f5d5420582756a98411acf176df415657"
+     },
+     {
+      "path": "USRDIR/menu/nowloading16.drb",
+      "size": 18752,
+      "sha256": "533907616480b873d46f1b1f3bfef675cc3cfa72248218bbf431111187f2b87a"
+     },
+     {
+      "path": "USRDIR/menu/nowloading16.tpf.dcx",
+      "size": 59664,
+      "sha256": "0943ada8aac3ff81361ad289fb828f9f5d5420582756a98411acf176df415657"
+     },
+     {
+      "path": "USRDIR/menu/soul_sequence.tpf.dcx",
+      "size": 79584,
+      "sha256": "a26553c04dbfd35508054ff57c3835055a248ba49bb330dc0225f0c5f3ce21d9"
+     },
+     {
+      "path": "USRDIR/msg/asia_english/item.msgbnd.dcx",
+      "size": 75088,
+      "sha256": "db5bee40b9844d835eae2d4080bca7f7e2e68d4ecfb88240b9119d0ca04e1032"
+     },
+     {
+      "path": "USRDIR/msg/asia_english/menu.msgbnd.dcx",
+      "size": 72240,
+      "sha256": "a01579852e48541118df60136566fb2747991fe9eed258212b46fb3b4f0f2059"
+     },
+     {
+      "path": "USRDIR/msg/item.msgbnd.dcx",
+      "size": 59440,
+      "sha256": "85052b5631f2e7954df1819dbb3743482fffa0c951271dd08ff08a2b4245c2f1"
+     },
+     {
+      "path": "USRDIR/msg/korean/item.msgbnd.dcx",
+      "size": 61840,
+      "sha256": "4153e24ad5a867f255a7801769d43ac3a512391155e61fe113ed6c7b701aa7b3"
+     },
+     {
+      "path": "USRDIR/msg/korean/menu.msgbnd.dcx",
+      "size": 64464,
+      "sha256": "f0f0393d4778e88f83034c8d68073f9a08cd9c4ada57c28c782b65d83760dd76"
+     },
+     {
+      "path": "USRDIR/msg/menu.msgbnd.dcx",
+      "size": 66160,
+      "sha256": "c2f4c201a6c2f458d004771eaa3786778b9a05aad8328f09005ac43cda5f19d6"
+     },
+     {
+      "path": "USRDIR/msg/tchinese/item.msgbnd.dcx",
+      "size": 56576,
+      "sha256": "7dbb214b3524afe6e683472743e4e5077f6c46652bd90d67b72c34ffe31f3f02"
+     },
+     {
+      "path": "USRDIR/msg/tchinese/menu.msgbnd.dcx",
+      "size": 61120,
+      "sha256": "56cd6e1dd88978a525a8f6640ad637a10ba74f37f09680f16477a6e243544e2b"
+     },
+     {
+      "path": "USRDIR/param/gameparam/gameparam.parambnd.dcx",
+      "size": 269600,
+      "sha256": "548210fe6163d053f04c0c0c1cd8c5603519259859eb1c80627b74e6ea494b34"
+     },
+     {
+      "path": "USRDIR/script/m01.luabnd.dcx.sdat",
+      "size": 123504,
+      "sha256": "51d7ac7c73af67dc8804a3fc0184278722aaaaa3538267bf5d56669f21d57028"
+     },
+     {
+      "path": "USRDIR/script/m02.luabnd.dcx.sdat",
+      "size": 214352,
+      "sha256": "4c6ba28ebc7fb7e167a93a77ef6edd59a9948dde9e310c5d2eefd24152d5ed97"
+     },
+     {
+      "path": "USRDIR/script/m03.luabnd.dcx.sdat",
+      "size": 151568,
+      "sha256": "8a2a2e8564ee7d9a45f5b35b50800f542fe26c2a38935994edd12bd160585755"
+     },
+     {
+      "path": "USRDIR/script/m04.luabnd.dcx.sdat",
+      "size": 156608,
+      "sha256": "375742fcdb77b9cdfe521fe6d3405543431ded3d2eb7ce0d1fe326ff7f5b4fda"
+     },
+     {
+      "path": "USRDIR/script/m05.luabnd.dcx.sdat",
+      "size": 138208,
+      "sha256": "791aa605d0eaea56d1c145340969dfe4a8382be4a99d8933ebf099731f0bd089"
+     },
+     {
+      "path": "USRDIR/script/m06.luabnd.dcx.sdat",
+      "size": 154848,
+      "sha256": "e54e4703fd390ef42fd8ccf2927114c88e8aa68b9eeabf047cdeefe154ad3ee4"
+     },
+     {
+      "path": "USRDIR/script/m08.luabnd.dcx.sdat",
+      "size": 99616,
+      "sha256": "371d9fc11791974c6081c24b97271bef68b7a422016024bbcb1190d6dc9ccfa6"
+     },
+     {
+      "path": "USRDIR/script/talk/m01.talkesdbnd.dcx.sdat",
+      "size": 26384,
+      "sha256": "2d1b59ee8b20415e336bf47b160aa8319cd23f27a3c63b957a558b4d738385d1"
+     },
+     {
+      "path": "USRDIR/script/talk/m02.talkesdbnd.dcx.sdat",
+      "size": 12432,
+      "sha256": "56a585747882466e2ba5c53f2a0f218b2d36a5aff491e1af6dfa415f92510e77"
+     },
+     {
+      "path": "USRDIR/script/talk/m03.talkesdbnd.dcx.sdat",
+      "size": 7440,
+      "sha256": "c59dc4869fcab042989adc1f56aaefbfe19726ee7b8337f5f085558568f27119"
+     },
+     {
+      "path": "USRDIR/script/talk/m04.talkesdbnd.dcx.sdat",
+      "size": 5232,
+      "sha256": "db4566e53be86898317a9be6561da4fefbdbdb67ea5b3f9b94faf01e7f91d5f9"
+     },
+     {
+      "path": "USRDIR/script/talk/m05.talkesdbnd.dcx.sdat",
+      "size": 5920,
+      "sha256": "d62d4d4ade5dc50b1e816cf05558f5883eb3d53f85e596e2e9e4657f89c742ac"
+     },
+     {
+      "path": "USRDIR/script/talk/m06.talkesdbnd.dcx.sdat",
+      "size": 7872,
+      "sha256": "1509e3fdefc5917caaeb2e2efcf4283af5a3bf7c1f1932d97c17df26d9d2c25c"
+     }
+    ]
+   },
+   "files": {
+    "PS3_GAME/PARAM.SFO": {
+     "size": 1008,
+     "sha256": "35cfe5e32fd283415af28151aa1747afe5000e5a46b5d44909efc3a3fe6c7488"
+    },
+    "PS3_GAME/USRDIR/EBOOT.BIN": {
+     "size": 28225232,
+     "sha256": "cfd4b8246015197affff5b07ab56af12c5083bedb6348475c8212bf03d61a22a",
+     "from": "update"
+    },
+    "PS3_GAME/USRDIR/EBOOT.elf": {
+     "size": 28222496,
+     "sha256": "f230f7d806b7f429e99eba80f3a323382e6515fcaf5a996d4bd0e72c8717be41"
+    },
+    "PS3_GAME/USRDIR/chr/c0000/c0000.esd.dcx.sdat": {
+     "size": 33568,
+     "sha256": "2736dc6cd4f70f587835955aa7fc87c74831815f9f534a8554906505835df542",
+     "from": "update"
+    },
+    "PS3_GAME/USRDIR/chr/enemycommon.esd.dcx.sdat": {
+     "size": 8912,
+     "sha256": "09da58e5028881f7e1491cd8e39411075761d95243999cdcd81622773f6637c8"
+    },
+    "PS3_GAME/USRDIR/chr/m01.chresdbnd.dcx.sdat": {
+     "size": 3264,
+     "sha256": "efb19f6bfef6e85f8f5f605687bfab2b19945001ec7950aa5dda8adf566b9bbe"
+    },
+    "PS3_GAME/USRDIR/chr/m02.chresdbnd.dcx.sdat": {
+     "size": 30784,
+     "sha256": "c11f25a7e183e01c827515c3b3aa15e821ec40dbc4c7a3a5975396f1b752cb49"
+    },
+    "PS3_GAME/USRDIR/chr/m03.chresdbnd.dcx.sdat": {
+     "size": 27168,
+     "sha256": "fda311345115b7101144665051f742a5a1cf3cd0a9f8a334a8ce2218cca9bf87"
+    },
+    "PS3_GAME/USRDIR/chr/m04.chresdbnd.dcx.sdat": {
+     "size": 13680,
+     "sha256": "20bab94e9bb4033a9654176a4187cce6b280bcb80a979c3ce3e12941f1e9d4d4"
+    },
+    "PS3_GAME/USRDIR/chr/m05.chresdbnd.dcx.sdat": {
+     "size": 13552,
+     "sha256": "e67fc9a66f6aa4c6330e1a0fc5659ca4db89bf1946faaae375143b69cc9cc567"
+    },
+    "PS3_GAME/USRDIR/chr/m06.chresdbnd.dcx.sdat": {
+     "size": 22320,
+     "sha256": "6e49baf88aa33e3e635d946feb1cd9ea4edfe3932ff28460b723602507915afd"
+    },
+    "PS3_GAME/USRDIR/chr/m08.chresdbnd.dcx.sdat": {
+     "size": 7984,
+     "sha256": "95e651468c7dbc2fdcb8862839e22e1ffa0d82437f3612740dbb4f7b78457c24"
+    },
+    "PS3_GAME/USRDIR/chr/m99.chresdbnd.dcx.sdat": {
+     "size": 105184,
+     "sha256": "8ca5e413332071dc8ecb7594761e2a2923344fc9b3c1f2fc7258ac836ded1434"
+    },
+    "PS3_GAME/USRDIR/menu/common.menuesdbnd.dcx.sdat": {
+     "size": 9616,
+     "sha256": "ed01e42e1fe9af9806a20af3e0ec8803498347b9df1e50315b35719c7faacbff"
+    },
+    "PS3_GAME/USRDIR/menu/ingame.menuesdbnd.dcx.sdat": {
+     "size": 27152,
+     "sha256": "8800c6dcd7c65556bf3bbe97666b16b82956d3e752db88c444df73908b93da99"
+    },
+    "PS3_GAME/USRDIR/menu/title.menuesdbnd.dcx.sdat": {
+     "size": 4304,
+     "sha256": "b141224c80b32abddb389114f47484949afceeafbbfec6100caaf451e623483f"
+    },
+    "PS3_GAME/USRDIR/script/m01.luabnd.dcx.sdat": {
+     "size": 123504,
+     "sha256": "51d7ac7c73af67dc8804a3fc0184278722aaaaa3538267bf5d56669f21d57028",
+     "from": "update"
+    },
+    "PS3_GAME/USRDIR/script/m02.luabnd.dcx.sdat": {
+     "size": 214352,
+     "sha256": "4c6ba28ebc7fb7e167a93a77ef6edd59a9948dde9e310c5d2eefd24152d5ed97",
+     "from": "update"
+    },
+    "PS3_GAME/USRDIR/script/m03.luabnd.dcx.sdat": {
+     "size": 151568,
+     "sha256": "8a2a2e8564ee7d9a45f5b35b50800f542fe26c2a38935994edd12bd160585755",
+     "from": "update"
+    },
+    "PS3_GAME/USRDIR/script/m04.luabnd.dcx.sdat": {
+     "size": 156608,
+     "sha256": "375742fcdb77b9cdfe521fe6d3405543431ded3d2eb7ce0d1fe326ff7f5b4fda",
+     "from": "update"
+    },
+    "PS3_GAME/USRDIR/script/m05.luabnd.dcx.sdat": {
+     "size": 138208,
+     "sha256": "791aa605d0eaea56d1c145340969dfe4a8382be4a99d8933ebf099731f0bd089",
+     "from": "update"
+    },
+    "PS3_GAME/USRDIR/script/m06.luabnd.dcx.sdat": {
+     "size": 154848,
+     "sha256": "e54e4703fd390ef42fd8ccf2927114c88e8aa68b9eeabf047cdeefe154ad3ee4",
+     "from": "update"
+    },
+    "PS3_GAME/USRDIR/script/m08.luabnd.dcx.sdat": {
+     "size": 99616,
+     "sha256": "371d9fc11791974c6081c24b97271bef68b7a422016024bbcb1190d6dc9ccfa6",
+     "from": "update"
+    },
+    "PS3_GAME/USRDIR/script/talk/m01.talkesdbnd.dcx.sdat": {
+     "size": 26384,
+     "sha256": "2d1b59ee8b20415e336bf47b160aa8319cd23f27a3c63b957a558b4d738385d1",
+     "from": "update"
+    },
+    "PS3_GAME/USRDIR/script/talk/m02.talkesdbnd.dcx.sdat": {
+     "size": 12432,
+     "sha256": "56a585747882466e2ba5c53f2a0f218b2d36a5aff491e1af6dfa415f92510e77",
+     "from": "update"
+    },
+    "PS3_GAME/USRDIR/script/talk/m03.talkesdbnd.dcx.sdat": {
+     "size": 7440,
+     "sha256": "c59dc4869fcab042989adc1f56aaefbfe19726ee7b8337f5f085558568f27119",
+     "from": "update"
+    },
+    "PS3_GAME/USRDIR/script/talk/m04.talkesdbnd.dcx.sdat": {
+     "size": 5232,
+     "sha256": "db4566e53be86898317a9be6561da4fefbdbdb67ea5b3f9b94faf01e7f91d5f9",
+     "from": "update"
+    },
+    "PS3_GAME/USRDIR/script/talk/m05.talkesdbnd.dcx.sdat": {
+     "size": 5920,
+     "sha256": "d62d4d4ade5dc50b1e816cf05558f5883eb3d53f85e596e2e9e4657f89c742ac",
+     "from": "update"
+    },
+    "PS3_GAME/USRDIR/script/talk/m06.talkesdbnd.dcx.sdat": {
+     "size": 7872,
+     "sha256": "1509e3fdefc5917caaeb2e2efcf4283af5a3bf7c1f1932d97c17df26d9d2c25c",
+     "from": "update"
+    }
+   }
   }
  },
  "other_titles": {
-  "BCAS20071": "the Asian disc",
-  "BCJS30022": "the Japanese disc",
   "BLUD80018": "the US trade demo",
   "NPUB30910": "the US PlayStation Store version",
   "NPJA00102": "the Japanese PlayStation Store version"

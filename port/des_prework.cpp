@@ -135,15 +135,20 @@ bool read_file(const std::string& path, std::vector<uint8_t>& out)
 }
 
 /* The game and its version as PARAM.SFO has them, TITLE_ID-APP_VER ("BLUS30443-01.00"): what the
- * pipeline index is kept by. The European disc (BLES00932) has the US disc's shaders, so it shares the
- * US disc's index, and the pipelines found in its play go to it. */
+ * pipeline index is kept by. The other discs have the US disc's shaders (the Japanese and Asian ones once
+ * updated to 1.04), so they share the US disc's index, and the pipelines found in their play go to it. */
 std::string game_tag()
 {
     const char* id = cellGame_get_title_id();
     const char* ver = cellGame_get_app_ver();
     std::string title = id ? id : "";
-    if (title == des_region_title_id(DesRegion::EU)) title = des_region_title_id(DesRegion::US);
-    return title + "-" + (ver ? ver : "");
+    std::string version = ver ? ver : "";
+    for (DesRegion r : {DesRegion::EU, DesRegion::JP, DesRegion::ASIA})
+        if (title == des_region_title_id(r)) {
+            title = des_region_title_id(DesRegion::US);
+            version = "01.00";
+        }
+    return title + "-" + version;
 }
 
 /* This program's folder; empty if it cannot be told. */

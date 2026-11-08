@@ -382,7 +382,7 @@ constexpr Credit kCredits[] = {
 // ps3emu/ps3_net_signin.h (declared here: des_ui does not take ps3recomp's include paths). Its outcome comes back
 // through ps3_net_erase_result, which net_notices.cpp shows.
 extern "C" int ps3_net_player_erase(void);
-extern "C" uint8_t g_des_region;  // des_region.h: 1 = the European disc
+extern "C" uint8_t g_des_region;  // des_region.h: 0 = US, 1 = the European disc, 2 = Japanese, 3 = Asian
 
 // Delete my data (the server's docs/social.md), asked first.
 void ask_erase() {
@@ -579,13 +579,18 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
         bool_row(leftPane, rightPane, "Continue automatically", "DES_AUTO_CONTINUE",
             "After Play, goes straight into your last save.<br/><br/>(DES_AUTO_CONTINUE)");
 
-        leftPane.add_section("Language");
-        if (g_des_region != 1) {  // the US disc has English and Japanese
+        if (g_des_region != 2) leftPane.add_section("Language");  // the Japanese disc has only Japanese
+        if (g_des_region == 3) {
+            choice_row(leftPane, rightPane, "Language", "DES_LANGUAGE", {"", "en", "zh-tw", "ko"},
+                {"PC's language", "English", "Chinese (Traditional)", "Korean"},
+                "The game's text. PC's language uses your PC's when the disc has it, else English. Restart to "
+                "apply.<br/><br/>(DES_LANGUAGE)");
+        } else if (g_des_region == 0) {  // the US disc has English and Japanese
             choice_row(leftPane, rightPane, "Language", "DES_LANGUAGE", {"", "en", "ja"},
                 {"PC's language", "English", "Japanese"},
                 "The game's text. Trophy names stay English. PC's language uses your PC's when the disc has it, "
                 "else English. Restart to apply.<br/><br/>(DES_LANGUAGE)");
-        } else {
+        } else if (g_des_region == 1) {
             choice_row(leftPane, rightPane, "Language", "DES_LANGUAGE",
                 {"", "en", "fr", "de", "es", "it", "ja", "zh-tw", "ko"},
                 {"PC's language", "English", "Fran\u00e7ais", "Deutsch", "Espa\u00f1ol", "Italiano",

@@ -179,7 +179,7 @@ protected:
     bool scroll(int pages) override;
 
 private:
-    enum class Picking { None, Game, Decrypted };
+    enum class Picking { None, Game, Decrypted, Update };
 
     void choose(Picking what);
     void picked(const PickedFolder& folder);
@@ -212,7 +212,7 @@ private:
     Rml::Element* mCheck = nullptr;
     Rml::Element* mLinks = nullptr;
     Rml::Element* mActionsRow = nullptr;
-    Buttons mChooseButton, mPlaceButtons, mDecryptedButton, mReportButton, mLinkButtons, mActions;
+    Buttons mChooseButton, mPlaceButtons, mDecryptedButton, mUpdateButton, mReportButton, mLinkButtons, mActions;
     setup::Engine mEngine;  // (last: destroyed first, which ends a check still going)
 };
 

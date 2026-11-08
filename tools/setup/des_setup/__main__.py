@@ -250,7 +250,7 @@ def cmd_run(a) -> int:
     """Every phase in order, with the setup screens' protocol (pipeline.py, docs/88). On the RPCS3 route without
     GAME, the game in RPCS3's library."""
     from_library = bool(a.rpcs3) and not a.game
-    req = pipeline.make_request(a.game, a.decrypted, a.firmware, a.rpcs3) if a.game or from_library else None
+    req = pipeline.make_request(a.game, a.decrypted, a.firmware, a.rpcs3, a.update) if a.game or from_library else None
     return pipeline.run(Path(a.data), req, app=a.app, jobs=a.jobs, check_only=a.check_only, cc=a.cc, ld=a.ld,
                         unlock_only=a.unlock_only, rpcs3_path=a.rpcs3, host=a.host, imports=a.imports,
                         no_import=a.no_import, gamedata=a.gamedata, from_library=from_library,
@@ -397,6 +397,8 @@ def main(argv=None) -> int:
     sp.add_argument("--decrypted", action="append", default=[], metavar="DIR",
                     help="also look here for the decrypted files, by name (repeatable)")
     sp.add_argument("--firmware", metavar="FILE", help="the decrypted libsre.prx (optional)")
+    sp.add_argument("--update", metavar="PATH", help="the Japanese or Asian disc's 1.04 update: its .pkg file, or the "
+                    "folder a PS3 or RPCS3 installed it to (default: looked for beside the disc copy)")
     rpcs3_arg(sp)
     data_arg(sp)
     sp.add_argument("-j", "--jobs", type=int, default=0, help="workers for the lift and the compile (default: auto)")

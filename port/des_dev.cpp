@@ -467,7 +467,7 @@ static void give_tick(ppu_context* ctx)
     if (!e || !*e || !strcmp(e, done)) return;
     /* The player's game data, read the way the AddInventoryItem script binding (0x00447748) reads it:
      * *(*(*(*(TOC - 0x7884) - 0x8000)) + 8). */
-    const uint32_t man = vm_read32(DES_AT(kChrMan)), base = vm_read32(DES_AT(0x019B5040u) - 0x7884u);
+    const uint32_t man = vm_read32(DES_AT(kChrMan)), base = vm_read32(DES_AT(0x019AD7BCu));
     uint32_t slot_p = 0, gm = 0, pgd = 0;
     if (!guest_ptr_ok(man) || !guest_ptr_ok(vm_read32(man + 0x1BC)) || !guest_ptr_ok(base) ||
         !guest_ptr_ok(slot_p = vm_read32(base - 0x8000u)) || !guest_ptr_ok(gm = vm_read32(slot_p)) ||

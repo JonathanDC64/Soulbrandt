@@ -42,7 +42,7 @@ from pathlib import Path
 
 from . import compile as compile_step
 from . import disc, exe_icon
-from . import fetch, firmware, gamefiles, journal, lift, protocol, rpcs3, rpcs3_import, rpcs3_library
+from . import fetch, firmware, game_update, gamefiles, journal, lift, protocol, rpcs3, rpcs3_import, rpcs3_library
 
 READY = "ready.txt"
 REQUEST = "request.json"
@@ -110,14 +110,16 @@ def _firmware_rel(name) -> str:
 
 # ---- what a run keeps in setup/ ----
 
-def make_request(game, decrypted=(), firmware=None, rpcs3_path=None) -> dict:
+def make_request(game, decrypted=(), firmware=None, rpcs3_path=None, update=None) -> dict:
     """What the player chose, with absolute paths (a later run may start elsewhere).
     rpcs3_path: the RPCS3 that unlocks the missing decrypted files (the RPCS3 route).
     game None: the game in that RPCS3's library (run's from_library).
+    update: the disc's update, a .pkg file or a folder (game_update.py), for a disc that needs one.
     A run with an import adds "import": {"items", "gamedata", "asked"} (_request)."""
     return {"game": os.path.abspath(game) if game else None, "decrypted": [os.path.abspath(d) for d in decrypted],
             "firmware": os.path.abspath(firmware) if firmware else None,
-            "rpcs3": os.path.abspath(rpcs3_path) if rpcs3_path else None}
+            "rpcs3": os.path.abspath(rpcs3_path) if rpcs3_path else None,
+            "update": os.path.abspath(update) if update else None}
 
 
 def save_request(data: Path, req: dict):
@@ -462,7 +464,56 @@ def _game_check(req, t, data, unlocks, progress=None, unlocked=False):
             for e in t.get("firmware", []):
                 also[e["name"]] = [data / "inputs" / _firmware_rel(e["name"])]
     return gamefiles.check(req["game"], dirs, firmware, table=t, progress=progress, unlocks=unlocks,
-                           also=also or None, firmware_unlock=fw)
+                           also=also or None, firmware_unlock=fw, update=_update_folder(req, data, t))
+
+
+def _update_folder(req, data, t):
+    """<data>/update/<TITLE_ID> of the request's disc, when it needs an update and that folder is there; else None."""
+    if data is None:
+        return None
+    tid = gamefiles.title_of(req.get("game") or "")
+    tt = gamefiles.for_title(t, tid)
+    if not tt or not tt.get("update"):
+        return None
+    p = Path(data) / game_update.FOLDER / tid
+    return p if p.is_dir() else None
+
+
+def _install_update(req, data, jr, emit, total, table):
+    """A disc that needs an update (game_update.py): the update's files into <data>/update/<TITLE_ID>, once, from what
+    the player gave or where one is found. An update already there stays. Raises game_update.UpdateError with the
+    sentence for the player."""
+    t = table or gamefiles.load_table()
+    tid = gamefiles.title_of(req.get("game") or "")
+    tt = gamefiles.for_title(t, tid)
+    if not tt or not tt.get("update"):
+        return
+    want = tt["update"]
+    exe = rpcs3.find(req.get("rpcs3")) if req.get("rpcs3") else None
+    hdd0 = rpcs3_library.folders(exe).hdd0 if exe else None
+    found = None
+    for place in game_update.places(gamefiles.find_root(req["game"]) or Path(req["game"]), req.get("update"), hdd0):
+        found = game_update.find_in(place, tid, want)
+        if found:
+            break
+    dest = Path(data) / game_update.FOLDER / tid
+    if not found:
+        if req.get("update"):
+            raise game_update.UpdateError(f"That is not {tt['disc']}'s {want['app_ver']} update. Choose its .pkg file, "
+                                          "or the folder your PS3 or RPCS3 installed it to.")
+        return                                  # (none found: the check says so, and the screens ask for it)
+    emit.text(f"ok   the {want['app_ver']} update found: {found[1]}")
+    size = found[1].stat().st_size if found[0] == "pkg" else 0
+    seen = [0]
+
+    def prog(n):
+        seen[0] += n
+        if size:
+            emit.progress("update", min(seen[0], size), size)
+
+    fp = journal.fingerprint("update", [tid, want["pkg"]["sha256"]])
+    jr.run("update", fp, lambda: (game_update.install(found, dest, want, prog) or {"files": len(want["files"])}),
+           outputs=[dest / "PARAM.SFO"])
 
 
 def blocking(rep, unlocks=False) -> list:
@@ -776,6 +827,13 @@ def _run(data, req, app, jobs, check_only, emit, src, table, manifest, phases, c
                                         gamedata or (req.get("import") or {}).get("gamedata"))
                     if stop is not None:
                         return stop
+                try:
+                    _install_update(req, data, jr, emit, total, table)
+                except game_update.UpdateError as e:
+                    emit.text(f"FIX  {e}")
+                    emit.error("game", "check", str(e))
+                    emit.done("fix")
+                    return 1
                 rep = _check(req, emit, total, table, data, unlocks)
                 probs = blocking(rep, unlocks)
                 if probs or rep.root is None:
@@ -837,7 +895,9 @@ def _run(data, req, app, jobs, check_only, emit, src, table, manifest, phases, c
             if phase == "compile" and module and Path(module).is_file():
                 prog = host[-1] if isinstance(host, (list, tuple)) and host else host   # (a command list ends in it)
                 program = Path(prog).parent if prog else None
+                up = _update_folder(req, data, table or gamefiles.load_table())
                 ready = {"format": 1, "app": app, "game": ready_text(data, rep.root, program),
+                         **({"update": ready_text(data, up, program)} if up else {}),
                          "eboot": ready_text(data, data / "inputs" / lift.EBOOT),
                          "module": ready_text(data, module), "module_size": Path(module).stat().st_size,
                          "module_sha256": gamefiles.sha256_file(module)}

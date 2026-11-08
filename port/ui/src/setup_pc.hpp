@@ -15,8 +15,12 @@ namespace ui::setup {
 struct Disc {
     const char* title;  // its TITLE_ID
     const char* name;   // "US disc"
+    const char* version;  // "version 1.00", or what it needs
 };
-inline constexpr Disc kDiscs[] = {{"BLUS30443", "US disc"}, {"BLES00932", "European disc"}};
+inline constexpr Disc kDiscs[] = {{"BLUS30443", "US disc", "version 1.00"},
+                                  {"BLES00932", "European disc", "version 1.00"},
+                                  {"BCJS30022", "Japanese disc", "with its 1.04 update"},
+                                  {"BCAS20071", "Asian disc", "with its 1.04 update"}};
 // The supported disc with this TITLE_ID, or nullptr.
 inline const Disc* disc_of(std::string_view title) {
     for (const Disc& d : kDiscs)
