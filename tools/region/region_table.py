@@ -118,22 +118,25 @@ def sources(root=ROOT):
 def check(root=ROOT):
     errors, used = [], set()
     rel = lambda p: p.relative_to(root).as_posix()  # noqa: E731
-    table_path = root / des_region.TABLE.relative_to(ROOT)
 
-    # The table: sorted, one line per address, each European address once.
-    try:
-        table = des_region.load_table(table_path)
-    except des_region.RegionError as e:
-        return [str(e)]
-    for eu, n in Counter(table.values()).items():
-        if n > 1:
-            errors.append(f"{table_path.name}: European address 0x{eu:08X} is on {n} lines")
+    # The tables: each sorted, one line per address, each of the disc's addresses once.
+    tables = {}
+    for table_path in sorted((root / "port" / "regions").glob("*.inc")):
+        try:
+            table = des_region.load_table(table_path)
+        except des_region.RegionError as e:
+            return [str(e)]
+        tables[table_path] = table
+        for other, n in Counter(table.values()).items():
+            if n > 1 and other != des_region.NOT_ON_DISC:
+                errors.append(f"{table_path.name}: address 0x{other:08X} is on {n} lines")
 
     def need(us, where):
         used.add(us)
-        if us not in table:
-            errors.append(f"{where}: 0x{us:08X} is not in {table_path.name}: add its European address "
-                          f"(tools/region/region_table.py find)")
+        for table_path, table in tables.items():
+            if us not in table:
+                errors.append(f"{where}: 0x{us:08X} is not in {table_path.name}: add its address "
+                              f"(tools/region/region_table.py find)")
 
     # The lift's inputs: the hook list, the overrides, the boot patch.
     lift = json.loads((root / "scripts" / "lift_ppu.json").read_text(encoding="utf-8"))
@@ -193,8 +196,9 @@ def check(root=ROOT):
                 errors.append(f"{rel(p)}:{line_of(code, m.start())}: {name} (an address, {consts[name][0]}) is "
                               f"used as it is: write DES_AT({name})")
 
-    for us in sorted(set(table) - used):
-        errors.append(f"{table_path.name}: 0x{us:08X} is not used by the port: remove its line")
+    for table_path, table in tables.items():
+        for us in sorted(set(table) - used):
+            errors.append(f"{table_path.name}: 0x{us:08X} is not used by the port: remove its line")
     errors += key_reads(hooks, texts, rel)
     return errors
 
@@ -520,8 +524,8 @@ def main(argv=None):
         errors = check()
         for e in errors:
             print(e)
-        table = des_region.load_table()
-        print(f"{des_region.TABLE.name}: {len(table)} addresses, "
+        tables = sorted((des_region.ROOT / "port" / "regions").glob("*.inc"))
+        print(", ".join(f"{t.name}: {len(des_region.load_table(t))} addresses" for t in tables) + ", "
               + ("all used and every use covered" if not errors else f"{len(errors)} problems"))
         return 1 if errors else 0
 
