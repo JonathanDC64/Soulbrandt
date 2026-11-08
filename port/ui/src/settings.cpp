@@ -105,6 +105,7 @@ constexpr Def kDefs[] = {
     {"DES_NET_BLOODSTAINS", "1", Apply::Live}, // des_net_show: 0 hides other players' bloodstains
     {"DES_NET_GHOSTS", "1", Apply::Live},      // des_net_show: 0 hides wandering ghosts
     {"DES_NET_SYNC", "", Apply::Live},         // des_net_sync: position packets a second; "" = every 6th frame
+    {"DES_DISCORD", "1", Apply::Live},         // discord_presence.cpp: the Discord status; "0" = none
     {"ui_scale", "0", Apply::UiOnly},          // 0 = Auto, else percent
     {"show_start_screen", "1", Apply::UiOnly},
     {"update_check", "1", Apply::UiOnly},      // updates.hpp: look for a newer release at each start (docs/105)

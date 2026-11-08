@@ -939,6 +939,11 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
         bool_row(leftPane, rightPane, "Ghosts", "DES_NET_GHOSTS",
             "Other players' ghosts walking through your world.<br/><br/>(DES_NET_GHOSTS)");
 
+        leftPane.add_section("Discord");
+        bool_row(leftPane, rightPane, "Discord status", "DES_DISCORD",
+            "Shows on your Discord profile that you are playing, the area you are in and whether you are online, "
+            "with a link to this project's page. Needs the Discord app open on this PC.<br/><br/>(DES_DISCORD)");
+
         leftPane.add_section("Players");
         leftPane.register_control(
             leftPane.add_group_button({.text = "Players you met"}).on_pressed([this] {
