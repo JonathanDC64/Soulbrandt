@@ -176,6 +176,20 @@ bool read(const char* path, std::vector<uint8_t>& out) {
 
 const uint8_t* at(const bp::Image& im, uint32_t x, uint32_t y) { return &im.rgba[(size_t(y) * im.width + x) * 4]; }
 
+// A rectangle of a decoded page (RGBA, `width` wide) painted one colour.
+void paint(std::vector<uint8_t>& rgba, uint32_t width, int x, int y, int w, int h, const uint8_t (&c)[4]) {
+    for (int v = y; v < y + h; v++)
+        for (int u = x; u < x + w; u++) std::memcpy(&rgba[(size_t(v) * width + size_t(u)) * 4], c, 4);
+}
+
+const bp::Cell* cell_of(const bp::Page& p, bp::Role r) {
+    for (const bp::Cell& c : p.cells)
+        if (c.role == r && !c.tile) return &c;
+    return nullptr;
+}
+
+bool same(const uint8_t* p, const uint8_t (&c)[4]) { return std::memcmp(p, c, 4) == 0; }
+
 // The most opaque texel in a cell of the drawn page (level 0).
 int cell_alpha(const bp::Image& im, const bp::Cell& c, int scale) {
     int most = 0;
@@ -265,6 +279,33 @@ int main(int argc, char** argv) {
     check(ni.width == 512 && ni.levels == 10, "drawn at 1x: 512x512 and 10 levels");
     check(bp::describe(bp::normalized(nin)) == "Nintendo x1 triangle=cross cross=triangle", "PAD_MAP in the page's name");
 
+    // PlayStation with Triangle and Cross swapped: the game's own pictures change places, the rest stays.
+    check(bp::untouched(bp::normalized(ps)) && !bp::untouched(xn), "PlayStation with no button moved: nothing drawn");
+    bp::Spec psm = ps;
+    std::swap(psm.pad_map[12], psm.pad_map[14]);
+    psm = bp::normalized(psm);
+    check(!bp::untouched(psm) && bp::describe(psm) == "PlayStation x1 triangle=cross cross=triangle",
+          "PlayStation with buttons moved: drawn, PAD_MAP in its name");
+    const bp::Cell* tri = cell_of(page, bp::kTriangle);
+    const bp::Cell* cro = cell_of(page, bp::kCross);
+    const bp::Cell* sq = cell_of(page, bp::kSquare);
+    constexpr uint8_t kTeal[4] = {0, 200, 180, 255}, kBlue[4] = {60, 100, 220, 255}, kPink[4] = {230, 100, 160, 255};
+    constexpr uint8_t kDisc[4] = {40, 40, 40, 255};
+    std::vector<uint8_t> painted = base;
+    if (tri && cro && sq) {
+        paint(painted, 512, tri->x, tri->y, tri->w, tri->h, kTeal);
+        paint(painted, 512, cro->x, cro->y, cro->w, cro->h, kBlue);
+        paint(painted, 512, sq->x, sq->y, sq->w, sq->h, kPink);
+        const bp::Image pi = bp::draw(page, painted, psm, font.empty() ? nullptr : font.data());
+        check(pi.width == 512 && pi.levels == 10, "drawn at the game's size");
+        const auto mid = [&](const bp::Cell* c) { return at(pi, uint32_t(c->x + c->w / 2), uint32_t(c->y + c->h / 2)); };
+        check(same(mid(tri), kBlue) && same(mid(cro), kTeal), "Triangle's cell shows Cross's picture, Cross's Triangle's");
+        check(same(mid(sq), kPink), "a button not moved stays as the game drew it");
+        if (!own) check(same(at(pi, 402, 401), {255, 0, 0, 255}), "the rest of the page kept (the red block)");
+    } else {
+        check(false, "Triangle, Cross and Square on the page");
+    }
+
     bp::Spec kb;
     kb.kind = bp::Kind::Keyboard;
     kb.scale = 4;
@@ -286,8 +327,10 @@ int main(int argc, char** argv) {
     if (menu.size() == 2) {
         const bp::Page& m0 = menu[0].width == 512 ? menu[0] : menu[1];
         const bp::Page& m8 = menu[0].width == 1024 ? menu[0] : menu[1];
-        check(m0.cells.size() == 2 && m8.cells.size() == 1 && m8.cells[0].tile && m8.max_scale == 2,
-              "Menu00's two round buttons, Menu08's item-slot square");
+        int spare = 0;
+        for (const bp::Cell& c : m0.cells) spare += c.spare;
+        check(m0.cells.size() == 4 && spare == 2 && m8.cells.size() == 1 && m8.cells[0].tile && m8.max_scale == 2,
+              "Menu00's two round buttons (and two spare), Menu08's item-slot square");
         check(m8.level0 == 1024u * 512u && m8.data.size() == m8.level0, "Menu08 as stored: one level");
         bp::Spec big = xn;
         big.scale = 4;
@@ -306,6 +349,31 @@ int main(int argc, char** argv) {
                 bright = std::max(bright, int(std::max(p[0], std::max(p[1], p[2]))));
             }
         check(font.empty() || bright > 120, "the Xbox X drawn on the square");
+
+        // PlayStation with Square and Cross swapped. Menu00's □ takes the spare Cross beside it, pixel for pixel; the
+        // item slot's square takes a Cross symbol (the largest: Menu00's), bare, on its own backing.
+        std::vector<uint8_t> m0b = bp::decode(m0);
+        paint(m0b, 512, 192, 32, 32, 32, kDisc);
+        paint(m0b, 512, 202, 42, 12, 12, kBlue);
+        bp::Spec sqx = ps;
+        std::swap(sqx.pad_map[14], sqx.pad_map[15]);
+        sqx = bp::normalized(sqx);
+        const std::vector<bp::Source> pictures{{&page, &painted}, {&m0, &m0b}};
+        const bp::Image m0i = bp::draw(m0, m0b, sqx, font.empty() ? nullptr : font.data(), pictures);
+        check(same(at(m0i, 160 + 2, 2), kDisc) && same(at(m0i, 160 + 12, 12), kBlue) &&
+              same(at(m0i, 192 + 12, 32 + 12), kBlue) && at(m0i, 160 + 16, 32 + 16)[3] == 0,
+              "Menu00's □ shows its spare Cross; ○ and the spare stay");
+        const bp::Image m8i = bp::draw(m8, mb, sqx, font.empty() ? nullptr : font.data(), pictures);
+        check(m8i.width == 1024, "the menu page moved at the game's size");
+        const uint8_t* centre = at(m8i, uint32_t(t.x + t.w / 2), uint32_t(t.y + t.h / 2));
+        const uint8_t* inner = at(m8i, uint32_t(t.x + 2), uint32_t(t.y + 2));
+        const uint8_t* rim = at(m8i, uint32_t(t.x + 1), uint32_t(t.y + 1));
+        check(centre[2] > 200 && centre[0] < 80 && centre[3] > 240, "the item slot's square shows Cross's blue symbol");
+        check(inner[3] > 190 && inner[3] < 215 && inner[0] < 40 && rim[3] > 190 && rim[3] < 215 && rim[0] < 40,
+              "the square's backing kept around it, not the disc");
+        const bp::Image m0x = bp::draw(m0, m0b, xn, font.empty() ? nullptr : font.data());
+        check(m0x.width == 1024 && same(at(m0x, 2 * (192 + 12), 2 * (32 + 12)), kBlue),
+              "a spare picture is never drawn over (Xbox, at 2x)");
     }
 
     if (png) {

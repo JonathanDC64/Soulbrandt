@@ -30,6 +30,7 @@ struct Cell {
     Role role;
     int x, y, w, h;      // in the page's pixels
     bool tile = false;   // a sprite's small square: its dark backing stays, the symbol on it is drawn bare
+    bool spare = false;  // a picture the game never shows: only taken from, for a PlayStation button moved (PAD_MAP)
 };
 
 struct Page {
@@ -82,22 +83,32 @@ extern const char* const kPadNames[16];
 struct Spec {
     Kind kind = Kind::PlayStation;
     int scale = 1;                          // the page at this many times its size (1-4)
-    std::array<int, 16> pad_map{};          // pads: the pad button (kPadNames index) each game button reads
+    std::array<int, 16> pad_map{};          // pads, PlayStation's too: the pad button (kPadNames index) each game button reads
     std::array<Key, kKeyTargets> keys{};    // keyboard: the first input bound to each target
     bool operator==(const Spec&) const = default;
 };
 // The Spec with what its kind does not use cleared, so two that draw the same page compare equal.
 Spec normalized(Spec s);
+// The game's own page as it is: PlayStation's icons with no button moved. Nothing is drawn for it.
+bool untouched(const Spec& s);
 // A short text naming the page drawn, for the log and as a cache key.
 std::string describe(const Spec& s);
 
 // The page drawn for `spec`: level 0 is the game's page (decoded, `base`) at spec.scale times its size (at most the
 // page's max_scale) with each button cell drawn again, followed by its smaller levels down to 1x1. RGBA, straight
 // alpha. font is a TrueType font's bytes (the UI's Alegreya Sans Bold) for the letters.
+//
+// PlayStation with buttons moved: each moved button's cell gets the game's own picture of the pad button that now reads
+// it, from `pictures` (the game's pages, decoded; the page itself is looked at too), a cell of the same size first.
 struct Image {
     uint32_t width = 0, height = 0, levels = 0;
     std::vector<uint8_t> rgba;
 };
-Image draw(const Page& page, const std::vector<uint8_t>& base, const Spec& spec, const unsigned char* font);
+struct Source {
+    const Page* page;
+    const std::vector<uint8_t>* base;   // decode(*page)
+};
+Image draw(const Page& page, const std::vector<uint8_t>& base, const Spec& spec, const unsigned char* font,
+           const std::vector<Source>& pictures = {});
 
 }  // namespace ui::button_pages

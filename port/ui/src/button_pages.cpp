@@ -80,6 +80,9 @@ const Sprite kSprites[] = {
     {"Menu08", 1024, 512, {kSquare, 79, 426, 19, 19, true}},    // the HUD's item slot (F20-00, FE_key_Square)
     {"Menu00", 512, 512, {kSquare, 160, 0, 32, 32, false}},     // the HUD's magic slot (F20-00, key)
     {"Menu00", 512, 512, {kCircle, 160, 32, 32, 32, false}},    // the message window (F10-00 and F10-01, key_circle)
+    // Beside them, never shown: Triangle and Cross the same size, for the two above when PAD_MAP moves a button.
+    {"Menu00", 512, 512, {kTriangle, 192, 0, 32, 32, false, true}},
+    {"Menu00", 512, 512, {kCross, 192, 32, 32, 32, false, true}},
 };
 
 // The texture pack, big-endian: "TPF\0", the count at 8, then 32 bytes a texture (data offset, size, format, cube,
@@ -231,7 +234,7 @@ std::vector<Page> read_sprites(const std::vector<uint8_t>& tpf, const std::strin
         if (!tpf_page(tpf, i, p, name)) continue;
         for (const Sprite& s : kSprites)
             if (name == s.texture && p.width == s.width && p.height == s.height) p.cells.push_back(s.cell);
-        if (p.cells.empty()) continue;
+        if (std::all_of(p.cells.begin(), p.cells.end(), [](const Cell& c) { return c.spare; })) continue;
         p.from = from;
         p.max_scale = 2;   // (a 1024x512 page at 4x would be 43 MB for one 19-pixel square)
         out.push_back(std::move(p));
@@ -264,17 +267,24 @@ std::vector<uint8_t> decode(const Page& p) {
 }
 
 Spec normalized(Spec s) {
-    if (s.kind != Kind::Xbox && s.kind != Kind::Nintendo) s.pad_map = {};
+    if (s.kind == Kind::Keyboard) s.pad_map = {};
     if (s.kind != Kind::Keyboard) s.keys = {};
-    if (s.kind == Kind::PlayStation) s.scale = 1;
+    if (s.kind == Kind::PlayStation) s.scale = 1;   // (the game's own pictures, moved: no larger than they are)
     return s;
+}
+
+bool untouched(const Spec& s) {
+    if (s.kind != Kind::PlayStation) return false;
+    for (int i = 0; i < 16; i++)
+        if (s.pad_map[i] != i && s.pad_map[i] >= 0 && s.pad_map[i] < 16) return false;
+    return true;
 }
 
 std::string describe(const Spec& s) {
     static const char* const kNames[] = {"PlayStation", "Xbox", "Nintendo", "keyboard"};
     std::string out = kNames[int(s.kind)];
     out += " x" + std::to_string(s.scale);
-    if (s.kind == Kind::Xbox || s.kind == Kind::Nintendo) {
+    if (s.kind != Kind::Keyboard) {
         for (int i = 0; i < 16; i++)
             if (s.pad_map[i] != i && s.pad_map[i] >= 0 && s.pad_map[i] < 16)
                 out += std::string(" ") + kPadNames[i] + "=" + kPadNames[s.pad_map[i]];
@@ -763,9 +773,137 @@ void draw_tile_cell(Ctx& c, const Box& b, Role role, const Spec& s) {
     text(c, b, letter, 0.62f * b.h(), col);
 }
 
+// ---- PlayStation with buttons moved: the game's own pictures, each where the button that now reads it is ----
+
+int pad_at(const Spec& s, int g) { return s.pad_map[g] >= 0 && s.pad_map[g] < 16 ? s.pad_map[g] : g; }
+bool face_button(int p) { return p == kPCross || p == kPCircle || p == kPSquare || p == kPTriangle; }
+
+// A rectangle of one of the game's pages, read premultiplied; outside it reads clear (the font's next character is
+// not part of it). symbol: only a face button's coloured symbol, without the dark disc under it, all in the symbol's
+// own colour (the item slot draws its symbol bare on its square).
+struct Picture {
+    const Page* page = nullptr;
+    const std::vector<uint8_t>* base = nullptr;
+    int x = 0, y = 0, w = 0, h = 0;
+    bool symbol = false;
+    float colour[3] = {0, 0, 0};
+
+    const uint8_t* px(int u, int v) const { return &(*base)[(size_t(v) * page->width + size_t(u)) * 4]; }
+    // How much of a pixel is the symbol: its colourfulness (the disc and rim are grey), times its alpha.
+    static float weight(const uint8_t* p) {
+        const int chroma = std::max({p[0], p[1], p[2]}) - std::min({p[0], p[1], p[2]});
+        return std::clamp((float(chroma) - 40.f) / 50.f, 0.f, 1.f) * float(p[3]) / 255.f;
+    }
+    void at(int u, int v, float out[4]) const {
+        if (u < x || v < y || u >= x + w || v >= y + h) {
+            out[0] = out[1] = out[2] = out[3] = 0.f;
+            return;
+        }
+        const uint8_t* p = px(u, v);
+        const float a = symbol ? weight(p) : float(p[3]) / 255.f;
+        for (int ch = 0; ch < 3; ch++) out[ch] = (symbol ? colour[ch] : float(p[ch]) / 255.f) * a;
+        out[3] = a;
+    }
+    // Narrowed to the symbol, and its colour found (the mean of its solid part). False when the cell has none.
+    bool to_symbol() {
+        int x0 = x + w, y0 = y + h, x1 = -1, y1 = -1;
+        double sum[3] = {0, 0, 0}, n = 0;
+        for (int v = y; v < y + h; v++)
+            for (int u = x; u < x + w; u++) {
+                const float k = weight(px(u, v));
+                if (k < 0.25f) continue;
+                x0 = std::min(x0, u), y0 = std::min(y0, v), x1 = std::max(x1, u), y1 = std::max(y1, v);
+                if (k < 0.9f) continue;
+                for (int ch = 0; ch < 3; ch++) sum[ch] += px(u, v)[ch];
+                n++;
+            }
+        if (x1 < 0 || n == 0) return false;
+        for (int ch = 0; ch < 3; ch++) colour[ch] = float(sum[ch] / n / 255.0);
+        x = x0, y = y0, w = x1 - x0 + 1, h = y1 - y0 + 1;
+        symbol = true;
+        return true;
+    }
+};
+
+// The game's picture of pad button p for `want`: a cell of the same size, on the same page, first; for a sprite's square
+// the largest (its symbol is shrunk to fit). Squares are never taken from: their symbol sits on a backing.
+bool find_picture(int p, const Page& page, const std::vector<uint8_t>& base, const Cell& want,
+                  const std::vector<Source>& pictures, Picture& out) {
+    int64_t best = -1;
+    const auto look = [&](const Page& pg, const std::vector<uint8_t>& b) {
+        if (b.size() != size_t(pg.width) * pg.height * 4) return;
+        for (const Cell& c : pg.cells) {
+            if (c.tile || role_button(c.role) != p) continue;
+            const int64_t area = int64_t(c.w) * c.h, same = int64_t(1) << 40;
+            const int64_t score = want.tile ? area : (c.w == want.w && c.h == want.h ? 4 * same : 0) +
+                                                     (c.h == want.h ? 2 * same : 0) + (&pg == &page ? same : 0) + area;
+            if (score <= best) continue;
+            best = score;
+            out = Picture{&pg, &b, c.x, c.y, c.w, c.h};
+        }
+    };
+    look(page, base);
+    for (const Source& s : pictures)
+        if (s.page && s.base && s.page != &page) look(*s.page, *s.base);
+    return best >= 0;
+}
+
+// pic drawn over the canvas as large as fits in b, centred (b in the canvas's pixels; the page at 1x). A cell the same
+// size as the picture is a copy, pixel for pixel.
+void put(Canvas& cv, const Picture& pic, const Box& b) {
+    const float k = std::min(b.w() / float(pic.w), b.h() / float(pic.h));
+    if (!(k > 0.f)) return;
+    const float dw = float(pic.w) * k, dh = float(pic.h) * k;
+    const float x0 = b.cx() - dw / 2, y0 = b.cy() - dh / 2;
+    const int n = std::clamp(int(std::ceil(1.f / k - 0.01f)), 1, 4);   // samples a side, when shrunk
+    const auto bilinear = [&](float sx, float sy, float out[4]) {
+        const int u = int(std::floor(sx)), v = int(std::floor(sy));
+        const float fx = sx - float(u), fy = sy - float(v);
+        float p00[4], p10[4], p01[4], p11[4];
+        pic.at(u, v, p00);
+        pic.at(u + 1, v, p10);
+        pic.at(u, v + 1, p01);
+        pic.at(u + 1, v + 1, p11);
+        for (int ch = 0; ch < 4; ch++)
+            out[ch] = (p00[ch] * (1 - fx) + p10[ch] * fx) * (1 - fy) + (p01[ch] * (1 - fx) + p11[ch] * fx) * fy;
+    };
+    for (int y = std::max(0, int(std::floor(y0))); y < std::min(cv.h, int(std::ceil(y0 + dh))); y++)
+        for (int x = std::max(0, int(std::floor(x0))); x < std::min(cv.w, int(std::ceil(x0 + dw))); x++) {
+            float acc[4] = {0, 0, 0, 0};
+            for (int j = 0; j < n; j++)
+                for (int i = 0; i < n; i++) {
+                    const float dx = float(x) + (float(i) + 0.5f) / float(n), dy = float(y) + (float(j) + 0.5f) / float(n);
+                    float s[4];
+                    bilinear(float(pic.x) + (dx - x0) / k - 0.5f, float(pic.y) + (dy - y0) / k - 0.5f, s);
+                    for (int ch = 0; ch < 4; ch++) acc[ch] += s[ch];
+                }
+            uint8_t* o = &cv.px[(size_t(y) * size_t(cv.w) + size_t(x)) * 4];
+            const float a = acc[3] / float(n * n), keep = 1.f - a;
+            for (int ch = 0; ch < 4; ch++)
+                o[ch] = uint8_t(std::lround(std::clamp(acc[ch] / float(n * n) * 255.f + float(o[ch]) * keep, 0.f, 255.f)));
+        }
+}
+
+// The moved button p's picture in cell `cell` (box b, the page at 1x). A sprite's square gets a face button's symbol
+// bare, the size of the game's (inset 3 pixels), or another button's whole picture.
+void put_moved(Canvas& cv, const Page& page, const std::vector<uint8_t>& base, const Cell& cell, const Box& b, int p,
+               const std::vector<Source>& pictures) {
+    Picture pic;
+    if (!find_picture(p, page, base, cell, pictures, pic)) return;
+    if (cell.tile) {
+        if (face_button(p) && pic.to_symbol()) return put(cv, pic, {b.x0 + 3, b.y0 + 3, b.x1 - 3, b.y1 - 3});
+        return put(cv, pic, {b.x0 + 2, b.y0 + 2, b.x1 - 2, b.y1 - 2});
+    }
+    // A wide cell (Select's, Start's) with another button in it: the button at its left, as for the pads.
+    const bool wide = b.w() > 1.5f * b.h(), pic_wide = float(pic.w) > 1.5f * float(pic.h);
+    if (wide && !pic_wide) return put(cv, pic, {b.x0, b.y0, b.x0 + b.h(), b.y1});
+    put(cv, pic, b);
+}
+
 }  // namespace
 
-Image draw(const Page& page, const std::vector<uint8_t>& base, const Spec& spec, const unsigned char* font) {
+Image draw(const Page& page, const std::vector<uint8_t>& base, const Spec& spec, const unsigned char* font,
+           const std::vector<Source>& pictures) {
     const int S = std::clamp(spec.scale, 1, std::clamp(page.max_scale, 1, 4));
     const int W = int(page.width) * S, H = int(page.height) * S;
     Canvas cv;
@@ -801,9 +939,17 @@ Image draw(const Page& page, const std::vector<uint8_t>& base, const Spec& spec,
     stbtt_fontinfo info;
     const bool have_font = font && stbtt_InitFont(&info, font, stbtt_GetFontOffsetForIndex(font, 0));
     Ctx c{cv, have_font ? &info : nullptr, float(S)};
+    const bool have_base = base.size() == size_t(page.width) * page.height * 4;
     for (const Cell& cell : page.cells) {
+        if (cell.spare) continue;
         const Box b{float(cell.x * S), float(cell.y * S), float((cell.x + cell.w) * S), float((cell.y + cell.h) * S)};
         c.u = b.h() / 26.f;
+        int moved = -1;   // PlayStation: the pad button that now reads this one, the cell left as it is when none
+        if (spec.kind == Kind::PlayStation) {
+            const int g = role_button(cell.role);
+            if (g < 0 || pad_at(spec, g) == g || !have_base) continue;
+            moved = pad_at(spec, g);
+        }
         if (cell.tile) {
             // The square's inside painted with its own backing (taken 2 pixels in, clear of the symbol, which the
             // game insets 3), its edge left as the game drew it; then the device's symbol on it.
@@ -818,12 +964,14 @@ Image draw(const Page& page, const std::vector<uint8_t>& base, const Spec& spec,
                 for (int x = (cell.x + kIn) * S; x < (cell.x + cell.w - kIn) * S; x++)
                     std::memcpy(&cv.px[(size_t(y) * size_t(W) + size_t(x)) * 4], back, 4);
             const float in = float(kIn * S);
-            if (spec.kind != Kind::PlayStation) draw_tile_cell(c, {b.x0 + in, b.y0 + in, b.x1 - in, b.y1 - in}, cell.role, spec);
+            if (moved >= 0) put_moved(cv, page, base, cell, b, moved, pictures);
+            else draw_tile_cell(c, {b.x0 + in, b.y0 + in, b.x1 - in, b.y1 - in}, cell.role, spec);
             continue;
         }
         for (int y = cell.y * S; y < (cell.y + cell.h) * S; y++)
             std::memset(&cv.px[(size_t(y) * size_t(W) + size_t(cell.x * S)) * 4], 0, size_t(cell.w * S) * 4);
-        if (spec.kind == Kind::Keyboard) draw_key_cell(c, b, cell.role, spec);
+        if (moved >= 0) put_moved(cv, page, base, cell, b, moved, pictures);
+        else if (spec.kind == Kind::Keyboard) draw_key_cell(c, b, cell.role, spec);
         else if (spec.kind == Kind::Xbox || spec.kind == Kind::Nintendo) draw_pad_cell(c, b, cell.role, spec);
     }
     // Level 0, then each level half the last (a box filter on the premultiplied colours), each straight alpha.

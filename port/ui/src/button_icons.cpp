@@ -6,7 +6,8 @@
 //   one whose bytes are a page's is that page.
 // - What to show: the Button icons row (DES_GLYPHS). Automatic follows cellPad's last-used device
 //   (cellPad_host_glyph_device: a pad button or a stick pushed, or a key or mouse button). PlayStation is the game's own
-//   page, untouched; Xbox, Nintendo and Keyboard and mouse are drawn here (button_pages.cpp) at the render scale
+//   page, untouched until PAD_MAP moves a button: then each moved button shows the game's own picture of the pad button
+//   that reads it now. Xbox, Nintendo and Keyboard and mouse are drawn here (button_pages.cpp) at the render scale
 //   (RSX_SCALE, up to 4x), following PAD_MAP and the keys bound in Controls.
 // - Drawing takes tens of milliseconds, so it happens on this module's thread; the game's page (or the last one drawn)
 //   shows until the new one is ready. Up to six drawn pages are kept, so switching back is at once.
@@ -72,7 +73,7 @@ struct State {
     std::condition_variable cv;
     std::vector<char> seen;             // each page: the game has uploaded it
     unsigned seen_serial = 0;
-    bp::Spec spec;                      // what to show (normalized; PlayStation: the game's own)
+    bp::Spec spec;                      // what to show (normalized; untouched: the game's own)
     unsigned spec_serial = 0;
     std::vector<Built> cache;
     std::shared_ptr<bp::Image> given;   // the image the renderer was last given, kept while it copies it
@@ -151,7 +152,7 @@ int ask(void*, const uint8_t* guest, uint32_t bytes, uint32_t width, uint32_t he
         std::fprintf(stderr, "[icons] the game's button page: %s, page %d\n", s.pages[id].from.c_str(),
                      s.pages[id].index);
     }
-    if (s.spec.kind == bp::Kind::PlayStation) return 0;
+    if (bp::untouched(s.spec)) return 0;
     const std::string key = key_of(s.spec, id);
     for (Built& b : s.cache) {
         if (b.key != key) continue;
@@ -197,7 +198,7 @@ void worker() {
         done_spec = s.spec_serial;
         done_seen = s.seen_serial;
         const bp::Spec spec = s.spec;
-        if (spec.kind == bp::Kind::PlayStation) continue;
+        if (bp::untouched(spec)) continue;
         std::vector<size_t> todo;
         for (size_t i = 0; i < s.pages.size(); i++) {
             if (!s.seen[i]) continue;
@@ -210,8 +211,15 @@ void worker() {
         for (size_t i : todo) {
             const auto t0 = std::chrono::steady_clock::now();
             if (decoded[i].empty()) decoded[i] = bp::decode(s.pages[i]);
+            // PlayStation with buttons moved: the pictures are taken from every page (the HUD's square from the font's).
+            std::vector<bp::Source> pictures;
+            if (spec.kind == bp::Kind::PlayStation)
+                for (size_t j = 0; j < s.pages.size(); j++) {
+                    if (decoded[j].empty()) decoded[j] = bp::decode(s.pages[j]);
+                    pictures.push_back({&s.pages[j], &decoded[j]});
+                }
             auto image = std::make_shared<bp::Image>(bp::draw(s.pages[i], decoded[i], spec,
-                font ? reinterpret_cast<const unsigned char*>(font->data) : nullptr));
+                font ? reinterpret_cast<const unsigned char*>(font->data) : nullptr, pictures));
             const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
             lk.lock();
             if (s.cache.size() >= kKeep) {
@@ -297,7 +305,7 @@ void poll() {
         if (spec == s.spec) return;
         s.spec = spec;
         s.spec_serial++;
-        for (size_t i = 0; i < s.pages.size() && spec.kind != bp::Kind::PlayStation; i++) {
+        for (size_t i = 0; i < s.pages.size() && !bp::untouched(spec); i++) {
             const std::string key = key_of(spec, i);
             if (s.seen[i] &&
                 std::none_of(s.cache.begin(), s.cache.end(), [&](const Built& b) { return b.key == key; }))
@@ -305,8 +313,9 @@ void poll() {
         }
     }
     s.cv.notify_one();
-    static const char* const kNames[] = {"PlayStation (the game's own)", "Xbox", "Nintendo", "keyboard and mouse"};
-    std::fprintf(stderr, "[icons] button icons: %s\n", kNames[int(spec.kind)]);
+    static const char* const kNames[] = {"PlayStation, buttons moved", "Xbox", "Nintendo", "keyboard and mouse"};
+    std::fprintf(stderr, "[icons] button icons: %s\n",
+                 bp::untouched(spec) ? "PlayStation (the game's own)" : kNames[int(spec.kind)]);
     if (ready) rsx_texture_override_changed();   // (otherwise the thread does, once it has drawn the page)
 }
 

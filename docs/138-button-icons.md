@@ -9,7 +9,8 @@ buttons. They now show the buttons of the controller the player used last, or th
 
 - **Automatic** (default): a press on a pad, or a stick or trigger pushed past half way, shows that pad's buttons.
   A key or mouse button shows the keyboard's. Stick drift, a resting trigger and mouse movement change nothing.
-- **PlayStation**: the game's own icons, untouched.
+- **PlayStation**: the game's own icons. A button moved in Controls shows the game's own picture of the pad button
+  that does it now.
 - **Xbox**: A B X Y in their usual colours, LB RB LT RT, LS RS, View and Menu.
 - **Nintendo**: the same letters in grey (SDL names a Nintendo pad's buttons by their letters, so A is Cross), L R
   ZL ZR, Minus and Plus.
@@ -17,7 +18,8 @@ buttons. They now show the buttons of the controller the player used last, or th
   lit, arrow keys, WASD for moving and the mouse for the camera. A chord (Shift + left button) shows a small Shift key
   on the mouse.
 
-A pad's icons follow PAD_MAP: if Triangle is mapped to the pad's A, the prompt for Triangle shows A. The row:
+Every pad's icons follow PAD_MAP: if Triangle is mapped to the pad's A, the prompt for Triangle shows A, and on a
+PlayStation pad with Circle and Cross swapped, the prompt for Circle shows ×. The row:
 **Settings > Game > Button icons** (DES_GLYPHS), live.
 
 ## How it works
@@ -45,6 +47,11 @@ A pad's icons follow PAD_MAP: if Triangle is mapped to the pad's A, the prompt f
    style, sampled from its own page: a dark glossy button with a rim lit from above and a soft highlight, light grey
    letters on a soft shadow, yellow arrows. Drawing a page takes tens of milliseconds, on that thread; the last page
    shows until the new one is ready, and six are kept.
+7. **PlayStation with buttons moved.** With no button moved, nothing is drawn and the game's page shows. Once
+   PAD_MAP moves one, each moved button's cell gets the game's own picture of the pad button that now does it, at the
+   game's size: a cell the same size first (the font's □ for the font's △; Menu00's spare △ and × beside its □ and ○,
+   which the game never shows, for those two). The item slot's square takes the symbol alone, without the disc under
+   it, from the largest picture of that button, in its own colour, on the square's own backing.
 
 ## The art: drawn, not generated
 
@@ -89,7 +96,10 @@ could still help design a future icon, but its output would need redrawing as sh
 - `port/ui/tests/button_icons_check.cpp` (target `button_icons_check`): a made-up code map and texture pack read, the
   page decoded and drawn for each device at 1x, 2x and 4x, every cell drawn, the rest of the page kept. Then a made-up
   menu pack: its two sprite pages found by name and size (not a third texture), drawn at 2x at most, and the item
-  slot's backing kept with the symbol drawn on it. With `--ccm` and `--tpf` it reads the player's own font files, and
+  slot's backing kept with the symbol drawn on it. PlayStation with buttons swapped: no page when no button is moved;
+  the swapped cells take each other's pictures pixel for pixel and the others stay; Menu00's □ takes its spare Cross;
+  the item slot's square takes Cross's symbol alone on its backing. With `--ccm` and `--tpf` it reads the player's own
+  font files, and
   `--png <folder>` writes the pages to look at. Pages drawn from the player's files hold the game's art: never commit
   them.
 - In the game (11-08), on the default renderer at RSX_SCALE=200, with DES_GLYPHS set live to each value:
