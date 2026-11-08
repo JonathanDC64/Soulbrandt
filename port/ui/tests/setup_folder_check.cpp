@@ -2,7 +2,8 @@
 // (docs/88 section 3, "The build folder"). The folder is found in this order: DES_SETUP_DATA, the choice in
 // <usual>/setup-folder.txt, a portable install's build in the shared folder from before, the usual folder. A choice is
 // kept in full, or relative in a portable install, and goes when the usual folder is chosen again. A folder picked
-// that holds other things gets a folder of setup's own in it, and the program's own folders are refused.
+// that holds other things gets a folder of setup's own in it, and the program's own folders are refused. And how
+// setup's own files can be missing beside the program (issue #431).
 //
 // Each case runs in made-up folders under the system's temporary folder, removed at the end. Prints one line a case
 // and "setup_folder_check: N passed, M failed"; exit 1 on a failure. The same on every platform (CI runs it on Windows
@@ -251,6 +252,40 @@ int main() {
     });
     run("refuses_a_relative_folder", [](const fs::path&) {
         return cannot_use("build", {}).empty() ? std::string("not refused") : std::string();
+    });
+
+    // ---- Setup's own files beside the program (issue #431) ----
+    const auto gone = [](EngineGone got, EngineGone want) {
+        return got == want ? std::string() : "engine_gone is " + std::to_string(int(got)) + ", not " +
+                                                 std::to_string(int(want));
+    };
+    run("engine_there", [gone](const fs::path& t) {
+        write(t / "prog" / fs::path(kEngineEntry), "\n");
+        write(t / "temp" / "Temp1_x.zip" / "x" / fs::path(kEngineEntry), "\n");  // (an archive tool took out all)
+        return all({gone(engine_gone(t / "prog", t / "temp"), EngineGone::No),
+                    gone(engine_gone(t / "temp" / "Temp1_x.zip" / "x", t / "temp"), EngineGone::No)});
+    });
+    run("engine_program_copied_alone", [gone](const fs::path& t) {
+        write(t / "Desktop" / "game.exe", "\n");
+        return all({gone(engine_gone(t / "Desktop", t / "temp"), EngineGone::NoSetupFolder),
+                    gone(engine_gone(t / "Desktop", {}), EngineGone::NoSetupFolder)});
+    });
+    run("engine_from_inside_the_archive", [gone](const fs::path& t) {
+        write(t / "temp" / "Temp1_x.zip" / "x" / "game.exe", "\n");  // (Explorer's folder for a zip's program)
+        write(t / "temp" / "7zO1A2B.tmp" / "game.exe", "\n");        // (7-Zip's)
+        fs::create_directories(t / "other");
+        return all({gone(engine_gone(t / "temp" / "Temp1_x.zip" / "x", t / "temp"), EngineGone::FromArchive),
+                    gone(engine_gone(t / "temp" / "7zO1A2B.tmp", t / "temp"), EngineGone::FromArchive),
+                    // the temporary folder by another path to it (Windows' TEMP can give its short 8.3 name)
+                    gone(engine_gone(t / "temp" / "7zO1A2B.tmp", t / "other" / ".." / "temp"),
+                         EngineGone::FromArchive),
+                    gone(engine_gone(t / "temp" / "7zO1A2B.tmp", {}), EngineGone::NoSetupFolder)});
+    });
+    run("engine_setup_folder_incomplete", [gone](const fs::path& t) {
+        write(t / "prog" / "setup" / "release-files.txt", "game.exe\n");
+        write(t / "temp" / "x" / "setup" / "tools" / "setup" / "des_setup" / "__init__.py", "\n");
+        return all({gone(engine_gone(t / "prog", t / "temp"), EngineGone::Incomplete),
+                    gone(engine_gone(t / "temp" / "x", t / "temp"), EngineGone::Incomplete)});
     });
 
     // ---- What differs by platform ----

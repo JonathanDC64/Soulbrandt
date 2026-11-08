@@ -339,6 +339,18 @@ void SetupStartWindow::refresh() {
         break;
     }
     }
+    // Setup's own files are not beside the program (issue #431: started from inside the zip, or the program copied on
+    // its own): no run can start, so this screen says what to do, in place of a Start that fails at the first check. A
+    // game that is built still plays.
+    if (mLaunch.state != State::Ready) {
+        if (const std::string why = setup::engine_problem(); !why.empty()) {
+            main.clear();
+            mFolderButton.clear();  // (its listener goes before its element)
+            clear_children(mBody);
+            set_heading("Setup cannot start", "");
+            callout(mBody, "err", "Setup's files are missing", why);
+        }
+    }
     // A newer release (updates.hpp), whatever the state: updating first saves a build for the version it replaces.
     std::vector<Action> more;
     mUpdateShown = updates::state() == updates::State::Found && !updates::skipped() ? updates::found().version : "";

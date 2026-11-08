@@ -13,6 +13,7 @@
 #endif
 
 #include <algorithm>
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -67,6 +68,11 @@ void tell(const std::string& title, const std::string& text) {
     MessageBoxW(nullptr, report::widen(text).c_str(), report::widen(title).c_str(), MB_OK | MB_ICONERROR);
 }
 
+// The program was started from inside the download (EngineGone::FromArchive): what to do, in Explorer's words.
+constexpr const char* kFromArchive =
+    "The game was started from inside the zip, so setup's files are not with it. Right-click the zip, choose Extract "
+    "All, then start the game from the new folder.";
+
 #else
 
 std::filesystem::path local_data_base() {
@@ -77,6 +83,10 @@ std::filesystem::path local_data_base() {
 
 bool narrow_can_name(const std::filesystem::path&) { return true; }  // (names are UTF-8 bytes)
 void tell(const std::string&, const std::string&) {}                // (standard error has it)
+
+constexpr const char* kFromArchive =
+    "The game was started from inside the archive, so setup's files are not with it. Extract the whole archive to a "
+    "folder, then start the game from there.";
 
 #endif
 
@@ -308,7 +318,7 @@ std::filesystem::path engine_script() {
     }
     std::filesystem::path dir = report::program_dir();
     // A player's install: setup/ beside the program (tools/release/package.py). A source tree: tools/ further up.
-    if (const auto script = dir / "setup" / "tools" / "setup" / "run_setup.py";
+    if (const auto script = dir / std::filesystem::path(kEngineEntry).make_preferred();
         !dir.empty() && std::filesystem::is_regular_file(script, ec))
         return script;
     for (int up = 0; up <= 3 && !dir.empty(); ++up) {
@@ -320,12 +330,46 @@ std::filesystem::path engine_script() {
     return {};
 }
 
-bool Engine::start(const Request& request, bool check_only, bool unlock_only) {
-    mWhy.clear();
-    if (engine_script().empty() || data_dir().empty()) {
-        mWhy = "The setup files are missing from the game's folder. Extract the download again.";
-        return false;
+std::string engine_problem() {
+    if (!engine_script().empty() && !data_dir().empty()) return {};
+    std::string why = "The setup files are missing from the game's folder. Extract the download again.";
+    std::string found = "no folder for setup's data on this PC";
+    if (!env("DES_SETUP_SCRIPT").empty()) {
+        found = "DES_SETUP_SCRIPT names no file";
+    } else if (report::program_dir().empty()) {
+        found = "the program's folder is not known";
+    } else if (!data_dir().empty()) {
+        std::error_code ec;
+        const auto exe = report::program_path().filename();
+        found = std::string(kEngineEntry) + " is not beside the program: ";
+        switch (engine_gone(report::program_dir(), std::filesystem::temp_directory_path(ec))) {
+        case EngineGone::No: return {};  // (there now)
+        case EngineGone::FromArchive:
+            why = kFromArchive;
+            found += "no setup folder, and the program is in the temporary folder (started from inside the archive)";
+            break;
+        case EngineGone::NoSetupFolder:
+            why = "The setup folder is not next to " + utf8(exe) +
+                  ". Start the game from the folder the download was extracted to, with all its files. For a desktop "
+                  "icon, use a shortcut rather than a copy of the program.";
+            found += "no setup folder there (the program was copied or moved on its own)";
+            break;
+        case EngineGone::Incomplete:
+            why = "Some of setup's files are missing from the game's folder. Extract the download again. If an "
+                  "antivirus removed them, allow the game's folder in it first.";
+            found += "the setup folder is there without it (part of the download, or files an antivirus removed)";
+            break;
+        }
     }
+    // (once: each check asks again. No path: the reports leave paths out anyway.)
+    static std::atomic<bool> told{false};
+    if (!told.exchange(true)) std::fprintf(stderr, "[setup] setup cannot start: %s\n", found.c_str());
+    return why;
+}
+
+bool Engine::start(const Request& request, bool check_only, bool unlock_only) {
+    mWhy = engine_problem();
+    if (!mWhy.empty()) return false;
     mRequest = request;
     mCheckOnly = check_only;
     mUnlockOnly = unlock_only && !check_only;
@@ -368,8 +412,7 @@ bool Engine::start_engine(unsigned run) {
     const auto py = python();
     const auto script = engine_script();
     if (py.empty() || script.empty()) {
-        mWhy = py.empty() ? "Python for setup is not downloaded yet."
-                          : "The setup files are missing from the game's folder. Extract the download again.";
+        mWhy = py.empty() ? "Python for setup is not downloaded yet." : engine_problem();
         return false;
     }
     // -X utf8: the tools' prints and files are UTF-8 whatever the code page; -u: each line as it is printed (docs/52
@@ -412,8 +455,7 @@ bool Engine::start_command(const std::vector<std::string>& args) {
     mWhy.clear();
     const auto py = python();
     if (py.empty() || engine_script().empty() || data_dir().empty()) {
-        mWhy = py.empty() ? "Python for setup is not downloaded yet."
-                          : "The setup files are missing from the game's folder. Extract the download again.";
+        mWhy = py.empty() ? "Python for setup is not downloaded yet." : engine_problem();
         return false;
     }
     mStopAsked = false;

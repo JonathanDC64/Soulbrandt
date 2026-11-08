@@ -210,4 +210,18 @@ bool keep_choice(const std::filesystem::path& usual, const std::filesystem::path
     return true;
 }
 
+EngineGone engine_gone(const std::filesystem::path& program, const std::filesystem::path& temp) {
+    std::error_code ec;
+    if (std::filesystem::is_regular_file(program / std::filesystem::path(kEngineEntry), ec)) return EngineGone::No;
+    if (std::filesystem::is_directory(program / "setup", ec)) return EngineGone::Incomplete;
+    // In the temporary folder or below it, folder by folder on disk: Windows' TEMP can name it by its short 8.3 name,
+    // and the program's path is the long one.
+    if (!temp.empty())
+        for (auto p = tidy(program); !p.empty(); p = p.parent_path()) {
+            if (same_folder(p, temp)) return EngineGone::FromArchive;
+            if (p == p.parent_path()) break;
+        }
+    return EngineGone::NoSetupFolder;
+}
+
 }  // namespace ui::setup

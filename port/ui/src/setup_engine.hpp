@@ -121,6 +121,11 @@ std::filesystem::path python();
 // folder elsewhere), else beside the exe in a release (the install mirrors the source tree), or up to three folders up
 // in a developer's build. Empty if it is not there.
 std::filesystem::path engine_script();
+// Empty when a run can start (the engine's script and setup's data folder are found), else why not, for the player:
+// how setup's files are missing beside the program (setup_folder.hpp engine_gone: started from inside the zip, the
+// program copied on its own, or part of the setup folder gone; issue #431). The first time, a line in the log says
+// which.
+std::string engine_problem();
 
 // One run of the engine: `run_setup.py run ...` under setup's Python, its lines read into a Status. With no Python yet
 // (before the first run), the host's download of it (setup_python.hpp) comes first, as the run's first step: its lines
