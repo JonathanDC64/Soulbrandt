@@ -68,6 +68,59 @@ constexpr CharRole kChars[] = {
     {0x32A8, kRight},
 };
 
+// The button sprites of the menu's layout (menu/menu.drb draws them from menu/menu.tpf; docs/125): the texture by
+// name and size, and the cell. The US and European discs' textures are the same. The layout's other button pictures
+// are the hands' "L" and "R" (words, not buttons) and the embossed L2 and R2 of one key guide, kept as they are.
+struct Sprite {
+    const char* texture;
+    uint32_t width, height;
+    Cell cell;
+};
+const Sprite kSprites[] = {
+    {"Menu08", 1024, 512, {kSquare, 79, 426, 19, 19, true}},    // the HUD's item slot (F20-00, FE_key_Square)
+    {"Menu00", 512, 512, {kSquare, 160, 0, 32, 32, false}},     // the HUD's magic slot (F20-00, key)
+    {"Menu00", 512, 512, {kCircle, 160, 32, 32, 32, false}},    // the message window (F10-00 and F10-01, key_circle)
+};
+
+// The texture pack, big-endian: "TPF\0", the count at 8, then 32 bytes a texture (data offset, size, format, cube,
+// ..., width and height at 12, its name's offset at 24). The count; 0 for a file that is not one.
+uint32_t tpf_count(const std::vector<uint8_t>& tpf) {
+    if (tpf.size() < 0x10 || std::memcmp(tpf.data(), "TPF", 4) != 0) return 0;
+    Be t{tpf};
+    return std::min<uint32_t>(t.u32(8), 4096);
+}
+
+// Texture i into p (its format, shape, place and bytes) and its name; false for one the renderer would not upload
+// as DXT, a cube, or one past the file's end.
+bool tpf_page(const std::vector<uint8_t>& tpf, uint32_t i, Page& p, std::string& name) {
+    Be t{tpf};
+    const size_t e = 0x10 + size_t(i) * 0x20;
+    const uint32_t off = t.u32(e), size = t.u32(e + 4), format = t.u8(e + 8), cube = t.u8(e + 9);
+    const uint32_t w = t.u16(e + 12), h = t.u16(e + 14), at = t.u32(e + 24);
+    if (t.bad) return false;
+    name.clear();
+    for (size_t k = at; k < tpf.size() && tpf[k] && name.size() < 64; k++) name += char(tpf[k]);
+    uint32_t block = 0;
+    if (format == 5) {
+        p.fmt = 0x88;
+        block = 16;
+    } else if (format == 3) {
+        p.fmt = 0x87;
+        block = 16;
+    } else if (format == 0 || format == 1) {
+        p.fmt = 0x86;
+        block = 8;
+    }
+    if (!block || cube || !w || !h || size_t(off) + size > tpf.size()) return false;
+    p.level0 = ((w + 3) / 4) * ((h + 3) / 4) * block;
+    if (size < p.level0) return false;
+    p.index = int(i);
+    p.width = w;
+    p.height = h;
+    p.data.assign(tpf.begin() + off, tpf.begin() + off + size);
+    return true;
+}
+
 // ---- DXT ----
 
 void rgb565(uint32_t v, int out[4]) {
@@ -155,39 +208,32 @@ std::vector<Page> read_font(const std::vector<uint8_t>& ccm, const std::vector<u
         found.push_back({page, cell});
     }
     if (found.empty()) return out;
-    // The texture pack, big-endian: "TPF\0", the count at 8, then 32 bytes a texture (data offset, size, format,
-    // cube, ..., width and height at 12).
-    Be t{tpf};
-    if (tpf.size() < 0x10 || std::memcmp(tpf.data(), "TPF", 4) != 0) return out;
-    const uint32_t count = t.u32(8);
-    for (uint32_t i = 0; i < count && i < 4096; i++) {
-        const size_t e = 0x10 + size_t(i) * 0x20;
-        const uint32_t off = t.u32(e), size = t.u32(e + 4), format = t.u8(e + 8), cube = t.u8(e + 9);
-        const uint32_t w = t.u16(e + 12), h = t.u16(e + 14);
-        if (t.bad) break;
+    const uint32_t count = tpf_count(tpf);
+    for (uint32_t i = 0; i < count; i++) {
         Page p;
         for (const Found& f : found)
             if (f.page == i) p.cells.push_back(f.cell);
         if (p.cells.empty()) continue;
-        uint32_t block = 0;
-        if (format == 5) {
-            p.fmt = 0x88;
-            block = 16;
-        } else if (format == 3) {
-            p.fmt = 0x87;
-            block = 16;
-        } else if (format == 0 || format == 1) {
-            p.fmt = 0x86;
-            block = 8;
-        }
-        if (!block || cube || w != tex_w || h != tex_h || size_t(off) + size > tpf.size()) continue;
-        p.level0 = ((w + 3) / 4) * ((h + 3) / 4) * block;
-        if (size < p.level0) continue;
+        std::string name;
+        if (!tpf_page(tpf, i, p, name) || p.width != tex_w || p.height != tex_h) continue;
         p.from = from;
-        p.index = int(i);
-        p.width = w;
-        p.height = h;
-        p.data.assign(tpf.begin() + off, tpf.begin() + off + size);
+        out.push_back(std::move(p));
+    }
+    return out;
+}
+
+std::vector<Page> read_sprites(const std::vector<uint8_t>& tpf, const std::string& from) {
+    std::vector<Page> out;
+    const uint32_t count = tpf_count(tpf);
+    for (uint32_t i = 0; i < count; i++) {
+        Page p;
+        std::string name;
+        if (!tpf_page(tpf, i, p, name)) continue;
+        for (const Sprite& s : kSprites)
+            if (name == s.texture && p.width == s.width && p.height == s.height) p.cells.push_back(s.cell);
+        if (p.cells.empty()) continue;
+        p.from = from;
+        p.max_scale = 2;   // (a 1024x512 page at 4x would be 43 MB for one 19-pixel square)
         out.push_back(std::move(p));
     }
     return out;
@@ -704,10 +750,23 @@ void draw_key_cell(Ctx& c, const Box& b, Role role, const Spec& s) {
     }
 }
 
+// A sprite's square (Cell::tile): the game draws the button's symbol bare on it, so the pads' face buttons are their
+// letters alone, in their colours; another button (PAD_MAP), and the keyboard's keys, as drawn elsewhere.
+void draw_tile_cell(Ctx& c, const Box& b, Role role, const Spec& s) {
+    if (s.kind == Kind::Keyboard) return draw_key_cell(c, b, role, s);
+    const int g = role_button(role);
+    const int p = g < 0 ? -1 : s.pad_map[g] >= 0 && s.pad_map[g] < 16 ? s.pad_map[g] : g;
+    const char* letter = p == kPCross ? "A" : p == kPCircle ? "B" : p == kPSquare ? "X" : p == kPTriangle ? "Y" : nullptr;
+    if (!letter) return draw_pad_cell(c, b, role, s);
+    const bool x = s.kind == Kind::Xbox;
+    const Rgba col = !x ? kLetter : p == kPCross ? kXboxA : p == kPCircle ? kXboxB : p == kPSquare ? kXboxX : kXboxY;
+    text(c, b, letter, 0.62f * b.h(), col);
+}
+
 }  // namespace
 
 Image draw(const Page& page, const std::vector<uint8_t>& base, const Spec& spec, const unsigned char* font) {
-    const int S = std::clamp(spec.scale, 1, 4);
+    const int S = std::clamp(spec.scale, 1, std::clamp(page.max_scale, 1, 4));
     const int W = int(page.width) * S, H = int(page.height) * S;
     Canvas cv;
     cv.w = W;
@@ -744,9 +803,26 @@ Image draw(const Page& page, const std::vector<uint8_t>& base, const Spec& spec,
     Ctx c{cv, have_font ? &info : nullptr, float(S)};
     for (const Cell& cell : page.cells) {
         const Box b{float(cell.x * S), float(cell.y * S), float((cell.x + cell.w) * S), float((cell.y + cell.h) * S)};
+        c.u = b.h() / 26.f;
+        if (cell.tile) {
+            // The square's inside painted with its own backing (taken 2 pixels in, clear of the symbol, which the
+            // game insets 3), its edge left as the game drew it; then the device's symbol on it.
+            constexpr int kIn = 2;
+            uint8_t back[4] = {0, 0, 0, 0};
+            if (base.size() == size_t(page.width) * page.height * 4 && cell.w > 2 * kIn && cell.h > 2 * kIn) {
+                const uint8_t* p = &base[(size_t(cell.y + kIn) * page.width + size_t(cell.x + kIn)) * 4];
+                for (int ch = 0; ch < 3; ch++) back[ch] = uint8_t((int(p[ch]) * int(p[3]) + 127) / 255);
+                back[3] = p[3];
+            }
+            for (int y = (cell.y + kIn) * S; y < (cell.y + cell.h - kIn) * S; y++)
+                for (int x = (cell.x + kIn) * S; x < (cell.x + cell.w - kIn) * S; x++)
+                    std::memcpy(&cv.px[(size_t(y) * size_t(W) + size_t(x)) * 4], back, 4);
+            const float in = float(kIn * S);
+            if (spec.kind != Kind::PlayStation) draw_tile_cell(c, {b.x0 + in, b.y0 + in, b.x1 - in, b.y1 - in}, cell.role, spec);
+            continue;
+        }
         for (int y = cell.y * S; y < (cell.y + cell.h) * S; y++)
             std::memset(&cv.px[(size_t(y) * size_t(W) + size_t(cell.x * S)) * 4], 0, size_t(cell.w * S) * 4);
-        c.u = b.h() / 26.f;
         if (spec.kind == Kind::Keyboard) draw_key_cell(c, b, cell.role, spec);
         else if (spec.kind == Kind::Xbox || spec.kind == Kind::Nintendo) draw_pad_cell(c, b, cell.role, spec);
     }

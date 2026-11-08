@@ -15,7 +15,15 @@
 
 #define STB_IMAGE_WRITE_STATIC
 #define STB_IMAGE_WRITE_IMPLEMENTATION
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
+#endif
 #include "stb_image_write.h"
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 namespace bp = ui::button_pages;
 
@@ -115,6 +123,47 @@ std::vector<uint8_t> made_tpf() {
     b[9] = 0xF8;
     b[10] = 0x00;
     b[11] = 0xF8;
+    return v;
+}
+
+// A menu pack: "Menu00" (512x512), "Menu08" (1024x512) and "Other" (512x512), DXT5, one level each, transparent but
+// for Menu08's item-slot square (79,426, 19x19): dark, at 203 of 255, as the game's backing is.
+std::vector<uint8_t> made_menu_tpf() {
+    const struct {
+        const char* name;
+        uint32_t w, h;
+    } tex[] = {{"Menu00", 512, 512}, {"Menu08", 1024, 512}, {"Other", 512, 512}};
+    const uint32_t names = 0x10 + 3 * 0x20, data = 0x100;
+    uint32_t total = data;
+    for (const auto& t : tex) total += t.w * t.h;   // DXT5: one byte a texel
+    std::vector<uint8_t> v(total, 0);
+    std::memcpy(v.data(), "TPF", 4);
+    put32(v, 4, total);
+    put32(v, 8, 3);
+    uint32_t at = data, name_at = names;
+    for (uint32_t i = 0; i < 3; i++) {
+        const size_t e = 0x10 + i * 0x20;
+        put32(v, e, at);
+        put32(v, e + 4, tex[i].w * tex[i].h);
+        v[e + 8] = 5;
+        v[e + 10] = 1;
+        put16(v, e + 12, tex[i].w);
+        put16(v, e + 14, tex[i].h);
+        put32(v, e + 24, name_at);
+        std::memcpy(&v[name_at], tex[i].name, std::strlen(tex[i].name) + 1);
+        name_at += 16;
+        if (i == 1)
+            for (uint32_t by = 424 / 4; by < 448 / 4; by++)
+                for (uint32_t bx = 76 / 4; bx < 100 / 4; bx++) {
+                    uint8_t* b = &v[at + (size_t(by) * (tex[i].w / 4) + bx) * 16];
+                    b[0] = b[1] = 203;   // alpha
+                    b[8] = 0x82;         // colour 0x1082 (16, 16, 16), both ends; picks 0
+                    b[9] = 0x10;
+                    b[10] = 0x82;
+                    b[11] = 0x10;
+                }
+        at += tex[i].w * tex[i].h;
+    }
     return v;
 }
 
@@ -230,6 +279,34 @@ int main(int argc, char** argv) {
     all = ki.width == 2048 && ki.levels == 12;
     for (const bp::Cell& c : page.cells) all = all && cell_alpha(ki, c, 4) > 200;
     check(all, "the keyboard's page at 4x, every cell drawn");
+
+    // The menu's sprites: two pages found by name and size, drawn at 2x at most.
+    const std::vector<bp::Page> menu = bp::read_sprites(made_menu_tpf(), "menu");
+    check(menu.size() == 2, "two menu pages with sprites (not the other texture)");
+    if (menu.size() == 2) {
+        const bp::Page& m0 = menu[0].width == 512 ? menu[0] : menu[1];
+        const bp::Page& m8 = menu[0].width == 1024 ? menu[0] : menu[1];
+        check(m0.cells.size() == 2 && m8.cells.size() == 1 && m8.cells[0].tile && m8.max_scale == 2,
+              "Menu00's two round buttons, Menu08's item-slot square");
+        check(m8.level0 == 1024u * 512u && m8.data.size() == m8.level0, "Menu08 as stored: one level");
+        bp::Spec big = xn;
+        big.scale = 4;
+        const std::vector<uint8_t> mb = bp::decode(m8);
+        const bp::Image mi = bp::draw(m8, mb, bp::normalized(big), font.empty() ? nullptr : font.data());
+        check(mi.width == 2048 && mi.height == 1024, "a menu page at 4x drawn at 2x");
+        const bp::Cell& t = m8.cells[0];
+        const uint8_t* edge = at(mi, uint32_t(t.x * 2 + 1), uint32_t(t.y * 2 + 1));
+        const uint8_t* back = at(mi, uint32_t((t.x + 2) * 2 + 1), uint32_t((t.y + 2) * 2 + 1));
+        check(edge[3] > 190 && edge[3] < 215 && edge[0] < 40 && back[3] > 190 && back[3] < 215 && back[0] < 40,
+              "the square's backing kept, dark at the game's alpha");
+        int bright = 0;
+        for (int y = (t.y + 3) * 2; y < (t.y + t.h - 3) * 2; y++)
+            for (int x = (t.x + 3) * 2; x < (t.x + t.w - 3) * 2; x++) {
+                const uint8_t* p = at(mi, uint32_t(x), uint32_t(y));
+                bright = std::max(bright, int(std::max(p[0], std::max(p[1], p[2]))));
+            }
+        check(font.empty() || bright > 120, "the Xbox X drawn on the square");
+    }
 
     if (png) {
         const struct {

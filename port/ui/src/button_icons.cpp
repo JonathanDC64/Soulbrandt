@@ -100,13 +100,15 @@ bool read_file(const fs::path& p, std::vector<uint8_t>& out) {
     return bool(f.read(reinterpret_cast<char*>(out.data()), size));
 }
 
-// The font folder's pages with button cells: the folder itself and each language's under it.
+// The pages with button pictures: the font folder's (the folder itself and each language's under it), then the
+// menu's two with sprites (menu/menu.tpf; the disc has it beside menu.tpf.dcx, the same textures uncompressed).
 std::vector<bp::Page> load_pages() {
     std::vector<bp::Page> out;
     const char* root = std::getenv("PS3_VFS_ROOT");
     if (!root || !*root) return out;
     const std::string r(root);
-    const fs::path fonts = fs::path(std::u8string(r.begin(), r.end())) / "PS3_GAME" / "USRDIR" / "font";
+    const fs::path usrdir = fs::path(std::u8string(r.begin(), r.end())) / "PS3_GAME" / "USRDIR";
+    const fs::path fonts = usrdir / "font";
     std::vector<fs::path> dirs{fonts};
     std::error_code ec;
     for (fs::directory_iterator it(fonts, ec), end; !ec && it != end; it.increment(ec))
@@ -116,11 +118,15 @@ std::vector<bp::Page> load_pages() {
         std::vector<uint8_t> ccm, tpf;
         if (!read_file(d / "dsfont24.ccm", ccm) || !read_file(d / "dsfont24.tpf", tpf)) continue;
         const std::u8string name = d.filename().u8string();
-        for (bp::Page& p : bp::read_font(ccm, tpf, std::string(name.begin(), name.end()))) {
+        const std::string from = d == fonts ? "font" : "font/" + std::string(name.begin(), name.end());
+        for (bp::Page& p : bp::read_font(ccm, tpf, from)) {
             const bool again = std::any_of(out.begin(), out.end(), [&](const bp::Page& q) { return q.data == p.data; });
             if (!again) out.push_back(std::move(p));
         }
     }
+    std::vector<uint8_t> menu;
+    if (read_file(usrdir / "menu" / "menu.tpf", menu))
+        for (bp::Page& p : bp::read_sprites(menu, "menu/menu.tpf")) out.push_back(std::move(p));
     return out;
 }
 
@@ -142,7 +148,7 @@ int ask(void*, const uint8_t* guest, uint32_t bytes, uint32_t width, uint32_t he
         s.seen[id] = 1;
         s.seen_serial++;
         s.cv.notify_one();
-        std::fprintf(stderr, "[icons] the game's button page: font/%s, page %d\n", s.pages[id].from.c_str(),
+        std::fprintf(stderr, "[icons] the game's button page: %s, page %d\n", s.pages[id].from.c_str(),
                      s.pages[id].index);
     }
     if (s.spec.kind == bp::Kind::PlayStation) return 0;
