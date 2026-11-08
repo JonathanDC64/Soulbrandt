@@ -581,10 +581,12 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
 
         if (g_des_region == 1) {  // (the US disc is English only)
             leftPane.add_section("Language");
-            choice_row(leftPane, rightPane, "Language", "DES_LANGUAGE", {"", "en", "fr", "de", "es", "it"},
-                {"PC's language", "English", "Fran\u00e7ais", "Deutsch", "Espa\u00f1ol", "Italiano"},
-                "The game's text and trophy names. PC's language uses your PC's when the disc has it, else "
-                "English. Restart to apply.<br/><br/>(DES_LANGUAGE)");
+            choice_row(leftPane, rightPane, "Language", "DES_LANGUAGE",
+                {"", "en", "fr", "de", "es", "it", "ja", "zh-tw", "ko"},
+                {"PC's language", "English", "Fran\u00e7ais", "Deutsch", "Espa\u00f1ol", "Italiano",
+                    "Japanese", "Chinese (Traditional)", "Korean"},
+                "The game's text and trophy names. Japanese, Chinese and Korean change the text only. PC's language uses "
+                "your PC's when the disc has it, else English. Restart to apply.<br/><br/>(DES_LANGUAGE)");
         }
 
         leftPane.add_section("Sound");
