@@ -44,14 +44,14 @@ Every other file (the 26 `.sdat` archives, the shaders, the SPU images) is the s
 
 ## What the player sees
 
-- **Language.** It is set by Settings > Game > Language (`DES_LANGUAGE`), shown only for the European disc. The
-  default is the PC's language when the disc has it, else English. It needs a restart.
+- **Language.** It is set by Settings > Game > Language (`DES_LANGUAGE`). The default is the PC's language when the
+  disc has it, else English. It needs a restart.
   - The port sets `PS3_SYS_LANG` from it at start: English (UK), French, German, Spanish, Italian, Japanese (`ja`),
     Chinese (Traditional, `zh-tw`) or Korean (`ko`).
   - The game and the trophy names follow it. Japanese, Chinese and Korean change the text only: the European trophy
     set has no names in them, so those stay English.
   - `PS3_SYS_LANG` given at start wins. Japanese, Chinese or Korean given that way show English, as on a PS3.
-  - The US disc is English only and stays English (US).
+  - The US disc has English (US) and Japanese. English stays the runtime's own English (US).
 - **Saves.** The disc names its save folder: `BLES00932DEMONSS005`, and `BLUS30443DEMONSS005` for the US disc. A US
   save copied under the European name loads.
 - **Trophies.** The set is NPWR01249 (38 trophies, the same list). Its unlocks are kept in their own file.
@@ -87,6 +87,8 @@ of them it shows English (UK).
     10 with no Japanese (the area names on the map screen, `Ability`, and a few more).
   - Chinese and Korean: 19 talk lines of one character are missing, so they show no subtitle. The Asian disc's own
     talk table names the same lines.
+- **The US disc** has the Japanese text and fonts too, and the same switches with five cases (0-4). Choosing Japanese
+  there works the same way, with US English's case for the server's tags. It has no Chinese, Korean or European text.
 - **PC's language.** A Japanese or Korean PC gets its language. A Chinese PC gets Chinese only when it is set to
   Traditional Chinese (Taiwan, Hong Kong, Macau).
 - Asian English (1) is not offered.
@@ -124,6 +126,10 @@ The European disc ran through setup's own lift and compile and the split host:
   `gameparamna`. The HUD's item and place names and the auto-save notice are in that language. French and the default
   leave the language word to the game and the two tables as they were. Not run in these three: the Start menu in the
   game (the test script's Start press did not open it), a conversation, and online play.
+- **The US disc:** `DES_LANGUAGE=ja` opens the Japanese fonts and text files, the balance file stays `gameparamna`, and
+  the auto-save notice is in Japanese. English leaves the language word to the game and the two tables as they were.
+  `DES_LANGUAGE=fr` says the disc does not have it and stays English. Not run: the Settings row, the Start menu in the
+  game, a conversation, and online play.
 - **`DES_SKIP_INTRO=0` and `2`:** all six logos, and the last one only.
 - **`DES_FPS=60`:** 60 fps, game time equal to real time.
 - **Save:** a US save copied under the European folder name loads.
