@@ -1,5 +1,5 @@
 /* des_region.cpp: the disc the game was lifted from (des_region.h), and the
- * European disc's language. */
+ * language its text is shown in. */
 #include "des_region.h"
 #include "ps3emu/ppu_lift.h"   /* vm_read32, vm_write32 */
 #include <cstdio>
@@ -38,9 +38,10 @@ extern "C" void des_region_check_title(void)
 
 namespace {
 
-/* The European disc's languages: DES_LANGUAGE's values, the PS3 system
- * language each one sets (PS3_SYS_LANG, ps3recomp's ps3emu/sys_lang.h), and
- * for Japanese, Chinese and Korean the game's language index (use_asian_text). */
+/* The discs' languages: DES_LANGUAGE's values, the PS3 system language each
+ * one sets (PS3_SYS_LANG, ps3recomp's ps3emu/sys_lang.h), and for Japanese,
+ * Chinese and Korean the game's language index (use_asian_text). The European
+ * disc has all of them; the US disc has English and Japanese (on_this_disc). */
 struct Language {
     const char* code;   /* DES_LANGUAGE */
     const char* sys;    /* PS3_SYS_LANG */
@@ -65,6 +66,11 @@ const Language* language_of(const std::string& code)
     return nullptr;
 }
 
+bool on_this_disc(const Language& l)
+{
+    return des_region() == DesRegion::EU || strcmp(l.code, "en") == 0 || strcmp(l.code, "ja") == 0;
+}
+
 /* The disc's language for the PC's language tag ("fr-fr", "zh-hant-tw"): the
  * one named by its first part, except Chinese, which the disc has only in
  * Traditional characters (Taiwan, Hong Kong, Macau). */
@@ -82,36 +88,39 @@ const Language* language_of_pc(const std::string& tag)
 }
 
 /* The game's language index (US addresses; the European disc's are in
- * regions/BLES00932.inc). The European program keeps its language as one
- * index: 0 Japanese, 1 Asian English, 2 Korean, 3 Chinese, 4 US English, 5-9
- * English (UK), German, French, Spanish, Italian. It fills the word at first
- * use, while the word is still -1, from the PS3 system language, and only
- * ever with 5-9. The text files (msg/<language>/, and msg/ itself for
- * Japanese), the fonts (likewise) and the menus' language folder all follow
- * the word. Two switches on it pick
+ * regions/BLES00932.inc). The program keeps its language as one index: 0
+ * Japanese, 1 Asian English, 2 Korean, 3 Chinese, 4 US English, and on the
+ * European disc 5-9 English (UK), German, French, Spanish, Italian. It fills
+ * the word at first use, while the word is still -1: the European program
+ * from the PS3 system language and only ever with 5-9, the US program always
+ * with 4. The text files (msg/<language>/, and msg/ itself for Japanese), the
+ * fonts (likewise) and the European menus' language folder all follow the
+ * word. Two switches on it pick
  * other things by region, through jump tables of case offsets that the lifted
  * code reads as it runs. */
 constexpr uint32_t kLanguageIndex = 0x019D8C88u;   /* the word, -1 until the game's first use */
-constexpr uint32_t kGameParamCases = 0x00162D0Cu;  /* the balance file: 0-3 the Asian one, 4-9 GameParamNA */
+constexpr uint32_t kGameParamCases = 0x00162D0Cu;  /* the balance file: 0-3 the Asian one, 4 and up GameParamNA */
 constexpr uint32_t kOnlineTagCases = 0x00013874u;  /* the server info's tags (game server, interval) */
 
-/* Japanese, Chinese and Korean. The European disc carries the text and fonts
- * for them, but its program never picks them: on a PS3 set to one of them it
- * shows English. So the index is set here, before the game runs. The entries
- * for 0-3 in the two other switches are pointed at a Western one's case, so
- * the language changes only the text: the balance file stays GameParamNA (as
- * US English), and online uses UK English's tags, which a server with the
- * original servers' split sends to the European world, not the Japanese one.
- * False when the word is not the -1 this disc starts with. */
+/* Japanese, Chinese and Korean. The disc carries the text and fonts for them
+ * (the US disc for Japanese only), but its program never picks them: on a PS3
+ * set to one of them it shows English. So the index is set here, before the
+ * game runs. The entries for 0-3 in the two other switches are pointed at a
+ * Western one's case, so the language changes only the text: the balance file
+ * stays GameParamNA (as US English), and online uses the tags of the disc's
+ * own English, which a server with the original servers' split sends to that
+ * disc's world, not the Japanese one. False when the word is not the -1 the
+ * disc starts with. */
 bool use_asian_text(int index)
 {
     const uint32_t word = DES_AT(kLanguageIndex);
     if (vm_read32(word) != 0xFFFFFFFFu) return false;
     const uint32_t param = DES_AT(kGameParamCases), tags = DES_AT(kOnlineTagCases);
+    const uint32_t english = des_region() == DesRegion::EU ? 5 : 4;   /* UK English's case, or US English's */
     vm_write32(word, static_cast<uint32_t>(index));
     for (uint32_t i = 0; i <= 3; i++) {
         vm_write32(param + 4 * i, vm_read32(param + 4 * 4));   /* US English's: GameParamNA */
-        vm_write32(tags + 4 * i, vm_read32(tags + 4 * 5));     /* UK English's */
+        vm_write32(tags + 4 * i, vm_read32(tags + 4 * english));
     }
     return true;
 }
@@ -149,14 +158,13 @@ std::string os_language()
 }  // namespace
 
 /* From ps3_title_options_init, after settings.ini is read and the ELF is
- * loaded, before the guest runs: the European disc's text language.
- * DES_LANGUAGE picks one of the disc's languages; empty (the default) is the
- * PC's language when the disc has it, else English. A PS3_SYS_LANG given at
- * start wins, as on a PS3 (Japanese, Chinese and Korean then show English). The US disc
- * is English only, so it keeps the runtime's English (US). */
+ * loaded, before the guest runs: the disc's text language. DES_LANGUAGE picks
+ * one of the disc's languages; empty (the default) is the PC's language when
+ * the disc has it, else English. A PS3_SYS_LANG given at start wins, as on a
+ * PS3 (Japanese, Chinese and Korean then show English). English on the US disc
+ * is the runtime's own English (US), so nothing is set for it. */
 extern "C" void des_region_language(void)
 {
-    if (des_region() != DesRegion::EU) return;
     if (const char* given = getenv("PS3_SYS_LANG"); given && *given) {
         fprintf(stderr, "[des] language: PS3_SYS_LANG=%s\n", given);
         return;
@@ -164,6 +172,7 @@ extern "C" void des_region_language(void)
     const char* chosen = getenv("DES_LANGUAGE");
     const bool from_pc = !chosen || !*chosen;
     const Language* l = from_pc ? language_of_pc(os_language()) : language_of(chosen);
+    if (l && !on_this_disc(*l)) l = nullptr;
     if (!l) {
         if (!from_pc) fprintf(stderr, "[des] DES_LANGUAGE=%s is not one of the disc's languages\n", chosen);
         l = &kLanguages[0];
@@ -172,6 +181,7 @@ extern "C" void des_region_language(void)
         fprintf(stderr, "[des] language: the game's language is already set, so not %s; English\n", l->name);
         l = &kLanguages[0];
     }
+    if (des_region() != DesRegion::EU && l->index < 0) return;
     ps3_setenv("PS3_SYS_LANG", l->sys);
     fprintf(stderr, "[des] language: %s%s\n", l->name, from_pc ? " (the PC's language, else English)" : "");
 }

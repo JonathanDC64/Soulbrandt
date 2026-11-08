@@ -579,8 +579,13 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
         bool_row(leftPane, rightPane, "Continue automatically", "DES_AUTO_CONTINUE",
             "After Play, goes straight into your last save.<br/><br/>(DES_AUTO_CONTINUE)");
 
-        if (g_des_region == 1) {  // (the US disc is English only)
-            leftPane.add_section("Language");
+        leftPane.add_section("Language");
+        if (g_des_region != 1) {  // the US disc has English and Japanese
+            choice_row(leftPane, rightPane, "Language", "DES_LANGUAGE", {"", "en", "ja"},
+                {"PC's language", "English", "Japanese"},
+                "The game's text. Trophy names stay English. PC's language uses your PC's when the disc has it, "
+                "else English. Restart to apply.<br/><br/>(DES_LANGUAGE)");
+        } else {
             choice_row(leftPane, rightPane, "Language", "DES_LANGUAGE",
                 {"", "en", "fr", "de", "es", "it", "ja", "zh-tw", "ko"},
                 {"PC's language", "English", "Fran\u00e7ais", "Deutsch", "Espa\u00f1ol", "Italiano",
