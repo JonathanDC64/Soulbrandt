@@ -3169,6 +3169,17 @@ static void run_defaults()
          * buffers left texels between the taps: blurred areas came out as
          * offset copies with stripes instead of a smooth blur (docs/37). */
         {"RSX_SCALE_MIN", "640"},
+        /* Havok's threads at normal priority. ps3recomp raises a title's
+         * threads below guest priority 1000 (PPU_RAISE_BELOW), meant for
+         * audio and I/O pollers that sleep between blocks. Here those are
+         * Havok's (80-200). Its PPU thread polls the job queue's lock with
+         * usleep(1), which waits in place (docs/77); raised, on 2-4 CPUs it
+         * likely kept the SPU tasks of its own step off the cores. Held to 2
+         * CPUs at 60 fps, 2.9-3.1% of frames took over 25 ms with it raised
+         * and 0.5-0.6% without, and the slow frames in the 4 s after 9 breaks
+         * went from 68-88 to 8-11 (docs/73). libmixer's threads still go up
+         * by name (PPU_MIXER_RAISE). */
+        {"PPU_RAISE_BELOW", "0"},
 #ifdef __linux__
         /* The RSX thread alone on one CPU of a core, and the rest of the
          * process off that core (ps3recomp's RSX_CORE). On a Steam Deck that
