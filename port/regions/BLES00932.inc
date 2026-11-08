@@ -4,6 +4,7 @@
  * finds and checks the European address from both decrypted EBOOTs. */
 DES_REGION_ADDR(0x000112E8, 0x000112E8)  /* hook des_body_sample */
 DES_REGION_ADDR(0x00011768, 0x00011768)  /* hook des_kf_target */
+DES_REGION_ADDR(0x00013874, 0x0001473C)  /* data kOnlineTagCases */
 DES_REGION_ADDR(0x00023750, 0x00024338)  /* call */
 DES_REGION_ADDR(0x000B14C8, 0x000B22B0)  /* call kSpacingPlay */
 DES_REGION_ADDR(0x000B15C8, 0x000B23B0)  /* call kFontPlay */
@@ -37,6 +38,7 @@ DES_REGION_ADDR(0x0012F074, 0x0013003C)  /* hook des_cam_ctor */
 DES_REGION_ADDR(0x0012F0DC, 0x001300A4)  /* hook des_cam_ctor */
 DES_REGION_ADDR(0x0012F19C, 0x00130164)  /* hook des_frustum_tall */
 DES_REGION_ADDR(0x0015AE10, 0x0015BDD8)  /* call kLoadSouls */
+DES_REGION_ADDR(0x00162D0C, 0x00163BDC)  /* data kGameParamCases */
 DES_REGION_ADDR(0x001D17A0, 0x001D2628)  /* call */
 DES_REGION_ADDR(0x001D1E64, 0x001D2CEC)  /* hook des_phys_rate */
 DES_REGION_ADDR(0x001D35D8, 0x001D4460)  /* call */
@@ -219,6 +221,7 @@ DES_REGION_ADDR(0x018CEFB4, 0x018CF134)  /* data kCameraFov */
 DES_REGION_ADDR(0x018CEFBC, 0x018CF13C)  /* data kCameraAspect */
 DES_REGION_ADDR(0x0190433C, 0x01904494)  /* data kContextAspect */
 DES_REGION_ADDR(0x019B5040, 0x019B5270)  /* data kToc, the TOC base (r2) */
+DES_REGION_ADDR(0x019D8C88, 0x019D8F08)  /* data kLanguageIndex */
 DES_REGION_ADDR(0x01AD6298, 0x01AD6518)  /* data kFlipModeObj */
 DES_REGION_ADDR(0x01B3A28C, 0x01B3A50C)  /* data kRemoMan */
 DES_REGION_ADDR(0x01B3D6E0, 0x01B3D960)  /* data kChrMan */
