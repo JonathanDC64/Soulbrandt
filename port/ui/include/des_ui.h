@@ -70,7 +70,8 @@ enum {
     DES_UI_SOUND_ITEM_CHANGE,     /* a value changed */
     DES_UI_SOUND_ITEM_ENABLE,     /* a value turned on */
     DES_UI_SOUND_ITEM_DISABLE,    /* a value turned off */
-    DES_UI_SOUND_WARNING          /* a warning question */
+    DES_UI_SOUND_WARNING,         /* a warning question */
+    DES_UI_SOUND_TROPHY = 16      /* a trophy earned: a tune, not a menu sound (13-15 are the spell radial's, unused here) */
 };
 
 /* Plays a UI sound with the game's own menu sounds. Null (the default) is

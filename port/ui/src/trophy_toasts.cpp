@@ -7,6 +7,7 @@
 
 #include "host.hpp"
 #include "settings.hpp"
+#include "sound.hpp"
 #include "ui.hpp"
 
 #include <atomic>
@@ -155,6 +156,8 @@ void drain() {
         items.swap(sQueue);
         sPending.store(false, std::memory_order_relaxed);
     }
+    // One tune, even for a trophy and the platinum it completes.
+    if (!items.empty() && settings::get_int("trophy_sound") != 0) play_sound(Sound::Trophy);
     const bool show = settings::get_int("trophy_popups") != 0;
     for (const Unlock& u : items) {
         if (show) {

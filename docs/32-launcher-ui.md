@@ -75,6 +75,7 @@ and on every change.
 | Start screen (Interface) | `show_start_screen` | 1 / 0 | next start |
 | Menu hint (Interface) | `menu_hint` | 1 / 0 | at once |
 | Trophy pop-ups (Interface) | `trophy_popups` | 1 / 0 (off hides the toast; the unlock is still kept) | at once |
+| Trophy sound (Interface) | `trophy_sound` | 1 / 0 (the tune `m777777777` when a trophy is earned, docs/33) | at once |
 | Sword cursor (Interface) | `DES_CURSOR3D` | 1 / 0 (off: the system's arrow, not the Large Sword of Moonlight; docs/112) | at once |
 | Cursor sword (Interface) | `DES_CURSOR_SWORD` | `moonlight`, `soulbrandt`, `demonbrandt`, `regalia`, `stormruler` (docs/112 section 1.1) | at once |
 | Cursor size (Interface) | `DES_CURSOR_SIZE` | 48, 64, 96, 128, 192: the sword's length in dp (the environment's value can be any from 16 to 512) | at once |
