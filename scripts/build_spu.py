@@ -86,15 +86,10 @@ BI_SWITCH = {
 }
 
 
-# Images lifted with spu_lifter.py --regions: the functions between two call
-# targets become one C body, so a direct branch among them is a goto rather than
-# a trampoline hop. Same entries and semantics; much less per-branch overhead.
-REGIONS = {
-    # HighGraphics' ring consumer (SPURS image 2): ~20 million hops a second.
-    "spu_0001_at_0176C200",
-    # The audio mixer's raw SPU thread: its resampling loops.
-    "spu_0010_at_01818080",
-}
+# Every image is lifted with spu_lifter.py --regions: the functions between two
+# call targets become one C body, so a direct branch among them is a goto rather
+# than a trampoline hop. Same entries and semantics; much less per-branch overhead.
+# (docs/28-in-game.md, "SPU regions for every image".)
 
 
 def be16(b, o): return (b[o] << 8) | b[o + 1]
@@ -266,13 +261,13 @@ def main(argv=None):
                     print(f"  {img}: fingerprint 0x{imgs[-1][1]:016X} is not the one its "
                           f"native hooks were written for; lifting without them")
                     hooks = []
-            if img in NATIVE_BLOCKS and img in REGIONS:
+            if img in NATIVE_BLOCKS:
                 want, blocks = NATIVE_BLOCKS[img]
                 if want != imgs[-1][1]:
                     print(f"  {img}: fingerprint 0x{imgs[-1][1]:016X} is not the one its "
                           f"native blocks were written for; lifting without them")
                     blocks = []
-            if img in BI_SWITCH and img in REGIONS:
+            if img in BI_SWITCH:
                 want, tables = BI_SWITCH[img]
                 if want != imgs[-1][1]:
                     print(f"  {img}: fingerprint 0x{imgs[-1][1]:016X} is not the one its "
@@ -280,7 +275,7 @@ def main(argv=None):
                     tables = []
             tasks.append((img, py + [lifter, "--auto-functions", f,
                                 "--symbol-prefix", img + "_", "-o", out] +
-                               (["--regions"] if img in REGIONS else []) +
+                               ["--regions"] +
                                [x for h in hooks for x in ("--native-hook", h)] +
                                [x for h in blocks for x in ("--native-block", h)] +
                                [x for h in tables for x in ("--bi-switch", h)]))
