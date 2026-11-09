@@ -22,6 +22,8 @@ When you play online, the game signs in to the server and sends it what the orig
 - **World tendency:** each character's latest report, for 7 days.
 - **Your ratings of other players' messages:** as long as the message is kept.
 - **Who you played with** in co-op and invasions: 30 days, for your Players list.
+- **Your Pantheon scores:** your best on each of the game's rankings, shown to other players with your online name.
+  Kept until you delete your data.
 - **Players you block:** until you unblock them.
 - **Reports** you make, or that are made about you: 180 days.
 - **Your sign-in sessions,** with the game's version: a session lasts a day.
@@ -50,6 +52,7 @@ are logged. These stay after you delete your data, so the restriction still hold
 Settings > Network > Delete my data deletes, at once:
 
 - your characters' records, messages, bloodstains, world tendency reports and ratings;
+- your Pantheon scores, which leave the rankings within a few minutes;
 - your IP addresses, who you played with, your blocks, and reports by you and about you;
 - then your name and key, so anyone can take the name.
 
