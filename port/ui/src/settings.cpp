@@ -37,7 +37,7 @@ constexpr Def kDefs[] = {
     {"DES_ATK", "1", Apply::Session},
     {"DES_SPEED", "1", Apply::Session},
 #endif
-    {"DES_FULLSCREEN", "0", Apply::Live},      // 1 = borderless fullscreen; des_ui.cpp's sync_fullscreen, each frame
+    {"DES_FULLSCREEN", "0", Apply::Live},      // 1 = borderless, 2 = exclusive; des_ui.cpp's sync_fullscreen, each frame
     {"DES_MAXIMIZED", "1", Apply::Restart},    // 1 = the window opens maximized (apply_window: RSX_MAXIMIZED)
 #if DES_RSX_VULKAN
     // Renderer: d3d12 or vulkan; the runtime's route switch, once at start. Its default is the runtime's: D3D12 on

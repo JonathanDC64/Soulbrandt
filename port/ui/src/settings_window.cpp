@@ -460,9 +460,17 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
         auto& leftPane = add_child<Pane>(content, Pane::Type::Controlled);
         auto& rightPane = add_child<Pane>(content, Pane::Type::Uncontrolled);
 
-        choice_row(leftPane, rightPane, "Display mode", "DES_FULLSCREEN", {"0", "1"}, {"Window", "Fullscreen"},
-            "Fullscreen fills the display the window is on. Alt+Enter also switches between the two."
+#ifdef _WIN32
+        choice_row(leftPane, rightPane, "Display mode", "DES_FULLSCREEN", {"0", "1", "2"},
+            {"Window", "Borderless fullscreen", "Exclusive fullscreen"},
+            "Borderless fills the display the window is on. Exclusive gives the game the display to itself, which can "
+            "make switching to other programs slower. Alt+Enter also switches to and from a window."
             "<br/><br/>(DES_FULLSCREEN)");
+#else
+        choice_row(leftPane, rightPane, "Display mode", "DES_FULLSCREEN", {"0", "1"}, {"Window", "Borderless fullscreen"},
+            "Borderless fills the display the window is on. Alt+Enter also switches between the two."
+            "<br/><br/>(DES_FULLSCREEN)");
+#endif
         bool_row(leftPane, rightPane, "Start maximized", "DES_MAXIMIZED",
             "The window opens maximized, and comes back maximized from Fullscreen.<br/><br/>(DES_MAXIMIZED)");
 #if DES_RSX_VULKAN  // (with a runtime that has the Vulkan renderer: port/CMakeLists.txt)

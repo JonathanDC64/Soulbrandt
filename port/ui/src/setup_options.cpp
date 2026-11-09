@@ -77,7 +77,7 @@ std::vector<Change> preset_changes(int displayHeight, bool hdr) {
         {"Anti-aliasing", "Off", "SMAA"},
         {"Scaling filter", "Bilinear", "Sharp"},
         {"HDR", "Off", hdr ? "On, as your display has it" : "Off"},
-        {"Display mode", "Window", "Fullscreen"},
+        {"Display mode", "Window", "Borderless fullscreen"},
         {"Motion blur, depth of field", "On", "On"},
         {"Aspect ratio", "16:9", "16:9"},
     };
@@ -106,7 +106,8 @@ std::string summary(Preset preset, const std::function<std::string(std::string_v
     else if (aspect == "16:10") s += ", 16:10";
     else if (!aspect.empty()) s += ", 21:9";
     if (get("RSX_HDR") == "1") s += ", HDR";
-    s += get("DES_FULLSCREEN") == "1" ? ", fullscreen" : ", window";
+    const std::string mode = get("DES_FULLSCREEN");
+    s += mode == "2" ? ", exclusive fullscreen" : mode == "1" ? ", borderless fullscreen" : ", window";
     s += get("DES_MOUSE_LOOK") == "1" ? ", keyboard and mouse" : ", gamepad";
     s += get("DES_ONLINE") == "0" ? ", online off." : ", online on.";
     return s;
