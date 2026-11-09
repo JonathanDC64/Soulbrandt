@@ -8,6 +8,8 @@
 // Only a truly unhandled exception counts: the runtime's vectored handlers (guest memory committed on first touch,
 // its guard pages) run first and keep handling what they handle, and the runtime's own top-level filter and abort
 // handler still run (they print the guest state). Test harness runs (no data folder) install nothing.
+//
+// The game ending itself with an error (port/des_guest_exit.cpp) gets the same report and dialog.
 #pragma once
 
 #include <string>
@@ -32,6 +34,12 @@ void report_hang(long long ms_since_frame);
 void report_graphics_lost(const std::string& what);
 // A hang (or lost graphics) dialog report_hang started is still open.
 bool hang_dialog_open();
+
+// Whether install() set up the reports.
+bool reports_on();
+// The game ended itself with an error (des_guest_exit.cpp): the report as for an abort, with `notes` in it, then
+// the dialog. Returns once the report is written and the dialog started; the caller then lets the process end.
+void report_guest_exit(const char* what, const char* notes);
 
 // Play on setup alone (des_ui.cpp): starts this program again as a new process, with the command line and the
 // environment it started with, less DES_UI_OPEN (setup's opener), plus DES_SKIP_UI=1 (setup's Play was the start screen)

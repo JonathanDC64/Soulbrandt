@@ -134,7 +134,7 @@ void write_cmdline(const std::wstring& path) {
 }
 
 // Writes the report: what happened, then the stack from `context`.
-void write_report(const char* what, CONTEXT* context, EXCEPTION_POINTERS* info) {
+void write_report(const char* what, CONTEXT* context, EXCEPTION_POINTERS* info, const char* notes = nullptr) {
     if (InterlockedExchange(&g_reported, 1)) return;  // one report per run
     open_stem();
     const std::wstring txt = path_of(".txt");
@@ -146,6 +146,7 @@ void write_report(const char* what, CONTEXT* context, EXCEPTION_POINTERS* info) 
     out("version %s, last HLE call 0x%08X (%s), thread %lu\n", kVersion, g_last_hle_nid,
         g_last_hle_name ? g_last_hle_name : "", GetCurrentThreadId());
     out("ps3recomp %s, game dump %s\n", kPs3recompVersion, *kDumpSha256 ? kDumpSha256 : "unknown");
+    if (notes && *notes) out("%s", notes);
     {
         const char* why = nullptr;
         if (const char* r = report::renderer_name(&why))  // (the dialog's report takes it from here: its own is not the game's)
@@ -549,6 +550,16 @@ void install() {
     _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);  // no "abort() has been called" dialog
 }
 
+bool reports_on() { return g_installed; }
+
+void report_guest_exit(const char* what, const char* notes) {
+    mouse::release_now();
+    CONTEXT context{};
+    RtlCaptureContext(&context);
+    write_report(what, &context, nullptr, notes);
+    show_dialog();
+}
+
 bool start_again(const std::vector<std::string>& set, bool play) {
     // The environment block it started with (name=value strings, each ended by a 0), less setup's variables and those
     // `set` names, plus the new one's, sorted by name as CreateProcess wants it.
@@ -622,6 +633,10 @@ bool start_again(const std::vector<std::string>& set, bool play) {
 // The startup hook in the C runtime's table of initializers: the linker sorts the .CRT$XC* sections by name, so
 // .CRT$XCV runs after every ordinary static initializer (.CRT$XCU) and before main().
 extern "C" void des_crash_startup(void) { ui::crash_report::startup_hook(); }
+extern "C" int des_ui_crash_reports_on(void) { return ui::crash_report::reports_on() ? 1 : 0; }
+extern "C" void des_ui_report_guest_exit(const char* what, const char* notes) {
+    ui::crash_report::report_guest_exit(what, notes);
+}
 #pragma section(".CRT$XCV", read)
 extern "C" __declspec(allocate(".CRT$XCV")) void (*const des_crash_startup_entry)(void) = des_crash_startup;
 #pragma comment(linker, "/include:des_crash_startup_entry")

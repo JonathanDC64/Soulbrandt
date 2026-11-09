@@ -3135,6 +3135,7 @@ extern "C" void des_mouse_look(ppu_context* ctx, uint32_t addr)
 
 extern "C" void des_menu_sfx_init(void);   /* des_menu_sfx.cpp */
 extern "C" void des_chrins_init(void);     /* des_chrins.cpp */
+extern "C" void des_guest_exit_init(void); /* des_guest_exit.cpp */
 extern "C" void des_souls_use_init(void);  /* des_souls_use.cpp */
 
 /* The run defaults every start needs, from setup's Play, Explorer or a
@@ -3275,6 +3276,7 @@ extern "C" void ps3_title_options_init(void)
     des_hud_init();        /* the HUD's size, corners and hidden groups */
     des_menu_sfx_init();   /* the UI's sounds through the game's menu sounds */
     des_chrins_init();     /* the character step's handshake without its lost-kick race */
+    des_guest_exit_init();  /* the game ending itself with an error: a crash to report */
     des_souls_use_init();  /* DES_SOULS_AT_ONCE: Use several soul items at once */
     /* DES_SKIP_INTRO and DES_AUTO_CONTINUE are read as they are used, so the
      * settings window changes them live; their hooks are always on. */
