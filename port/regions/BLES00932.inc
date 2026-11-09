@@ -211,6 +211,7 @@ DES_REGION_ADDR(0x013B7CCC, 0x013B9744)  /* hook des_fx_state */
 DES_REGION_ADDR(0x0167AC58, 0x0167C6D0)  /* hook ds_free */
 DES_REGION_ADDR(0x0167AC88, 0x0167C700)  /* hook ds_malloc */
 DES_REGION_ADDR(0x016EBB98, 0x016EDC68)  /* data kNoName */
+DES_REGION_ADDR(0x0185A8B8, 0x0185A8B8)  /* data kEquipVt */
 DES_REGION_ADDR(0x0185AF98, 0x0185AF98)  /* vtable */
 DES_REGION_ADDR(0x01867F50, 0x01867F98)  /* data kCursorVt */
 DES_REGION_ADDR(0x018698A0, 0x018698E8)  /* data kHudDialogVt */
@@ -223,6 +224,7 @@ DES_REGION_ADDR(0x018B4F98, 0x018B4FE0)  /* vtable */
 DES_REGION_ADDR(0x018C8DB4, 0x018C8F20)  /* data kFrameDt */
 DES_REGION_ADDR(0x018CEFB4, 0x018CF134)  /* data kCameraFov */
 DES_REGION_ADDR(0x018CEFBC, 0x018CF13C)  /* data kCameraAspect */
+DES_REGION_ADDR(0x018F96C0, 0x018F9818)  /* data kPreviewTurnStep */
 DES_REGION_ADDR(0x0190433C, 0x01904494)  /* data kContextAspect */
 DES_REGION_ADDR(0x019AD3B0, 0x019AD5E0)  /* data kSoulsConsts, a slot of the TOC */
 DES_REGION_ADDR(0x019AD560, 0x019AD790)  /* data kChrInsConsts, a slot of the TOC */
