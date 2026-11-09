@@ -1269,6 +1269,33 @@ The counts were right; the game didn't read them. The check is the game's own, w
 - Ghidra stops on `0x003E5750` and `0x003E6368` (bad instruction data). Read them in the lift, or with `ps3recomp/tools/ppu_disasm.py --va`.
 - `RSX_ZPASS=0` reports every probe as visible, so then the sun shows through walls at any frame rate. Test this fix with ZPASS on.
 
+## SPU regions for every image (port `scripts/build_spu.py`, 2026-11-08)
+
+Issue #310: when the dragon's fire sweeps the bridge in 1-1, the frame rate halves for about two seconds. The test: a copy of a save from just before the bridge, invincible, warped to the same spot, then wait for the flame. Unlocked, V-sync off (`DES_FPS=unlocked RSX_VSYNC=0 DES_VSYNC=0`). The dip starts 12 s after the warp, in every run.
+
+**The dip is not mainly Havok.**
+- 209 fps falls to about 81 (4.8 ms frames become about 12 ms), the same on 16 threads, on `PS3_AFFINITY=FF` (4 cores, 8 threads) and on `55` (4 threads). More cores do not help.
+- SPU image 5 (`spu_0004_at_0178CC00`, the tasks that push to the queue HighGraphics reads) goes from 0.2 to about 0.7 threads, from about 1 ms to about 9 ms a frame. That matches the extra time.
+- HighGraphics waits for it, polling its queue (`cellSpursQueuePop`, 11.5 million calls in 3 s). Havok's image 8 rises only briefly.
+- 46% of image 5's time in the dip was the runtime, not the game's code (`spu_step_check` 21%, `spu_drain_call` 13%): image 5 was one function per basic block, so every branch was a trampoline hop.
+
+**The change.** Every ELF image is now lifted with `--regions`, instead of the two listed before. The SPURS job binaries (`spujob_*`) stay as they were. The lift step's fingerprint covers `scripts/`, so a release re-lifts by itself.
+
+Same exe and sources, three game modules compiled the same hour, alternating runs:
+
+| | today | image 5 only | every image |
+|---|---|---|---|
+| dip, 16 threads (ms a frame) | 11.18 | 9.89 | 9.12 |
+| dip, 16 threads (fps) | 89 | 101 | 110 |
+| usual frames, 16 threads (fps) | 205 | 217 (noisy) | 217 |
+| dip, 4 threads (ms a frame) | 11.6 | | 10.1 |
+| dip, 4 threads (fps) | 86 | | 99 |
+| usual frames, 4 threads (fps) | 168 | | 195 |
+
+Image 5's runtime share in the dip fell from 46% to 24% with image 5 alone. Most of what is left is the game's own vector code. Register promotion and `restrict` were tried on image 2 and do not pay (above); image 8 alone with regions moved nothing after breaks (docs/100), and it was not measured alone here.
+
+Compile time (224 s) and module size (226 MB) did not change. The `regress.sh` route's four screenshots are pixel-identical to a plain build's. A six-minute `soak.sh` at 120 fps reached 39,000 flips, and no run halted.
+
 ## Still open
 
 - **Graphics in the level**: HUD, half frames and particles fixed (`dc3bb6f`, `c01c7f7`, `3f094e1`). Holes in the level geometry fixed (`5a78630`), black characters (`9db1a5f`), sun flare through walls (`df9d0f9`, not yet checked live with the sun in view). Lit, textured, culled and depth-tested correctly, with shadows (`3470cbd`, `4e229b7`, `fb24382`). Depth read as colour works (`b4821e0`: light shafts, haze, motion blur). Frame rate about 28 (cap 30) since `ba6305d`; see Frame rate. Heaviest Palace view: 13-14% skip frames since `099343f` (was 29%). Still: no side-by-side check against RPCS3 at the same spot yet.
