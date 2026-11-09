@@ -121,13 +121,53 @@ def find_root(folder) -> Path:
 
 
 def title_of(folder) -> str:
-    """The TITLE_ID of the game in a folder (find_root's), or "" when there is none or it cannot be read."""
+    """The TITLE_ID of the game in a folder (find_root's, or a disc game kept in dev_hdd0/game: installed_disc), or ""
+    when there is none or it cannot be read."""
     root = find_root(folder) if folder else None
-    p = _resolve(root, "PS3_GAME/PARAM.SFO") if root else None
+    if root is None:
+        return installed_disc(folder)
+    p = _resolve(root, "PS3_GAME/PARAM.SFO")
     try:
         return sfo.parse(p.read_bytes()).get("TITLE_ID", "") if p else ""
     except (OSError, sfo.SfoError):
         return ""
+
+
+def installed_disc(folder) -> str:
+    """The TITLE_ID when `folder` is a disc game RPCS3 keeps in dev_hdd0/game: the files of PS3_GAME right in the
+    folder, with no PS3_GAME folder (RPCS3's System.cpp, "Disc game located in dev_hdd0/game"). Its PARAM.SFO's
+    CATEGORY is DG and it has USRDIR/EBOOT.BIN. "" for anything else, also for an update kept there (category GD)."""
+    if not folder or find_root(folder) is not None:
+        return ""
+    p = _resolve(Path(folder), "PARAM.SFO")
+    if p is None or _resolve(Path(folder), "USRDIR/EBOOT.BIN") is None:
+        return ""
+    try:
+        vals = sfo.parse(p.read_bytes())
+    except (OSError, sfo.SfoError):
+        return ""
+    return vals.get("TITLE_ID", "") if vals.get("CATEGORY") == "DG" else ""
+
+
+def disc_view(game, view) -> Path:
+    """`view` as a folder that holds PS3_GAME for a disc game kept in dev_hdd0/game (installed_disc): the check, the
+    build and the game all read a disc's layout, and nothing may be written in RPCS3's folders. So PS3_GAME here is a
+    link to that game's own folder: on Windows a junction, which needs no special rights, and elsewhere a symbolic
+    link. One that points there already stays; one that points elsewhere (dev_hdd0 moved) is replaced. Raises OSError
+    when the link cannot be made."""
+    target, view = os.path.realpath(game), Path(view)
+    link = view / "PS3_GAME"
+    if os.path.lexists(link):
+        if os.path.normcase(os.path.realpath(link)) == os.path.normcase(target):
+            return view
+        os.unlink(link)                     # (the link only, on Windows a junction too: never what it points to)
+    view.mkdir(parents=True, exist_ok=True)
+    if os.name == "nt":
+        import _winapi
+        _winapi.CreateJunction(target, str(link))
+    else:
+        os.symlink(target, link, target_is_directory=True)
+    return view
 
 
 def _find_ci(folder: Path, name: str) -> str:

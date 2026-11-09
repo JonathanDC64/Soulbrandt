@@ -58,6 +58,7 @@ import argparse
 import json
 import os
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -98,7 +99,9 @@ def _print_report(rep, unlocks=False):
                 'next' if unlocks and (i.kind == 'decrypted' or i.unlock) else 'FIX ')
         print(f"{mark} {i.message}")
     if n_orig:
-        print(f"ok   {len(n_orig)} of the disc's files match the US disc, version 1.00.")
+        t = rep.table or {}
+        print(f"ok   {len(n_orig)} of the disc's files match {t.get('disc', 'the US disc')}, version "
+              f"{t.get('app_ver', '01.00')}.")
     if unmeasured:
         print(f"ok?  {len(unmeasured)} decrypted file(s) found; their sums are not in the table yet, so only their "
               f"first bytes were checked: {names(unmeasured)}.")
@@ -150,9 +153,12 @@ def cmd_check(a) -> int:
     if a.game:
         _print_found(found, from_library=False)
     also = {lift.EBOOT: [p for tid in gamefiles.titles(t) for p in rpcs3.ppu_debug_eboots(exe, tid)]}
-    rep = gamefiles.check(game, a.decrypted, a.firmware, table=t, unlocks=True, also=also,
-                          firmware_unlock=found.firmware is not None)
-    _print_report(rep, unlocks=True)
+    with tempfile.TemporaryDirectory() as tmp:   # (a disc game kept in dev_hdd0/game: read through a link, as `run` does)
+        if gamefiles.installed_disc(game):
+            game = gamefiles.disc_view(game, Path(tmp) / "view")
+        rep = gamefiles.check(game, a.decrypted, a.firmware, table=t, unlocks=True, also=also,
+                              firmware_unlock=found.firmware is not None)
+        _print_report(rep, unlocks=True)
     return 1 if pipeline.blocking(rep, True) or rep.root is None else 0
 
 

@@ -269,10 +269,15 @@ class ReaderTest(Base):
         self.assertEqual(got.trophies.unlocked, {3: T0})
         # The US disc's save is another game's: not read for the European disc, and the other way round.
         self.assertEqual(lib.read(self.lib.exe, table, title=lib.US_ID).save.state, "none")
-        # With both discs listed, the US disc first, unless the game folder says which.
-        self.lib.games(f"BLES00932: {self.t.dump.as_posix()}/\nBLUS30443: C:/us/\n")
+        # With both discs there, the US disc first, unless the game folder says which.
+        us = self.t.base / "us"
+        put(us / "PS3_GAME" / "PARAM.SFO", b"\0PSF")
+        self.lib.games(f"BLES00932: {self.t.dump.as_posix()}/\nBLUS30443: {us.as_posix()}/\n")
         self.assertEqual(lib.read(self.lib.exe, table).title, lib.US_ID)
         self.assertEqual(lib.read(self.lib.exe, table, title=lib.EU_ID).library.title, lib.EU_ID)
+        # A leftover US entry whose game has gone does not hide the European disc (issue #453).
+        self.lib.games(f"BLES00932: {self.t.dump.as_posix()}/\nBLUS30443: C:/gone/\n")
+        self.assertEqual(lib.read(self.lib.exe, table).title, lib.EU_ID)
 
     def test_older_games_yml_place(self):
         put(self.lib.root / "games.yml", f"BLUS30443: {self.t.dump.as_posix()}/\n".encode())

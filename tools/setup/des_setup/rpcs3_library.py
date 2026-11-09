@@ -10,9 +10,11 @@ gets an answer.
 Where things are (Windows; on Linux the .yml files sit in <R> itself):
   <R>                         RPCS3's config folder (rpcs3.player_dirs)
   <R>config/vfs.yml           $(EmulatorDir), /dev_hdd0/ and /dev_flash/ (RPCS3's defaults when absent)
-  <R>config/games.yml         the library: BLUS30443's or BLES00932's folder or ISO file (older builds: <R>games.yml)
+  <R>config/games.yml         the library: a supported disc's folder or ISO file, by its TITLE_ID (older builds:
+                              <R>games.yml)
   <R>GuiConfigs/persistent_settings.dat   [Users] active_user, the user RPCS3 uses
   <hdd0>home/<8 digits>/      each user: localusername, savedata/, trophy/
+  <hdd0>game/<TITLE_ID>/      a disc game kept on the hard disk (gamefiles.installed_disc), or that disc's update
   <hdd0>game/NPUB30910/       the PlayStation Store version, which the port does not support
   <R>config/config.yml, custom_configs/config_<title>.yml, patch_config.yml   the settings and patches
   <dev_flash>sys/external/libsre.sprx     the PS3 system software's file the build lifts when there is one
@@ -25,7 +27,7 @@ import struct
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import rpcs3, sfo, yaml_subset
+from . import gamefiles, rpcs3, sfo, yaml_subset
 
 
 
@@ -86,7 +88,8 @@ class User:
 @dataclass
 class Library:
     kind: str           # folder, iso, store or none
-    path: Path = None   # the folder that holds PS3_GAME, the ISO file, or the store version's folder
+    path: Path = None   # the folder that holds PS3_GAME (or a disc game's own folder in dev_hdd0/game, see
+                        # gamefiles.installed_disc), the ISO file, or the store version's folder
     title: str = ""     # the disc's TITLE_ID, for a folder or an ISO file
 
 
@@ -190,24 +193,49 @@ def firmware_version(f: Folders) -> str:
 # ---- the library ----
 
 def library(f: Folders, title_ids) -> Library:
-    """The first of the titles with a games.yml entry (System.cpp, game_enumeration.h): a disc root, a PS3_GAME folder
-    marked by a trailing "/./", or an ISO file. With none, the store version's folder if RPCS3 has it."""
+    """What RPCS3 has of the titles, the first title first. Best a games.yml entry (System.cpp, game_enumeration.h) with
+    a folder setup can use: a disc root, a PS3_GAME folder marked by a trailing "/./", or a disc game's own folder in
+    dev_hdd0/game marked the same way. Then a disc game in dev_hdd0/game that RPCS3 has not registered yet (it lists
+    those without games.yml), then an ISO file that is there, which setup says it cannot use. games.yml keeps an entry
+    when its game has gone, so an entry whose folder or file is gone is the last choice, and it never hides a copy that
+    is there (issue #453: a leftover US entry hid the European disc the player has). With none, the store version's
+    folder if RPCS3 has it."""
     if isinstance(title_ids, str):
         title_ids = [title_ids]
     ymls = [yaml_subset.load_file(p) for p in (f.config / "games.yml", f.root / "games.yml")]
+    listed = []
     for tid in title_ids:
-        for y in ymls:
-            v = y.get(tid)
-            if isinstance(v, str) and v.strip():
-                lib = entry(v.strip())
-                lib.title = tid
-                return lib
+        v = next((y[tid] for y in ymls if isinstance(y.get(tid), str) and y[tid].strip()), None)
+        if v is not None:
+            lib = entry(v.strip())
+            lib.title = tid
+            listed.append(lib)
+    for lib in listed:
+        if lib.kind == "folder" and there(lib):
+            return lib
+    for tid in title_ids:
+        hdd = f.hdd0 / "game" / tid
+        if gamefiles.find_root(hdd) or gamefiles.installed_disc(hdd) == tid:
+            return Library("folder", hdd, tid)
+    for lib in listed:
+        if lib.kind == "iso" and there(lib):
+            return lib
+    if listed:
+        return listed[0]
     store = f.hdd0 / "game" / STORE_ID
     return Library("store", store) if store.is_dir() else Library("none")
 
 
+def there(lib: Library) -> bool:
+    """The library entry's folder or ISO file is really there."""
+    if lib.kind == "iso":
+        return lib.path.is_file()
+    return bool(gamefiles.find_root(lib.path) or gamefiles.installed_disc(lib.path))
+
+
 def entry(text: str) -> Library:
-    """One games.yml path, as the folder that holds PS3_GAME (or the ISO file)."""
+    """One games.yml path, as the folder that holds PS3_GAME (or the ISO file, or a disc game's own folder in
+    dev_hdd0/game, whose entry ends in "/./" and which has no PS3_GAME folder)."""
     p = text.replace("\\", "/")
     if p.lower().endswith(".iso") or Path(p).is_file():
         return Library("iso", Path(p))
