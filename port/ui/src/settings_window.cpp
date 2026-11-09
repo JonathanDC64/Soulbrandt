@@ -265,6 +265,16 @@ int mouse_sens_percent() {
     return std::clamp(int(std::lround(sens / mouse_sens_default() * 100.0)), kMouseSensMin, kMouseSensMax);
 }
 
+// Stick deadzone in percent (DES_STICK_DEADZONE; des_options.cpp holds it to the same limits).
+constexpr int kStickZoneMin = 16;
+constexpr int kStickZoneMax = 60;
+
+int stick_deadzone_percent() {
+    const std::string v = settings::pinned("DES_STICK_DEADZONE") ? settings::pinned_value("DES_STICK_DEADZONE")
+                                                                  : settings::get("DES_STICK_DEADZONE");
+    return std::clamp(std::atoi(v.c_str()), kStickZoneMin, kStickZoneMax);
+}
+
 // HUD size in percent (DES_HUD_SIZE; des_hud.cpp takes 25 to 200, this row offers 50 to 150).
 constexpr int kHudSizeMin = 50;
 constexpr int kHudSizeMax = 150;
@@ -704,6 +714,31 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
         controller_row(leftPane, rightPane);
         bool_row(leftPane, rightPane, "Vibration", "PAD_RUMBLE",
             "Lets the game make your gamepad vibrate.<br/><br/>(PAD_RUMBLE)");
+        auto& stickDeadzone = leftPane.add_child<NumberButton>(NumberButton::Props{
+            .key = "Stick deadzone",
+            .getValue = stick_deadzone_percent,
+            .setValue =
+                [](int value) {
+                    if (settings::pinned("DES_STICK_DEADZONE")) {
+                        return;
+                    }
+                    settings::set("DES_STICK_DEADZONE", std::to_string(value));
+                },
+            .isDisabled = [] { return settings::pinned("DES_STICK_DEADZONE"); },
+            .isModified = [] { return !settings::is_default("DES_STICK_DEADZONE"); },
+            .min = kStickZoneMin,
+            .max = kStickZoneMax,
+            .step = 1,
+            .suffix = "%",
+        });
+        leftPane.register_control(stickDeadzone, rightPane,
+            [helpText = with_note("DES_STICK_DEADZONE",
+                 "How far a stick must move before the game reacts. Lower reacts sooner; higher ignores a worn "
+                 "stick that moves things on its own. 37% is the original.<br/><br/>(DES_STICK_DEADZONE)")](
+                Pane& pane) {
+                pane.clear();
+                pane.add_rml(helpText);
+            });
         bool_row(leftPane, rightPane, "Roll toward the stick", "DES_ROLLDIR",
             "Locked on, a roll goes where the stick points. Off, it goes only forward, back, left or right, as in "
             "the original.<br/><br/>(DES_ROLLDIR)");

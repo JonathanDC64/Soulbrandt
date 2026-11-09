@@ -447,6 +447,59 @@ void vrr_note(Sync sync)
     last = follows;
 }
 
+/* The game's stick deadzone, a setting (DES_STICK_DEADZONE, percent).
+ *
+ * The game turns each stick into a 2D vector at 0x001C3000: a length m of at
+ * most 0.37 reads as centred, otherwise the length becomes
+ * min((m - 0.37) * 1.7241, 1), so the stick is at full at m = 0.95. Nothing
+ * else in the program reads or writes those two words of its constant pool,
+ * so writing them moves the zone for everything that reads a stick. The scale
+ * is written so the stick still reaches full at 0.95, which keeps 37% exactly
+ * the original.
+ *
+ * The lower limit keeps a stick resting off centre out of the game: inside
+ * the runtime's own deadzone (pad_stick.h: 24% of the stick's travel on
+ * XInput and SDL, 15.6% on the Sony pads) its output reaches 0.156 at most,
+ * so a zone of 0.16 or more stays above anything from a stick at rest. The
+ * upper limit leaves the stick 35% of its length to reach full.
+ *
+ * At the default nothing is written. Going back to 37 restores the words
+ * that were there. */
+constexpr uint32_t kStickZoneRadius = 0x018D3268u;   /* float, 0.37 */
+constexpr uint32_t kStickZoneScale  = 0x018D3274u;   /* float, 1 / (0.95 - 0.37) */
+constexpr int kStickZoneGame = 37;
+constexpr int kStickZoneMin = 16;
+constexpr int kStickZoneMax = 60;
+
+void stick_zone_apply()
+{
+    static int s_want = -1;
+    PS3_KNOB(s_want, [] {
+        const int v = ps3_env_int("DES_STICK_DEADZONE", kStickZoneGame);
+        return v <= 0 ? kStickZoneGame : std::clamp(v, kStickZoneMin, kStickZoneMax);
+    }());
+    static int s_held = kStickZoneGame;
+    static uint32_t orig_radius, orig_scale;
+    if (s_want == s_held) return;
+    if (s_held == kStickZoneGame) {
+        orig_radius = vm_read32(DES_AT(kStickZoneRadius));
+        orig_scale = vm_read32(DES_AT(kStickZoneScale));
+    }
+    if (s_want == kStickZoneGame) {
+        vm_write32(DES_AT(kStickZoneRadius), orig_radius);
+        vm_write32(DES_AT(kStickZoneScale), orig_scale);
+    } else {
+        const float radius = (float)s_want / 100.0f, scale = 1.0f / (0.95f - radius);
+        uint32_t bits;
+        memcpy(&bits, &radius, 4);
+        vm_write32(DES_AT(kStickZoneRadius), bits);
+        memcpy(&bits, &scale, 4);
+        vm_write32(DES_AT(kStickZoneScale), bits);
+    }
+    fprintf(stderr, "[des] DES_STICK_DEADZONE: %d%%\n", s_want);
+    s_held = s_want;
+}
+
 void fps_on_flip_request()
 {
     using clock = std::chrono::steady_clock;
@@ -692,6 +745,7 @@ void on_flip_request()
 {
     des_report_flip_hook();   /* (a test knob: DES_HANG_AT_FRAME) */
     des_aspect_poll();        /* DES_ASPECT, DES_HUD changed while playing */
+    stick_zone_apply();       /* DES_STICK_DEADZONE, likewise */
     s_flips.fetch_add(1, std::memory_order_relaxed);
     fps_on_flip_request();
     if (s_framelog) frame_log();

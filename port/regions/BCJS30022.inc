@@ -223,6 +223,8 @@ DES_REGION_ADDR(0x018B4F98, 0x018B4F80)  /* vtable */
 DES_REGION_ADDR(0x018C8DB4, 0x018C8BF8)  /* data kFrameDt */
 DES_REGION_ADDR(0x018CEFB4, 0x018CEE0C)  /* data kCameraFov */
 DES_REGION_ADDR(0x018CEFBC, 0x018CEE14)  /* data kCameraAspect */
+DES_REGION_ADDR(0x018D3268, 0x018D30C0)  /* data kStickZoneRadius */
+DES_REGION_ADDR(0x018D3274, 0x018D30CC)  /* data kStickZoneScale */
 DES_REGION_ADDR(0x0190433C, 0x0190430C)  /* data kContextAspect */
 DES_REGION_ADDR(0x019AD3B0, 0x019AD3C4)  /* data kSoulsConsts, a slot of the TOC */
 DES_REGION_ADDR(0x019AD560, 0x019AD574)  /* data kChrInsConsts, a slot of the TOC */
