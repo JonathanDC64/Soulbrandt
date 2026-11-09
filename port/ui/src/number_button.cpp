@@ -12,7 +12,7 @@ NumberButton::NumberButton(Rml::Element* parent, Props props)
       mGetValue(std::move(props.getValue)), mSetValue(std::move(props.setValue)),
       mIsDisabled(std::move(props.isDisabled)), mIsModified(std::move(props.isModified)),
       mMin(props.min), mMax(props.max), mStep(props.step), mPrefix(std::move(props.prefix)),
-      mSuffix(std::move(props.suffix)) {}
+      mSuffix(std::move(props.suffix)), mFormat(std::move(props.format)) {}
 
 bool NumberButton::modified() const {
     if (mIsModified) {
@@ -29,6 +29,9 @@ bool NumberButton::disabled() const {
 }
 
 Rml::String NumberButton::format_value() {
+    if (mFormat) {
+        return mFormat(mGetValue());
+    }
     return std::format("{}{}{}", mPrefix, mGetValue(), mSuffix);
 }
 

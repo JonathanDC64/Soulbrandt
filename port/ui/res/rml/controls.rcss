@@ -132,6 +132,77 @@ input.slider sliderbar:active {
     background-color: var(--color-accent);
 }
 
+/* The picture of a stick, in the right pane under its deadzone slider: its range, where it starts counting, and two
+   dots. The zone and the dots are placed in percent of the ring (stick_preview.cpp). */
+stick-preview {
+    display: flex;
+    align-items: center;
+    gap: var(--space-lg);
+    margin-bottom: var(--space-md);
+}
+
+stick-ring {
+    display: block;
+    position: relative;
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    width: 132dp;
+    height: 132dp;
+    border: 2dp rgba(var(--color-text-rgb), 45%);
+    border-radius: 66dp;
+}
+
+stick-zone {
+    display: block;
+    position: absolute;
+    box-sizing: border-box;
+    border: 1dp rgba(var(--color-text-rgb), 55%);
+    border-radius: 66dp;
+    background-color: rgba(var(--color-text-rgb), 10%);
+}
+
+stick-zone.none {
+    display: none;
+}
+
+stick-dot {
+    display: block;
+    position: absolute;
+    width: 12dp;
+    height: 12dp;
+    margin-left: -6dp;
+    margin-top: -6dp;
+    border-radius: 6dp;
+    background-color: var(--color-text);
+}
+
+stick-dot.game {
+    background-color: #e0aa3c;
+}
+
+stick-legend {
+    display: block;
+    flex: 1 1 auto;
+}
+
+stick-legend line {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+stick-legend stick-dot {
+    position: relative;
+    flex: 0 0 auto;
+    margin: 0;
+}
+
+stick-legend note {
+    display: block;
+    margin-top: var(--space-sm);
+    opacity: 0.75;
+}
+
 select-button icon {
     display: none;
     flex: 0 0 auto;
