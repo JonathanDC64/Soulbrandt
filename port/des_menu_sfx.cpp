@@ -170,6 +170,7 @@ extern "C" void des_debug_tick(ppu_context* ctx);   /* des_dev.cpp: the warp (de
 #endif
 extern "C" void des_souls_menu_tick(ppu_context* ctx);   /* des_souls_use.cpp: the Use after the count picker */
 extern "C" void des_respec_tick(ppu_context* ctx);       /* des_respec.cpp: the statue's menu and the respec */
+extern "C" void des_lua_gc_tick(double dt);             /* des_luagc.cpp: Lua's garbage above 30 fps */
 
 extern "C" void des_menu_tick(ppu_context* ctx)
 {
@@ -178,6 +179,7 @@ extern "C" void des_menu_tick(ppu_context* ctx)
 #endif
     des_souls_menu_tick(ctx);
     des_respec_tick(ctx);
+    des_lua_gc_tick(ctx->fpr[1]);
     if (s_test) {
         const int64_t now = now_ms();
         if (now >= s_test_next) {
