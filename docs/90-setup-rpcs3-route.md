@@ -276,7 +276,8 @@ This is a new module, `des_setup/rpcs3.py`. Every file is opened for reading onl
 | What | Where (Windows; Linux has no `config/` subfolder) | Used for |
 |---|---|---|
 | `<R>` | `<exe folder>/portable/`, else the player's `RPCS3_CONFIG_DIR`, else the exe folder. Linux: `$XDG_CONFIG_HOME/rpcs3/` or `~/.config/rpcs3/`. Flatpak: `~/.var/app/net.rpcs3.RPCS3/config/rpcs3/`. | everything below |
-| games.yml | `<R>config/games.yml` (older builds: `<R>games.yml`) | the BLUS30443 entry: a disc root, a `PS3_GAME` path ending in `/./`, or an ISO file (System.cpp:2120-2170, game_enumeration.h:445-490, read) |
+| games.yml | `<R>config/games.yml` (older builds: `<R>games.yml`) | a supported disc's entry: a disc root, a `PS3_GAME` path ending in `/./`, a disc game's own folder in `<hdd0>game/` ending in `/./`, or an ISO file (System.cpp:2120-2170, game_enumeration.h:445-490, read). `rpcs3_library.library` prefers a copy that is there: a usable folder, then a disc in `<hdd0>game/`, then an ISO; an entry whose game has gone comes last and never hides one that is there (issue #453) |
+| `<hdd0>game/<TITLE_ID>/` | under `<hdd0>` | a disc game kept on the hard disk (PARAM.SFO's CATEGORY is DG, `USRDIR/EBOOT.BIN`, no `PS3_GAME` folder): setup reads it through `<data>/setup/disc-view/<TITLE_ID>/PS3_GAME`, a link to it (junction on Windows, symlink elsewhere), nothing written under RPCS3's folders. A category GD folder there is an update, not the game |
 | vfs.yml | `<R>config/vfs.yml`, if present | `$(EmulatorDir)` and `/dev_hdd0/` |
 | active user | `<R>GuiConfigs/persistent_settings.dat`, `[Users] active_user` (default 00000001) | which `home/<id>/`. If that folder is missing: 00000001, else the first user |
 | users | `<hdd0>home/<8 digits>/localusername` | the count and the name shown |
@@ -325,6 +326,7 @@ The check is gamefiles.py, with three changes:
 Two smaller changes go with these:
 - **The stage skips an item whose `found` path already is its destination**, because `copyfile` onto itself fails.
 - **An ISO entry gets `@library iso <path>`**, then `@error game check Setup cannot use ISO files yet.` and `@done fix`. The page shows the ISO row from `@library`.
+- **A library folder with no game in it gets `@check missing PS3_GAME <sentence>`** that names the folder RPCS3's list gave, then `@error game check` and `@done fix`.
 
 ### 3.4 The unlock phase, step by step
 

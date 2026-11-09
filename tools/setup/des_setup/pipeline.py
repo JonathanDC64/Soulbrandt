@@ -49,6 +49,7 @@ REQUEST = "request.json"
 CHOICE = "setup-folder.txt"        # in the usual folder: the build folder the player chose (the host's kChoiceFile)
 UNLOCK = "unlock"                  # setup/unlock: the unlock's copies, RPCS3's folder, then its outputs until the stage
 UPDATE_WORK = "update-install"     # in setup/: where RPCS3 installs an update's package, removed afterwards
+DISC_VIEW = "disc-view"            # in setup/: <TITLE_ID>/PS3_GAME links to a disc game kept in dev_hdd0/game
 GB = 1 << 30
 # Each phase's share of a whole run, from its CPU time (docs/52 4.3: the compile is most of it).
 WEIGHTS = {"check": 2, "unlock": 1, "fetch": 4, "stage": 1, "lift": 13, "compile": 80, "import": 1, "shaders": 2}
@@ -837,6 +838,9 @@ def _run(data, req, app, jobs, check_only, emit, src, table, manifest, phases, c
                                         gamedata or (req.get("import") or {}).get("gamedata"))
                     if stop is not None:
                         return stop
+                stop = _use_installed_disc(req, data, emit)
+                if stop is not None:
+                    return stop
                 try:
                     _install_update(req, data, jr, emit, total, table)
                 except game_update.UpdateError as e:
@@ -975,8 +979,44 @@ def _rpcs3_found(req, exe, emit, t, from_library, gamedata):
     if from_library:
         if found.library.kind != "folder":
             return _not_in_library(found.library, emit, t)
+        if not rpcs3_library.there(found.library):
+            return _library_folder_gone(found.library, emit)
         req["game"] = str(found.library.path)
     emit_found(emit, found)
+    return None
+
+
+def _library_folder_gone(lib, emit) -> int:
+    """The library's folder for the game has no game in it: what was looked for, and where. @done fix."""
+    item = gamefiles.Item("game", "PS3_GAME", "missing",
+                          f"RPCS3's game list says the game is in {lib.path}, but there is no PS3_GAME folder with a "
+                          f"PARAM.SFO there. It may have been moved or deleted. Add it to RPCS3 again (File, then Add "
+                          f"Games), then press Check again.", str(lib.path))
+    emit.check(item)
+    emit.error("game", "check", item.message)
+    emit.done("fix")
+    return 1
+
+
+def _use_installed_disc(req, data, emit):
+    """A disc game RPCS3 keeps in dev_hdd0/game (gamefiles.installed_disc) has no PS3_GAME folder, so the request's
+    game becomes a folder of setup's own that links to it (gamefiles.disc_view). Returns the exit status when the run
+    stops here (the link cannot be made), else None."""
+    game = req.get("game")
+    tid = gamefiles.installed_disc(game)
+    if not tid:
+        return None
+    try:
+        view = gamefiles.disc_view(game, data / "setup" / DISC_VIEW / tid)
+    except OSError as e:
+        emit.text(f"note could not make the link to {game} in setup's folder: {e}")
+        sentence = (f"Setup cannot read the copy RPCS3 keeps in {game}. Make a new folder, copy that folder into it, "
+                    f"name the copy PS3_GAME, then choose the new folder here.")
+        emit.error("game", "check", sentence)
+        emit.done("fix")
+        return 1
+    emit.text(f"ok   RPCS3 keeps this disc in {game}; setup reads it through {view}")
+    req["game"] = str(view)
     return None
 
 
