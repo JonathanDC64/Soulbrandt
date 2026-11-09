@@ -245,6 +245,7 @@ public:
         std::function<void(setup::Request)> onStart;
         std::string fromLine;    // the game row's line; empty: "From <game folder>. The game files check out."
         std::string importLine;  // what comes across from RPCS3 (setup_rpcs3_window.hpp); empty: no such row
+        std::string gameName;    // the game row's name (setup::Status::game_name)
     };
 
     explicit SetupBeforeWindow(Props props);

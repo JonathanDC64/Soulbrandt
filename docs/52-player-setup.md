@@ -114,7 +114,8 @@ Failure modal: one plain sentence on what failed, one on what to do, then Retry,
 |---|---|---|
 | Folder without `PS3_GAME\USRDIR\EBOOT.BIN` | "This folder has no PS3_GAME\USRDIR\EBOOT.BIN. Pick the folder that contains PS3_GAME." | pick again |
 | Another region or version | "This is BLES00932 (Europe). This version supports BLUS30443 version 01.00 only." (docs/45: other regions are out) | pick again |
-| Store version, demo or encrypted disc image (refused in docs/51 5.1 and 5.2) | "This is the PlayStation Store version (NPUB30910). Only the disc version, BLUS30443, is supported." Likewise for the demo, and for an encrypted image: "Use a folder dump of the disc." | pick again |
+| The Japanese store version, the demo or an encrypted disc image (refused in docs/51 5.1 and 5.2) | "This is the Japanese PlayStation Store version (NPJA00102). The port supports the US disc (BLUS30443) or ..." Likewise for the demo and for an encrypted image. | pick again |
+| US or European store version without `EBOOT.elf` | "In RPCS3, open Utilities, then Decrypt PS3 Binaries, and choose ...EBOOT.BIN. It writes EBOOT.elf beside it. Then check again." | Check again |
 | Encrypted `EBOOT.BIN` with another hash | "This EBOOT.BIN is not one this version knows." and the expected and actual SHA-256 | Report, pick again |
 | Decrypted files missing | "Found EBOOT.elf and 22 of the 26 decrypted .sdat files. Missing: ..." | open the guide, Check again |
 | A decrypted file does not match | "m01.luabnd.dcx.sdat.unedat does not match. Decrypt it again from the original .sdat." and both hashes | Check again |

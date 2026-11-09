@@ -67,7 +67,10 @@ The design's "Setup only reads from RPCS3." is not quite true here, because setu
 | Game, supported | ok | Demon's Souls, US disc, version 1.00 | `BLUS30443` · its folder | tag ok "Supported" |
 | Game, ISO | err | Demon's Souls, as an ISO file | "Setup cannot use ISO files yet. Copy the game out of the ISO into a folder, add that folder to RPCS3's library, then press Check again." | tag err "Not yet", link "Check again" |
 | Game, not in the library | warn | Demon's Souls is not in RPCS3's library | "Add it in RPCS3 (File, then Add Games), then press Check again." | link "Check again" |
-| Game, other region or store copy | err | as the design (European disc, PlayStation Store version) | as the design | tag err "Not supported" |
+| Game, the US or European store version | ok | Demon's Souls, US PlayStation Store version, version 1.00 | `NPUB30910` · its folder | tag ok "Supported" |
+| Game, a store version without `EBOOT.elf` | warn | the same, then "Decrypt the game's code in RPCS3" | `NPUB30910` · its folder, then the check's sentence: Utilities, Decrypt PS3 Binaries, and the file's path | tag warn "One step in RPCS3", link "Check again" |
+| Copies, when RPCS3 has more than one in folders | ok | "Which copy to build from": for each, Demon's Souls, its region, disc or store version, its version | its ID · its folder, and why it is not ready if so | the copy in use ticked; press another to check that one; tag "Ready", "One step in RPCS3", "Needs the update", "Not complete", "Needs fixing", "Not yet" (an ISO file, not pressable) |
+| Game, other region or the Japanese store version | err | as the design (PlayStation Store version) | as the design | tag err "Not supported" |
 | Game, damaged dump | err | Demon's Souls, US disc, version 1.00 | the check's sentence, for example "PS3_GAME/USRDIR/script/m01.luabnd.dcx.sdat does not match the US disc, version 1.00. The dump may be damaged: dump the disc again." | tag err "Needs fixing", link "Check again" |
 
 **"Bring across from RPCS3"** (only when the game is supported). There are three checkbox rows, each ticked when its state is `ok`. A row whose state is not `ok` is unticked and cannot be ticked:
@@ -285,7 +288,7 @@ This is a new module, `des_setup/rpcs3.py`. Every file is opened for reading onl
 | trophies | `<hdd0>home/<user>/trophy/NPWR00881_00/TROPUSR.DAT` | the type-6 table, state 1 (docs/44 8.5) |
 | settings | `<R>config/config.yml`, then `custom_configs/config_BLUS30443.yml` over it, then `patch_config.yml` (BLUS30443, 01.00, `Enabled: true`) | section 3.5. The console ID and GPU name are skipped; only key names are logged |
 | PPU Debug EBOOT | `<cache>/ppu_progs/BLUS30443-*-EBOOT.BIN/exec.elf`, where the middle is a base57 of the module's SHA-1 (System.cpp:390-400, read) | accepted when its size and SHA-256 equal the table's `EBOOT.elf` |
-| store copy | `<hdd0>game/NPUB30910/` | the "Not supported" row |
+| store copies | `<hdd0>game/NPUB30910/`, `NPEB01202/` (their PARAM.SFO says the disc's TITLE_ID); `NPJA00102/` | the first two by looking in `dev_hdd0/game`, started in RPCS3 or not: `games.yml` has one line for a TITLE_ID, so a disc and a store copy share it. The third gets the "Not supported" row |
 
 The YAML is read with a small subset reader: two-space indents, `key: value` and quoted scalars (docs/44 8.6). No new library is needed.
 
@@ -713,7 +716,7 @@ Branch `feat/setup-rpcs3-route`: the library and import half of the engine, the 
 **Files.**
 - `rpcs3_library.py` (new) reads the player's RPCS3, and only reads (3.1):
   - its folders, from `vfs.yml` or RPCS3's defaults;
-  - the game in `games.yml`: a folder, an ISO file, or the Store version (`NPUB30910`, not supported);
+  - the game in `games.yml` and `dev_hdd0/game`: folders, an ISO file, or a Store version (`NPUB30910` and `NPEB01202` can be used, `NPJA00102` not yet);
   - the users, and the one RPCS3 uses (`persistent_settings.dat`);
   - the save, the trophies (`TROPUSR.DAT`) and the settings and patches;
   - `dev_flash/sys/external/libsre.sprx`.

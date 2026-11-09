@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <iterator>
 #include <utility>
 
 namespace ui {
@@ -123,6 +124,33 @@ std::string characters(const std::string& n) {
     return std::to_string(v) + (v == 1 ? " character" : " characters");
 }
 
+// How the list of copies tags each one (setup_protocol.hpp's Status::Install states).
+struct CopyLook {
+    const char* state;
+    const char* kind;
+    const char* words;
+};
+constexpr CopyLook kCopyLooks[] = {
+    {"ready", "ok", "Ready"},           {"decrypt", "warn", "One step in RPCS3"}, {"update", "warn", "Needs the update"},
+    {"incomplete", "warn", "Not complete"}, {"bad", "err", "Needs fixing"},       {"iso", "err", "Not yet"},
+};
+
+const CopyLook& look_of_copy(const std::string& state) {
+    for (const CopyLook& l : kCopyLooks)
+        if (state == l.state) return l;
+    return kCopyLooks[std::size(kCopyLooks) - 1];
+}
+
+// "Demon's Souls, European PlayStation Store version, version 01.00": what tells one copy from another, with its path.
+std::string copy_label(const setup::Status::Install& c) {
+    const setup::Disc* d = setup::disc_of(c.title);
+    std::string out = "Demon's Souls, ";
+    out += !d ? c.title : c.kind == "store" && d->storeName ? std::string(d->storeName) : std::string(d->name);
+    if (c.kind == "iso") out += ", ISO file";
+    if (!c.version.empty()) out += ", version " + (c.version[0] == '0' ? c.version.substr(1) : c.version);
+    return out;
+}
+
 // L1 and R1: the page's content up or down by most of its height.
 bool scroll_page(Rml::Element* page, int pages) {
     const float step = std::max(24.f, page->GetClientHeight() * 0.8f);
@@ -151,6 +179,7 @@ bool SetupRpcs3Window::focus() {
     if (asking()) return SetupPage::focus();
     if (mStatus.result == "ok" && !mStatus.disc.incomplete() && !mActions.empty() && mActions[0]->focus()) return true;
     if (!mGameButtons.empty() && mGameButtons[0]->focus()) return true;
+    if (!mCopies.empty() && mCopies[0]->focus()) return true;
     if (!mRowButtons.empty() && mRowButtons[0]->focus()) return true;
     return SetupPage::focus();
 }
@@ -160,6 +189,7 @@ std::vector<std::vector<Button*>> SetupRpcs3Window::nav_lines() const {
     for (const auto& b : mRowButtons) out.push_back({b.get()});
     if (!mLinkButtons.empty()) out.push_back(line(mLinkButtons));
     if (!mGameButtons.empty()) out.push_back(line(mGameButtons));
+    for (const auto& b : mCopies) out.push_back({b.get()});
     for (const auto& b : mChecks) out.push_back({b.get()});
     out.push_back(line(mActions));
     return out;
@@ -217,7 +247,9 @@ void SetupRpcs3Window::picked(const PickedFolder& folder) {
             return;
         }
         mProps.rpcs3 = r;
+        if (std::exchange(mCopyPicked, false)) mRequest.game.clear();  // (that copy was in the other RPCS3)
     } else {
+        mCopyPicked = false;
         mRequest.game = folder.folder;
     }
     check();
@@ -236,6 +268,7 @@ void SetupRpcs3Window::draw() {
                       "|" + std::to_string(mStatus.checks.size()) + "|" + mStatus.errorText + "|" + mPickProblem +
                       "|" + utf8(mProps.rpcs3.folder) + "|" + utf8(mRequest.game) + "|" + mStatus.libraryKind;
     for (const bool t : mTicked) key += t ? "1" : "0";
+    for (const setup::Status::Install& c : mStatus.installs) key += "|" + c.state + (c.chosen ? "*" : "") + c.path;
     if (key == mShown) return;
     mShown = key;
 
@@ -244,6 +277,7 @@ void SetupRpcs3Window::draw() {
     mRowButtons.clear();  // (their listeners go before their elements)
     mLinkButtons.clear();
     mGameButtons.clear();
+    mCopies.clear();
     mChecks.clear();
     clear_children(mBody);
 
@@ -299,10 +333,11 @@ void SetupRpcs3Window::draw() {
             tag(row, "err", "Not yet");
             check_again(row);
         } else if (mRequest.game.empty() && mStatus.libraryKind == "store") {
-            auto* row = found(box, "setup-err", "Demon's Souls, PlayStation Store version (NPUB30910)",
-                              "Only the disc versions are supported: BLUS30443 (US), BLES00932 (Europe), and "
-                              "BCJS30022 (Japan) and BCAS20071 (Asia) with their 1.04 update. The store version is "
-                              "packaged and locked differently.");
+            const std::string id = mStatus.libraryPath.substr(mStatus.libraryPath.find_last_of("/\\") + 1);
+            auto* row = found(box, "setup-err", "Demon's Souls, PlayStation Store version (" + id + ")",
+                              "Setup cannot use this version yet. It can use the US and European PlayStation Store "
+                              "versions (NPUB30910, NPEB01202), and the discs: BLUS30443 (US), BLES00932 (Europe), and "
+                              "BCJS30022 (Japan) and BCAS20071 (Asia) with their 1.04 update.");
             tag(row, "err", "Not supported");
         } else if (mRequest.game.empty() && (mStatus.libraryKind == "none" || mStatus.libraryKind.empty()) &&
                    game.empty()) {
@@ -317,13 +352,20 @@ void SetupRpcs3Window::draw() {
             const auto wrong = std::find_if(disc.begin(), disc.end(), bad);
             // The game's line starts with its TITLE_ID ("BLES00932, version 01.00 (the European disc).").
             const setup::Disc* which = setup::disc_of(std::string_view(game.front()->text).substr(0, 9));
-            const std::string title = which ? which->title : setup::kDiscs[0].title;
-            const std::string name = std::string("Demon's Souls, ") + (which ? which->name : setup::kDiscs[0].name) +
-                                     ", " + (which ? which->version : setup::kDiscs[0].version);
+            const setup::Disc& copy = which ? *which : setup::kDiscs[0];
+            const std::string title = mStatus.store() && copy.storeId ? copy.storeId : copy.title;
+            const std::string name = mStatus.game_name();
+            // (a PlayStation Store copy whose EBOOT.elf the player has yet to make: RPCS3's menu does it, not the unlock)
+            const auto decrypt = std::find_if(other.begin(), other.end(),
+                                              [](const setup::Line* c) { return c->key == "decrypt"; });
             if (!update.empty() && !good(update.front()->key)) {  // (a disc that needs its update, and it is not there)
                 auto* row = found(box, "setup-err", name, update.front()->text);
                 tag(row, "err", "Needs the update");
                 check_again(row);
+            } else if (wrong == disc.end() && decrypt != other.end()) {
+                auto* row = found(box, "setup-warn", name, title + " · " + where);
+                tag(row, "warn", "One step in RPCS3");
+                check_again(found(box, "setup-warn", "Decrypt the game's code in RPCS3", (*decrypt)->text));
             } else if (wrong == disc.end()) {
                 auto* row = found(box, "setup-ok", name, title + " · " + where);
                 tag(row, "ok", "Supported");
@@ -359,9 +401,10 @@ void SetupRpcs3Window::draw() {
         // PS3 system software's libsre.prx, which is optional: one that is not right is left out ("unused").
         if (isGame && mStatus.result != "ok")
             for (const setup::Line* c : other)
-                if (bad(c) && c->key != "missing" && c->key != "unused")
+                if (bad(c) && c->key != "missing" && c->key != "unused" && c->key != "decrypt")
                     found(box, "setup-err", c->key2.substr(c->key2.rfind('/') + 1), c->text);
 
+        if (mStatus.installs.size() >= 2) draw_copies(mBody);
         if (supported()) draw_imports(mBody);
     }
 
@@ -385,6 +428,39 @@ void SetupRpcs3Window::draw() {
                      mStatus.libraryKind.empty() ? "-" : mStatus.libraryKind.c_str(),
                      mStatus.userId.empty() ? "-" : mStatus.userId.c_str(), mStatus.users,
                      mStatus.disc.state.empty() ? "-" : mStatus.disc.sentence.c_str());
+}
+
+// RPCS3 has more than one copy of the game: each with what tells it from the others and whether it is ready, the one
+// in use ticked. Picking another checks that one instead. An ISO file is listed, but setup cannot use it.
+void SetupRpcs3Window::draw_copies(Rml::Element* parent) {
+    text(parent, "setup-heading", "Which copy to build from");
+    auto* box = panel(parent);
+    for (const setup::Status::Install& c : mStatus.installs) {
+        auto button = std::make_unique<Button>(box, "");
+        Rml::Element* root = button->root();
+        root->SetClass("setup-check", true);
+        auto* mark = icon(root, "setup-box");
+        mark->SetClass("on", c.chosen);
+        auto* words = append(root, "setup-found-text");
+        const setup::Disc* d = setup::disc_of(c.title);
+        const std::string id = c.kind == "store" && d && d->storeId ? d->storeId : c.title;
+        text(words, "setup-found-key", copy_label(c));
+        text(words, "setup-found-value", id + " · " + c.path);
+        if (!c.why.empty() && !c.chosen) text(words, "setup-found-value", c.why);  // (the chosen one's is in the rows above)
+        const CopyLook& look = look_of_copy(c.state);
+        text(root, "setup-tag", look.words)->SetClass(look.kind, true);
+        button->set_disabled(c.state == "iso");
+        button->on_pressed([this, path = c.path, chosen = c.chosen] {
+            if (chosen) return;
+            play_sound(kSoundItemChange);
+            mPending = [this, path] {
+                mRequest.game = std::filesystem::path(std::u8string(path.begin(), path.end()));
+                mCopyPicked = true;
+                check();
+            };
+        });
+        mCopies.push_back(std::move(button));
+    }
 }
 
 // "Bring across from RPCS3": a box for each, ticked when the engine found it, and not tickable when not. The save
@@ -489,8 +565,9 @@ void SetupRpcs3Window::go_on() {
     }
 
     // Ready to build's lines: where the game is from, and what comes across.
-    const std::string from = mRequest.game.empty() ? std::string("From RPCS3's library.")
-                                                   : "From " + utf8(mRequest.game) + ", unlocked by your RPCS3.";
+    const std::string from = mStatus.store()        ? std::string("From the PlayStation Store version in RPCS3.")
+                             : mRequest.game.empty() ? std::string("From RPCS3's library.")
+                                                     : "From " + utf8(mRequest.game) + ", unlocked by your RPCS3.";
     std::vector<std::string> items;
     bool plural = false;  // (the verb after them: "Your save comes", "14 trophies come")
     if (mTicked[Save]) {
@@ -525,6 +602,7 @@ void SetupRpcs3Window::go_on() {
             .firmware = firmware,
             .fromLine = from + " All the unlocked files match.",
             .importLine = importLine,
+            .gameName = mStatus.game_name(),
             .onStart = start,
         }));
         return;
@@ -534,6 +612,7 @@ void SetupRpcs3Window::go_on() {
         .onStart = start,
         .fromLine = from + " The game files check out.",
         .importLine = importLine,
+        .gameName = mStatus.game_name(),
     }));
 }
 
@@ -744,6 +823,7 @@ void SetupUnlockWindow::go_on() {
                 if (mProps.onStart) mProps.onStart(std::move(r));
             },
         .fromLine = mProps.fromLine,
+        .gameName = mProps.gameName,
         .importLine = mProps.importLine,
     }));
 }

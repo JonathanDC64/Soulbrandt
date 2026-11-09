@@ -96,7 +96,7 @@ def _print_report(rep, unlocks=False):
         if i in n_orig or i in unmeasured or (len(missing) > 1 and i in missing):
             continue
         mark = ('ok  ' if i.good else 'note' if i.state == 'unused' else
-                'next' if unlocks and (i.kind == 'decrypted' or i.unlock) else 'FIX ')
+                'next' if unlocks and i.unlock_makes else 'FIX ')
         print(f"{mark} {i.message}")
     if n_orig:
         t = rep.table or {}
@@ -179,8 +179,8 @@ def _print_found(found, from_library) -> str:
         mark = "FIX " if from_library else "    "
         print(mark + " " + {"iso": f"Demon's Souls is in RPCS3's library as an ISO file, which setup cannot use yet: "
                                    f"{lib.path}",
-                            "store": f"RPCS3 has the PlayStation Store version ({rpcs3_library.STORE_ID}), which the "
-                                     f"port does not support: {lib.path}"}.get(lib.kind,
+                            "store": f"RPCS3 has a PlayStation Store version the port cannot use yet "
+                                     f"({Path(str(lib.path)).name}): {lib.path}"}.get(lib.kind,
                                      "Demon's Souls is not in RPCS3's library yet."))
     s = found.save
     print({"ok": f"ok   Save: last saved {_when(s.saved)}; the number of characters is not known. {s.folder}",
