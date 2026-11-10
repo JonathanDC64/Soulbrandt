@@ -199,6 +199,17 @@
 # hook makes it ease as at 30 fps (docs/28, "Locked-on direction changes").
 0x003D42BC=des_twist_rate   # lfs f12, 0x20(r31): the bone's ease share (0.35, the locomotion controller's +0x154)
 
+# des_refpose_rate (port/des_options.cpp): Havok fills a bone whose animation
+# weight is under the skeleton's reference-pose threshold with the T-pose; above
+# 30 fps a clip fading in from 0 spends 20-30 ms under it, and the enemy T-poses
+# for a frame. The hooks scale the threshold so the fade looks as at 30 fps
+# (docs/28, "One-frame T-pose above 30 fps").
+0x00FFDFF8=des_refpose_rate   # lfs f12, 0x20(r23): the threshold, Havok's sample-and-combine on the PPU (0x00FFDD50)
+0x00FFEA68=des_refpose_rate   # lfs f12, 0x20(r24): the same (0x00FFE7C8)
+0x00FFFFE4=des_refpose_rate   # lfs f12, 0x20(r25): the same (0x00FFFCF0)
+0x0100191C=des_refpose_rate   # lfs f13, 0x20(r7): the same, one bone (0x01001650)
+0x01005978=des_refpose_rate   # lfs f0, 0x20(r3): the SPU sample job's copy, stored at the job's +0xC (0x010058F8)
+
 # des_sun_gate (port/des_options.cpp): the sun flare's readers take the probe's
 # count only once label 0x52 has reached the probe's counter; above 30 fps that
 # never happens and the flare keeps a stale count, through walls or gone (issue

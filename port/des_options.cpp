@@ -1364,6 +1364,34 @@ extern "C" void des_twist_rate(ppu_context* ctx, uint32_t addr)
     ctx->fpr[fd] = (float)(1.0 - std::pow(1.0 - k, (double)steps));
 }
 
+/* Enemies that T-pose for a frame above 30 fps (docs/28 "One-frame T-pose
+ * above 30 fps"). Havok's sample-and-combine fills a bone whose animation
+ * weight is under the skeleton's reference-pose threshold (+0x20 of the
+ * animated skeleton, 0.05 here) with the reference pose, which is a T-pose.
+ * When an enemy starts a new move (a turn, a stop, a step to adjust), the new
+ * clip's control can fade in from 0 with nothing under it. Its weight grows
+ * about as t^2 and reaches the threshold after about 1/30 s, so at 30 fps one
+ * frame of the fade shows some reference pose. Above 30 fps several frames
+ * come at weights near 0, and for 20-30 ms the enemy is drawn in the T-pose.
+ * The lifter calls this after each load of the threshold: the SPU job's copy
+ * (0x01005978, stored at the job's +0xC) and the PPU's own sample paths. The
+ * threshold becomes thr * (30 dt)^2, with dt the game's frame time, so a fade
+ * stays under it for about one frame at any frame rate, as at 30 fps. A
+ * weight of 0 still gets the reference pose. DES_TPOSEFIX=0 turns it off live. */
+extern "C" void des_refpose_rate(ppu_context* ctx, uint32_t addr)
+{
+    static int on = 1;
+    PS3_KNOB(on, ps3_env_int("DES_TPOSEFIX", 1) != 0);
+    if (!on || s_fps <= 0) return;
+    const uint32_t insn = hook_insn(addr);
+    if ((insn >> 26) != 48) return;   /* lfs only */
+    const int fd = (insn >> 21) & 31;
+    const double thr = ctx->fpr[fd];
+    const double s = (double)vm_readf(DES_AT(kFrameDt)) * 30.0;
+    if (!(thr > 0.0) || !(s > 0.0) || s >= 1.0) return;
+    ctx->fpr[fd] = (float)(thr * s * s);
+}
+
 /* The sun flare's occlusion probe (issue #290, docs/28 "Sun flare stuck above
  * 30 fps"). Once a frame the game draws a 24x24 probe at the sun with ZPASS
  * counting on. Ending the query (0x00AB41E8) adds one to a 64-bit counter,

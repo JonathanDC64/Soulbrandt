@@ -231,6 +231,11 @@ DES_REGION_ADDR(0x00F62E68, 0x00F648E0)  /* call */
 DES_REGION_ADDR(0x00FF54D4, 0x00FF6F4C)  /* hook des_ik_rate */
 DES_REGION_ADDR(0x00FF5680, 0x00FF70F8)  /* hook des_ik_rate */
 DES_REGION_ADDR(0x00FF58CC, 0x00FF7344)  /* hook des_ik_rate */
+DES_REGION_ADDR(0x00FFDFF8, 0x00FFFA70)  /* hook des_refpose_rate */
+DES_REGION_ADDR(0x00FFEA68, 0x010004E0)  /* hook des_refpose_rate */
+DES_REGION_ADDR(0x00FFFFE4, 0x01001A5C)  /* hook des_refpose_rate */
+DES_REGION_ADDR(0x0100191C, 0x01003394)  /* hook des_refpose_rate */
+DES_REGION_ADDR(0x01005978, 0x010073F0)  /* hook des_refpose_rate */
 DES_REGION_ADDR(0x0109F2C4, 0x010A0D3C)  /* hook des_body_xform */
 DES_REGION_ADDR(0x011B1D6C, 0x011B37E4)  /* hook des_body_sampled */
 DES_REGION_ADDR(0x012D86C4, 0x012DA13C)  /* hook des_rag_pose_a */
