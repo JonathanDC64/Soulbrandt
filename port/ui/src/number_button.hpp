@@ -20,6 +20,7 @@ public:
         int step = 1;
         Rml::String prefix;
         Rml::String suffix;
+        std::function<Rml::String(int)> format;  // the text for a value, in place of prefix, value and suffix
     };
 
     NumberButton(Rml::Element* parent, Props props);
@@ -43,6 +44,7 @@ private:
     int mStep;
     Rml::String mPrefix;
     Rml::String mSuffix;
+    std::function<Rml::String(int)> mFormat;
 };
 
 }  // namespace ui

@@ -10,10 +10,12 @@ gets an answer.
 Where things are (Windows; on Linux the .yml files sit in <R> itself):
   <R>                         RPCS3's config folder (rpcs3.player_dirs)
   <R>config/vfs.yml           $(EmulatorDir), /dev_hdd0/ and /dev_flash/ (RPCS3's defaults when absent)
-  <R>config/games.yml         the library: BLUS30443's or BLES00932's folder or ISO file (older builds: <R>games.yml)
+  <R>config/games.yml         the library: a supported disc's folder or ISO file, by its TITLE_ID (older builds:
+                              <R>games.yml)
   <R>GuiConfigs/persistent_settings.dat   [Users] active_user, the user RPCS3 uses
   <hdd0>home/<8 digits>/      each user: localusername, savedata/, trophy/
-  <hdd0>game/NPUB30910/       the PlayStation Store version, which the port does not support
+  <hdd0>game/<TITLE_ID>/      a disc game kept on the hard disk (gamefiles.installed_disc), or that disc's update
+  <hdd0>game/NPUB30910/, NPEB01202/   the US and European PlayStation Store versions (PARAM.SFO says the disc's TITLE_ID)
   <R>config/config.yml, custom_configs/config_<title>.yml, patch_config.yml   the settings and patches
   <dev_flash>sys/external/libsre.sprx     the PS3 system software's file the build lifts when there is one
                                           (optional: the game does not need it, docs/133)
@@ -25,7 +27,7 @@ import struct
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import rpcs3, sfo, yaml_subset
+from . import gamefiles, rpcs3, sfo, yaml_subset
 
 
 
@@ -45,7 +47,7 @@ TITLES = {US_ID: Title(US_ID, "BLUS30443DEMONSS005", "NPWR00881_00", "NPWR00881.
           ASIA_ID: Title(ASIA_ID, "BCAS20071DEMONSS005", "NPWR00245_00", "NPWR00245.json")}
 SAVE_DIR, TROPHY_DIR, TROPHY_FILE = TITLES[US_ID].save_dir, TITLES[US_ID].trophy_dir, TITLES[US_ID].trophy_file
 TROPHY_COUNT = 38                   # the trophies the set has (both discs' sets)
-STORE_ID = "NPUB30910"              # the US PlayStation Store version
+OTHER_STORE_IDS = ("NPJA00102",)    # PlayStation Store versions setup cannot use yet (game_table.json's other_titles)
 DEFAULT_USER = "00000001"
 SPRX = "sys/external/libsre.sprx"   # under dev_flash
 VERSION_TXT = "vsh/etc/version.txt" # under dev_flash: the system software's version
@@ -86,8 +88,10 @@ class User:
 @dataclass
 class Library:
     kind: str           # folder, iso, store or none
-    path: Path = None   # the folder that holds PS3_GAME, the ISO file, or the store version's folder
+    path: Path = None   # the folder that holds PS3_GAME (or a disc game's own folder in dev_hdd0/game, see
+                        # gamefiles.installed_disc), the ISO file, or a store version the port cannot use (kind store)
     title: str = ""     # the disc's TITLE_ID, for a folder or an ISO file
+    digital: bool = False   # a PlayStation Store copy of the disc (gamefiles.store_copy)
 
 
 @dataclass
@@ -189,25 +193,100 @@ def firmware_version(f: Folders) -> str:
 
 # ---- the library ----
 
-def library(f: Folders, title_ids) -> Library:
-    """The first of the titles with a games.yml entry (System.cpp, game_enumeration.h): a disc root, a PS3_GAME folder
-    marked by a trailing "/./", or an ISO file. With none, the store version's folder if RPCS3 has it."""
+def _listed(f: Folders, title_ids) -> list:
+    """RPCS3's games.yml entries for the titles, in the titles' order. games.yml has one line for a title, so a disc
+    and a PlayStation Store copy, which say the same TITLE_ID, overwrite each other's: this list alone never finds
+    both (see installs)."""
+    ymls = [yaml_subset.load_file(p) for p in (f.config / "games.yml", f.root / "games.yml")]
+    listed = []
+    for tid in title_ids:
+        v = next((y[tid] for y in ymls if isinstance(y.get(tid), str) and y[tid].strip()), None)
+        if v is not None:
+            lib = entry(v.strip())
+            lib.title = tid
+            lib.digital = lib.kind == "folder" and gamefiles.store_copy(lib.path)
+            listed.append(lib)
+    return listed
+
+
+def _in_hdd0(f: Folders, title_ids) -> list:
+    """The titles' games in RPCS3's dev_hdd0/game, as RPCS3 lists them without games.yml: a disc under its TITLE_ID, then
+    the others found by what their PARAM.SFO says (a PlayStation Store copy's folder is its own ID)."""
+    game = f.hdd0 / "game"
+    out = []
+    for tid in title_ids:
+        hdd = game / tid
+        if gamefiles.find_root(hdd) or gamefiles.installed_disc(hdd) == tid:
+            out.append(Library("folder", hdd, tid, gamefiles.store_copy(hdd)))
+    try:
+        names = sorted(os.listdir(game))
+    except OSError:
+        names = []
+    for name in names:
+        tid = gamefiles.installed_disc(game / name)
+        if name not in title_ids and tid in title_ids:
+            out.append(Library("folder", game / name, tid, gamefiles.store_copy(game / name)))
+    return sorted(out, key=lambda lib: title_ids.index(lib.title))     # (stable: each title's own folder first)
+
+
+def installs(f: Folders, title_ids) -> list:
+    """Every copy of the titles RPCS3 has, best first: folders in games.yml, then games in dev_hdd0/game (found by
+    looking, so a copy games.yml lost still counts), then ISO files that are there. One entry for each folder."""
     if isinstance(title_ids, str):
         title_ids = [title_ids]
-    ymls = [yaml_subset.load_file(p) for p in (f.config / "games.yml", f.root / "games.yml")]
-    for tid in title_ids:
-        for y in ymls:
-            v = y.get(tid)
-            if isinstance(v, str) and v.strip():
-                lib = entry(v.strip())
-                lib.title = tid
-                return lib
-    store = f.hdd0 / "game" / STORE_ID
-    return Library("store", store) if store.is_dir() else Library("none")
+    listed = _listed(f, title_ids)
+    out, seen = [], set()
+
+    def add(lib):
+        key = gamefiles.copy_key(lib.path) if lib.kind == "folder" else str(lib.path)
+        if key not in seen:
+            seen.add(key)
+            out.append(lib)
+
+    for lib in listed:
+        if lib.kind == "folder" and there(lib):
+            add(lib)
+    for lib in _in_hdd0(f, title_ids):
+        add(lib)
+    for lib in listed:
+        if lib.kind == "iso" and there(lib):
+            add(lib)
+    return out
+
+
+def library(f: Folders, title_ids) -> Library:
+    """What RPCS3 has of the titles, the first title first. Best a games.yml entry (System.cpp, game_enumeration.h) with
+    a folder setup can use: a disc root, a PS3_GAME folder marked by a trailing "/./", or a game's own folder in
+    dev_hdd0/game marked the same way. Then a game in dev_hdd0/game that RPCS3 has not registered yet (it lists those
+    without games.yml), then an ISO file that is there, which setup says it cannot use. games.yml keeps an entry when
+    its game has gone, so an entry whose folder or file is gone is the last choice, and it never hides a copy that is
+    there (issue #453: a leftover US entry hid the European disc the player has). With none, a PlayStation Store
+    version setup cannot use, if RPCS3 has it."""
+    if isinstance(title_ids, str):
+        title_ids = [title_ids]
+    copies = installs(f, title_ids)
+    if copies:
+        return next((c for c in copies if c.kind == "folder"), copies[0])
+    listed = _listed(f, title_ids)
+    if listed:
+        return listed[0]
+    for sid in OTHER_STORE_IDS:
+        store = f.hdd0 / "game" / sid
+        if store.is_dir():
+            return Library("store", store)
+    return Library("none")
+
+
+def there(lib: Library) -> bool:
+    """The library entry's folder or ISO file is really there."""
+    if lib.kind == "iso":
+        return lib.path.is_file()
+    return bool(gamefiles.find_root(lib.path) or gamefiles.installed_disc(lib.path))
 
 
 def entry(text: str) -> Library:
-    """One games.yml path, as the folder that holds PS3_GAME (or the ISO file)."""
+    """One games.yml path, as the folder that holds PS3_GAME (or the ISO file, or a disc game's own folder in
+    dev_hdd0/game, whose entry ends in "/./" and which has no PS3_GAME folder)."""
     p = text.replace("\\", "/")
     if p.lower().endswith(".iso") or Path(p).is_file():
         return Library("iso", Path(p))

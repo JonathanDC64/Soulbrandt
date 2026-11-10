@@ -349,6 +349,10 @@ bool holds_decrypted(const std::filesystem::path& dir) {
 FolderKind folder_kind(const std::filesystem::path& folder) {
     std::error_code ec;
     if (std::filesystem::is_regular_file(folder / "PS3_GAME" / "PARAM.SFO", ec)) return FolderKind::Dump;
+    // (a game installed in RPCS3's dev_hdd0/game has no PS3_GAME folder; a PlayStation Store copy's EBOOT.elf is there)
+    if (std::filesystem::is_regular_file(folder / "PARAM.SFO", ec) &&
+        std::filesystem::is_regular_file(folder / "USRDIR" / "EBOOT.BIN", ec))
+        return FolderKind::Dump;
     for (const auto& dir : {folder, folder / "USRDIR", folder / "PS3_GAME" / "USRDIR"})
         if (holds_decrypted(dir)) return FolderKind::Decrypted;
     return FolderKind::Other;

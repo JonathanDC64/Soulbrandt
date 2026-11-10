@@ -1,5 +1,6 @@
 // The setup engine's line protocol, read (see setup_protocol.hpp; the lines are listed in protocol.py and docs/88).
 #include "setup_protocol.hpp"
+#include "setup_pc.hpp"   // kDiscs
 
 #include <algorithm>
 #include <charconv>
@@ -18,7 +19,8 @@ constexpr KindName kKinds[] = {
     {"progress", Line::Kind::Progress}, {"overall", Line::Kind::Overall}, {"check", Line::Kind::Check},
     {"disc", Line::Kind::Disc},         {"discfile", Line::Kind::DiscFile},
     {"file", Line::Kind::File},         {"rpcs3", Line::Kind::Rpcs3}, {"user", Line::Kind::User},
-    {"library", Line::Kind::Library},   {"found", Line::Kind::Found}, {"setting", Line::Kind::Setting},
+    {"library", Line::Kind::Library},   {"install", Line::Kind::Install}, {"installwhy", Line::Kind::InstallWhy},
+    {"found", Line::Kind::Found},       {"setting", Line::Kind::Setting},
     {"awake", Line::Kind::Awake},       {"memory", Line::Kind::Memory}, {"log", Line::Kind::Log},
     {"error", Line::Kind::Error},       {"done", Line::Kind::Done},     {"release", Line::Kind::Release},
     {"note", Line::Kind::Note},
@@ -112,6 +114,17 @@ Line parse_line(std::string_view text) {
         if (l.key.empty() || !parse_number(take_word(rest), l.n)) return plain;
         l.text = std::string(rest);
         break;
+    case Line::Kind::Install:  // <state> <kind> <title> <version> <chosen> <path>
+        l.key = take_word(rest);
+        l.key2 = take_word(rest);
+        for (int i = 0; i < 3; ++i) l.list.emplace_back(take_word(rest));
+        l.text = std::string(rest);
+        if (l.key.empty() || l.key2.empty() || l.list[2].empty() || l.text.empty()) return plain;
+        break;
+    case Line::Kind::InstallWhy:
+        l.text = std::string(rest);
+        if (l.text.empty()) return plain;
+        break;
     case Line::Kind::Library:  // <kind> <path>
     case Line::Kind::Setting:  // <key> <value>
         l.key = take_word(rest);
@@ -150,6 +163,18 @@ Line parse_line(std::string_view text) {
         break;
     }
     return l;
+}
+
+bool Status::store() const {
+    return std::any_of(checks.begin(), checks.end(), [](const Line& c) { return c.key2 == "STORE"; });
+}
+
+std::string Status::game_name() const {
+    // The game's line starts with its TITLE_ID ("BLES00932, version 01.00 (the European disc).").
+    const auto game = std::find_if(checks.begin(), checks.end(),
+                                   [](const Line& c) { return c.key2 == "TITLE_ID" && c.key == "ok"; });
+    const setup::Disc* d = game == checks.end() ? nullptr : disc_of(std::string_view(game->text).substr(0, 9));
+    return copy_name(d ? *d : kDiscs[0], store());
 }
 
 void Status::apply(const Line& l) {
@@ -215,6 +240,13 @@ void Status::apply(const Line& l) {
     case Line::Kind::Library:
         libraryKind = l.key;
         libraryPath = l.text == "-" ? std::string() : l.text;
+        break;
+    case Line::Kind::Install:
+        installs.push_back({l.key, l.key2, l.list[0], l.list[1] == "-" ? std::string() : l.list[1], l.text, {},
+                            l.list[2] == "1"});
+        break;
+    case Line::Kind::InstallWhy:
+        if (!installs.empty()) installs.back().why = l.text;
         break;
     case Line::Kind::Found:
         found[l.key] = Found{l.key2, l.list};

@@ -131,12 +131,14 @@ def _find(listings, folder: Path, name: str):
     return other, exact[other], not CASELESS
 
 
-def check(root, name, lists=None) -> Disc:
-    """The copy in `root` (the folder that holds PS3_GAME) against the list `name` (game_table.json's "disc_files")."""
+def check(root, name, lists=None, sized=()) -> Disc:
+    """The copy in `root` (the folder that holds PS3_GAME) against the list `name` (game_table.json's "disc_files").
+    sized: paths whose size may differ (a PlayStation Store copy's EBOOT.BIN and .sdat files, checked by gamefiles)."""
     want = load(name, lists)
     if want is None:
         return Disc("unknown")
     d = Disc("complete", files=sum(len(f) for f in want.values()))
+    skip = set(sized)
     listings = _Listings()
     for folder in sorted(want):
         files = want[folder]
@@ -156,7 +158,7 @@ def check(root, name, lists=None) -> Disc:
                 d.missing.append(path)
             elif hit[2] or case_of:
                 d.case.append((path, hit[0]))
-            elif hit[1] != files[file]:
+            elif hit[1] != files[file] and path not in skip:
                 d.differ.append((path, files[file], hit[1]))
     if d.missing or d.case or d.differ:
         d.state = "incomplete"

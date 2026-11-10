@@ -138,6 +138,7 @@ constexpr FileLook kFileLooks[] = {
     {"missing", "setup-warn", "Missing"},
     {"encrypted", "setup-err", "Still encrypted"},
     {"mismatch", "setup-err", "Does not match"},
+    {"decrypt", "setup-warn", "Decrypt it in RPCS3"},
     {"wrong", "setup-err", "Does not match"},
 };
 
@@ -277,8 +278,9 @@ void SetupStartWindow::refresh() {
         auto* box = panel(mBody);
         found(box, "setup-info", "You need your copy of the game",
               "The US disc (BLUS30443) or the European disc (BLES00932), version 1.00, or the Japanese "
-              "(BCJS30022) or Asian (BCAS20071) disc with its 1.04 update, copied to a folder. If you already play it "
-              "in RPCS3, that is enough. If not, setup shows you how.");
+              "(BCJS30022) or Asian (BCAS20071) disc with its 1.04 update, copied to a folder, or the US or European "
+              "PlayStation Store version. If you already play it in RPCS3, that is enough. If not, setup shows you "
+              "how.");
         found(box, "setup-info", "Setup downloads its build tools once",
               "The compiler and the tools it needs, each checked before it is used. Later builds use the same copy.");
         found(box, "setup-info", "You can stop and come back",
@@ -798,6 +800,7 @@ void SetupFilesWindow::start() {
                     force_hide(true);  // (covered by Ready to build: it closes without coming back)
                     mProps.onStart(std::move(request));
                 },
+            .gameName = mStatus.game_name(),
         }));
         return;
     }
@@ -914,14 +917,10 @@ void SetupFilesWindow::draw_check() {
             if (!disc.empty()) {
                 const auto wrong = std::count_if(disc.begin(), disc.end(), bad);
                 value += wrong != 0                  ? ". " + (*std::find_if(disc.begin(), disc.end(), bad))->text
-                         : whole.state == "complete" ? ". All " + grouped(whole.files) + " of the disc's files are there."
+                         : whole.state == "complete" ? ". All " + grouped(whole.files) + " of the game's files are there."
                                                      : ". The disc's " + std::to_string(disc.size()) + " files match.";
             }
-            // The game's line starts with its TITLE_ID ("BLES00932, version 01.00 (the European disc).").
-            const setup::Disc* which = setup::disc_of(std::string_view(game.front()->text).substr(0, 9));
-            if (!which) which = &setup::kDiscs[0];
-            found(box, whole.incomplete() ? "setup-warn" : "setup-ok",
-                  std::string("Demon's Souls, ") + which->name + ", " + which->version, value);
+            found(box, whole.incomplete() ? "setup-warn" : "setup-ok", mStatus.game_name(), value);
             // A disc that needs its update (the Japanese and Asian discs): found and checked, or how to give it.
             if (!update.empty() && good(update.front()->key)) {
                 found(box, "setup-ok", "Its update", update.front()->text);
@@ -963,11 +962,15 @@ void SetupFilesWindow::draw_check() {
             };
             // All there: one more row in the game's panel. Some missing: what they are, then the list.
             Rml::Element* list = box;
+            const auto decrypt = std::find_if(files.begin(), files.end(),
+                                              [](const setup::Line* c) { return c->key == "decrypt"; });
             if (missing) {
-                text(mCheck, "setup-heading", "The game's decrypted files");
+                text(mCheck, "setup-heading", decrypt != files.end() ? "One step in RPCS3" : "The game's decrypted files");
                 text(mCheck, "setup-text",
-                     "The game's code and 26 of its files are encrypted on the disc. You decrypt them once with a "
-                     "PS3 tool; setup checks each one against the right copy.")
+                     decrypt != files.end()
+                         ? (*decrypt)->text
+                         : std::string("The game's code and 26 of its files are encrypted on the disc. You decrypt "
+                                       "them once with a PS3 tool; setup checks each one against the right copy."))
                     ->SetClass("note", true);
                 decrypted_button(Look::Plain);
                 list = panel(mCheck);
@@ -1050,7 +1053,8 @@ SetupHelpWindow::SetupHelpWindow(Props props) : SetupPage("setup-help"), mProps(
     set_heading("Getting your game's files",
                 "Setup builds the game from your own copy of Demon's Souls: the US disc (BLUS30443) or the European "
                 "disc (BLES00932), version 1.00, or the Japanese (BCJS30022) or Asian (BCAS20071) disc with its 1.04 "
-                "update. It takes three steps, once.");
+                "update. It takes three steps, once. (The US or European PlayStation Store version works too, installed "
+                "in RPCS3: use the RPCS3 route.)");
     const auto guide = [](Rml::Element* body, std::initializer_list<const char*> steps) {
         auto* list = append(body, "setup-guide");
         int n = 0;
@@ -1159,7 +1163,7 @@ void SetupBeforeWindow::draw() {
     mSpaceButton.clear();
     clear_children(mRows);
     auto* box = panel(mRows);
-    found(box, "setup-ok", "Demon's Souls, US disc, version 1.00",
+    found(box, "setup-ok", mProps.gameName.empty() ? "Demon's Souls, US disc, version 1.00" : mProps.gameName,
           mProps.fromLine.empty() ? "From " + utf8(mProps.request.game) + ". The game files check out."
                                   : mProps.fromLine);
     if (!mProps.importLine.empty()) found(box, "setup-ok", "From RPCS3", mProps.importLine);

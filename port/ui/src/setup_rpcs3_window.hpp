@@ -1,6 +1,7 @@
 // Written for Demon's Souls. The setup screens' RPCS3 route (docs/90 section 1), on the setup shell (setup_page.hpp):
 //  1. "Your game in RPCS3": the engine's check with the player's RPCS3 (`run --check-only --rpcs3`) as rows: RPCS3,
-//     its user, the game in its library, then what to bring across (save, trophies, settings);
+//     its user, the game in its library, which copy to use when RPCS3 has more than one, then what to bring across
+//     (save, trophies, settings);
 //  2. "RPCS3 was not found": the folder dialog for an RPCS3 the host did not find, and how to get it ready;
 //  3. "Unlocking the game files": the unlock alone (`run --unlock-only`), file by file, before Ready to build.
 // "Where is your game?" (setup_screens.hpp) opens the first or the second; Continue goes on to the third when files
@@ -49,6 +50,7 @@ private:
     void choose(Picking what);
     void picked(const PickedFolder& folder);
     void draw();
+    void draw_copies(Rml::Element* parent);
     void draw_imports(Rml::Element* parent);
     void go_on();
     bool supported() const;
@@ -64,9 +66,10 @@ private:
     std::string mPickProblem;
     std::string mShown;  // what the page last drew, to draw only changes
     bool mShownOk = false;
+    bool mCopyPicked = false;  // mRequest.game is a copy the player picked from this RPCS3's list
 
     Rml::Element* mBody = nullptr;
-    Buttons mRowButtons, mLinkButtons, mGameButtons, mChecks, mActions;
+    Buttons mRowButtons, mLinkButtons, mGameButtons, mCopies, mChecks, mActions;
     setup::Engine mEngine;  // (last: destroyed first, which ends a check still going)
 };
 
@@ -106,6 +109,7 @@ public:
         bool firmware = false;   // and the PS3 system software's libsre.sprx
         std::string fromLine;    // Ready to build's line for the game
         std::string importLine;  // and for what comes across from RPCS3; empty: nothing
+        std::string gameName;    // and the game's name (setup::Status::game_name)
         std::function<void(setup::Request)> onStart;
     };
 

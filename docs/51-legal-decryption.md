@@ -438,11 +438,12 @@ This is AC4-Port's model (docs/31; section 2).
 | BLES00932 | EU disc (2010) | 01.00. No update on Sony's server (measured). | Not supported: every guest address in `port/` is for BLUS30443 (docs/31). |
 | BCJS30022 | JP disc (SCE, 2009-02-05) | Update 01.04: 48,414,800 bytes, needs system 2.50 (measured, Sony's update metadata) | Not supported |
 | BCAS20071 | Asian disc | Update 01.04: 48,414,800 bytes, needs system 2.50 (measured) | Not supported |
-| NPUB30910 | US PlayStation Store version (2013) | No update on Sony's server (measured) | Refuse: NPDRM (section 5.2) |
+| NPUB30910 | US PlayStation Store version (2013) | No update on Sony's server (measured) | Accept, installed in RPCS3 (section 5.2). The same program and data as the US disc (measured). |
+| NPEB01202 | European PlayStation Store version | Not checked | Accept, installed in RPCS3 (section 5.2). The same program and data as the European disc (measured). |
 | NPJA00102 | JP PlayStation Store version | Sony's server returns 404 for this ID (measured). An RPCS3 issue runs it with the 1.04 update (docs/29, M9). | Refuse |
 | BLUD80018 | US trade demo | 01.01 (RPCS3 `patch.yml`) | Refuse |
 
-Sources: this PC's `PARAM.SFO` (measured); Sony's update metadata (measured); RPCS3's `patch.yml`, a local copy, which lists BLUS30443 01.00, BLES00932 01.00, BCAS20071 01.04, BCJS30022 01.04 and BLUD80018 01.01 (read); docs/29 (read); search results quoting Giant Bomb and the Video Game History Foundation (read; Sources). No EU store ID was found.
+Sources: this PC's `PARAM.SFO` (measured); Sony's update metadata (measured); RPCS3's `patch.yml`, a local copy, which lists BLUS30443 01.00, BLES00932 01.00, BCAS20071 01.04, BCJS30022 01.04 and BLUD80018 01.01 (read); docs/29 (read); search results quoting Giant Bomb and the Video Game History Foundation (read; Sources); the two PlayStation Store packages (measured).
 
 ### 5.2 Formats
 
@@ -451,8 +452,8 @@ Sources: this PC's `PARAM.SFO` (measured); Sony's update metadata (measured); RP
 | Folder ("JB" format): `PS3_GAME/` with or without `PS3_DISC.SFB` | The disc's files. The dumper has already removed the disc encryption. | `EBOOT.BIN` and the 26 `.sdat` | Accept. This PC's dump is one (measured). |
 | Decrypted ISO | The same files in an ISO 9660 image | Same as the folder | Accept later. It needs only a read-only ISO reader. RPCS3 now boots ISO files too (read, `Emu/System.cpp`). |
 | Encrypted ISO (a raw disc image) with a disc key or IRD file | The disc as pressed, with its disc encryption. RPCS3 reads these with a `.dkey` file since 2026-04 (section 2.2). | The disc layer as well | Refuse. Decrypting the disc layer is one more circumvention step (inferred). |
-| Store package (`.pkg`) with a RAP or RIF licence (and `act.dat` plus the console ID) | The store version, licensed per account | The package key, the NPDRM keys and the player's licence | Refuse |
-| The store version installed in RPCS3 (`dev_hdd0/game/NPUB30910`) | An installed store copy | Still an NPDRM executable | Refuse, for now |
+| Store package (`.pkg`) | The store version as sold | | Setup does not open packages. The player installs the package in RPCS3 (next row). |
+| The US or European store version installed in RPCS3 (`dev_hdd0/game/NPUB30910`, `dev_hdd0/game/NPEB01202`) | The disc's program and data, with its `.sdat` files plain | `EBOOT.BIN` | Accept. The player decrypts `EBOOT.BIN` in RPCS3 (Utilities, Decrypt PS3 Binaries), which writes `EBOOT.elf` beside it; setup checks that file against the disc's sum, and the rest as it checks a disc. |
 
 The PS3 Disc Dumper makes decrypted copies of discs, given a compatible Blu-ray drive and the disc's key from the redump database or an IRD file (read, its README). Disc dumps are then folders; the `EBOOT.BIN` inside is still an encrypted SELF (measured on this PC's dump).
 
@@ -524,7 +525,7 @@ What the player does under Plan L (inferred):
    - Compile them out of release builds and leave the source as upstream has it (recommended).
    - Also remove them from the fork's source, which drifts from upstream.
 6. **Formats and versions.** Recommendation:
-   - Accept: the folder dump of BLUS30443 01.00 now, decrypted ISOs later.
+   - Accept: the folder dump of BLUS30443 01.00 now, the US and European store versions installed in RPCS3 (section 5.2), decrypted ISOs later.
    - Refuse: encrypted ISOs, store packages, the demo and other regions.
 7. **Wording.** Update docs/05-legal.md, the README's Requirements and Legal sections, and LICENSE (the added paragraph) to match the plan you choose.
 8. **The LGPL decoder** in a binary release: comply (a separate DLL, or relinkable objects) or replace it.
@@ -548,8 +549,8 @@ What the player does under Plan L (inferred):
 2. **Firmware for `--decrypt`.** Does RPCS3's `--decrypt` need installed firmware? Section 10, check 1 (inferred: no).
 3. **Which libsre build.** Is the git copy of `libsre.prx` the decryption of firmware 4.89's `libsre.sprx`? If not, `LIBSRE_TOC` 0x30039AB0 may not fit other firmware versions, which is one more reason for (d). Section 10, check 3.
 4. **Other pressings.** Does the Deluxe Edition or a reprint (Greatest Hits) carry the same `EBOOT.BIN`? Only owners' hashes can tell.
-5. **The store version.** Is NPUB30910's code the same as the disc's 01.00, only NPDRM-wrapped? Under Plan L, players who own only the store version are left out either way (inferred).
-6. **The EU store ID** was not found.
+5. **The store version.** Answered: NPUB30910 and NPEB01202 are the same program as their discs (measured, section 5.1). Setup accepts them installed in RPCS3 (section 5.2).
+6. **The EU store ID** is NPEB01202 (measured).
 7. **Setup's decrypted inputs.** If (c+) is chosen, does RPCS3 run `--decrypt` without its first-start dialogs? AC4-Port copies RPCS3 into a work folder with its own settings to avoid them (docs/31).
 
 ## 10. Checks that need no game run

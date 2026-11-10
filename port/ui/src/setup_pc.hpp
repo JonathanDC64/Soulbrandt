@@ -16,9 +16,12 @@ struct Disc {
     const char* title;  // its TITLE_ID
     const char* name;   // "US disc"
     const char* version;  // "version 1.00", or what it needs
+    const char* storeId = nullptr;    // the PlayStation Store version of this disc: its folder in dev_hdd0/game
+    const char* storeName = nullptr;  // "US PlayStation Store version"
 };
-inline constexpr Disc kDiscs[] = {{"BLUS30443", "US disc", "version 1.00"},
-                                  {"BLES00932", "European disc", "version 1.00"},
+inline constexpr Disc kDiscs[] = {{"BLUS30443", "US disc", "version 1.00", "NPUB30910", "US PlayStation Store version"},
+                                  {"BLES00932", "European disc", "version 1.00", "NPEB01202",
+                                   "European PlayStation Store version"},
                                   {"BCJS30022", "Japanese disc", "with its 1.04 update"},
                                   {"BCAS20071", "Asian disc", "with its 1.04 update"}};
 // The supported disc with this TITLE_ID, or nullptr.
@@ -26,6 +29,10 @@ inline const Disc* disc_of(std::string_view title) {
     for (const Disc& d : kDiscs)
         if (title == d.title) return &d;
     return nullptr;
+}
+// "Demon's Souls, US disc, version 1.00". store: that disc's PlayStation Store version.
+inline std::string copy_name(const Disc& d, bool store) {
+    return std::string("Demon's Souls, ") + (store && d.storeName ? d.storeName : d.name) + ", " + d.version;
 }
 
 // Setup's peak disk use from scratch: about 2.5 GB during the compile and link, and it asks for 4 GB free (docs/52

@@ -689,11 +689,14 @@ void frame_log()
  * camera's updates by them. */
 std::atomic<unsigned> s_flips{0};
 
+void preview_turn_rate();
+
 void on_flip_request()
 {
     des_report_flip_hook();   /* (a test knob: DES_HANG_AT_FRAME) */
     des_aspect_poll();        /* DES_ASPECT, DES_HUD changed while playing */
     s_flips.fetch_add(1, std::memory_order_relaxed);
+    preview_turn_rate();
     fps_on_flip_request();
     if (s_framelog) frame_log();
     des_route_on_flip();   /* (after the frame log: the same step) */
@@ -809,6 +812,29 @@ bool ui_fix_on()
     static int on = 1;
     PS3_KNOB(on, ps3_env_int("DES_UIFIX", 1) != 0);
     return on && s_fps > 0;
+}
+
+/* A statue's dialog in the Pantheon turns its character 2 degrees each time the
+ * menu updates: one turn in 6 seconds at 30 fps, and 8 times as fast at 240.
+ * The step is a constant that only 0x008CF6CC reads (at 0x008CF928). Once a
+ * flip it is set to the step for this frame's 30 Hz steps (kFrameDt), so a turn
+ * takes 6 seconds at any frame rate. At 30 fps it keeps the game's own value,
+ * and DES_UIFIX=0 puts that back, live. */
+constexpr uint32_t kPreviewTurnStep = 0x018F96C0u;   /* float, radians */
+
+void preview_turn_rate()
+{
+    static float game_step;   /* 0 until the game's image has been seen */
+    const uint32_t ea = DES_AT(kPreviewTurnStep);
+    if (game_step == 0.0f) {
+        const float v = vm_readf(ea);
+        if (!(v > 0.0f && v < 0.2f)) return;
+        game_step = v;
+    }
+    const float steps = vm_readf(DES_AT(kFrameDt)) * 30.0f;
+    const bool scale = ui_fix_on() && steps > 0.0f && steps < 30.0f && steps != 1.0f;
+    const float want = scale ? game_step * steps : game_step;
+    if (vm_readf(ea) != want) vm_writef(ea, want);
 }
 
 /* dt seconds in whole 30 Hz steps, the rest kept on carry; -1 out of range. */
@@ -3137,6 +3163,7 @@ extern "C" void des_mouse_look(ppu_context* ctx, uint32_t addr)
 extern "C" void des_menu_sfx_init(void);   /* des_menu_sfx.cpp */
 extern "C" void des_chrins_init(void);     /* des_chrins.cpp */
 extern "C" void des_souls_use_init(void);  /* des_souls_use.cpp */
+extern "C" void des_pantheon_init(void);   /* des_pantheon.cpp */
 
 /* The run defaults every start needs, from setup's Play, Explorer or a
  * shortcut as much as from tools/des (docs/45 1.3). Without them a player's
@@ -3156,6 +3183,10 @@ static void run_defaults()
         {"LIBSRE_OWN", "1"},
         {"LIBSRE_LLE_ONLY", "011EE38B,1656D49F,8A85674D,73E06F91,082BFB09,E5443BE7,039D70B7,91066667"},
         {"SPURS_NO_ROUND_NOTIFY", "1"},
+        /* The stick deadzone rows (Settings, Controls): past the row's tilt a
+         * stick starts from the length where the game's own stick zone ends,
+         * so the character starts moving at that tilt, without a jump. */
+        {"PAD_DEADZONE_ANTI", "37"},
         /* The level's busiest frames need ~850k vertices; growing the buffer
          * during play stalled a frame for 100-400 ms (docs/28). */
         {"VP_VB_VERTS", "1572864"},
@@ -3278,6 +3309,7 @@ extern "C" void ps3_title_options_init(void)
     des_chrins_init();     /* the character step's handshake without its lost-kick race */
     des_souls_use_init();  /* DES_SOULS_AT_ONCE: Use several soul items at once */
     des_luaheap_init();    /* DES_LUAHEAP: Lua takes room elsewhere when its heap is full */
+    des_pantheon_init();   /* the checks on Pantheon records */
     /* DES_SKIP_INTRO and DES_AUTO_CONTINUE are read as they are used, so the
      * settings window changes them live; their hooks are always on. */
     DES_REGISTER_FUNCTION(kLogoUpdate, logo_update_skip);
