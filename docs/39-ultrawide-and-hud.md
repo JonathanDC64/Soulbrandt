@@ -557,7 +557,12 @@ Found while building the first ultrawide version (branch `feat/ultrawide`, 2026-
 - **The frustum.** 0x0012F100 has one direct caller (0x002A54D0, in 0x002A5238, which is reached only through a table), so a wrapper can't reach it. It reads the FOV and the shape once, at its start. The hook after 0x0012F19C (`lfs f31,0x54(r4)`) scales f1, the FOV times 0.5, by fov'/fov, and puts A in f31, so it is in step with the picture.
 - **Culling (measured 2026-11-05).** The scene's draws don't come from that frustum. At the regression save's start, draws were the same at 16:9, at 16:10 with and without the hook, and with the frustum's FOV cut to 40% (658 a frame). What is drawn follows the projection, so nothing at the top or bottom of a 16:10 picture is missing.
 - **What reaches the screen.** The game still draws 1280x720. `RSX_ASPECT` shows it at the shape A, so the window is 1152x720 at 16:10, and fullscreen fills the display. Render resolution makes it sharper, as for a wide shape.
-- **The HUD.** The canvas is made taller, top -T and bottom 720 + T, with T = (1280 / A - 720) / 2: 40 at 16:10. The HUD stays where it is at 16:9, so it sits a little in from the top and bottom edges. Fades cover the whole taller canvas. WorldToScreen's y spreads onto it, as x does for a wide shape. The HUD editor and the menu mouse use the same canvas.
+- **The HUD.** The canvas is made taller, top -T and bottom 720 + T, with T = (1280 / A - 720) / 2: 40 at 16:10. The HUD stays where it is at 16:9, so it sits a little in from the top and bottom edges. Fades cover the whole taller canvas. The HUD editor and the menu mouse use the same canvas.
+- **Markers on things in the world** (the lock-on reticle, floating health bars) need no change in y on the taller canvas (issue #472).
+  - WorldToScreen builds its projection from the camera's own FOV and shape (0x003DFF40 reads camera +0x50..+0x5C), and those stay 16:9, so its y is 16:9's.
+  - In the taller picture, a point is (16/9) / A nearer the middle than at 16:9, and the canvas is (16/9) / A taller. The two cancel.
+  - Before the fix, y was stretched by the canvas's height, as x is at a wide shape. That put markers 11% too far from the middle at 16:10.
+  - With `DES_HUD=stretch` the canvas stays 720 high, so y moves nearer the middle by A / (16/9).
 
 Not done:
 
