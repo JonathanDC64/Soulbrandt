@@ -667,6 +667,10 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
             "where you wake in the Nexus (no prompt shows there). It can put your stats back to your class's and "
             "give back the souls your levels cost, to spend again. Spells must be remembered again."
             "<br/><br/>(DES_RESPEC)");
+        bool_row(leftPane, rightPane, "Change appearance in the Nexus", "DES_APPEARANCE",
+            "Press Cross facing the statue in front of where you wake in the Nexus (no prompt shows there) and pick "
+            "Change Appearance for the character creation screen. Keeping the changes reloads the Nexus."
+            "<br/><br/>(DES_APPEARANCE)");
 
         leftPane.add_section("HUD");
         leftPane.register_control(
