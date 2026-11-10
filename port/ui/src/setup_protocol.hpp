@@ -20,21 +20,25 @@ inline constexpr int kProtocol = 2;
 // One line of the engine's output.
 struct Line {
     enum class Kind {
-        Text, Setup, Plan, Step, Progress, Overall, Check, Disc, DiscFile, File, Rpcs3, User, Library, Found, Setting,
-        Awake, Memory, Log, Error, Done, Release, Note
+        Text, Setup, Plan, Step, Progress, Overall, Check, Disc, DiscFile, File, Rpcs3, User, Library, Install,
+        InstallWhy, Found, Setting, Awake, Memory, Log, Error, Done, Release, Note
     };
     Kind kind = Kind::Text;
-    std::string key;                // Step, Progress, File: the step. Check, Disc, Rpcs3, Library: the state or kind.
+    std::string key;                // Step, Progress, File: the step. Check, Disc, Rpcs3, Library, Install: the state
+                                    // or kind.
                                     // DiscFile: missing, case or size. Error: the code. Memory: short or ok. Done: the
                                     // result. User: the 8-digit ID. Found: what (save, current-save, trophies,
                                     // settings). Setting: its settings.ini name.
     std::string key2;               // Step: start, done or skip. Check: the file. Error: the step. Found: its state.
+                                    // Install: disc, store or iso.
     long long n = 0, m = 0;         // Progress, Overall: n/m. Setup: n is the version. User: n is RPCS3's user count.
                                     // Release: n is its time (Unix seconds, 0: not known). Release's key: its version.
                                     // Disc: n is the files in the disc's list, m the ones missing.
     long long k = 0;                // Disc: the files of another size.
-    std::vector<std::string> list;  // Plan: the phases. Found: the words after its state.
-    std::string text;               // Check, Disc, Error: the sentence. File, DiscFile, Rpcs3, Log, Library: the path.
+    std::vector<std::string> list;  // Plan: the phases. Found: the words after its state. Install: title, version,
+                                    // chosen.
+    std::string text;               // Check, Disc, Error, InstallWhy: the sentence. File, DiscFile, Rpcs3, Log, Library,
+                                    // Install: the path.
                                     // User: the name.
                                     // Setting: the value. Release: its page. Note: the line, its indent kept (empty for
                                     // an empty line). A plain line: all of it.
@@ -69,6 +73,17 @@ struct Status {
                                                // settings: their count ("-" where unknown, times in Unix seconds)
     };
     std::map<std::string, Found> found;        // by what: save, current-save, trophies, settings (@found)
+    // The copies of the game in RPCS3 to choose from (@install): none unless RPCS3 has more than one.
+    struct Install {
+        std::string state;    // ready, decrypt, update, incomplete, bad or iso
+        std::string kind;     // disc, store or iso
+        std::string title;    // the disc's TITLE_ID, which a PlayStation Store copy also says
+        std::string version;  // empty: not known
+        std::string path;     // its folder or file
+        std::string why;      // why it is not ready, a sentence for the player
+        bool chosen = false;  // the copy this check is of
+    };
+    std::vector<Install> installs;
     std::vector<std::pair<std::string, std::string>> settings;  // the settings that would come across (@setting)
     int overall = 0;          // the whole run, per mille
     bool awake = false;       // the engine keeps the PC from sleeping
@@ -97,6 +112,8 @@ struct Status {
     // The engine's process has ended: `stopped` if Cancel ended it. One that ended without its last line failed.
     void ended(int exit_status, bool stopped);
     const Step* current() const;  // the running step, or null
+    bool store() const;           // the game checked is a PlayStation Store copy (the @check line STORE)
+    std::string game_name() const;  // "Demon's Souls, US disc, version 1.00", for the game checked
     bool finished() const { return !result.empty(); }
 };
 

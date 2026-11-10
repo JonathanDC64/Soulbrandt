@@ -250,9 +250,9 @@ class ReaderTest(Base):
                 self.assertEqual((got.kind, got.path), (kind, path))
         self.lib.games("BLUS30027: C:/x/\n")
         self.assertEqual(lib.library(lib.folders(self.lib.exe), "BLUS30443").kind, "none")
-        (self.lib.hdd0 / "game" / lib.STORE_ID).mkdir(parents=True)
+        (self.lib.hdd0 / "game" / "NPJA00102").mkdir(parents=True)
         got = lib.library(lib.folders(self.lib.exe), "BLUS30443")
-        self.assertEqual((got.kind, got.path), ("store", self.lib.hdd0 / "game" / lib.STORE_ID))
+        self.assertEqual((got.kind, got.path), ("store", self.lib.hdd0 / "game" / "NPJA00102"))
 
     def test_european_disc(self):
         """The European disc in RPCS3's library: its save and trophies, under its own names, are the ones read."""
@@ -428,11 +428,11 @@ class CheckLinesTest(Base):
                 self.assertIn(str(Path(line.split(" ", 2)[2])) if "iso" in line else "-", lines[-3])
                 self.assertEqual(lines[-2:], [f"@error game check {sentence}", "@done fix"])
                 self.assertFalse(any(x.startswith(("@found", "@check")) for x in lines))
-        (self.lib.hdd0 / "game" / lib.STORE_ID).mkdir(parents=True)
+        (self.lib.hdd0 / "game" / "NPJA00102").mkdir(parents=True)
         rc, lines = self.run_route(check_only=True)
         self.assertEqual(rc, 1)
-        sentence = gamefiles.other_title(self.t.table, lib.STORE_ID)
-        self.assertEqual(lines[-4:], [f"@library store {self.lib.hdd0 / 'game' / lib.STORE_ID}",
+        sentence = gamefiles.other_title(self.t.table, "NPJA00102")
+        self.assertEqual(lines[-4:], [f"@library store {self.lib.hdd0 / 'game' / "NPJA00102"}",
                                       f"@check wrong TITLE_ID {sentence}", f"@error game check {sentence}",
                                       "@done fix"])
 
