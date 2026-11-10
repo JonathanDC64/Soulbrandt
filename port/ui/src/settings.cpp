@@ -1,6 +1,7 @@
 // The port's settings (see settings.hpp). Adapted for Demon's Souls from FFCCEOT-Recomp's settings.ini handling.
 #include "settings.hpp"
 
+#include "mods.hpp"
 #include "privacy.hpp"
 #include "report.hpp"
 #include "version.hpp"
@@ -94,6 +95,9 @@ constexpr Def kDefs[] = {
     {"DES_HUD_SOULS_SIZE", "100", Apply::Live},
     // Online play (apply_network): the runtime registers its sockets and NP at boot, so all of these but the password
     // need a restart.
+    // Mods (mods.hpp, Settings > Mods): the mod folders that are on, by name, separated by '|'. A new mod is off until
+    // it is turned on.
+    {"DES_MODS", "", Apply::Restart},
     {"DES_ONLINE", "1", Apply::Restart},       // "1" = online (the default), "0" = offline
     {"DES_NET_SERVER", kNetServers[0].key, Apply::Restart},  // a kNetServers key
     {"DES_NET_CUSTOM", "", Apply::Restart},    // Custom's address: IPv4 or a host name
@@ -325,7 +329,7 @@ void load_file() {
     if (file.empty()) return;
     FILE* f = report::open_file(report::widen(file), "r");
     if (!f) return;
-    char line[512];
+    char line[8192];  // (DES_MODS lists mod folders by name: dozens of long names fit)
     int applied = 0;
     bool layout_line = false;
     while (std::fgets(line, sizeof line, f)) {
@@ -370,6 +374,7 @@ std::string sNetStatus = "Off";
 bool sNetOnline = false;  // apply_network went online: the matchmaking group can then change live
 bool sHeaderPinned = false;  // PS3_HTTP_HEADER came from the environment (it wins over the password)
 bool sNetCustomHeld = false;  // apply_network left online off: the Custom server was not chosen on this PC
+bool sNetModsHeld = false;    // apply_network left online off: a mod that changes how the game plays is on
 
 // SHA-256 (FIPS 180-4) of a string, as 64 lowercase hex digits: the matchmaking group the server sees instead of the
 // password. (Here rather than from ps3recomp: CI builds the UI on its own.)
@@ -471,6 +476,15 @@ void apply_network() {
     if (harness_run() && !pinned("DES_ONLINE")) {  // (deslib.sh sets DES_ONLINE=0 for test runs as well)
         sNetStatus = "Off: a test run (DES_ONLINE not set)";
         std::fprintf(stderr, "[ui] network: off in a test run unless DES_ONLINE=1 is given\n");
+        return;
+    }
+    // A mod that changes how the game plays keeps the session offline, so modded and unmodded players never meet
+    // (docs/143). des_ui_early_init also locks the runtime's network off, for knobs the environment set.
+    if (mods::gameplay_in_use()) {
+        sNetModsHeld = true;
+        sNetStatus = "Off: gameplay mods are on";
+        std::fprintf(stderr, "[ui] network: off, gameplay mods are on (%s; Settings > Mods)\n",
+                     mods::gameplay_names().c_str());
         return;
     }
     std::string address = net_server_address();
@@ -636,6 +650,8 @@ void load_and_apply_env() {
     ps3_setenv("PAD_KEYS", keys_with_layout(keys).c_str());
     std::fprintf(stderr, "[ui] keyboard and mouse: the Souls layout%s%s\n", keys.empty() ? "" : ", changed by ",
                  keys.c_str());
+    // Mods before the network: a gameplay mod keeps it off.
+    mods::apply(report::data_dir(), effective("DES_MODS"));
     apply_network();
     apply_window();
 #if DES_RSX_VULKAN
@@ -764,6 +780,10 @@ bool choose_custom_here() {
 
 bool net_custom_held() {
     return sNetCustomHeld;
+}
+
+bool net_mods_held() {
+    return sNetModsHeld;
 }
 
 std::string net_hosts(const std::string& address) {

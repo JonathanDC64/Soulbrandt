@@ -73,6 +73,10 @@ Press **F1** (or **L3 + R3** on a controller) at any time to open the menu. Most
 - A matchmaking password, so you meet only your friends.
 - Show or hide other players' messages, bloodstains and ghosts.
 
+**Mods**
+- Put mods in the mods folder (Settings > Mods > Open the mods folder) and turn each one on or off there. Mods for the PS3 game or RPCS3 that replace the game's files work, and the game's own files are never changed.
+- A mod that changes how the game plays keeps you offline, so you never meet players without it. Mods that only change the look or sound keep online play.
+
 **The program**
 - A setup that builds the game from your copy, with an Original and an Enhanced preset (see [How to play](#how-to-play)).
 - Updates: the game checks for a new version at start and asks before changing anything. Your saves and settings are kept, and you can go back one version.
