@@ -6,6 +6,30 @@ DES_REGION_ADDR(0x000112E8, 0x000112E8)  /* hook des_body_sample */
 DES_REGION_ADDR(0x00011768, 0x00011768)  /* hook des_kf_target */
 DES_REGION_ADDR(0x00013874, 0x0001473C)  /* data kOnlineTagCases */
 DES_REGION_ADDR(0x00023750, 0x00024338)  /* call */
+DES_REGION_ADDR(0x00039210, 0x00039DF8)  /* hook + call des_luaheap: Lua's heap, alloc */
+DES_REGION_ADDR(0x00039540, 0x0003A128)  /* hook + call des_luaheap: Lua's heap, block size */
+DES_REGION_ADDR(0x00039790, 0x0003A378)  /* hook + call des_luaheap: Lua's heap, realloc */
+DES_REGION_ADDR(0x00039870, 0x0003A458)  /* hook + call des_luaheap: Lua's heap, owns block */
+DES_REGION_ADDR(0x00039940, 0x0003A528)  /* hook + call des_luaheap: Lua's heap, free */
+DES_REGION_ADDR(0x00039A10, 0x0003A5F8)  /* hook + call des_luaheap: Lua's heap, alloc */
+DES_REGION_ADDR(0x00039AE0, 0x0003A6C8)  /* hook + call des_luaheap: Lua's heap, free */
+DES_REGION_ADDR(0x00039BB0, 0x0003A798)  /* hook + call des_luaheap: Lua's heap, realloc */
+DES_REGION_ADDR(0x00039D50, 0x0003A938)  /* hook + call des_luaheap: Lua's heap, alloc aligned */
+DES_REGION_ADDR(0x00039E30, 0x0003AA18)  /* hook + call des_luaheap: Lua's heap, realloc aligned */
+DES_REGION_ADDR(0x00039F20, 0x0003AB08)  /* hook + call des_luaheap: Lua's heap, realloc aligned */
+DES_REGION_ADDR(0x0003A0D8, 0x0003ACC0)  /* hook + call des_luaheap: Lua's heap, alloc aligned */
+DES_REGION_ADDR(0x0003C758, 0x0003D340)  /* hook + call des_luaheap: Lua's small heap, free */
+DES_REGION_ADDR(0x0003C9A8, 0x0003D590)  /* hook + call des_luaheap: Lua's small heap, realloc aligned */
+DES_REGION_ADDR(0x0003CA98, 0x0003D680)  /* hook + call des_luaheap: Lua's small heap, alloc aligned */
+DES_REGION_ADDR(0x0003CB78, 0x0003D760)  /* hook + call des_luaheap: Lua's small heap, block size */
+DES_REGION_ADDR(0x0003CC48, 0x0003D830)  /* hook + call des_luaheap: Lua's small heap, owns block */
+DES_REGION_ADDR(0x0003CDF8, 0x0003D9E0)  /* hook + call des_luaheap: Lua's small heap, realloc aligned */
+DES_REGION_ADDR(0x0003CEE8, 0x0003DAD0)  /* hook + call des_luaheap: Lua's small heap, alloc aligned */
+DES_REGION_ADDR(0x0003D208, 0x0003DDF0)  /* hook + call des_luaheap: Lua's small heap, realloc */
+DES_REGION_ADDR(0x0003D2E8, 0x0003DED0)  /* hook + call des_luaheap: Lua's small heap, free */
+DES_REGION_ADDR(0x0003D478, 0x0003E060)  /* hook + call des_luaheap: Lua's small heap, alloc */
+DES_REGION_ADDR(0x0003D548, 0x0003E130)  /* hook + call des_luaheap: Lua's small heap, alloc */
+DES_REGION_ADDR(0x0003D618, 0x0003E200)  /* hook + call des_luaheap: Lua's small heap, realloc */
 DES_REGION_ADDR(0x000B14C8, 0x000B22B0)  /* call kSpacingPlay */
 DES_REGION_ADDR(0x000B15C8, 0x000B23B0)  /* call kFontPlay */
 DES_REGION_ADDR(0x000D5B24, 0x000D6B0C)  /* hook des_cam_own */
@@ -181,6 +205,7 @@ DES_REGION_ADDR(0x008FB4F0, 0x008FCF68)  /* call */
 DES_REGION_ADDR(0x008FD2A8, 0x008FED20)  /* call */
 DES_REGION_ADDR(0x0090FCD0, 0x00911748)  /* call */
 DES_REGION_ADDR(0x009E0148, 0x009E1BC0)  /* call */
+DES_REGION_ADDR(0x00A7CC60, 0x00A7E6D8)  /* hook + call des_luaheap: a new Lua state */
 DES_REGION_ADDR(0x00A8CA48, 0x00A8E4C0)  /* call */
 DES_REGION_ADDR(0x00A8CBF0, 0x00A8E668)  /* call */
 DES_REGION_ADDR(0x00A9DD58, 0x00A9F7D0)  /* hook des_game_error */
@@ -208,6 +233,7 @@ DES_REGION_ADDR(0x013B7940, 0x013B93B8)  /* hook des_fx_state */
 DES_REGION_ADDR(0x013B7B9C, 0x013B9614)  /* hook des_fx_state */
 DES_REGION_ADDR(0x013B7CA4, 0x013B971C)  /* hook des_fx_state */
 DES_REGION_ADDR(0x013B7CCC, 0x013B9744)  /* hook des_fx_state */
+DES_REGION_ADDR(0x01610188, 0x01611C00)  /* hook + call des_luaheap: a new Lua state (second TOC) */
 DES_REGION_ADDR(0x0167AC58, 0x0167C6D0)  /* hook ds_free */
 DES_REGION_ADDR(0x0167AC88, 0x0167C700)  /* hook ds_malloc */
 DES_REGION_ADDR(0x016EBB98, 0x016EDC68)  /* data kNoName */

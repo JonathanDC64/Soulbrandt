@@ -13,6 +13,8 @@
  * the game dies at about 1.9 MB. When an allocation fails, luaM_realloc
  * (0x00CBA290) calls luaD_throw (0x00CAE730) with LUA_ERRMEM. Nothing catches
  * it on a character's script, so Lua calls exit(1), and the window closes.
+ * (des_luaheap.cpp is the net under this: a block the heap can't give comes
+ * from the port's own heap.)
  *
  * So once a frame, above 30 fps, the countdown is expired early when its state
  * has made kGarbage bytes since its last collection. The game then runs its
@@ -22,10 +24,14 @@
  * it never acts.
  *
  * DES_LUAGC=0        the game's countdowns only
- * DES_LUAGC_LOG=1    each second: each state's bytes in use, the peak, early collections
+ * DES_LUAGC_LOG=1    each second: each state's bytes in use, the peak, early collections,
+ *                    and the bytes des_luaheap.cpp holds for them in the port's heap; and
+ *                    the heap of each new state (a word without it, too, if the net misses it)
  * DES_LUAGC_HOLD=1   TEST: the game's countdowns never reach zero. With DES_LUAGC=0 this
  *                    is the crash on demand (about 30 s at the 1-2 bridge at 200 fps);
  *                    without it, every collection is one of these.
+ * DES_LUAGC_HOLD_FOR=s  TEST: the hold ends s seconds after it starts, and the game's
+ *                    countdowns run again (with DES_LUAHEAP: the heap fills, then empties).
  */
 #include "ps3emu/ppu_lift.h"
 #include "des_region.h"      /* DES_AT: the running disc's addresses */
@@ -33,6 +39,9 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+
+extern "C" uint64_t des_luaheap_ours(void);   /* des_luaheap.cpp: Lua's bytes in the port's heap */
+extern "C" void des_luaheap_check(uint32_t lua, char system);   /* des_luaheap.cpp: a word if the net misses its heap */
 
 namespace {
 
@@ -62,9 +71,9 @@ struct State {
 };
 
 int g_mode = -1;
-bool g_log = false, g_hold = false;
+bool g_log = false, g_hold = false, g_release = false;
 
-void step(uint32_t system, uint32_t timer, uint32_t manager_at, State& s, bool above_30)
+void step(char name, uint32_t system, uint32_t timer, uint32_t manager_at, State& s, bool above_30)
 {
     if (!ok(system)) { s = State{}; return; }
     const uint32_t manager = vm_read32(system + manager_at);
@@ -73,11 +82,13 @@ void step(uint32_t system, uint32_t timer, uint32_t manager_at, State& s, bool a
     if (!ok(global)) { s = State{}; return; }
 
     const uint32_t ea = system + timer;
+    if (g_release) vm_write32(ea, 0);   // DES_LUAGC_HOLD_FOR's end: the held countdown expires now
     const uint32_t n = vm_read32(global + kGlobalInUse);
     if (lua != s.lua) {   // a new state, after a load
         s = State{};
         s.lua = lua;
         s.base = n;
+        des_luaheap_check(lua, name);
     }
     s.now = n;
     if (n > s.peak) s.peak = n;
@@ -108,7 +119,17 @@ extern "C" void des_lua_gc_tick(double dt)
         if (g_mode == 0) std::fprintf(stderr, "[des] DES_LUAGC=0: Lua is collected on the game's countdowns only\n");
         if (g_hold) std::fprintf(stderr, "[des] DES_LUAGC_HOLD: the game's Lua countdowns never reach zero (test)\n");
     }
-    if (g_mode == 0 && !g_log && !g_hold) return;
+    static double hold_left = -1.0;   // DES_LUAGC_HOLD_FOR: seconds of the hold left; < 0 none
+    if (g_hold && hold_left < 0.0) {
+        const char* f = std::getenv("DES_LUAGC_HOLD_FOR");
+        hold_left = f && *f ? std::atof(f) : 1e300;
+    }
+    if (g_hold && dt > 0.0 && (hold_left -= dt) <= 0.0) {
+        g_hold = false;
+        g_release = true;
+        std::fprintf(stderr, "[des] DES_LUAGC_HOLD_FOR: the hold ends, the game's Lua countdowns run again\n");
+    }
+    if (g_mode == 0 && !g_log && !g_hold && !g_release) return;
 
     // Several in a row: a 30 fps game's frame times wobble, and one short frame is not a high frame rate.
     static uint32_t short_frames = 0;
@@ -116,9 +137,10 @@ extern "C" void des_lua_gc_tick(double dt)
     const bool above_30 = short_frames >= kShortFrames;
     static State a, b;
     const uint32_t ga = vm_read32(DES_AT(kLuaSystemA));
-    step(ok(ga) ? vm_read32(ga + 4) : 0, kTimerA, kManagerA, a, above_30);
+    step('A', ok(ga) ? vm_read32(ga + 4) : 0, kTimerA, kManagerA, a, above_30);
     const uint32_t gb = vm_read32(DES_AT(kLuaSystemB));
-    step(ok(gb) ? vm_read32(gb) : 0, kTimerB, kManagerB, b, above_30);
+    step('B', ok(gb) ? vm_read32(gb) : 0, kTimerB, kManagerB, b, above_30);
+    g_release = false;
     if (!g_log) return;
 
     static uint32_t frames = 0, seconds = 0;
@@ -127,8 +149,10 @@ extern "C" void des_lua_gc_tick(double dt)
     const auto t = std::chrono::steady_clock::now();
     if (t < next) return;
     next = t + std::chrono::seconds(1);
-    std::fprintf(stderr, "[des] lua: %us, %u frames, dt %.4f | A %u now, %u peak, %u early | B %u now, %u peak, %u early\n",
-                 ++seconds, frames, dt, a.now, a.peak, a.early, b.now, b.peak, b.early);
+    std::fprintf(stderr, "[des] lua: %us, %u frames, dt %.4f | A %u now, %u peak, %u early | B %u now, %u peak, %u early"
+                 " | %llu in the port's heap\n",
+                 ++seconds, frames, dt, a.now, a.peak, a.early, b.now, b.peak, b.early,
+                 (unsigned long long)des_luaheap_ours());
     frames = 0;
     a.peak = b.peak = 0;
 }

@@ -163,6 +163,7 @@ extern "C" int rsx_d3d12_display_shown_mhz(void);     /* how often it refreshed,
 extern "C" void des_aspect_init(void);         /* des_aspect.cpp: DES_ASPECT, DES_HUD */
 extern "C" void des_aspect_poll(void);         /* des_aspect.cpp: their live changes */
 extern "C" void des_hud_init(void);            /* des_hud.cpp: DES_HUD_SIZE, the corners, hidden groups */
+extern "C" void des_luaheap_init(void);        /* des_luaheap.cpp: room for Lua when its heap is full */
 extern "C" void des_route_init(void);          /* des_route.cpp: DES_ROUTE */
 extern "C" void des_route_on_flip(void);       /* des_route.cpp: its game clock and steps */
 extern "C" void des_route_on_open(const char* path);   /* des_route.cpp: a level's script opening (continue) */
@@ -3276,6 +3277,7 @@ extern "C" void ps3_title_options_init(void)
     des_menu_sfx_init();   /* the UI's sounds through the game's menu sounds */
     des_chrins_init();     /* the character step's handshake without its lost-kick race */
     des_souls_use_init();  /* DES_SOULS_AT_ONCE: Use several soul items at once */
+    des_luaheap_init();    /* DES_LUAHEAP: Lua takes room elsewhere when its heap is full */
     /* DES_SKIP_INTRO and DES_AUTO_CONTINUE are read as they are used, so the
      * settings window changes them live; their hooks are always on. */
     DES_REGISTER_FUNCTION(kLogoUpdate, logo_update_skip);
