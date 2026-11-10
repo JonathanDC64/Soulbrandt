@@ -12,19 +12,19 @@
 
 Soulbrandt is a PC port of *Demon's Souls* (PS3, 2009). The game's original code has been converted to run directly on Windows and Linux, with no emulator.
 
-You need your own copy of the game: the US version, **BLUS30443**, or the European version, **BLES00932** (both version 1.00). This project includes no game files.
+You need your own copy of the game: the US version, **BLUS30443**, or the European version, **BLES00932** (both version 1.00, on disc or from the PlayStation Store), or the Japanese or Asian disc, **BCJS30022** or **BCAS20071**, with its 1.04 update. This project includes no game files.
 
 ## Status
 
-**0.1.1, the current release, is an alpha.** Download it from the [Releases](https://github.com/JonathanDC64/Soulbrandt/releases) page.
+**0.1.2, the current release, is an alpha.** Download it from the [Releases](https://github.com/JonathanDC64/Soulbrandt/releases) page.
 
 The game plays from start to finish (a tester has beaten it), but not every part has been tried on every setting, so expect bugs. What [isn't supported yet](#not-supported-yet) is below; please [report](#problems) anything you find. Questions and help: [Discord](https://discord.gg/BzmwDeca8s).
 
 ## Highlights
 
 - Up to 240 fps or unlocked, with the game's timing fixed. Up to 4K, ultrawide, 16:10 and HDR.
-- The US and European versions. The European version has all five of its languages.
-- Online play on this project's own server: messages, bloodstains, ghosts, co-op and invasions.
+- The US, European, Japanese and Asian versions, each with its languages, plus Japanese on the US disc and Japanese, Chinese and Korean on the European disc.
+- Online play on this project's own server: messages, bloodstains, ghosts, co-op, invasions and the Pantheon.
 - Roll in any direction while locked on, not only forward, back, left or right.
 - A stat respec in the Nexus (optional): get back the souls your levels cost and spend them again.
 - Keyboard and mouse, Xbox controllers, DualSense and DualShock 4.
@@ -41,13 +41,15 @@ Press **F1** (or **L3 + R3** on a controller) at any time to open the menu. Most
 - Anti-aliasing (FXAA or SMAA), anisotropic filtering up to 16x, texture filtering and a sharp scaling filter.
 - HDR on HDR displays (Windows), with settings for brightness, peak and shadows.
 - Turn off the game's depth of field and motion blur.
-- Window or fullscreen (Alt+Enter switches).
+- Window, borderless fullscreen, or exclusive fullscreen on Windows (Settings > Display > Display mode). Alt+Enter switches.
 - Two renderers (Settings > Display > Renderer): DirectX 12 and Vulkan. Windows starts on DirectX 12, except with a GeForce GTX 10 series card or older, which starts on Vulkan. Linux starts on Vulkan.
 
 **Controls**
 - Xbox controllers, DualSense and DualShock 4, over USB or Bluetooth, with vibration. Pick which controller the game uses when several are connected.
 - Keyboard and mouse, laid out like the Souls games on PC. To turn the camera with the mouse, turn on **Mouse look** in Settings > Controls.
 - Change which buttons and keys do what.
+- The game's button prompts show the buttons of the controller you're using, or your keys (Settings > Game > Button icons).
+- A deadzone for each stick, set as how far you tilt it, with a live picture of the stick (Settings > Controls).
 - Mouse sensitivity, inverted axes, and switching lock-on targets with a flick of the mouse.
 - **Roll in any direction while locked on**: the roll goes where the stick points. It's on by default; turn off **Roll toward the stick** in Settings > Controls for the original's four directions.
 - The mouse in the game's own menus: point and click. Experimental, and off by default.
@@ -60,11 +62,13 @@ Press **F1** (or **L3 + R3** on a controller) at any time to open the menu. Most
 - Skip the logos and the opening movie, and go straight into your last save.
 - **Stat respec**: the Maiden in Black, or the statue in front of where you wake in the Nexus, puts your stats back to your class's and gives back the souls your levels cost, to spend again. Off by default: turn on **Stat respec in the Nexus** in Settings > Game.
 - Use several soul items at once, as Drop does. On by default: turn off **Use several souls at once** in Settings > Game for the original's one at a time.
-- On the European version, choose its language in Settings > Game > Language: English, French, German, Spanish or Italian. It starts in your PC's language when that is one of the five. A change needs a restart.
+- **Change Appearance** at the statue in front of where you wake in the Nexus: the game's own Edit Appearance, with your character. Off by default: turn on **Change appearance in the Nexus** in Settings > Game.
+- Choose the language in Settings > Game > Language. The European disc has English, French, German, Spanish and Italian, plus Japanese, Chinese (Traditional) and Korean; the US disc has English and Japanese; the Asian disc has English, Chinese (Traditional) and Korean. It starts in your PC's language when it can. A change needs a restart.
 
 **Online**
 - On by default, on this project's own server: messages, bloodstains, ghosts, co-op and invasions.
-- Players of the US and European versions play together.
+- Players of every supported version play together.
+- The Pantheon in the Nexus: its statues show the characters of the players at the top of each board.
 - Setup asks for your online name. You can change it, or turn online play off, in Settings > Network.
 - A matchmaking password, so you meet only your friends.
 - Show or hide other players' messages, bloodstains and ghosts.
@@ -73,12 +77,13 @@ Press **F1** (or **L3 + R3** on a controller) at any time to open the menu. Most
 - A setup that builds the game from your copy, with an Original and an Enhanced preset (see [How to play](#how-to-play)).
 - Updates: the game checks for a new version at start and asks before changing anything. Your saves and settings are kept, and you can go back one version.
 - In the menu, the Large Sword of Moonlight is the cursor and a crystal lizard dances in the corner. Both can be turned off.
-- Trophies, with pop-ups. Setup can bring your trophies and save across from RPCS3.
+- Trophies, with pop-ups and a tune from the game. Setup can bring your trophies and save across from RPCS3.
+- A Discord status: your profile shows that you're playing, the area you're in and whether you're online (Settings > Network).
 - **Report an issue** in the menu opens a GitHub issue with your PC's details filled in, and a zip to attach that includes your save, so the problem can be seen where it happened. It has no game files. If the game crashes or stops responding, a window offers to do the same.
 
 ## What you need
 
-- Your own copy of Demon's Souls for the PS3, the US version (BLUS30443) or the European version (BLES00932), version 1.00, as a folder with `PS3_GAME` in it. Setup cannot use ISO files yet.
+- Your own copy of Demon's Souls for the PS3, as a folder with `PS3_GAME` in it: the US (BLUS30443) or European (BLES00932) disc, version 1.00, or the Japanese (BCJS30022) or Asian (BCAS20071) disc with its 1.04 update, as a folder or a `.pkg` file that setup has RPCS3 install. The US and European PlayStation Store versions (NPUB30910, NPEB01202) work once installed in RPCS3. Setup cannot use ISO files yet.
 - RPCS3, the free PS3 emulator. Setup has it unlock the game's encrypted files. You don't need the PS3 system software. (Or decrypt the files yourself: see below.)
 - Windows 10 or 11 (64-bit) with a graphics card that supports DirectX 12, or Linux (see [Linux](#linux)).
 - A processor with SSE4.1, which most have since about 2011.
@@ -91,7 +96,7 @@ These steps are for the release download.
 1. Download the zip for Windows (`DemonsSoulsRecomp-X.Y.Z-windows.zip`) or the tarball for Linux (`DemonsSoulsRecomp-X.Y.Z-linux.tar.xz`), and unpack it into a folder of its own.
 2. Start `Soulbrandt.exe` (on Linux, `Soulbrandt`). Setup opens.
 3. Pick how setup gets your game's files:
-   - **Import from RPCS3**: setup finds the game in RPCS3's list and has your RPCS3 unlock its files. It can bring your save, trophies and some settings across too.
+   - **Import from RPCS3**: setup finds the game in RPCS3's list and has your RPCS3 unlock its files. It can bring your save, trophies and some settings across too. If RPCS3 has several copies, setup lets you pick one.
    - **I have decrypted files**: your disc copy, plus the 27 files you decrypted yourself (`EBOOT.elf` and the `.sdat` files).
    - **Show me how**: step by step, with free tools only.
 4. Start the build. It runs on your PC and can take a while; setup shows an estimate first. You can stop it and carry on later. Setup builds in AppData on Windows (`~/.local/share` on Linux) and needs about 4 GB free there; to build on another drive, press **Change** next to **Build folder** first.
@@ -115,16 +120,17 @@ macOS is not supported.
 
 On a Steam Deck, keys and the mouse stay out of the game while its controls are on, because Steam's desktop layout presses them too. To use a keyboard on a docked Deck, set `PAD_KEYBOARD_WITH_PAD=1`.
 
+On a Steam Deck the game runs best with **Manual GPU Clock Control** at **800 MHz** and the **Thermal Power (TDP) Limit** at **15 W** (Quick Access menu > Performance).
+
 ### Online play
 
-Online play is on by default and uses this project's own server. Setup asks for your online name; you can change it, or turn online play off, in Settings > Network. Players of the US and European versions meet on the same server. RPCS3 players use other servers, so you won't meet them. What the server keeps about you is in the [privacy note](PRIVACY.md).
+Online play is on by default and uses this project's own server. Setup asks for your online name; you can change it, or turn online play off, in Settings > Network. Players of every supported version meet on the same server. RPCS3 players use other servers, so you won't meet them. What the server keeps about you is in the [privacy note](PRIVACY.md).
 
 ### Not supported yet
 
-- Only the US version (BLUS30443) and the European version (BLES00932), both version 1.00, work. The Asian and Japanese discs, the US demo and the PlayStation Store versions don't.
+- The Japanese and Asian discs without their 1.04 update, the Japanese PlayStation Store version (NPJA00102) and the US demo don't work.
 - Setup can't read ISO files, and it needs RPCS3 to unlock the game's files (or files you decrypted yourself).
 - macOS isn't supported, and running the Windows download through CrossOver hasn't been tested all the way through. Linux and the Steam Deck are less tested than Windows.
-- On-screen button prompts always show PlayStation buttons, even with a keyboard or an Xbox controller.
 
 ### Problems
 
