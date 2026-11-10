@@ -6,6 +6,30 @@ DES_REGION_ADDR(0x000112E8, 0x000112E8)  /* hook des_body_sample */
 DES_REGION_ADDR(0x00011768, 0x00011768)  /* hook des_kf_target */
 DES_REGION_ADDR(0x00013874, 0xFFFFFFFF)  /* data kOnlineTagCases */
 DES_REGION_ADDR(0x00023750, 0x000219C0)  /* call */
+DES_REGION_ADDR(0x00039210, 0x00036DD0)  /* hook + call des_luaheap: Lua's heap, alloc */
+DES_REGION_ADDR(0x00039540, 0x00037100)  /* hook + call des_luaheap: Lua's heap, block size */
+DES_REGION_ADDR(0x00039790, 0x00037350)  /* hook + call des_luaheap: Lua's heap, realloc */
+DES_REGION_ADDR(0x00039870, 0x00037430)  /* hook + call des_luaheap: Lua's heap, owns block */
+DES_REGION_ADDR(0x00039940, 0x00037500)  /* hook + call des_luaheap: Lua's heap, free */
+DES_REGION_ADDR(0x00039A10, 0x000375D0)  /* hook + call des_luaheap: Lua's heap, alloc */
+DES_REGION_ADDR(0x00039AE0, 0x000376A0)  /* hook + call des_luaheap: Lua's heap, free */
+DES_REGION_ADDR(0x00039BB0, 0x00037770)  /* hook + call des_luaheap: Lua's heap, realloc */
+DES_REGION_ADDR(0x00039D50, 0x00037910)  /* hook + call des_luaheap: Lua's heap, alloc aligned */
+DES_REGION_ADDR(0x00039E30, 0x000379F0)  /* hook + call des_luaheap: Lua's heap, realloc aligned */
+DES_REGION_ADDR(0x00039F20, 0x00037AE0)  /* hook + call des_luaheap: Lua's heap, realloc aligned */
+DES_REGION_ADDR(0x0003A0D8, 0x00037C98)  /* hook + call des_luaheap: Lua's heap, alloc aligned */
+DES_REGION_ADDR(0x0003C758, 0x0003A318)  /* hook + call des_luaheap: Lua's small heap, free */
+DES_REGION_ADDR(0x0003C9A8, 0x0003A568)  /* hook + call des_luaheap: Lua's small heap, realloc aligned */
+DES_REGION_ADDR(0x0003CA98, 0x0003A658)  /* hook + call des_luaheap: Lua's small heap, alloc aligned */
+DES_REGION_ADDR(0x0003CB78, 0x0003A738)  /* hook + call des_luaheap: Lua's small heap, block size */
+DES_REGION_ADDR(0x0003CC48, 0x0003A808)  /* hook + call des_luaheap: Lua's small heap, owns block */
+DES_REGION_ADDR(0x0003CDF8, 0x0003A9B8)  /* hook + call des_luaheap: Lua's small heap, realloc aligned */
+DES_REGION_ADDR(0x0003CEE8, 0x0003AAA8)  /* hook + call des_luaheap: Lua's small heap, alloc aligned */
+DES_REGION_ADDR(0x0003D208, 0x0003ADC8)  /* hook + call des_luaheap: Lua's small heap, realloc */
+DES_REGION_ADDR(0x0003D2E8, 0x0003AEA8)  /* hook + call des_luaheap: Lua's small heap, free */
+DES_REGION_ADDR(0x0003D478, 0x0003B038)  /* hook + call des_luaheap: Lua's small heap, alloc */
+DES_REGION_ADDR(0x0003D548, 0x0003B108)  /* hook + call des_luaheap: Lua's small heap, alloc */
+DES_REGION_ADDR(0x0003D618, 0x0003B1D8)  /* hook + call des_luaheap: Lua's small heap, realloc */
 DES_REGION_ADDR(0x000B14C8, 0x000AEE60)  /* call kSpacingPlay */
 DES_REGION_ADDR(0x000B15C8, 0x000AEF60)  /* call kFontPlay */
 DES_REGION_ADDR(0x000D5B24, 0x000D34BC)  /* hook des_cam_own */
@@ -187,6 +211,7 @@ DES_REGION_ADDR(0x008FD2A8, 0x008FE770)  /* call */
 DES_REGION_ADDR(0x0090FCD0, 0x00911198)  /* call */
 DES_REGION_ADDR(0x009E0148, 0x009E1610)  /* call */
 DES_REGION_ADDR(0x00A36220, 0x00A376E8)  /* call */
+DES_REGION_ADDR(0x00A7CC60, 0x00A7E128)  /* hook + call des_luaheap: a new Lua state */
 DES_REGION_ADDR(0x00A8CA48, 0x00A8DF10)  /* call */
 DES_REGION_ADDR(0x00A8CBF0, 0x00A8E0B8)  /* call */
 DES_REGION_ADDR(0x00A941F8, 0x00A956C0)  /* call */
@@ -215,6 +240,7 @@ DES_REGION_ADDR(0x013B7940, 0x013B8D78)  /* hook des_fx_state */
 DES_REGION_ADDR(0x013B7B9C, 0x013B8FD4)  /* hook des_fx_state */
 DES_REGION_ADDR(0x013B7CA4, 0x013B90DC)  /* hook des_fx_state */
 DES_REGION_ADDR(0x013B7CCC, 0x013B9104)  /* hook des_fx_state */
+DES_REGION_ADDR(0x01610188, 0x016115C0)  /* hook + call des_luaheap: a new Lua state (second TOC) */
 DES_REGION_ADDR(0x0167AC58, 0x0167C090)  /* hook ds_free */
 DES_REGION_ADDR(0x0167AC88, 0x0167C0C0)  /* hook ds_malloc */
 DES_REGION_ADDR(0x016EBB98, 0x016ED0A0)  /* data kNoName */
@@ -247,5 +273,7 @@ DES_REGION_ADDR(0x01AD62C8, 0x01AD62F8)  /* data kStepHeap */
 DES_REGION_ADDR(0x01B387B8, 0x01B387E8)  /* data kStepMan */
 DES_REGION_ADDR(0x01B3A28C, 0x01B3A2BC)  /* data kRemoMan */
 DES_REGION_ADDR(0x01B3D6E0, 0x01B3D710)  /* data kChrMan */
+DES_REGION_ADDR(0x01B42A80, 0x01B42AB0)  /* data kLuaSystemA */
+DES_REGION_ADDR(0x01B49BD8, 0x01B49C60)  /* data kLuaSystemB */
 DES_REGION_ADDR(0x01B4B150, 0x01B4B1D8)  /* data kMenuSeMgr */
 DES_REGION_ADDR(0x01B4EF9C, 0x01B4F02C)  /* data kPgdRoot */

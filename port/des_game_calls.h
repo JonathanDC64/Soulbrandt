@@ -26,6 +26,30 @@ DES_GAME_CALLS(DES_GAME_CALL_DECL_)
 }
 
 #define func_00023750 des_game_calls::f_00023750
+#define func_00039210 des_game_calls::f_00039210
+#define func_00039540 des_game_calls::f_00039540
+#define func_00039790 des_game_calls::f_00039790
+#define func_00039870 des_game_calls::f_00039870
+#define func_00039940 des_game_calls::f_00039940
+#define func_00039A10 des_game_calls::f_00039A10
+#define func_00039AE0 des_game_calls::f_00039AE0
+#define func_00039BB0 des_game_calls::f_00039BB0
+#define func_00039D50 des_game_calls::f_00039D50
+#define func_00039E30 des_game_calls::f_00039E30
+#define func_00039F20 des_game_calls::f_00039F20
+#define func_0003A0D8 des_game_calls::f_0003A0D8
+#define func_0003C758 des_game_calls::f_0003C758
+#define func_0003C9A8 des_game_calls::f_0003C9A8
+#define func_0003CA98 des_game_calls::f_0003CA98
+#define func_0003CB78 des_game_calls::f_0003CB78
+#define func_0003CC48 des_game_calls::f_0003CC48
+#define func_0003CDF8 des_game_calls::f_0003CDF8
+#define func_0003CEE8 des_game_calls::f_0003CEE8
+#define func_0003D208 des_game_calls::f_0003D208
+#define func_0003D2E8 des_game_calls::f_0003D2E8
+#define func_0003D478 des_game_calls::f_0003D478
+#define func_0003D548 des_game_calls::f_0003D548
+#define func_0003D618 des_game_calls::f_0003D618
 #define func_000B14C8 des_game_calls::f_000B14C8
 #define func_000B15C8 des_game_calls::f_000B15C8
 #define func_0012EE08 des_game_calls::f_0012EE08
@@ -89,6 +113,7 @@ DES_GAME_CALLS(DES_GAME_CALL_DECL_)
 #define func_0090FCD0 des_game_calls::f_0090FCD0
 #define func_009E0148 des_game_calls::f_009E0148
 #define func_00A36220 des_game_calls::f_00A36220
+#define func_00A7CC60 des_game_calls::f_00A7CC60
 #define func_00A8CA48 des_game_calls::f_00A8CA48
 #define func_00A8CBF0 des_game_calls::f_00A8CBF0
 #define func_00A941F8 des_game_calls::f_00A941F8
@@ -100,4 +125,5 @@ DES_GAME_CALLS(DES_GAME_CALL_DECL_)
 #define func_00D68218 des_game_calls::f_00D68218
 #define func_00F60BD0 des_game_calls::f_00F60BD0
 #define func_00F62E68 des_game_calls::f_00F62E68
+#define func_01610188 des_game_calls::f_01610188
 #endif
