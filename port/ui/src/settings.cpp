@@ -61,6 +61,7 @@ constexpr Def kDefs[] = {
     {"AUDIO_MUTE", "0", Apply::Live},
     {"DES_LANGUAGE", "", Apply::Restart},      // des_region.cpp, at start: the disc's text; "" = the PC's
     {"DES_SOULS_AT_ONCE", "1", Apply::Live},   // des_souls_use.cpp, at each Use: 1 = Use on soul items asks how many
+    {"DES_APPEARANCE", "0", Apply::Live},      // des_respec.cpp, each frame: 1 = the Nexus statue offers Edit Appearance
     {"DES_RESPEC", "0", Apply::Live},          // des_respec.cpp, each frame: 1 = the Nexus statue and the Maiden in Black offer a stat respec
     {"DES_DOF", "1", Apply::Live},             // des_dof, read each frame
     {"RSX_AA", "0", Apply::Live},              // 0 = none, as on the PS3; 1 = FXAA, 2 = SMAA, before the HUD; per batch

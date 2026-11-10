@@ -56,6 +56,9 @@
  *   drawn, the groups moved out to the corners (or moved with the editor) are
  *   not drawn there. Its own soul_0 to soul_99, parked right of the canvas,
  *   are not drawn on a widened one.
+ * - The in-game menus' title bar (vtable 0x01870830; pieces plate_menu-tab
+ *   and text_title) is drawn every frame once a menu has shown it, and is up
+ *   while +0x94 is set. des_hud_menu_title_shown tells des_respec.cpp.
  * - "HP icon", "SP icon" and "MP icon" sit at x = -168, left of the 16:9
  *   canvas, where the PS3 never shows them. A widened canvas showed them in
  *   the left band (docs/39, section 8): while it is widened, or the bars are
@@ -100,6 +103,7 @@ namespace {
 constexpr uint32_t kDialogDraw  = 0x00F60BD0u;   /* every EzMenu dialog's draw (vtable +0x4C) */
 constexpr uint32_t kHudDialogVt = 0x018698A0u;   /* DsMenuDlgPCGauge */
 constexpr uint32_t kLoadingVt   = 0x0186FBC0u;   /* DsMenuDlgNowLoading, the loading screen */
+constexpr uint32_t kMenuTitleVt = 0x01870830u;   /* the in-game menus' title bar */
 constexpr uint32_t kDlgChildren = 0x0Cu, kDlgChildCount = 0x10u;
 constexpr uint32_t kDlgRect     = 0x74u;         /* current rect: left, top, right, bottom */
 constexpr uint32_t kDlgLayout   = 0x84u;         /* layout rect, the same way */
@@ -203,6 +207,7 @@ unsigned s_want_gen;
 PPU_THREAD_LOCAL float s_text_scale = 1.0f;   /* the size of the group being drawn (dialog_draw) */
 uint32_t s_hud_draws = 1;   /* draws of the HUD dialog, from 1 */
 uint32_t s_loading_at;      /* s_hud_draws at the loading screen's last draw; 0 = never */
+std::atomic<uint32_t> s_menu_title{0};   /* the menus' title bar, once drawn */
 
 /* A pointer read from the game's objects, checked before it is followed. */
 bool guest_ok(uint32_t a, uint32_t align)
@@ -643,6 +648,7 @@ void dialog_draw_inner(ppu_context* ctx)
 {
     const uint32_t dlg = (uint32_t)ctx->gpr[3];
     const uint32_t vt = guest_ok(dlg, 4) ? vm_read32(dlg) : 0u;
+    if (vt == DES_AT(kMenuTitleVt)) s_menu_title.store(dlg, std::memory_order_relaxed);
     if (vt == DES_AT(kLoadingVt) && vm_read8(dlg + kDlgVisible) != 0) {
         loading_draw(ctx, dlg);
         return;
@@ -838,6 +844,14 @@ void spacing_play(ppu_context* ctx)   /* for 0x000B14C8 */
 extern "C" int des_hud_obj_rect(ppu_context* ctx, uint32_t obj, float out[4])
 {
     return obj_rect(ctx, obj, out) ? 1 : 0;
+}
+
+/* For des_respec.cpp: the in-game menus' title bar is up. A menu that has
+ * closed puts it away over about a second. */
+extern "C" int des_hud_menu_title_shown(void)
+{
+    const uint32_t t = s_menu_title.load(std::memory_order_relaxed);
+    return guest_ok(t, 4) && vm_read32(t) == DES_AT(kMenuTitleVt) && vm_read8(t + kDlgVisible) != 0;
 }
 
 /* From ps3_title_options_init, before the guest runs. Wrapped whatever the
