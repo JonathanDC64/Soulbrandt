@@ -38,7 +38,18 @@
  * The texts the game does not have go in its own tables: a row's into an
  * unused id of the talk menu's FMG (category 0x1E), the menu's title in place
  * of the missing-name text ("?NpcName?", while the menu is open). A respec
- * whose souls would pass the cap is refused, and nothing changes. */
+ * whose souls would pass the cap is refused, and nothing changes.
+ *
+ * DES_APPEARANCE=1 (Settings, Game; off by default) adds Change Appearance to
+ * the statue's rows: the game's own Edit Appearance from character creation
+ * (docs/47 section 1.10). Its page script is only in the title's menu bundle,
+ * so the title's menu step runs beside the in-game one while it is open. It
+ * starts once the statue menu's title bar has gone (about a second after the
+ * menu): started sooner, the title bar stayed up behind the editor and could
+ * show after it. The editor writes straight into PGD. Back then asks whether
+ * to keep the changes: YES reloads the Nexus, which rebuilds the character
+ * with the new look; NO puts PGD back as it was. With nothing changed there is
+ * no question. */
 
 #include "ps3emu/ppu_lift.h"
 #include "des_region.h"      /* DES_AT: the running disc's addresses */
@@ -56,7 +67,9 @@
 extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
 #endif
 extern "C" void ds_malloc(ppu_context* ctx);              /* des_heap.cpp: the guest heap */
+extern "C" void ps3_indirect_call(ppu_context* ctx);      /* ppu_loader.cpp: a call to the guest address in CTR */
 extern "C" volatile unsigned g_pad0_buttons;              /* cellPad.c: the buttons the game last read */
+extern "C" int des_hud_menu_title_shown(void);            /* des_hud.cpp: the in-game menus' title bar is up */
 
 namespace {
 
@@ -82,6 +95,18 @@ constexpr int32_t  kTalkAnswered = 4, kDialogYesNo = 2, kDialogOk = 1;
 constexpr int32_t kFmgTalk = 0x1E;
 constexpr int32_t kTextYes = 10020000, kTextNo = 10020001, kTextLeave = 15000005, kTextSeekSoulPower = 15000025;
 
+/* The game's steps. A step object starts through the step manager (0x001381E8), which gives back its task. */
+constexpr uint32_t kStepMan = 0x01B387B8u, kStepHeap = 0x01AD62C8u;   /* *this: the manager, the heap steps are made on */
+constexpr uint32_t kTaskState = 0x0Cu, kTaskRefs = 0x10u, kStepState = 8u;
+constexpr uint32_t kTaskEnded = 3;
+/* TitleMenuStep, the title's menus: its state once the bundle is in, and the byte that starts its end. FaceGenStep,
+ * the editor: its constructor leaves the job pointer unset, zero on the title only because that heap is fresh. */
+constexpr uint32_t kMenuRunning = 7, kMenuClose = 0x28u, kFaceJob = 0x28u;
+/* Menu slots: 5 stops the player's buttons, 0x25 is the editor's request and state, 0x26 keeps its frame up, 0x4E and
+ * 0x4F the help strip. */
+constexpr uint32_t kSlotNoControl = 5, kSlotFace = 0x25, kSlotFaceFrame = 0x26, kSlotHelp = 0x4E, kSlotLegend = 0x4F;
+constexpr int32_t kPlayerEntity = 10000;   /* the player's event id, for the scripts' EnableLogic (0x00443838) */
+
 /* The talk list (menus+0xAB4): *(+4) a vector, its entries {text id, row} from *(+4) to *(+8). */
 constexpr uint32_t kTalkList = 0xAB4u;
 constexpr int kMaxEntries = 16;
@@ -89,6 +114,7 @@ constexpr int kMaxEntries = 16;
 /* The Maiden's Seek Soul Power row, and ours in her menu: one her script has no use for. */
 constexpr int32_t kMaidenSeekRow = 1, kMaidenRespecRow = 70;
 const char kRespecText[] = "Respecialization";
+const char kLookText[] = "Change Appearance";
 
 /* The statue, in the Nexus (map m01): a save that quit there starts at (0, 479.46, -41.69), facing it (-z); the
  * player stops against it at z -41.8. Cross from in front of it, within kReach of (kStatueX, kStatueZ). */
@@ -139,13 +165,14 @@ void drain(ppu_context* ctx)
 
 /* Calls a game function with up to eight arguments (r3-r10) and returns r3, on the thread's own registers, which
  * are put back after (des_souls_use.cpp's). */
-uint32_t call_game(ppu_context* ctx, void (*fn)(ppu_context*), std::initializer_list<int64_t> a)
+uint32_t call_at(ppu_context* ctx, void (*fn)(ppu_context*), uint32_t toc, uint32_t code, std::initializer_list<int64_t> a)
 {
     uint64_t g[32]; double f[32]; uint8_t v[32][16];
     memcpy(g, ctx->gpr, sizeof g); memcpy(f, ctx->fpr, sizeof f); memcpy(v, ctx->vr, sizeof v);
     const uint64_t lr = ctx->lr, ctr = ctx->ctr;
     const uint32_t cr = ppu_cr_pack(ctx), xer = ctx->xer;
-    ctx->gpr[1] -= 0x1000; ctx->gpr[2] = DES_AT(kToc);
+    ctx->gpr[1] -= 0x1000; ctx->gpr[2] = toc;
+    ctx->ctr = code;
     int i = 0;
     for (int64_t x : a) if (i < 8) ctx->gpr[3 + i++] = (uint64_t)x;
     ctx->lr = DES_AT(0x00724E40u);
@@ -155,6 +182,18 @@ uint32_t call_game(ppu_context* ctx, void (*fn)(ppu_context*), std::initializer_
     memcpy(ctx->gpr, g, sizeof g); memcpy(ctx->fpr, f, sizeof f); memcpy(ctx->vr, v, sizeof v);
     ctx->lr = lr; ctx->ctr = ctr; ppu_cr_unpack(ctx, cr); ctx->xer = xer;
     return r3;
+}
+
+uint32_t call_game(ppu_context* ctx, void (*fn)(ppu_context*), std::initializer_list<int64_t> a)
+{
+    return call_at(ctx, fn, DES_AT(kToc), (uint32_t)ctx->ctr, a);
+}
+
+/* The virtual function at off in obj's table: the entry is a descriptor {code, TOC}, called as the game calls it. */
+uint32_t call_virtual(ppu_context* ctx, uint32_t obj, uint32_t off, std::initializer_list<int64_t> a)
+{
+    const uint32_t d = vm_read32(vm_read32(obj) + off);
+    return call_at(ctx, ps3_indirect_call, vm_read32(d + 4), vm_read32(d), a);
 }
 
 /* size bytes of the guest heap, for good (des_heap.cpp's ds_malloc); 0 if none. */
@@ -181,6 +220,13 @@ bool on()
 {
     static int s_on = 0;
     PS3_KNOB(s_on, ps3_env_int("DES_RESPEC", 0));
+    return s_on != 0;
+}
+
+bool look_on()
+{
+    static int s_on = 0;
+    PS3_KNOB(s_on, ps3_env_int("DES_APPEARANCE", 0));
     return s_on != 0;
 }
 
@@ -251,13 +297,16 @@ int32_t own_text_id(ppu_context* ctx, int k, uint32_t text)
 /* ---- The menu ---- */
 
 void ask_respec(ppu_context* ctx);
+void open_editor(ppu_context* ctx);
 
 /* The statue's rows, in order (the talk list's row number is the position + 1). own: a text of ours (own_text_id),
- * else game: the game's text id. choose: what the row does, nullptr to close (Leave). */
-struct Row { const char* own; int32_t game; void (*choose)(ppu_context*); };
+ * else game: the game's text id. choose: what the row does, nullptr to close (Leave). shown: the row's knob, nullptr
+ * for always. */
+struct Row { const char* own; int32_t game; void (*choose)(ppu_context*); bool (*shown)(); };
 constexpr Row kRows[] = {
-    {kRespecText, 0, ask_respec},
-    {nullptr, kTextLeave, nullptr},
+    {kRespecText, 0, ask_respec, on},
+    {kLookText, 0, open_editor, look_on},
+    {nullptr, kTextLeave, nullptr, nullptr},
 };
 constexpr int kRowCount = (int)(sizeof kRows / sizeof kRows[0]);
 
@@ -304,11 +353,17 @@ const char kTitle[] = "Statue";
 const char kAsk[] = "Return to your class's starting stats?\nThe souls of every level come back,\n"
                     "and every spell must be remembered again.";
 const char kCapped[] = "Not now: with the souls back,\nyou would hold more than 999,999,999.";
+const char kKeep[] = "Keep this appearance?\nThe Nexus reloads to show it.";
 
 /* idle; menu, the statue's open; confirm, its question; notice, the cap's; maiden, her menu open with our row;
  * maiden_ask, our row answered, her menu closing; maiden_confirm and maiden_notice, the question and the cap's
- * notice while her script waits; maiden_again, the dialog closing before her menu comes back. */
-enum class Phase { idle, menu, confirm, notice, maiden, maiden_ask, maiden_confirm, maiden_notice, maiden_again };
+ * notice while her script waits; maiden_again, the dialog closing before her menu comes back. look_title, the statue
+ * menu's title bar going; look_load, the title's menus loading; look_edit, the editor open; look_close, the title's
+ * menus ending; look_settle, their pages going; look_keep, the question. */
+enum class Phase {
+    idle, menu, confirm, notice, maiden, maiden_ask, maiden_confirm, maiden_notice, maiden_again,
+    look_title, look_load, look_edit, look_close, look_settle, look_keep,
+};
 Phase s_phase = Phase::idle;
 bool s_here = false;              /* the player was at the statue last frame (for the log) */
 unsigned s_cross_prev = 0x4000u;  /* Cross as last seen, held at the start: a press must begin near the statue */
@@ -365,6 +420,7 @@ void open_menu(ppu_context* ctx)
     if (!talk_entry(ctx)) return;
     call_game(ctx, func_00723450, {});
     for (int i = 0, own = 0; i < kRowCount; i++) {
+        if (kRows[i].shown && !kRows[i].shown()) continue;
         const int32_t id = kRows[i].own ? own_text_id(ctx, own++, own_text(ctx, kRows[i].own)) : kRows[i].game;
         if (id >= 0) add_row(ctx, id, i + 1);
     }
@@ -425,8 +481,8 @@ void maiden_menu_again(ppu_context* ctx)
 
 void dialog(ppu_context* ctx, int32_t kind, const char* text, Phase next)
 {
-    static uint32_t s_ask = 0, s_capped = 0, s_ok = 0;
-    uint32_t& t = text == kAsk ? s_ask : s_capped;
+    static uint32_t s_ask = 0, s_capped = 0, s_keep = 0, s_ok = 0;
+    uint32_t& t = text == kAsk ? s_ask : text == kKeep ? s_keep : s_capped;
     if (!t) t = guest_text(ctx, text);
     const uint32_t fmg = call_game(ctx, func_005C2810, {kFmgTalk});
     if (!t || !guest_ok(fmg)) return;
@@ -516,6 +572,111 @@ bool respec(ppu_context* ctx, bool* capped)
     return true;
 }
 
+/* ---- Change Appearance ---- */
+
+/* What the editor writes in PGD: the hair lists at +0x198 and, from +0x3D0, the origin, the colours and the face's
+ * 100 bytes. */
+struct Range { uint32_t at, len; };
+constexpr Range kLook[] = {{0x198u, 0x48u}, {0x3D0u, 0x98u}};
+constexpr uint32_t kLookSize = 0x48u + 0x98u;
+constexpr uint32_t kLookCounter = 0x2C8u;   /* a word the editor moves as well; no part of how the character looks */
+
+uint8_t s_look[kLookSize];
+uint32_t s_look_counter = 0;
+uint32_t s_menu_task = 0, s_menu_step = 0, s_face_task = 0;
+
+void look_read(uint32_t p, uint8_t* out)
+{
+    for (const Range& r : kLook)
+        for (uint32_t i = 0; i < r.len; i++) *out++ = vm_read8(p + r.at + i);
+}
+
+bool look_changed(uint32_t p)
+{
+    uint8_t now[kLookSize];
+    look_read(p, now);
+    return memcmp(now, s_look, sizeof now) != 0;
+}
+
+void look_restore(uint32_t p)
+{
+    const uint8_t* in = s_look;
+    for (const Range& r : kLook)
+        for (uint32_t i = 0; i < r.len; i++) vm_write8(p + r.at + i, *in++);
+    vm_write32(p + kLookCounter, s_look_counter);
+}
+
+/* A new step of the game: size bytes made by ctor and started in the manager's phase, under id. Its task, held once
+ * more so it stays readable after it ends (release_task), or 0. */
+uint32_t start_step(ppu_context* ctx, uint32_t size, void (*ctor)(ppu_context*), int32_t phase, int32_t id, bool face, uint32_t* out)
+{
+    const uint32_t man = vm_read32(DES_AT(kStepMan)), heap = vm_read32(DES_AT(kStepHeap));
+    if (!guest_ok(man) || !guest_ok(heap)) return 0;
+    const uint32_t step = call_game(ctx, func_00A941F8, {size, heap});
+    if (!guest_ok(step)) return 0;
+    call_game(ctx, ctor, {step, 0});
+    if (face) vm_write32(step + kFaceJob, 0);
+    const uint32_t task = call_game(ctx, func_001381E8, {man, phase, step, id});
+    if (!guest_ok(task)) return 0;
+    vm_write32(task + kTaskRefs, vm_read32(task + kTaskRefs) + 1);
+    if (out) *out = step;
+    return task;
+}
+
+/* As the game lets go of a task: the last reference destroys it and frees it on the heap it came from. */
+void release_task(ppu_context* ctx, uint32_t task)
+{
+    if (!task) return;
+    const uint32_t refs = vm_read32(task + kTaskRefs) - 1;
+    vm_write32(task + kTaskRefs, refs);
+    if (refs) return;
+    const uint32_t heap = call_game(ctx, func_00A36220, {task});
+    call_virtual(ctx, task, 4, {task});
+    call_virtual(ctx, heap, 0x38, {heap, task});
+}
+
+/* The statue's row. The character stays still until the editor has gone: slot 5 stops the buttons and the Start menu,
+ * and the scripts' EnableLogic stops the stick, which the slot does not (the editor picks rows with it). The title's
+ * menus wait for the statue menu's title bar to go (look_title). */
+void open_editor(ppu_context* ctx)
+{
+    const uint32_t p = pgd();
+    if (!p) return;
+    look_read(p, s_look);
+    s_look_counter = vm_read32(p + kLookCounter);
+    call_game(ctx, func_00720F50, {kSlotNoControl, 1});
+    call_game(ctx, func_00443838, {0, kPlayerEntity, 0});
+    s_phase = Phase::look_title;
+}
+
+/* The title's menus, since their bundle holds the editor's page. */
+void start_menus(ppu_context* ctx)
+{
+    s_menu_task = start_step(ctx, 0x58, func_00196158, 3, 8, false, &s_menu_step);
+    if (s_menu_task) {
+        s_phase = Phase::look_load;
+    } else {
+        s_phase = Phase::idle;
+        call_game(ctx, func_00720F50, {kSlotNoControl, 0});
+        call_game(ctx, func_00443838, {0, kPlayerEntity, 1});
+        fprintf(stderr, "[des] appearance: the title's menus did not start\n");
+    }
+    if (logging()) fprintf(stderr, "[des] appearance: loading the menus\n");
+}
+
+/* The editor has gone. Both tasks are let go, the controls come back, and the question follows once the pages have
+ * gone (look_settle). */
+void look_end(ppu_context* ctx)
+{
+    release_task(ctx, s_face_task);
+    release_task(ctx, s_menu_task);
+    s_face_task = s_menu_task = s_menu_step = 0;
+    call_game(ctx, func_00720F50, {kSlotNoControl, 0});
+    call_game(ctx, func_00443838, {0, kPlayerEntity, 1});
+    s_phase = Phase::look_settle;
+    if (logging()) fprintf(stderr, "[des] appearance: the menus ended\n");
+}
+
 } // namespace
 
 /* From des_options.cpp's file-open hook (the file thread): a level's script archive, /script/mNN.luabnd..., names
@@ -534,6 +695,10 @@ extern "C" void des_respec_tick(ppu_context* ctx)
     if (!m) return;
     const unsigned cross = g_pad0_buttons & 0x4000u, pressed = cross & ~s_cross_prev;
     s_cross_prev = cross;
+    /* The title's menus clear the slot as they start, so it is set again until the editor has gone. */
+    const bool held = s_phase == Phase::look_title || s_phase == Phase::look_load || s_phase == Phase::look_edit ||
+                      s_phase == Phase::look_close;
+    if (held && slot(m, kSlotNoControl) != 1) call_game(ctx, func_00720F50, {kSlotNoControl, 1});
     switch (s_phase) {
     case Phase::idle: {
         if (on() && maiden_menu_asked(m)) {
@@ -542,7 +707,7 @@ extern "C" void des_respec_tick(ppu_context* ctx)
             if (logging()) fprintf(stderr, "[des] respec: the Maiden's menu, with Respecialization\n");
             break;
         }
-        const bool here = on() && at_statue(ctx, m);
+        const bool here = (on() || look_on()) && at_statue(ctx, m);
         if (here != s_here && logging()) fprintf(stderr, "[des] respec: %s the statue\n", here ? "at" : "away from");
         s_here = here;
         if (here && pressed) {
@@ -619,5 +784,53 @@ extern "C" void des_respec_tick(ppu_context* ctx)
     case Phase::maiden_again:   /* NO, Circle or the cap: her menu again, once the dialog's page is gone */
         if (menus_clear(ctx, m)) maiden_menu_again(ctx);
         break;
+    case Phase::look_title:   /* the menus' own close of it stops while the title's menus run */
+        if (!des_hud_menu_title_shown()) start_menus(ctx);
+        break;
+    case Phase::look_load:
+        if (vm_read32(s_menu_task + kTaskState) == kTaskEnded) { look_end(ctx); break; }
+        if (vm_read32(s_menu_step + kStepState) != kMenuRunning) break;
+        s_face_task = start_step(ctx, 0x34, func_0017B258, 2, 0, true, nullptr);
+        if (s_face_task) {
+            s_phase = Phase::look_edit;
+            if (logging()) fprintf(stderr, "[des] appearance: the editor\n");
+        } else {
+            vm_write8(s_menu_step + kMenuClose, 1);
+            s_phase = Phase::look_close;
+            fprintf(stderr, "[des] appearance: the editor did not start\n");
+        }
+        break;
+    case Phase::look_edit:   /* Back: its slot reaches 10 and the step ends */
+        if (vm_read32(s_face_task + kTaskState) != kTaskEnded) break;
+        call_game(ctx, func_00720F50, {kSlotFace, 0});
+        call_game(ctx, func_00720F50, {kSlotFaceFrame, 0});
+        call_game(ctx, func_00720F50, {kSlotHelp, -1});
+        call_game(ctx, func_00720F50, {kSlotLegend, -1});
+        vm_write8(s_menu_step + kMenuClose, 1);
+        s_phase = Phase::look_close;
+        if (logging()) fprintf(stderr, "[des] appearance: closing\n");
+        break;
+    case Phase::look_close:
+        if (vm_read32(s_menu_task + kTaskState) == kTaskEnded) look_end(ctx);
+        break;
+    case Phase::look_settle: {
+        if (!menus_clear(ctx, m)) break;
+        const uint32_t p = pgd();
+        const bool changed = p && look_changed(p);
+        if (logging()) fprintf(stderr, "[des] appearance: closed, %s\n", changed ? "changed" : "no change");
+        s_phase = Phase::idle;
+        if (changed) dialog(ctx, kDialogYesNo, kKeep, Phase::look_keep);
+        break;
+    }
+    case Phase::look_keep: {
+        if (slot(m, kSlotDialog)) break;
+        s_phase = Phase::idle;
+        const uint32_t p = pgd();
+        const int32_t answer = (int32_t)vm_read32(m + kDialogAnswer);
+        if (logging()) fprintf(stderr, "[des] appearance: answer %d\n", answer);
+        if (answer == 1) call_game(ctx, func_00451430, {0, 1, 0, 0, 0, -1});   /* the warp the scripts use: this map again */
+        else if (p) look_restore(p);
+        break;
+    }
     }
 }
