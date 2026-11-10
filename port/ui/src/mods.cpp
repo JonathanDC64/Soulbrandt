@@ -152,8 +152,8 @@ void walk(Mod& m) {
             for (const char* ext : kNoteExtensions) note = note || ends_with(low, ext);
             if (note) continue;
             if (low == "eboot.bin") {
-                m.problem = "It has an EBOOT.BIN: Soulbrandt runs its own program, so a mod that changes the game's "
-                            "program can't be used.";
+                m.problem = "It has an EBOOT.BIN, the game's program. This version runs its own program, so a mod "
+                            "that changes it can't be used.";
                 continue;
             }
         }
