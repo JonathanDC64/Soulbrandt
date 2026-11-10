@@ -183,6 +183,7 @@ add_executable(des_boot
     "${CMAKE_CURRENT_SOURCE_DIR}/des_guest_exit.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/des_souls_use.cpp"         # DES_SOULS_AT_ONCE: Use several soul items at once
     "${CMAKE_CURRENT_SOURCE_DIR}/des_respec.cpp"            # DES_RESPEC: stat respec at the Nexus statue and the Maiden
+    "${CMAKE_CURRENT_SOURCE_DIR}/des_pantheon.cpp"          # the checks on Pantheon records from other players
     "${CMAKE_CURRENT_SOURCE_DIR}/des_prework.cpp"           # startup work: the shader cache, behind a progress bar
     "${CMAKE_CURRENT_SOURCE_DIR}/des_route.cpp"             # DES_ROUTE: a walk on the game clock, with screenshots
 )
@@ -241,6 +242,7 @@ else()
             "${CMAKE_CURRENT_SOURCE_DIR}/des_guest_exit.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/des_souls_use.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/des_respec.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/des_pantheon.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/des_dev.cpp"
             APPEND PROPERTY COMPILE_DEFINITIONS DS_SHADOW_STACK=1)
     else()

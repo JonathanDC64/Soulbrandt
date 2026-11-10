@@ -49,6 +49,7 @@ REQUEST = "request.json"
 CHOICE = "setup-folder.txt"        # in the usual folder: the build folder the player chose (the host's kChoiceFile)
 UNLOCK = "unlock"                  # setup/unlock: the unlock's copies, RPCS3's folder, then its outputs until the stage
 UPDATE_WORK = "update-install"     # in setup/: where RPCS3 installs an update's package, removed afterwards
+DISC_VIEW = "disc-view"            # in setup/: <TITLE_ID>/PS3_GAME links to a disc game kept in dev_hdd0/game
 GB = 1 << 30
 # Each phase's share of a whole run, from its CPU time (docs/52 4.3: the compile is most of it).
 WEIGHTS = {"check": 2, "unlock": 1, "fetch": 4, "stage": 1, "lift": 13, "compile": 80, "import": 1, "shaders": 2}
@@ -530,12 +531,12 @@ def blocking(rep, unlocks=False) -> list:
     """The check's problems that stop a run. On the RPCS3 route a decrypted file
     that is missing or wrong is the unlock's to make, not the player's to fix,
     as is libsre.prx when RPCS3 has the PS3 system software."""
-    return [i for i in rep.problems() if not (unlocks and (i.kind == "decrypted" or i.unlock))]
+    return [i for i in rep.problems() if not (unlocks and i.unlock_makes)]
 
 
 def _made_by_unlock(rep) -> list:
     """The files the unlock makes that are still not right."""
-    return [i for i in rep.problems() if i.kind == "decrypted" or i.unlock]
+    return [i for i in rep.problems() if i.unlock_makes]
 
 
 def _rpcs3_state(req, data):
@@ -834,9 +835,12 @@ def _run(data, req, app, jobs, check_only, emit, src, table, manifest, phases, c
                     exe, state = _rpcs3_state(req, data)
                     emit.rpcs3(state, rpcs3.where(exe or req["rpcs3"]))
                     stop = _rpcs3_found(req, exe, emit, table or gamefiles.load_table(), from_library,
-                                        gamedata or (req.get("import") or {}).get("gamedata"))
+                                        gamedata or (req.get("import") or {}).get("gamedata"), data)
                     if stop is not None:
                         return stop
+                stop = _use_installed_disc(req, data, emit)
+                if stop is not None:
+                    return stop
                 try:
                     _install_update(req, data, jr, emit, total, table)
                 except game_update.UpdateError as e:
@@ -958,10 +962,57 @@ def _run(data, req, app, jobs, check_only, emit, src, table, manifest, phases, c
 
 # ---- the RPCS3 route's lines before the check ----
 
-def _rpcs3_found(req, exe, emit, t, from_library, gamedata):
-    """@user and @library, then what can come across: @found and @setting (docs/90 3.8). With the game from RPCS3's
-    library (from_library), its entry becomes the request's game. Returns the exit status when the run stops here
-    (the library has no folder setup can use), else None."""
+def _built_key(data):
+    """Which copy of the game the finished build was made from (gamefiles.copy_key), or None."""
+    game = ready_path(data, read_ready(data) or {}, "game")
+    return gamefiles.copy_key(game) if game else None
+
+
+def _copy_state(lib, t, data, hdd0):
+    """Whether a copy in RPCS3 is ready to build from, and if not why: (a protocol.INSTALL_STATES state, the sentence
+    for the player). The whole check of that copy, as if the player had chosen it, reading only."""
+    if lib.kind == "iso":
+        return "iso", "Setup cannot use ISO files yet. Copy the game out of the ISO into a folder."
+    tt = gamefiles.for_title(t, lib.title or gamefiles.title_of(lib.path))
+    if tt is None:
+        return "bad", "This is not a copy setup can use."
+    game, inputs = lib.path, str(data / "inputs")
+    if gamefiles.installed_disc(game):
+        game = gamefiles.disc_view(game, data / "setup" / DISC_VIEW / "check" / lib.path.name)
+    update, wanted = None, tt.get("update")
+    if wanted:
+        for place in game_update.places(gamefiles.find_root(game), None, hdd0):
+            found = game_update.find_in(place, tt["title_id"], wanted)
+            if found:
+                update = found
+                break
+        if update is None:
+            return "update", gamefiles.UPDATE_MISSING.format(disc=tt["disc"], ver=wanted["app_ver"])
+        if update[0] == "pkg":                  # (a .pkg is only opened once it is chosen: _install_update)
+            return "ready", ""
+    rep = gamefiles.check(game, [inputs], table=t, unlocks=True, firmware_unlock=False,
+                          update=update[1] if update else None)
+    probs = blocking(rep, True)
+    if any(i.state == gamefiles.DECRYPT for i in probs):
+        return "decrypt", next(i.message for i in probs if i.state == gamefiles.DECRYPT)
+    if probs or rep.root is None:
+        return "bad", probs[0].message if probs else "This is not a copy setup can use."
+    if rep.disc is not None and rep.disc.state == "incomplete":
+        return "incomplete", rep.disc.sentence()
+    return "ready", ""
+
+
+def _copy_id(lib):
+    """gamefiles.copy_key for a folder, the file's own path for an ISO file."""
+    return gamefiles.copy_key(lib.path) if lib.kind == "folder" else str(lib.path)
+
+
+def _rpcs3_found(req, exe, emit, t, from_library, gamedata, data):
+    """@user and @library, then what can come across: @found and @setting (docs/90 3.8). With more than one copy of the
+    game to choose from, an @install line for each, and the one the run uses is marked; a copy is chosen by the player
+    (the request's game), else the one already built, else the first that is ready. With the game from RPCS3's library
+    (from_library), the chosen copy becomes the request's game. Returns the exit status when the run stops here (the
+    library has no folder setup can use), else None."""
     if exe is None:
         if not from_library:
             return None
@@ -971,12 +1022,65 @@ def _rpcs3_found(req, exe, emit, t, from_library, gamedata):
     title = None if from_library else gamefiles.title_of(req.get("game") or "")
     found = rpcs3_library.read(exe, t, gamedata, title=title or None)
     emit.user(found.user, len(found.users), found.user_name)
+    copies = rpcs3_library.installs(found.folders, rpcs3_library.title_ids(t))
+    if sum(c.kind == "folder" for c in copies) > 1:
+        states = {id(c): _copy_state(c, t, data, found.folders.hdd0) for c in copies}
+        wanted = gamefiles.copy_key(req["game"]) if req.get("game") else _built_key(data)
+        chosen = next((c for c in copies if _copy_id(c) == wanted), None)
+        if chosen is None and not req.get("game"):
+            chosen = next((c for c in copies if states[id(c)][0] == "ready"),
+                          next((c for c in copies if c.kind == "folder"), None))
+        for c in copies:
+            state, why = states[id(c)]
+            emit.install(state, "iso" if c.kind == "iso" else "store" if c.digital else "disc", c.title,
+                         gamefiles.version_of(c.path), c is chosen, c.path, why)
+        if from_library and chosen is not None and chosen.kind == "folder":
+            found = rpcs3_library.read(exe, t, gamedata, title=chosen.title)
+            found.library = chosen
     emit.library(found.library.kind, found.library.path)
     if from_library:
         if found.library.kind != "folder":
             return _not_in_library(found.library, emit, t)
+        if not rpcs3_library.there(found.library):
+            return _library_folder_gone(found.library, emit)
         req["game"] = str(found.library.path)
     emit_found(emit, found)
+    return None
+
+
+def _library_folder_gone(lib, emit) -> int:
+    """The library's folder for the game has no game in it (or setup may not read it): what was looked for, and where.
+    @done fix."""
+    denied = gamefiles.unreadable_part(lib.path)
+    item = gamefiles.Item("game", "PS3_GAME", "missing", gamefiles.denied_message(denied) if denied else
+                          f"RPCS3's game list says the game is in {lib.path}, but there is no PS3_GAME folder with a "
+                          f"PARAM.SFO there. It may have been moved or deleted. Add it to RPCS3 again (File, then Add "
+                          f"Games), then press Check again.", str(lib.path))
+    emit.check(item)
+    emit.error("game", "check", item.message)
+    emit.done("fix")
+    return 1
+
+
+def _use_installed_disc(req, data, emit):
+    """A disc game RPCS3 keeps in dev_hdd0/game (gamefiles.installed_disc) has no PS3_GAME folder, so the request's
+    game becomes a folder of setup's own that links to it (gamefiles.disc_view). Returns the exit status when the run
+    stops here (the link cannot be made), else None."""
+    game = req.get("game")
+    tid = gamefiles.installed_disc(game)
+    if not tid:
+        return None
+    try:
+        view = gamefiles.disc_view(game, data / "setup" / DISC_VIEW / tid)
+    except OSError as e:
+        emit.text(f"note could not make the link to {game} in setup's folder: {e}")
+        sentence = (f"Setup cannot read the copy RPCS3 keeps in {game}. Make a new folder, copy that folder into it, "
+                    f"name the copy PS3_GAME, then choose the new folder here.")
+        emit.error("game", "check", sentence)
+        emit.done("fix")
+        return 1
+    emit.text(f"ok   RPCS3 keeps this disc in {game}; setup reads it through {view}")
+    req["game"] = str(view)
     return None
 
 
@@ -985,7 +1089,7 @@ def _not_in_library(lib, emit, t) -> int:
     if lib.kind == "iso":
         emit.error("game", "check", "Setup cannot use ISO files yet.")
     elif lib.kind == "store":
-        item = gamefiles.Item("game", "TITLE_ID", "wrong", gamefiles.other_title(t, rpcs3_library.STORE_ID),
+        item = gamefiles.Item("game", "TITLE_ID", "wrong", gamefiles.other_title(t, Path(lib.path).name),
                               str(lib.path))
         emit.check(item)
         emit.error("game", "check", item.message)
@@ -1025,6 +1129,14 @@ def status(data, app=None) -> dict:
             "ready": ready, "request": load_request(data), "steps": steps}
 
 
+def _game_gone(game) -> bool:
+    """The game folder of a finished build is gone: the folder, or the copy a link folder of setup's points to."""
+    if game is None or not game.is_dir():
+        return True
+    link = game / "PS3_GAME"
+    return os.path.lexists(link) and not link.is_dir()
+
+
 def _state(data, ready, steps, running, app) -> str:
     if running:
         return "running"
@@ -1037,8 +1149,7 @@ def _state(data, ready, steps, running, app) -> str:
             return "damaged"
         if app and ready.get("app") != app:
             return "outdated"
-        game = ready_path(data, ready, "game")
-        if game is None or not game.is_dir():
+        if _game_gone(ready_path(data, ready, "game")):
             return "game-moved"
         return "ready"
     if any(s.get("state") == "running" for s in steps.values()):

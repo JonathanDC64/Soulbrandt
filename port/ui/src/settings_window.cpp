@@ -17,7 +17,9 @@
 #include "privacy_window.hpp"
 #include "report.hpp"
 #include "settings.hpp"
+#include "slider.hpp"
 #include "souls_model.hpp"
+#include "stick_preview.hpp"
 #include "string_button.hpp"
 #include "ui.hpp"
 #include "updates.hpp"
@@ -224,6 +226,50 @@ void controller_row(Pane& leftPane, Pane& rightPane) {
                     });
             }
             pane.add_rml("<br/>" + help);
+        });
+}
+
+// A stick's deadzone row (PAD_DEADZONE_LEFT, _RIGHT): how far it is tilted when it starts counting, 0 to 70 percent.
+// The Default position sits at the number that deadzone comes to with the connected controller, so stepping or dragging
+// from it starts where the stick already starts; it stores "" and leaves the runtime's own deadzone in place.
+void stick_zone_row(Pane& leftPane, Pane& rightPane, const Rml::String& label, const Rml::String& key, int stick,
+    Rml::String helpText) {
+    static constexpr int kZoneMax = 70;
+    const auto text = [key] { return settings::pinned(key) ? settings::pinned_value(key) : settings::get(key); };
+    const auto value = [text] {
+        const std::string v = text();
+        return v.empty() ? stick_default_zone() : std::clamp(std::atoi(v.c_str()), 0, kZoneMax);
+    };
+    const auto set_value = [key](int v) {
+        if (settings::pinned(key)) return;
+        settings::set(key, v == stick_default_zone() ? std::string() : std::to_string(v));
+    };
+    auto& row = leftPane.add_child<NumberButton>(NumberButton::Props{
+        .key = label,
+        .getValue = value,
+        .setValue = set_value,
+        .isDisabled = [key] { return settings::pinned(key); },
+        .isModified = [key] { return !settings::is_default(key); },
+        .min = 0,
+        .max = kZoneMax,
+        .step = 1,
+        .format = [text](int v) -> Rml::String {
+            return text().empty() ? std::format("Default ({}%)", v) : std::format("{}%", v);
+        },
+    });
+    leftPane.register_control(row, rightPane,
+        [key, stick, value, set_value, helpText = with_note(key, std::move(helpText))](Pane& pane) {
+            pane.clear();
+            pane.add_child<Slider>(Slider::Props{
+                .min = 0,
+                .max = kZoneMax,
+                .suffix = "%",
+                .getValue = value,
+                .setValue = set_value,
+                .isDisabled = [key] { return settings::pinned(key); },
+            });
+            pane.add_child<StickPreview>(StickPreview::Props{.stick = stick, .zone = value});
+            pane.add_rml(helpText);
         });
 }
 
@@ -621,6 +667,10 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
             "where you wake in the Nexus (no prompt shows there). It can put your stats back to your class's and "
             "give back the souls your levels cost, to spend again. Spells must be remembered again."
             "<br/><br/>(DES_RESPEC)");
+        bool_row(leftPane, rightPane, "Change appearance in the Nexus", "DES_APPEARANCE",
+            "Press Cross facing the statue in front of where you wake in the Nexus (no prompt shows there) and pick "
+            "Change Appearance for the character creation screen. Keeping the changes reloads the Nexus."
+            "<br/><br/>(DES_APPEARANCE)");
 
         leftPane.add_section("HUD");
         leftPane.register_control(
@@ -704,6 +754,14 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
         controller_row(leftPane, rightPane);
         bool_row(leftPane, rightPane, "Vibration", "PAD_RUMBLE",
             "Lets the game make your gamepad vibrate.<br/><br/>(PAD_RUMBLE)");
+        stick_zone_row(leftPane, rightPane, "Left stick deadzone", "PAD_DEADZONE_LEFT", 0,
+            "How far you tilt the left stick before it counts, the same on every controller. Default is how the game "
+            "has always played with this controller. Very low values can let a worn stick drift.<br/><br/>"
+            "(PAD_DEADZONE_LEFT)");
+        stick_zone_row(leftPane, rightPane, "Right stick deadzone", "PAD_DEADZONE_RIGHT", 1,
+            "How far you tilt the right stick before it counts, the same on every controller. Default is how the game "
+            "has always played with this controller. Very low values can let a worn stick drift.<br/><br/>"
+            "(PAD_DEADZONE_RIGHT)");
         bool_row(leftPane, rightPane, "Roll toward the stick", "DES_ROLLDIR",
             "Locked on, a roll goes where the stick points. Off, it goes only forward, back, left or right, as in "
             "the original.<br/><br/>(DES_ROLLDIR)");

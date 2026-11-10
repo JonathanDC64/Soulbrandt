@@ -14,10 +14,13 @@ Two labels are used below:
 >
 > **Built (2026-10-28): stat respec at the Nexus statue and the Maiden in Black**, `DES_RESPEC`, off by default (section 1.9). The statue in front of the Nexus spawn opens a shop-style menu, and the Maiden's menu gets the same row after Seek Soul Power; Respecialization puts the class's stats back, refunds the levels' souls and opens the game's level-up screen.
 
+> **Built (2026-11-09): Change Appearance at the Nexus statue**, `DES_APPEARANCE`, off by default (section 1.10). The statue's menu gets a row that opens the game's own Edit Appearance from character creation.
+
 ## Summary
 
 | Feature | Verdict | Effort |
 |---|---|---|
+| Change Appearance | **Built** (section 1.10): `DES_APPEARANCE` adds a row to the statue's menu that opens Edit Appearance. Keeping the changes reloads the Nexus. | Done. |
 | Stat respec | **Built** (section 1.9): `DES_RESPEC` makes the statue in front of the Nexus spawn open a menu whose Respecialization resets to the class, refunds the levels and opens the level-up screen. The Maiden in Black's menu has the same row after Seek Soul Power. | Done. No on-screen prompt at the statue yet. |
 | Use several souls at once | **Built** (section 2.5): `DES_SOULS_AT_ONCE` makes Use on a soul stack ask how many, in Drop's count picker. | Done. |
 | 8-direction rolls while locked on | **Built** (section 3.7): `DES_ROLLDIR` plays the roll the game picks and turns the character toward the stick, so a roll goes where the stick points. | Done. True diagonal roll animations: not feasible (new animation content). |
@@ -230,6 +233,45 @@ Not tested: the other classes' floors, a character with attuned spells (the rese
 | Knob off | Her own three rows |
 
 Not tested at the Maiden: the mouse in the game's menus, and her menu before her leveling is unlocked (no Seek Soul Power, so no row is added).
+
+### 1.10 Built: `DES_APPEARANCE` (2026-11-09)
+
+Issue #463. With the knob on, the statue's menu (section 1.9) gets Change Appearance, which opens the game's own Edit Appearance from character creation.
+
+**What the player sees.** Cross at the statue, then Change Appearance: once the menu has gone, about a second later, the character creation screen, with their own character. Back closes it. If something changed, a dialog asks "Keep this appearance?". YES reloads the Nexus, about 15 seconds, and the character comes back with the new look at the statue. NO puts everything back with no reload. With nothing changed there is no question and no reload.
+
+**The knobs.** `DES_APPEARANCE` (Settings, Game) is separate from `DES_RESPEC`. The statue answers if either is on, and each row shows for its own knob.
+
+**How it works** (`port/des_respec.cpp`, `open_editor` and the `look_*` phases of `des_respec_tick`). No hook in the lift, so no re-lift.
+
+- **Why the title's menus.** The page's script (t03-00 in `title.menuesdbnd`) is not in the in-game bundle, so setting the editor's slot does nothing in the Nexus. The title's menu step runs beside the in-game one while the page is up: TitleMenuStep, 0x58 bytes, constructor 0x00196158, phase 3, id 8. Its state index (+8) reaches 7 once the bundle is in. Then FaceGenStep starts: 0x34 bytes, constructor 0x0017B258, phase 2, id 0.
+- **Starting a step.** 0x00A941F8(size, heap) makes the object, 0x001381E8(manager, phase, step, id) starts it and returns its task: +0x0C state (3 = ended), +0x10 references. The manager and the heap are `*0x01B387B8` and `*0x01AD62C8`.
+- **An unset field.** FaceGenStep's constructor leaves +0x28 (its job) unset. On the title it is zero because that heap is fresh; in game it was debris, and the preview had a black band across the face. It is written 0 before the step starts.
+- **Waiting for the menu's title bar.** The in-game menus' title bar (vtable 0x01870830, pieces `plate_menu-tab` and `text_title`, with the band behind it) goes away over about a second after the statue's menu closes. While the title's menus run, that close stops: started at once, the bar stayed up under the editor, and after Back it could show again as a grey band with an empty title box over the HP bars, through the question and after it. So the title's menus start only once the bar is down. The bar's dialog is drawn every frame once a menu has shown it, and its +0x94 is 0 when it is down; `des_hud.cpp` keeps its address from its draw (`des_hud_menu_title_shown`).
+- **Keeping the character still.** Slot 5 at 1 sets bit 2 of 0x00720F80's mask, which stops the button functions (0x001B8D3C and its siblings) and the Start menu. The title's menus clear the slot as they start, so it is set again each frame. The slot does not stop the stick, which the character still reads while a page is up, so the scripts' EnableLogic turns the character's logic off until the editor has gone: 0x00443838(0, 10000, 0), then with 1.
+- **Closing.** Back takes slot 0x25 to 10 and the step ends. Then 0x25 and 0x26 go to 0 (with 0x26 left at 1 the page's frame stays over the HUD), 0x4E and 0x4F to -1 (the help strip), and TitleMenuStep's byte at +0x28 to 1 starts its end. Once its task has ended both tasks are let go as the game does: the reference count down, and at zero 0x00A36220(task) gives the heap, then the task's virtual at +4 and the heap's at +0x38.
+- **What the editor writes.** PGD +0x198..+0x1E0 (the hair lists) and +0x3D0..+0x468 (origin, colours and the face's 100 bytes at +0x3F0). These are copied when the row is picked; NO writes them back, and "changed" compares them. The word at +0x2C8 moves too. It is put back on NO but doesn't count as a change.
+- **The reload.** The scripts' WarpNextStage, 0x00451430(0, 1, 0, 0, 0, -1), loads the Nexus again. The default spawn is at the statue, and the load rebuilds the character from PGD and saves.
+- **The log.** `DES_RESPEC_LOG=1` logs the steps as `[des] appearance: ...`.
+
+**Tests** (a copy of a save in the Nexus, hidden window, 0 halts in each; every run at unlocked fps unless the row says otherwise):
+
+| Check | Result |
+|---|---|
+| Both knobs on | Respecialization, Change Appearance, Leave |
+| `DES_RESPEC=0` | Change Appearance, Leave; the row works and opens again |
+| The stick held 1.2 s, R1 and Circle with the page open | 0.000 m moved; the character walks 1.96 m after closing |
+| Start with the page open | no menu, then or after |
+| Random, Hairstyle and Hair Color, Back, YES | reload in 14 s at the statue facing it; PGD as edited; the new hair on the character |
+| Quit after YES and start again | the look bytes are the kept ones |
+| Random, Back, NO | the first 0x700 bytes of PGD are as before the row was picked; the page opens again |
+| Back with no change | no question, no reload; HUD back; the Start menu opens and closes; the page opens again |
+| Details and a detail, Circle out of each | slot 0x25 goes 4, 5, 4, 3; the detail is discarded |
+| European disc: Random, hair, Back, YES | as on the US disc (a US save copied to the European folder name) |
+| `DES_FPS=30`: Random, hair, Back, YES | the same |
+| Eight uses in a row: Random, Back, then NO or Circle 0 to 3 s after the question; unlocked and at 30 fps | no band after Back, during the question or after any answer (checked on each screenshot). Before the waiting, the band showed after Back or during the question in half the runs and stayed after the answer about once in eight |
+
+Addresses for the Japanese and Asian discs come from `tools/region` and the two objects' sizes were checked at their allocation sites on all four programs, but neither disc was run with this. The title bar's vtable, which `tools/region` can't place, was matched by hand: on each of the three programs, the 18 of its first 24 entries checked against mapped code all agree, at one place only. Not tested either: the mouse in these pages, other classes and the male body, and a real pad by hand.
 
 ## 2. Use several souls at once
 

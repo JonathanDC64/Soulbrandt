@@ -67,7 +67,10 @@ The design's "Setup only reads from RPCS3." is not quite true here, because setu
 | Game, supported | ok | Demon's Souls, US disc, version 1.00 | `BLUS30443` · its folder | tag ok "Supported" |
 | Game, ISO | err | Demon's Souls, as an ISO file | "Setup cannot use ISO files yet. Copy the game out of the ISO into a folder, add that folder to RPCS3's library, then press Check again." | tag err "Not yet", link "Check again" |
 | Game, not in the library | warn | Demon's Souls is not in RPCS3's library | "Add it in RPCS3 (File, then Add Games), then press Check again." | link "Check again" |
-| Game, other region or store copy | err | as the design (European disc, PlayStation Store version) | as the design | tag err "Not supported" |
+| Game, the US or European store version | ok | Demon's Souls, US PlayStation Store version, version 1.00 | `NPUB30910` · its folder | tag ok "Supported" |
+| Game, a store version without `EBOOT.elf` | warn | the same, then "Decrypt the game's code in RPCS3" | `NPUB30910` · its folder, then the check's sentence: Utilities, Decrypt PS3 Binaries, and the file's path | tag warn "One step in RPCS3", link "Check again" |
+| Copies, when RPCS3 has more than one in folders | ok | "Which copy to build from": for each, Demon's Souls, its region, disc or store version, its version | its ID · its folder, and why it is not ready if so | the copy in use ticked; press another to check that one; tag "Ready", "One step in RPCS3", "Needs the update", "Not complete", "Needs fixing", "Not yet" (an ISO file, not pressable) |
+| Game, other region or the Japanese store version | err | as the design (PlayStation Store version) | as the design | tag err "Not supported" |
 | Game, damaged dump | err | Demon's Souls, US disc, version 1.00 | the check's sentence, for example "PS3_GAME/USRDIR/script/m01.luabnd.dcx.sdat does not match the US disc, version 1.00. The dump may be damaged: dump the disc again." | tag err "Needs fixing", link "Check again" |
 
 **"Bring across from RPCS3"** (only when the game is supported). There are three checkbox rows, each ticked when its state is `ok`. A row whose state is not `ok` is unticked and cannot be ticked:
@@ -276,7 +279,8 @@ This is a new module, `des_setup/rpcs3.py`. Every file is opened for reading onl
 | What | Where (Windows; Linux has no `config/` subfolder) | Used for |
 |---|---|---|
 | `<R>` | `<exe folder>/portable/`, else the player's `RPCS3_CONFIG_DIR`, else the exe folder. Linux: `$XDG_CONFIG_HOME/rpcs3/` or `~/.config/rpcs3/`. Flatpak: `~/.var/app/net.rpcs3.RPCS3/config/rpcs3/`. | everything below |
-| games.yml | `<R>config/games.yml` (older builds: `<R>games.yml`) | the BLUS30443 entry: a disc root, a `PS3_GAME` path ending in `/./`, or an ISO file (System.cpp:2120-2170, game_enumeration.h:445-490, read) |
+| games.yml | `<R>config/games.yml` (older builds: `<R>games.yml`) | a supported disc's entry: a disc root, a `PS3_GAME` path ending in `/./`, a disc game's own folder in `<hdd0>game/` ending in `/./`, or an ISO file (System.cpp:2120-2170, game_enumeration.h:445-490, read). `rpcs3_library.library` prefers a copy that is there: a usable folder, then a disc in `<hdd0>game/`, then an ISO; an entry whose game has gone comes last and never hides one that is there (issue #453) |
+| `<hdd0>game/<TITLE_ID>/` | under `<hdd0>` | a disc game kept on the hard disk (PARAM.SFO's CATEGORY is DG, `USRDIR/EBOOT.BIN`, no `PS3_GAME` folder): setup reads it through `<data>/setup/disc-view/<TITLE_ID>/PS3_GAME`, a link to it (junction on Windows, symlink elsewhere), nothing written under RPCS3's folders. A category GD folder there is an update, not the game |
 | vfs.yml | `<R>config/vfs.yml`, if present | `$(EmulatorDir)` and `/dev_hdd0/` |
 | active user | `<R>GuiConfigs/persistent_settings.dat`, `[Users] active_user` (default 00000001) | which `home/<id>/`. If that folder is missing: 00000001, else the first user |
 | users | `<hdd0>home/<8 digits>/localusername` | the count and the name shown |
@@ -284,7 +288,7 @@ This is a new module, `des_setup/rpcs3.py`. Every file is opened for reading onl
 | trophies | `<hdd0>home/<user>/trophy/NPWR00881_00/TROPUSR.DAT` | the type-6 table, state 1 (docs/44 8.5) |
 | settings | `<R>config/config.yml`, then `custom_configs/config_BLUS30443.yml` over it, then `patch_config.yml` (BLUS30443, 01.00, `Enabled: true`) | section 3.5. The console ID and GPU name are skipped; only key names are logged |
 | PPU Debug EBOOT | `<cache>/ppu_progs/BLUS30443-*-EBOOT.BIN/exec.elf`, where the middle is a base57 of the module's SHA-1 (System.cpp:390-400, read) | accepted when its size and SHA-256 equal the table's `EBOOT.elf` |
-| store copy | `<hdd0>game/NPUB30910/` | the "Not supported" row |
+| store copies | `<hdd0>game/NPUB30910/`, `NPEB01202/` (their PARAM.SFO says the disc's TITLE_ID); `NPJA00102/` | the first two by looking in `dev_hdd0/game`, started in RPCS3 or not: `games.yml` has one line for a TITLE_ID, so a disc and a store copy share it. The third gets the "Not supported" row |
 
 The YAML is read with a small subset reader: two-space indents, `key: value` and quoted scalars (docs/44 8.6). No new library is needed.
 
@@ -325,6 +329,7 @@ The check is gamefiles.py, with three changes:
 Two smaller changes go with these:
 - **The stage skips an item whose `found` path already is its destination**, because `copyfile` onto itself fails.
 - **An ISO entry gets `@library iso <path>`**, then `@error game check Setup cannot use ISO files yet.` and `@done fix`. The page shows the ISO row from `@library`.
+- **A library folder with no game in it gets `@check missing PS3_GAME <sentence>`** that names the folder RPCS3's list gave, then `@error game check` and `@done fix`.
 
 ### 3.4 The unlock phase, step by step
 
@@ -711,7 +716,7 @@ Branch `feat/setup-rpcs3-route`: the library and import half of the engine, the 
 **Files.**
 - `rpcs3_library.py` (new) reads the player's RPCS3, and only reads (3.1):
   - its folders, from `vfs.yml` or RPCS3's defaults;
-  - the game in `games.yml`: a folder, an ISO file, or the Store version (`NPUB30910`, not supported);
+  - the game in `games.yml` and `dev_hdd0/game`: folders, an ISO file, or a Store version (`NPUB30910` and `NPEB01202` can be used, `NPJA00102` not yet);
   - the users, and the one RPCS3 uses (`persistent_settings.dat`);
   - the save, the trophies (`TROPUSR.DAT`) and the settings and patches;
   - `dev_flash/sys/external/libsre.sprx`.

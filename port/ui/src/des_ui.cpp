@@ -32,6 +32,7 @@
 #include "platform.hpp"
 #include "portable.hpp"
 #include "prelaunch.hpp"
+#include "stick_preview.hpp"
 #include "prework_modal.hpp"
 #include "privacy.hpp"
 #include "privacy_window.hpp"
@@ -480,6 +481,7 @@ ui::input::PadState read_pads(bool& neutral) {
         if (b || hid[i].l2 > 30 || hid[i].r2 > 30 || off(hid[i].lx) || off(hid[i].ly) || off(hid[i].rx) || off(hid[i].ry))
             neutral = false;
     }
+    if (ui::stick_preview_takes_left()) pad.lx = pad.ly = 0.f;  // (being tried out in Settings: the D-pad moves the menu)
     return pad;
 }
 

@@ -28,6 +28,14 @@ A disc whose table has an "update" (the Japanese and Asian discs, docs/139) is
 used with that update: the files marked "from": "update" are looked for in
 the update's folder (game_update.py), and an item of kind "update" says
 whether it is there.
+
+The US and European discs also come as PlayStation Store versions, which have
+a "digital" block in the table (the store copy's own PARAM.SFO and EBOOT.BIN;
+digital_of tells one by its marker file or its EBOOT.BIN's size). The store
+copy is that disc's program and data: its EBOOT.elf is the disc's, and after
+RPCS3 installs the package its 26 .sdat files are plain, the table's decrypted
+files under their own names. The player decrypts its EBOOT.BIN in RPCS3, which
+leaves EBOOT.elf beside it; until then the check says so (state "decrypt").
 """
 import hashlib
 import json
@@ -48,14 +56,22 @@ ENCRYPTED_MAGIC = {b"SCE\0": "an encrypted SELF", b"NPD\0": "an encrypted SDATA 
 LEFT_OUT = "The game does not need it; setup leaves it out."
 UPDATE_MISSING = ("{disc} needs its {ver} update. Put the update's .pkg file beside your disc copy, or choose it or the "
                   "folder your PS3 or RPCS3 installed it to.")
+EBOOT_BIN = "PS3_GAME/USRDIR/EBOOT.BIN"
+STORE_MARK = "ISO2PKG.DAT"   # beside PARAM.SFO in a PlayStation Store copy of a disc, never on the disc
+# The store copy's EBOOT.elf is the player's to make: a state of its own, which the unlock does not take.
+DECRYPT = "decrypt"
+DECRYPT_FIRST = ("In RPCS3, open Utilities, then Decrypt PS3 Binaries, and choose {eboot}. It writes EBOOT.elf beside "
+                 "it. Then check again.")
+DECRYPT_AGAIN = "EBOOT.elf does not match. " + DECRYPT_FIRST
 
 
 @dataclass
 class Item:
     kind: str        # "game", "update", "original", "decrypted", "firmware"
     name: str        # the table's path or name
-    state: str       # "ok", "unmeasured", "missing", "mismatch", "encrypted", "wrong", or "unused": an optional
-                     # file (the firmware's) that is not right, so the build goes on without it
+    state: str       # "ok", "unmeasured", "missing", "mismatch", "encrypted", "wrong", "decrypt" (the store copy's
+                     # EBOOT.elf, the player's to make), or "unused": an optional file (the firmware's) that is not
+                     # right, so the build goes on without it
     message: str     # what to tell the player, in plain words
     found: str = ""  # where the file was found
     sha256: str = "" # its SHA-256, when it was hashed
@@ -67,6 +83,12 @@ class Item:
     def good(self) -> bool:
         return self.state in ("ok", "unmeasured")
 
+    @property
+    def unlock_makes(self) -> bool:
+        """On the RPCS3 route the unlock makes this file, so it is not the player's to fix. Not a store copy's
+        EBOOT.elf, which is (state "decrypt")."""
+        return self.unlock or (self.kind == "decrypted" and self.state != DECRYPT)
+
 
 @dataclass
 class Report:
@@ -75,6 +97,7 @@ class Report:
     table: dict = None   # the disc's table (for_title), once PARAM.SFO is read
     disc: object = None  # every file of the disc copy against the disc's list (disc.py), once the title is known: a
                          # warning only, so not one of problems()
+    digital: dict = None # the store copy's table block when this is one (digital_of), else None
 
     @property
     def title_id(self) -> str:
@@ -121,19 +144,101 @@ def find_root(folder) -> Path:
 
 
 def title_of(folder) -> str:
-    """The TITLE_ID of the game in a folder (find_root's), or "" when there is none or it cannot be read."""
+    """The TITLE_ID of the game in a folder (find_root's, or a disc game kept in dev_hdd0/game: installed_disc), or ""
+    when there is none or it cannot be read."""
     root = find_root(folder) if folder else None
-    p = _resolve(root, "PS3_GAME/PARAM.SFO") if root else None
+    if root is None:
+        return installed_disc(folder)
+    p = _resolve(root, "PS3_GAME/PARAM.SFO")
     try:
         return sfo.parse(p.read_bytes()).get("TITLE_ID", "") if p else ""
     except (OSError, sfo.SfoError):
         return ""
 
 
+def version_of(folder) -> str:
+    """The APP_VER of the game in a folder, as title_of finds it, or "" (an ISO file, one that cannot be read)."""
+    if not folder or not os.path.isdir(folder):    # (Path.is_dir raises for "access denied": issue #473)
+        return ""
+    root = find_root(folder)
+    p = _resolve(root, "PS3_GAME/PARAM.SFO") if root is not None else _resolve(Path(folder), "PARAM.SFO")
+    try:
+        return sfo.parse(p.read_bytes()).get("APP_VER", "") if p else ""
+    except (OSError, sfo.SfoError):
+        return ""
+
+
+def installed_disc(folder) -> str:
+    """The TITLE_ID when `folder` is a disc game RPCS3 keeps in dev_hdd0/game: the files of PS3_GAME right in the
+    folder, with no PS3_GAME folder (RPCS3's System.cpp, "Disc game located in dev_hdd0/game"). Its PARAM.SFO's
+    CATEGORY is DG and it has USRDIR/EBOOT.BIN. "" for anything else, also for an update kept there (category GD)."""
+    if not folder or find_root(folder) is not None:
+        return ""
+    p = _resolve(Path(folder), "PARAM.SFO")
+    if p is None or _resolve(Path(folder), "USRDIR/EBOOT.BIN") is None:
+        return ""
+    try:
+        vals = sfo.parse(p.read_bytes())
+    except (OSError, sfo.SfoError):
+        return ""
+    return vals.get("TITLE_ID", "") if vals.get("CATEGORY") == "DG" else ""
+
+
+def disc_view(game, view) -> Path:
+    """`view` as a folder that holds PS3_GAME for a disc game kept in dev_hdd0/game (installed_disc): the check, the
+    build and the game all read a disc's layout, and nothing may be written in RPCS3's folders. So PS3_GAME here is a
+    link to that game's own folder: on Windows a junction, which needs no special rights, and elsewhere a symbolic
+    link. One that points there already stays; one that points elsewhere (dev_hdd0 moved) is replaced. Raises OSError
+    when the link cannot be made."""
+    target, view = os.path.realpath(game), Path(view)
+    link = view / "PS3_GAME"
+    if os.path.lexists(link):
+        if os.path.normcase(os.path.realpath(link)) == os.path.normcase(target):
+            return view
+        os.unlink(link)                     # (the link only, on Windows a junction too: never what it points to)
+    view.mkdir(parents=True, exist_ok=True)
+    if os.name == "nt":
+        import _winapi
+        _winapi.CreateJunction(target, str(link))
+    else:
+        os.symlink(target, link, target_is_directory=True)
+    return view
+
+
+def unreadable_part(folder) -> str:
+    """The folder on the way to PS3_GAME that setup isn't allowed to read (access denied): `folder` itself or its
+    PS3_GAME. "" when both can be read, or one isn't there (issue #473)."""
+    p = Path(folder)
+    for _ in range(2):
+        try:
+            names = os.listdir(p)
+        except PermissionError:
+            return str(p)
+        except OSError:
+            return ""
+        game = next((e for e in names if e.upper() == "PS3_GAME"), None)
+        if game is None:
+            return ""
+        p = p / game
+    return ""
+
+
+def denied_message(path) -> str:
+    """What to tell the player when unreadable_part found a folder."""
+    how = ("Give your Windows account access to it (right-click the folder, then Properties, then Security)"
+           if os.name == "nt" else "Give your account read access to it")
+    return (f"Setup isn't allowed to open {path} (access denied). {how}, or copy the game into a folder of your own, "
+            f"such as Documents, and pick that one.")
+
+
 def _find_ci(folder: Path, name: str) -> str:
-    """`name` in `folder`, ignoring case (a folder dump may say EBOOT.ELF or EBOOT.elf)."""
-    if (folder / name).exists():
-        return name
+    """`name` in `folder`, ignoring case (a folder dump may say EBOOT.ELF or EBOOT.elf). "" also when the folder can't
+    be read: Path.exists returns False only for "not found" and raises for "access denied" (issue #473)."""
+    try:
+        if (folder / name).exists():
+            return name
+    except OSError:
+        pass
     try:
         low = name.lower()
         for e in os.listdir(folder):
@@ -201,7 +306,7 @@ def for_title(t, tid):
         return None
     files = o.get("files", {})
     tt = dict(t, title_id=tid, app_ver=o["app_ver"], version=o["version"], disc=o["disc"],
-              disc_files=o.get("disc_files"), update=o.get("update"))
+              disc_files=o.get("disc_files"), update=o.get("update"), digital=o.get("digital"))
     for k in ("originals", "decrypted"):
         tt[k] = [dict(e, **files.get(e["path"], {})) for e in t[k]]
     return tt
@@ -216,6 +321,37 @@ def other_title(t, tid) -> str:
     """The sentence for a copy of another title or version of the game, by its TITLE_ID."""
     what = t["other_titles"].get(tid, f"a game with the ID {tid or 'none'}")
     return f"This is {what} ({tid}). The port supports {supported(t)}."
+
+
+def store_copy(folder) -> bool:
+    """`folder` (the game's own folder in dev_hdd0/game, or the folder that holds PS3_GAME) has the marker file of a
+    PlayStation Store copy of a disc."""
+    if not folder:
+        return False
+    return any(_resolve(Path(folder), rel) is not None for rel in (STORE_MARK, "PS3_GAME/" + STORE_MARK))
+
+
+def digital_of(root: Path, t: dict):
+    """The table's "digital" block when the copy in `root` (the folder that holds PS3_GAME) is that disc's PlayStation
+    Store version, else None: by its marker file, or its EBOOT.BIN's size if the marker was left behind."""
+    d = t.get("digital")
+    if not d:
+        return None
+    if _resolve(root, "PS3_GAME/" + STORE_MARK) is not None:
+        return d
+    p = _resolve(root, EBOOT_BIN)
+    return d if p is not None and p.stat().st_size == d["files"][EBOOT_BIN]["size"] else None
+
+
+def copy_key(folder) -> str:
+    """One name for a copy of the game wherever it is reached from: its own folder's real path. `folder` is the folder
+    that holds PS3_GAME, the game's folder in dev_hdd0/game, or setup's link folder (disc_view) to one."""
+    p = Path(folder)
+    inner = p / "PS3_GAME"
+    if os.path.isdir(inner):                # (False, not an error, for a folder setup may not read: issue #473)
+        real = os.path.realpath(inner)
+        p = Path(real).parent if Path(real).name.upper() == "PS3_GAME" else Path(real)
+    return os.path.normcase(os.path.realpath(p))
 
 
 def check(folder, decrypted_dirs=(), firmware=None, table=None, progress=None, unlocks=False, also=None,
@@ -239,7 +375,8 @@ def check(folder, decrypted_dirs=(), firmware=None, table=None, progress=None, u
     rep = Report()
     root = find_root(folder)
     if root is None:
-        rep.items.append(Item("game", "PS3_GAME", "missing",
+        denied = unreadable_part(folder)
+        rep.items.append(Item("game", "PS3_GAME", "missing", denied_message(denied) if denied else
                               "This folder has no PS3_GAME folder with a PARAM.SFO in it. Pick the folder "
                               "of your disc dump that holds PS3_GAME."))
         return rep
@@ -263,11 +400,14 @@ def check(folder, decrypted_dirs=(), firmware=None, table=None, progress=None, u
                               f"This copy is version {ver[0] or '?'}. The port supports version "
                               f"{t['app_ver']} only."))
         return rep
-    disc = t.get("disc", "the US disc")
+    dig = rep.digital = digital_of(root, t)
+    disc = dig["what"] if dig else t.get("disc", "the US disc")
     rep.items.append(Item("game", "TITLE_ID", "ok", f"{t['title_id']}, version {t['app_ver']} ({disc})."))
+    if dig:
+        rep.items.append(Item("game", "STORE", "ok", f"{dig['id']}, {dig['what']}."))
     needed = t.get("update")
     up = Path(update) if update and needed else None
-    plain = plain_forms(t) if needed else {}
+    plain = plain_forms(t) if needed or dig else {}
     if needed:
         wrong = game_update.bad_files(up, needed, plain=plain) if up else None
         state, why = (("ok", f"Its update, {needed['app_ver']}, is there.") if up and not wrong else
@@ -282,11 +422,15 @@ def check(folder, decrypted_dirs=(), firmware=None, table=None, progress=None, u
         rel = e["path"].split("PS3_GAME/", 1)[-1] if from_update else e["path"]
         if from_update and rel in plain and up and _plain_in_update(up, rel):
             e = dict(plain[rel], path=e["path"])    # (RPCS3 installed it: compared as the plain file it now is)
+        elif dig:                                   # (the store copy's own files, or the plain form of a .sdat)
+            own = dig["files"].get(e["path"]) or plain.get(e["path"].split("PS3_GAME/", 1)[-1])
+            e = dict(e, size=own["size"], sha256=own["sha256"]) if own else e
+        again = "The install may be damaged: install the package again in RPCS3." if dig else \
+            "The dump may be damaged: dump the disc again."
         rep.items.append(_check_file("original", e, _resolve(place, rel) if place else None, progress,
                                      missing=f"{e['path']} is missing from the " +
                                              ("update." if from_update else "game folder."),
-                                     mismatch=f"{e['path']} does not match {disc}, version {t['app_ver']}. The dump may "
-                                              f"be damaged: dump the disc again."))
+                                     mismatch=f"{e['path']} does not match {disc}, version {t['app_ver']}. {again}"))
 
     # The decrypted files the build reads: the first good copy, else what is wrong with the first one found.
     for e in t["decrypted"]:
@@ -300,6 +444,8 @@ def check(folder, decrypted_dirs=(), firmware=None, table=None, progress=None, u
                                  f"Decrypt PS3 Binaries).",
                          mismatch=f"{base} does not match: decrypt {src} again.")
         places = [_resolve(root, e["path"])] + [_find_decrypted(Path(d), e["path"]) for d in decrypted_dirs]
+        if dig and e["of"].endswith(".sdat"):   # (a store copy's .sdat files are the plain files already)
+            places.append(_resolve(root, e["of"]))
         if up:   # (RPCS3 writes beside what it was given, so beside the update's files too)
             places.append(_resolve(up, e["path"].split("PS3_GAME/", 1)[-1]))
             of = e["of"].split("PS3_GAME/", 1)[-1]
@@ -316,7 +462,14 @@ def check(folder, decrypted_dirs=(), firmware=None, table=None, progress=None, u
             first = first or item
         else:
             item = first or _check_file("decrypted", e, None, progress, **texts)
-        item.unlock = unlocks
+        if dig and not item.good and e["of"] == EBOOT_BIN:
+            # The store copy's EBOOT.elf is the player's to make: a sentence for RPCS3's menu, not the unlock's.
+            eboot = _resolve(root, EBOOT_BIN)
+            words = DECRYPT_AGAIN if item.state == "mismatch" else DECRYPT_FIRST
+            item = Item("decrypted", e["path"], DECRYPT,
+                        words.format(eboot=os.path.realpath(eboot) if eboot else "this game's EBOOT.BIN"), item.found)
+        elif not dig or e["of"] != EBOOT_BIN:
+            item.unlock = unlocks
         rep.items.append(item)
 
     # The firmware's file, optional (the module's docstring): the one given, else one by its name in the game's folder
@@ -354,7 +507,9 @@ def check(folder, decrypted_dirs=(), firmware=None, table=None, progress=None, u
         rep.items.append(item)
 
     # The rest of the disc's files, by name and size (disc.py): a warning, which the build asks the player about.
-    rep.disc = disc_files.check(root, t.get("disc_files"))
+    rep.disc = disc_files.check(root, t.get("disc_files"),
+                                sized=[e["path"] for e in t["originals"] if e["path"] != "PS3_GAME/PARAM.SFO"] if dig
+                                else ())
     return rep
 
 

@@ -1,10 +1,24 @@
 {
- "comment": "BLUS30443 version 1.00, the US disc, BLES00932 version 1.00, the European disc, and BCJS30022 and BCAS20071, the Japanese and Asian discs with their 1.04 update: the versions the port supports (docs/51 appendix A). SHA-256 sums and sizes only: no bytes of the game. sha256 null = not measured yet; then the file is checked by its magic instead.",
+ "comment": "BLUS30443 version 1.00, the US disc, BLES00932 version 1.00, the European disc, and BCJS30022 and BCAS20071, the Japanese and Asian discs with their 1.04 update: the versions the port supports (docs/51 appendix A). SHA-256 sums and sizes only: no bytes of the game. sha256 null = not measured yet; then the file is checked by its magic instead. \"digital\" (the US and European discs): the PlayStation Store version of that disc, the same program and data but for PARAM.SFO's system version, its EBOOT.BIN and its plain .sdat files (gamefiles.py).",
  "title_id": "BLUS30443",
  "app_ver": "01.00",
  "version": "01.00",
  "disc": "the US disc",
  "disc_files": "BLUS30443.txt.gz",
+ "digital": {
+  "id": "NPUB30910",
+  "what": "the US PlayStation Store version",
+  "files": {
+   "PS3_GAME/PARAM.SFO": {
+    "size": 1008,
+    "sha256": "123becd4b211c058ef89a8180bf13a860baab0ab3559c1797b1030efd6eb788c"
+   },
+   "PS3_GAME/USRDIR/EBOOT.BIN": {
+    "size": 9602848,
+    "sha256": "1ffa7840e1a026f0c501db22722bf154980b0c2e95d59276c38d75b5c86bc3c6"
+   }
+  }
+ },
  "titles": {
   "BLES00932": {
    "comment": "The European disc (English, French, German, Spanish and Italian), version 1.00. Its files are the US disc's but for these, and 211 more files of its four other languages.",
@@ -12,6 +26,20 @@
    "app_ver": "01.00",
    "version": "01.00",
    "disc_files": "BLES00932.txt.gz",
+   "digital": {
+    "id": "NPEB01202",
+    "what": "the European PlayStation Store version",
+    "files": {
+     "PS3_GAME/PARAM.SFO": {
+      "size": 1008,
+      "sha256": "b9422cdb0d95a1f658fb920f4f20a051c6bcdb33a1cba4049538330b41bb123f"
+     },
+     "PS3_GAME/USRDIR/EBOOT.BIN": {
+      "size": 9597136,
+      "sha256": "d2e0af71156b8133d23d9e34bf3deb94f3aa448a4ae2e83abe3c942d92a81e19"
+     }
+    }
+   },
    "files": {
     "PS3_GAME/PARAM.SFO": {
      "size": 1008,
@@ -1238,7 +1266,6 @@
  },
  "other_titles": {
   "BLUD80018": "the US trade demo",
-  "NPUB30910": "the US PlayStation Store version",
   "NPJA00102": "the Japanese PlayStation Store version"
  },
  "originals": [

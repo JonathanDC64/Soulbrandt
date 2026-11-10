@@ -23,6 +23,11 @@ the screens show the last ones under Details.
                                     shared (a portable install: starting it changes its log) or missing
   @user <id> <users> <name>         RPCS3's active user: its 8-digit ID, how many users RPCS3 has, its name
   @library <kind> <path>            Demon's Souls in RPCS3's library: folder, iso, store, or none (path -)
+  @install <state> <kind> <title> <version> <chosen> <path>
+                                    with more than one copy to choose from, one line for each, before @library: state
+                                    (INSTALL_STATES), disc, store or iso, its TITLE_ID and version, 1 for the one this
+                                    run uses, its folder or file
+  @installwhy <text>                why the last @install is not ready, in a sentence for the player
   @found <what> <state> <value>...  what RPCS3 has that can come across (FOUND: the states and values of each):
                                     save <state> <characters> <saved>, current-save <state> <saved> (the port's own
                                     save, which an import replaces), trophies <state> <earned>/<total>,
@@ -55,7 +60,8 @@ import sys
 
 VERSION = 2
 KINDS = ("setup", "plan", "step", "progress", "overall", "check", "disc", "discfile", "file", "rpcs3", "user",
-         "library", "found", "setting", "awake", "memory", "log", "error", "done", "release", "note")
+         "library", "install", "installwhy", "found", "setting", "awake", "memory", "log", "error", "done",
+         "release", "note")
 # game: the game folder or its files; busy: another setup is running; disk: not enough free space;
 # download: a download stopped or did not match; memory: out of memory; step: a build step failed;
 # rpcs3: the player's RPCS3 could not unlock the files; import: bringing the save, trophies or settings across from
@@ -68,6 +74,10 @@ SHOWN = 100          # the @discfile lines after @disc, at most
 STEP_STATES = ("start", "done", "skip")
 RPCS3_STATES = ("own", "shared", "missing")
 LIBRARY_KINDS = ("folder", "iso", "store", "none")
+# ready: can build now; decrypt: a store copy whose EBOOT.elf the player still has to make; update: a disc without its
+# update; incomplete: files missing or of another size (a warning); bad: its files do not match; iso: setup cannot use it
+INSTALL_STATES = ("ready", "decrypt", "update", "incomplete", "bad", "iso")
+INSTALL_KINDS = ("disc", "store", "iso")
 # @found: each item's states, and how many values follow the state.
 FOUND = {"save": (("ok", "none", "other-user", "busy"), 2), "current-save": (("ok", "none"), 1),
          "trophies": (("ok", "none"), 1), "settings": (("ok", "none"), 1)}
@@ -177,6 +187,13 @@ class Emitter:
     def library(self, kind, path):
         assert kind in LIBRARY_KINDS, kind
         self._line("library", kind, one_line(path) if path and kind != "none" else "-")
+
+    def install(self, state, kind, title, version, chosen, path, why=""):
+        """One copy of the game the player can choose, and, if it is not ready, why."""
+        assert state in INSTALL_STATES and kind in INSTALL_KINDS, (state, kind)
+        self._line("install", state, kind, word(title), word(version), int(bool(chosen)), one_line(path))
+        if why:
+            self._line("installwhy", one_line(why))
 
     def found(self, what, state, *values):
         """One @found line: values are printed as they are, None as '-'."""

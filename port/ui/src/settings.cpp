@@ -61,6 +61,7 @@ constexpr Def kDefs[] = {
     {"AUDIO_MUTE", "0", Apply::Live},
     {"DES_LANGUAGE", "", Apply::Restart},      // des_region.cpp, at start: the disc's text; "" = the PC's
     {"DES_SOULS_AT_ONCE", "1", Apply::Live},   // des_souls_use.cpp, at each Use: 1 = Use on soul items asks how many
+    {"DES_APPEARANCE", "0", Apply::Live},      // des_respec.cpp, each frame: 1 = the Nexus statue offers Edit Appearance
     {"DES_RESPEC", "0", Apply::Live},          // des_respec.cpp, each frame: 1 = the Nexus statue and the Maiden in Black offer a stat respec
     {"DES_DOF", "1", Apply::Live},             // des_dof, read each frame
     {"RSX_AA", "0", Apply::Live},              // 0 = none, as on the PS3; 1 = FXAA, 2 = SMAA, before the HUD; per batch
@@ -127,6 +128,8 @@ constexpr Def kDefs[] = {
     {"PAD_KEYS", "", Apply::Live},             // cellPad, changes to the keyboard and mouse layout (kKeysLayout)
     {"PAD_CONTROLLER", "auto", Apply::Live},   // cellPad, each poll: the controller the game reads (port 0)
     {"PAD_RUMBLE", "1", Apply::Live},          // cellPad's vibration thread, live; 0 = no pad vibrates
+    {"PAD_DEADZONE_LEFT", "", Apply::Live},    // cellPad, live: tilt where the stick starts counting; "" = the default
+    {"PAD_DEADZONE_RIGHT", "", Apply::Live},   // (and PAD_DEADZONE_ANTI: des_options.cpp's run_defaults)
     {"DES_ROLLDIR", "1", Apply::Live},         // des_roll_dir, read at each roll; 0 = locked-on rolls go 4 ways only
     {"keys_layout", "souls", Apply::UiOnly},   // the layout PAD_KEYS changes; a file without this line is older
     {"DES_MOUSE_LOOK", "0", Apply::Live},      // mouse look (des_mouse_look; port/ui/src/mouse.cpp), read each frame
@@ -228,10 +231,11 @@ void make_dirs(const std::string& file) {
 void apply_env(std::string_view key, const std::string& value) {
     const std::string k(key);
     // (an unset option stays unset; DES_FPS "" is the game's mode, PAD_MAP "" the game's buttons, PAD_KEYS "" the
-    // layout as it is, the two online rows' "" the game's behaviour again, and DES_ASPECT's and DES_HUD's "" 16:9 and
-    // the HUD in the corners again)
+    // layout as it is, the two online rows' "" the game's behaviour again, DES_ASPECT's and DES_HUD's "" 16:9 and
+    // the HUD in the corners again, and the stick deadzones' "" the default deadzone again)
     if (value.empty() && key != "DES_FPS" && key != "PAD_MAP" && key != "PAD_KEYS" && key != "DES_NET_TENDENCY" &&
-        key != "DES_NET_RATING_POLL" && key != "DES_ASPECT" && key != "DES_HUD")
+        key != "DES_NET_RATING_POLL" && key != "DES_ASPECT" && key != "DES_HUD" && key != "PAD_DEADZONE_LEFT" &&
+        key != "PAD_DEADZONE_RIGHT")
         return;
     if (key == "DES_NET_PASSWORD") return;  // (only its hash is used, in PS3_HTTP_HEADER: apply_match_group)
     if (key == "PAD_KEYS") {

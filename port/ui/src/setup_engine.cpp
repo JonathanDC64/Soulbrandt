@@ -300,7 +300,9 @@ Launch launch_state() {
         out.state = State::Damaged;
     else if (ready["format"] != "1" || ready["app"] != kVersion)
         out.state = State::Outdated;
-    else if (!std::filesystem::is_directory(out.game, ec))
+    else if (!std::filesystem::is_directory(out.game, ec) ||
+             (std::filesystem::exists(std::filesystem::symlink_status(out.game / "PS3_GAME", ec)) &&
+              !std::filesystem::is_directory(out.game / "PS3_GAME", ec)))  // (a link of setup's to a copy that is gone)
         out.state = State::GameMoved;
     else
         out.state = State::Ready;

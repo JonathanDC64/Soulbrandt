@@ -344,6 +344,44 @@ bool library_entry(const std::vector<std::string>& lines, const char* title, Rpc
     return false;
 }
 
+// Where RPCS3's /dev_hdd0/ is (vfs_config.cpp, des_setup/rpcs3_library.py folders): vfs.yml says, else the settings
+// folder's.
+std::filesystem::path hdd0_dir(const std::filesystem::path& cfg) {
+    std::string emulator, hdd0;
+    for (const auto& name : {cfg / "config" / "vfs.yml", cfg / "vfs.yml"}) {
+        std::ifstream in(name, std::ios::binary);
+        if (!in) continue;
+        for (std::string line; std::getline(in, line);) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            const auto value = [&line](const char* head) {
+                const size_t n = std::strlen(head);
+                return line.compare(0, n, head) == 0 ? yaml_scalar(line.substr(n)) : std::string();
+            };
+            if (const std::string v = value("$(EmulatorDir):"); !v.empty()) emulator = v;
+            if (const std::string v = value("/dev_hdd0/:"); !v.empty()) hdd0 = v;
+        }
+        break;
+    }
+    if (emulator.empty()) emulator = utf8(cfg);
+    if (!emulator.empty() && emulator.back() != '/' && emulator.back() != '\\') emulator += '/';
+    if (hdd0.empty()) hdd0 = "$(EmulatorDir)dev_hdd0/";
+    if (const size_t at = hdd0.find("$(EmulatorDir)"); at != std::string::npos) hdd0.replace(at, 14, emulator);
+    return from_utf8(hdd0);
+}
+
+// A PlayStation Store version installed in RPCS3: in dev_hdd0/game by its own ID, whether or not it has ever been started
+// (RPCS3's game list only has it after that).
+bool store_install(const std::filesystem::path& cfg, Rpcs3& r) {
+    const auto games = hdd0_dir(cfg) / "game";
+    for (const Disc& disc : kDiscs) {
+        if (!disc.storeId || !is_file(games / disc.storeId / "USRDIR" / "EBOOT.BIN")) continue;
+        r.library = Rpcs3::Library::Folder;
+        r.game = games / disc.storeId;
+        return true;
+    }
+    return false;
+}
+
 void read_library(Rpcs3& r) {
     const auto cfg = config_dir(r.program);
     for (const auto& list : {cfg / "config" / "games.yml", cfg / "games.yml"}) {
@@ -356,8 +394,9 @@ void read_library(Rpcs3& r) {
         }
         for (const Disc& disc : kDiscs)
             if (library_entry(lines, disc.title, r)) return;
-        return;  // (the first list found is the one RPCS3 reads)
+        break;  // (the first list found is the one RPCS3 reads)
     }
+    store_install(cfg, r);
 }
 
 // `program` as an RPCS3, if it is one. `ranOnly`: only one that has run (the searches; the player's pick need not).

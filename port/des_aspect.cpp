@@ -141,7 +141,7 @@ bool  s_widen_plates; /* DES_HUD_FADES=1 */
 float s_tall_aspect;    /* the shape, 0 = not narrower */
 float s_tall_k = 1.0f;  /* (16/9) / shape: the vertical tangent's scale */
 float s_hud_t;          /* the canvas's extra height above and below */
-float s_hud_ky = 1.0f;  /* (720 + 2T) / 720 */
+float s_hud_ky = 1.0f;  /* a marker's y about the middle: 1, or shape / (16/9) on a stretched HUD (des_hud_w2s) */
 
 float s_aspect = kGameAspect;   /* what the default words and the listed cameras hold */
 bool  s_off;                    /* the default words were not 16:9 at start: never written */
@@ -423,12 +423,20 @@ extern "C" void des_frustum_tall(ppu_context* ctx, uint32_t addr)
     ctx->fpr[31] = (double)s_tall_aspect;
 }
 
-/* After 0x0079EF7C, stvx v31,0,r29: WorldToScreen's result, x first. */
+/* After 0x0079EF7C, stvx v31,0,r29: WorldToScreen's result, x first.
+ * WorldToScreen builds its projection from the camera's own FOV and shape
+ * (0x003DFF40, from camera +0x50..+0x5C). On a tall picture those stay 16:9
+ * (cam_record_projection), so its y is 16:9's. The scene is drawn taller, so a
+ * point there is s_tall_k nearer the middle, and the taller canvas is s_tall_k
+ * taller: the two cancel, and y is right as it is (issue #472: it was stretched
+ * by the canvas's height, which put markers 11% too far out at 16:10). On a
+ * stretched HUD the canvas stays 720 high, so y comes nearer the middle by the
+ * shape over 16:9. */
 extern "C" void des_hud_w2s(ppu_context* ctx, uint32_t addr)
 {
     (void)addr;
     const uint32_t p = (uint32_t)ctx->gpr[29] & ~0xFu;   /* stvx ignores the low four bits */
-    if (s_hud_t > 0.0f) vm_writef(p + 4, kCanvasH * 0.5f + (vm_readf(p + 4) - kCanvasH * 0.5f) * s_hud_ky);
+    if (s_hud_ky != 1.0f) vm_writef(p + 4, kCanvasH * 0.5f + (vm_readf(p + 4) - kCanvasH * 0.5f) * s_hud_ky);
     if (s_hud_l <= 0.0f) return;
     vm_writef(p, kCanvasW * 0.5f + (vm_readf(p) - kCanvasW * 0.5f) * s_hud_k);
 }
@@ -555,7 +563,7 @@ void aspect_apply(const char* v, const char* hud, bool live)
     }
     const bool stretch = hud && strcmp(hud, "stretch") == 0;
     s_hud_t = !stretch && a < kGameAspect ? (kCanvasW / a - kCanvasH) * 0.5f : 0.0f;
-    s_hud_ky = (kCanvasH + 2.0f * s_hud_t) / kCanvasH;
+    s_hud_ky = stretch && a < kGameAspect ? a / kGameAspect : 1.0f;
     if (a < kGameAspect) {
         const double half = std::tan(vm_readf(DES_AT(kCameraFov)) * 0.5), deg = 360.0 / 3.14159265358979;
         fprintf(stderr, "[des] DES_ASPECT=%s: the picture is %.4f:1, as wide a view as 16:9 and %.0f degrees high at the "
