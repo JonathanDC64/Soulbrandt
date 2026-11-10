@@ -112,7 +112,7 @@ void write_log_tail(const std::string& path) {
 }
 
 // The report, once: what happened, then a backtrace, then the end of the log beside it.
-void write_report(const char* what) {
+void write_report(const char* what, const char* notes = nullptr) {
     if (g_reported) return;
     g_reported = 1;
     mouse::release_now();
@@ -122,6 +122,7 @@ void write_report(const char* what) {
     if (FILE* f = std::fopen((base + ".txt").c_str(), "w")) {
         std::fprintf(f, "DemonsSoulsRecomp %s crashed: %s\nLast HLE call: %s (0x%08X)\n\n", kVersion, what,
                      g_last_hle_name ? g_last_hle_name : "?", g_last_hle_nid);
+        if (notes && *notes) std::fprintf(f, "%s\n", notes);
         std::fflush(f);
         void* frames[64];
         backtrace_symbols_fd(frames, backtrace(frames, 64), fileno(f));
@@ -241,4 +242,13 @@ bool start_again(const std::vector<std::string>& set, bool play) {
     return true;
 }
 
+bool reports_on() { return g_installed; }
+
+void report_guest_exit(const char* what, const char* notes) { write_report(what, notes); }
+
 }  // namespace ui::crash_report
+
+extern "C" int des_ui_crash_reports_on(void) { return ui::crash_report::reports_on() ? 1 : 0; }
+extern "C" void des_ui_report_guest_exit(const char* what, const char* notes) {
+    ui::crash_report::report_guest_exit(what, notes);
+}

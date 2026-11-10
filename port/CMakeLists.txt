@@ -180,6 +180,7 @@ add_executable(des_boot
     "${CMAKE_CURRENT_SOURCE_DIR}/des_menu_mouse.cpp"        # the mouse in the game's menus
     "${CMAKE_CURRENT_SOURCE_DIR}/des_menu_sfx.cpp"          # UI sounds via the game's menu SE (0x724E40 hook)
     "${CMAKE_CURRENT_SOURCE_DIR}/des_chrins.cpp"            # ChrIns worker: done flag before the done event
+    "${CMAKE_CURRENT_SOURCE_DIR}/des_guest_exit.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/des_souls_use.cpp"         # DES_SOULS_AT_ONCE: Use several soul items at once
     "${CMAKE_CURRENT_SOURCE_DIR}/des_respec.cpp"            # DES_RESPEC: stat respec at the Nexus statue and the Maiden
     "${CMAKE_CURRENT_SOURCE_DIR}/des_luagc.cpp"
@@ -240,6 +241,7 @@ else()
             "${CMAKE_CURRENT_SOURCE_DIR}/des_menu_mouse.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/des_menu_sfx.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/des_chrins.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/des_guest_exit.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/des_souls_use.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/des_respec.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/des_luagc.cpp"

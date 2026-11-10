@@ -8,6 +8,8 @@ extern "C" {
 void (*g_des_ui_sound)(int id) = nullptr;
 
 void des_ui_early_init(void) {}
+int des_ui_crash_reports_on(void) { return 0; }
+void des_ui_report_guest_exit(const char*, const char*) {}
 
 int des_ui_launch(int*, char***) {
     return -1;  // (no setup screens: the game, as before)
