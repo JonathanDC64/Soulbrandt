@@ -3182,6 +3182,10 @@ static void run_defaults()
         {"LIBSRE_OWN", "1"},
         {"LIBSRE_LLE_ONLY", "011EE38B,1656D49F,8A85674D,73E06F91,082BFB09,E5443BE7,039D70B7,91066667"},
         {"SPURS_NO_ROUND_NOTIFY", "1"},
+        /* The stick deadzone rows (Settings, Controls): past the row's tilt a
+         * stick starts from the length where the game's own stick zone ends,
+         * so the character starts moving at that tilt, without a jump. */
+        {"PAD_DEADZONE_ANTI", "37"},
         /* The level's busiest frames need ~850k vertices; growing the buffer
          * during play stalled a frame for 100-400 ms (docs/28). */
         {"VP_VB_VERTS", "1572864"},
