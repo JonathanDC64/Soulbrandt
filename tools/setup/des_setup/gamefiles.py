@@ -158,7 +158,7 @@ def title_of(folder) -> str:
 
 def version_of(folder) -> str:
     """The APP_VER of the game in a folder, as title_of finds it, or "" (an ISO file, one that cannot be read)."""
-    if not folder or not Path(folder).is_dir():
+    if not folder or not os.path.isdir(folder):    # (Path.is_dir raises for "access denied": issue #473)
         return ""
     root = find_root(folder)
     p = _resolve(root, "PS3_GAME/PARAM.SFO") if root is not None else _resolve(Path(folder), "PARAM.SFO")
@@ -205,10 +205,40 @@ def disc_view(game, view) -> Path:
     return view
 
 
+def unreadable_part(folder) -> str:
+    """The folder on the way to PS3_GAME that setup isn't allowed to read (access denied): `folder` itself or its
+    PS3_GAME. "" when both can be read, or one isn't there (issue #473)."""
+    p = Path(folder)
+    for _ in range(2):
+        try:
+            names = os.listdir(p)
+        except PermissionError:
+            return str(p)
+        except OSError:
+            return ""
+        game = next((e for e in names if e.upper() == "PS3_GAME"), None)
+        if game is None:
+            return ""
+        p = p / game
+    return ""
+
+
+def denied_message(path) -> str:
+    """What to tell the player when unreadable_part found a folder."""
+    how = ("Give your Windows account access to it (right-click the folder, then Properties, then Security)"
+           if os.name == "nt" else "Give your account read access to it")
+    return (f"Setup isn't allowed to open {path} (access denied). {how}, or copy the game into a folder of your own, "
+            f"such as Documents, and pick that one.")
+
+
 def _find_ci(folder: Path, name: str) -> str:
-    """`name` in `folder`, ignoring case (a folder dump may say EBOOT.ELF or EBOOT.elf)."""
-    if (folder / name).exists():
-        return name
+    """`name` in `folder`, ignoring case (a folder dump may say EBOOT.ELF or EBOOT.elf). "" also when the folder can't
+    be read: Path.exists returns False only for "not found" and raises for "access denied" (issue #473)."""
+    try:
+        if (folder / name).exists():
+            return name
+    except OSError:
+        pass
     try:
         low = name.lower()
         for e in os.listdir(folder):
@@ -318,7 +348,7 @@ def copy_key(folder) -> str:
     that holds PS3_GAME, the game's folder in dev_hdd0/game, or setup's link folder (disc_view) to one."""
     p = Path(folder)
     inner = p / "PS3_GAME"
-    if inner.is_dir():
+    if os.path.isdir(inner):                # (False, not an error, for a folder setup may not read: issue #473)
         real = os.path.realpath(inner)
         p = Path(real).parent if Path(real).name.upper() == "PS3_GAME" else Path(real)
     return os.path.normcase(os.path.realpath(p))
@@ -345,7 +375,8 @@ def check(folder, decrypted_dirs=(), firmware=None, table=None, progress=None, u
     rep = Report()
     root = find_root(folder)
     if root is None:
-        rep.items.append(Item("game", "PS3_GAME", "missing",
+        denied = unreadable_part(folder)
+        rep.items.append(Item("game", "PS3_GAME", "missing", denied_message(denied) if denied else
                               "This folder has no PS3_GAME folder with a PARAM.SFO in it. Pick the folder "
                               "of your disc dump that holds PS3_GAME."))
         return rep

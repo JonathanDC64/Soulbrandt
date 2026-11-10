@@ -1049,8 +1049,10 @@ def _rpcs3_found(req, exe, emit, t, from_library, gamedata, data):
 
 
 def _library_folder_gone(lib, emit) -> int:
-    """The library's folder for the game has no game in it: what was looked for, and where. @done fix."""
-    item = gamefiles.Item("game", "PS3_GAME", "missing",
+    """The library's folder for the game has no game in it (or setup may not read it): what was looked for, and where.
+    @done fix."""
+    denied = gamefiles.unreadable_part(lib.path)
+    item = gamefiles.Item("game", "PS3_GAME", "missing", gamefiles.denied_message(denied) if denied else
                           f"RPCS3's game list says the game is in {lib.path}, but there is no PS3_GAME folder with a "
                           f"PARAM.SFO there. It may have been moved or deleted. Add it to RPCS3 again (File, then Add "
                           f"Games), then press Check again.", str(lib.path))
