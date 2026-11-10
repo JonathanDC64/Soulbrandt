@@ -1269,6 +1269,45 @@ The counts were right; the game didn't read them. The check is the game's own, w
 - Ghidra stops on `0x003E5750` and `0x003E6368` (bad instruction data). Read them in the lift, or with `ps3recomp/tools/ppu_disasm.py --va`.
 - `RSX_ZPASS=0` reports every probe as visible, so then the sun shows through walls at any frame rate. Test this fix with ZPASS on.
 
+## One-frame T-pose above 30 fps (port `des_refpose_rate`, 2026-11-10)
+
+**Symptom:** above 30 fps, an enemy that has noticed the player sometimes snaps into a T-pose (arms straight out), or part of one, for a frame or two. It happens as the enemy turns, stops or steps to adjust. First reported on 10-22 and not reproduced then; reported again on 11-10.
+
+**Cause:** Havok's sample-and-combine fills each bone whose animation weight is under the animated skeleton's reference-pose threshold (`+0x20`, 0.05 on every skeleton seen) with the reference pose, then normalizes. The reference pose is a T-pose. Enemies are sampled on the SPU (image 10's job, built by `0x010058F8`), a few skeletons on the PPU.
+
+When an enemy starts a new move, the new clip's control sometimes fades in from 0 with no other control under it. Its weight grows about as t²: 0.0001, 0.0005, 0.0010, 0.0040 … 0.047 over the first 33 ms. The fade runs on game time, the same at any frame rate; only where the frames fall on it changes:
+- at 30 fps, only the first frame is under the threshold. How much reference pose it shows depends on where in the frame the move starts;
+- above 30 fps, several frames come at weights near 0, so the enemy is drawn almost wholly in the reference pose for 20-30 ms.
+
+**Fix:** five lines in [`port/insn_hooks.txt`](../port/insn_hooks.txt) call `des_refpose_rate` (port/des_options.cpp) after each load of the threshold:
+- the SPU job's copy: `lfs f0, 0x20(r3)` at `0x01005978`, which the job builder stores at the job's `+0xC`;
+- the PPU's own paths: `0x00FFDFF8`, `0x00FFEA68`, `0x00FFFFE4`, `0x0100191C`.
+
+The threshold becomes `thr * (30 dt)^2`, with dt the game's frame time. A fade that grows as t² then stays under it for about one frame at any frame rate, as at 30 fps.
+- It does nothing at 30 fps or below, or without DES_FPS.
+- A weight of 0 still gets the reference pose.
+- `DES_TPOSEFIX=0` turns it off live.
+
+**Result:** the same Tutorial route three times, invincible, with a probe that logs each fade-in. Unlocked runs are about 500 fps while the probe logs. "Share" is the part of the drawn pose that is reference pose, on the worst skeleton that frame.
+
+| Fade-in | 30 fps | Unlocked, `DES_TPOSEFIX=0` | Unlocked, fix on |
+|---|---|---|---|
+| Enemy in view, turning to the player | none caught | 5-6 frames at 0.72-1.00 (about 19 ms), then 0.48, 0.14-0.20 | one frame at 0.26, then none |
+| Inside the fog wall (enemies not drawn) | one 33 ms frame at 0.82 | 3 frames at 1.00 | one 2 ms frame at 0.81, then 0.26 |
+| First frame after a load (screen black, a 33 ms step) | 0.82, then 0.30 | 0.82, then 0.58, 0.55, 0.52 | 0.82, then none |
+
+The dumped frames with the fix off show the enemy in a full T-pose for four frames. With the fix on, the one frame at 0.26 shows its sword arm a little raised.
+
+The fix can't remove a fade's first frame. How much reference pose that frame shows depends on where in the frame the move starts, as at 30 fps. Unlocked, that frame is shorter.
+
+**How it was found:**
+- A scratch probe in image 10's job logged every job whose bones were all under the threshold, and set `CELLMARK_DUMP_NOW` at the first one of a fade. Circling an enemy in the Tutorial, the dumped frames show it in a full T-pose for four frames.
+- The first suspect was the renderer reading image 2's vertex ring before the SPU's last 16 KB block lands (the block does land after the FIFO reaches the draws). A log of every SPU PUT onto a page a span copy had read found none landing after the copy, in 2.4 million copies.
+
+**Watch out:**
+- The weights in these jobs are above 0, so a count of zero-weight bones finds nothing. Look for weights under the threshold.
+- Frame dumps slow the game to about 150 fps, so a fade spans fewer frames in a dump than in play.
+
 ## SPU regions for every image (port `scripts/build_spu.py`, 2026-11-08)
 
 Issue #310: when the dragon's fire sweeps the bridge in 1-1, the frame rate halves for about two seconds. The test: a copy of a save from just before the bridge, invincible, warped to the same spot, then wait for the flame. Unlocked, V-sync off (`DES_FPS=unlocked RSX_VSYNC=0 DES_VSYNC=0`). The dip starts 12 s after the warp, in every run.
