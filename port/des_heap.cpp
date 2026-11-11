@@ -150,4 +150,11 @@ void ds_realloc(ppu_context* ctx) {
     ctx->gpr[3] = pr.first;
 }
 
+/* The bytes in use now and at most so far, for des_memstat.cpp's table. */
+void ds_heap_usage(uint64_t* cur, uint64_t* peak) {
+    std::lock_guard<std::mutex> lk(g_mtx);
+    *cur = g_cur;
+    *peak = g_peak;
+}
+
 } // extern "C"

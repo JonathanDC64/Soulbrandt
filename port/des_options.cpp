@@ -164,7 +164,9 @@ extern "C" void des_aspect_init(void);         /* des_aspect.cpp: DES_ASPECT, DE
 extern "C" void des_aspect_poll(void);         /* des_aspect.cpp: their live changes */
 extern "C" void des_hud_init(void);            /* des_hud.cpp: DES_HUD_SIZE, the corners, hidden groups */
 extern "C" void des_luaheap_init(void);        /* des_luaheap.cpp: room for Lua when its heap is full */
-extern "C" void des_route_init(void);          /* des_route.cpp: DES_ROUTE */
+extern "C" void des_memstat_init(void);        /* des_memstat.cpp: DES_MEMSTAT, how full the game's heaps get */
+extern "C" void des_memstat_report(const char* why);   /* des_memstat.cpp: its table now (when on) */
+extern "C" void des_route_init(void);         /* des_route.cpp: DES_ROUTE */
 extern "C" void des_route_on_flip(void);       /* des_route.cpp: its game clock and steps */
 extern "C" void des_route_on_open(const char* path);   /* des_route.cpp: a level's script opening (continue) */
 extern "C" unsigned des_route_buttons(void);   /* des_route.cpp: the buttons a press step holds */
@@ -2572,6 +2574,7 @@ extern "C" void des_game_error(ppu_context* ctx, uint32_t)
     guest_text((uint32_t)ctx->gpr[5], msg, sizeof msg);
     fprintf(stderr, "[des] game error #%u: %s:%d: %s (called from %08X)\n", k, file, (int)(int32_t)ctx->gpr[4], msg,
             (uint32_t)ctx->lr);
+    des_memstat_report("a game error");   /* (DES_MEMSTAT) a full heap ends in this report */
 }
 
 /* HighGraphics, the render thread, writes its commands to a 1 MB ring
@@ -3339,7 +3342,8 @@ extern "C" void ps3_title_options_init(void)
     des_guest_exit_init();  /* the game ending itself with an error: a crash to report */
     des_souls_use_init();  /* DES_SOULS_AT_ONCE: Use several soul items at once */
     des_luaheap_init();    /* DES_LUAHEAP: Lua takes room elsewhere when its heap is full */
-    des_pantheon_init();   /* the checks on Pantheon records */
+    des_memstat_init();    /* DES_MEMSTAT: how full the game's heaps get (off by default) */
+    des_pantheon_init();  /* the checks on Pantheon records */
     /* DES_SKIP_INTRO and DES_AUTO_CONTINUE are read as they are used, so the
      * settings window changes them live; their hooks are always on. */
     DES_REGISTER_FUNCTION(kLogoUpdate, logo_update_skip);
