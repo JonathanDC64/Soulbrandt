@@ -18,6 +18,13 @@ Naming:
 
 ## Summary
 
+- **Measured since (2026-11-10, section 1.5).** `DES_MEMSTAT=1` shows how full each heap gets. The file-loading
+  heap, CORERES (12.25 MB), is the one near its limit: 92-99% during area loads without mods, and up to 12.24 MB
+  with a big set of mods on. It already turns down an 8.2 MB request at the Nexus without mods, and the file
+  loader copes in that case. The other MemMan heaps stay at 84% or less (the sound heap in the tutorial; 80% or
+  less everywhere else). Video memory (LOCAL, 248 MB) is what
+  texture packs fill: 73-78% without mods, up to 89% with fifteen. A net for CORERES, MAIN, HGSYS and MENU like the Lua one was tried and left
+  out (it leaks, and it changes what the game does).
 - **The Reddit claim is half right.** The limit is not the PC's RAM.
   - The game sets up fixed-size memory pools at boot and never asks for more.
   - When a pool runs out, its allocator reports it, then crashes on purpose. [verified]
@@ -257,8 +264,8 @@ does not derive it from the OS. [verified]
 
 ### 1.4 How to test
 
-- **T1, a memory statistics knob** (proposed `DES_MEMSTAT=1`). At each area load and
-  at exit, log:
+- **T1, a memory statistics knob** (built as `DES_MEMSTAT=1`, 1.5: it reads each heap's arena instead of
+  calling the report line). As first proposed, at each area load and at exit, log:
   - the sys_memory high-water mark (the bump pointer in sys_memory.c);
   - `ds_heap` `g_cur` and `g_peak`;
   - each MemMan heap's use, by calling the game's own report line `func_000303C0`
@@ -282,6 +289,97 @@ does not derive it from the OS. [verified]
   - Delete that cache file and boot again: they should show the `/dev_bdvd` file and
     a fresh copy being written.
   - No game content goes in the log.
+
+### 1.5 Measured (2026-11-10)
+
+**How.** `DES_MEMSTAT=1` (`port/des_memstat.cpp`) reads each MemMan heap's arena from the global that holds it,
+every millisecond on its own thread, and prints a table of each heap's size, use now and most use: at each area
+load, once a minute (`DES_MEMSTAT_EVERY`) and with a game error. Ten heaps keep the arena's free bytes at +0x3C;
+HAVOK, MO and TEMP have another arena kind (start +0x28, end +0x2C, free +0x34). A 14th row, LOCAL, is the game's
+heap over the RSX's local (video) memory: 0xC0000000 up to 248 MB, an arena of the first kind in a static object
+(0x01AD6370, behind the generic heap object at 0x01AD6364) rather than behind a global.
+
+**The runs.** 240 s from a fresh copy of each save, standing where it loads (god mode, US disc), once without mods
+and once with six community mods on: three large texture packs (163-456 MB each), a soundtrack, a font and a small
+texture fix. Most use of each heap's size, in %, without mods / with them:
+
+| Map | CORERES | MAIN | HGSYS | FFX | MO | LUA | MENU | TEMP | HAVOK | Game errors |
+|---|---|---|---|---|---|---|---|---|---|---|
+| m02, Boletaria (1-2) | 92 / 100 | 76 / 76 | 72 / 72 | 77 / 79 | 76 / 76 | 68 / 71 | 72 / 72 | 63 / 63 | 30 / 34 | 0 / 0 |
+| m02, Boletaria (the Palace front) | 96 / 98 | 80 / 80 | 73 / 73 | 77 / 78 | 76 / 76 | 71 / 72 | 72 / 72 | 63 / 63 | 29 / 29 | 0 / 0 |
+| m02 (a third save) | 98 / 98 | 76 / 76 | 72 / 72 | 77 / 79 | 76 / 76 | 72 / 71 | 72 / 72 | 63 / 63 | 33 / 37 | 0 / 0 |
+| m01, the Nexus | 97 / 98 | 60 / 60 | 71 / 71 | 76 / 76 | 77 / 77 | 52 / 53 | 72 / 72 | 63 / 63 | 15 / 15 | 0 / 0 |
+| m03 | 99 / 100 | 74 / 74 | 71 / 71 | 78 / 78 | 76 / 76 | 55 / 53 | 72 / 72 | 63 / 63 | 25 / 25 | 0 / 0 |
+| m05 | 92 / 99 | 68 / 68 | 69 / 69 | 78 / 78 | 76 / 76 | 49 / 49 | 72 / 72 | 63 / 63 | 30 / 19 | 0 / 0 |
+| m06 | 98 / 99 | 77 / 77 | 72 / 71 | 77 / 78 | 77 / 77 | 55 / 54 | 72 / 72 | 63 / 63 | 25 / 22 | 0 / 0 |
+| m08, the tutorial (`regress.sh`'s route, 114 s) | 96 / - | 53 / - | 67 / - | 70 / - | 84 / - | 37 / - | 72 / - | 63 / - | 13 / - | 0 / - |
+
+DEBUG, INGAME, SERVER and NETWORK stay at 22% or less everywhere. MO, the sound heap, is highest in the tutorial,
+with its opening cutscene.
+
+The seven map rows ran SPURS on its HLE fallback (the test setup lacked the libsre image), while players run
+libsre. Two of them were run again with libsre (1-2 with mods, the Palace front without): every heap within 2
+points of the first run, MO the same. The tutorial row is with libsre.
+
+**What it says.**
+- **CORERES is the one near its limit.** It holds files while they load and empties after: at the 1-2 bridge with
+  the mods on it reached 12.24 MB of 12.25 MB during the load and held 0.75 MB a minute later. Without mods it
+  already reaches 92-99%.
+- **The mods barely move the other MemMan heaps.** Their textures go to video memory once loaded.
+- **Video memory (LOCAL, 248 MB) is what texture packs fill.** Most use in 240 s, from the second set of runs
+  (same saves; "six" is the set above, "fifteen" adds nine more: gameplay and script changes, a movie, a
+  translation and small fixes):
+
+  | Spot | No mods | Six mods | Fifteen mods |
+  |---|---|---|---|
+  | m01, the Nexus | 181.9 MB (73%) | | |
+  | m02, Boletaria (1-2) | 184.5 MB (74%) | 204.5 MB (82%) | 210.9 MB (85%) |
+  | m02, the Palace front | 192.3 MB (78%) | 213.5 MB (86%) | 219.9 MB (89%) |
+
+  No run reached the limit, with up to 15 mods; the most was 28 MB short of it. A full LOCAL would fail like
+  any other heap, and what the game does then wasn't tested.
+- **The port's own guest heap** (`ds_heap`, 1.5 GB) peaks at 0.2 MB in every run (open question 8).
+- No run printed a game error, so nothing ran out during these runs. With a bigger set of mods, or a heavier load,
+  CORERES is the first to fail.
+
+**A net for the four heaps was built, tested and left out.** `des_luaheap.cpp` (issue #456) gives the LUA and FFX
+heaps room in `ds_heap` when theirs is full. CORERES, MAIN, HGSYS and MENU are the same class template (the same
+methods at the same vtable offsets, over a different arena), so a net for them was built the same way: 48 class
+methods and the 13 of the generic heap object that also reaches these arenas (vtable 0x01852AA8, arena at
+[this+4] + 0x18), wrapped with `DES_REGISTER_FUNCTION`. It is kept on a local branch (`local/heap-net`), not
+merged. The test runs found two things:
+- **It leaks.** Most of the game's frees don't go through a heap's own object. The global free (`func_00A940E8`)
+  first takes a per-thread override (`func_00C0F5E0`), then asks `func_00A36220` which heap a block is in. That
+  lookup walks MemMan's table of arena ranges (MemMan+0x70, 12-byte rows of heap, start, end) and gives any
+  address outside them to Dantelion's system heap (`func_00C33878`). A block from `ds_heap` is outside every
+  arena, so its free goes to that heap, which gets a pointer it never gave out, and the block is never given back.
+  With every block taken from `ds_heap` (`DES_HEAPNET_TEST=1`, 240 s at the Nexus), CORERES's class saw 289
+  allocations and no frees, and `ds_heap` held 202 MB for CORERES, 63 MB for MAIN and 87 MB for HGSYS at the end.
+  `func_00A36220` is called directly from about 240 places, so `DES_REGISTER_FUNCTION` can't catch it (it only
+  catches calls through a vtable).
+- **CORERES runs out in normal play, and the game goes on.** At the Nexus, without mods, the game asks CORERES for
+  8,641,872 bytes (8.2 MB) in one block, more than it has free. With the net on, that request came from
+  `ds_heap` every time; without it the game gets 0 and carries on, with no game error in any run. So the net
+  changes what the game does where nothing was wrong. The request comes from the file loader's thread
+  (`func_00C6E5E8`, through the heap object's aligned alloc, vtable +0x2C), and so does a second one of 4.6 MB
+  (`DES_HEAPNET_TRACE_FULL`). When the alloc gives 0, the loader frees its other buffer and looks at the
+  request's state: in states 2, 5, 7 and 8 it calls the game's panic (`func_00A9DD58`, source line 0x35A);
+  in any other it sets the state to 11 and returns 0. The Nexus requests take the second way. What state 11
+  leads to wasn't traced; the game kept running with no error. [verified: the code; inferred: that state 11
+  tries again later]
+- **So the real risk for big mods is a full CORERES while the loader is in one of the four fatal states.** No
+  run showed it, with up to 15 mods on.
+
+So the four heaps get no net for now. If a player report ever shows a game error from one of them, a net that works
+needs the address lookup to know the port's blocks: add the port heap's range to MemMan's range table (a row with
+one of the four heaps' objects, whose wrapped methods then see the block), or hook the lookup in the lift. It
+should still take only what the game would otherwise fail on, as the Lua net does.
+
+**The Lua net doesn't have this problem.** Lua's pool frees through the heap object it took the block from, never
+through the global free: with every Lua and FFX block taken from `ds_heap` (`DES_LUAHEAP_TEST=1`, 240 s at the
+Nexus), `ds_heap` held 10.85 MB after 17 s and the same 10.85 MB at 240 s.
+
+Not covered by any net: HAVOK, MO and TEMP (their methods are other code; they peak at 37%, 84% and 63%).
 
 ## 2. Question 2: mod support
 
@@ -479,7 +577,8 @@ Risk is low: a missing overlay file falls through to today's path.
 | Stage | What | Where | Cost | Risk |
 |---|---|---|---|---|
 | F1 | Clear the game cache at mount, as RPCS3 does for an empty ID, or when the mod set changes. Keep a dev knob for a warm cache | ps3recomp `cellSysCacheMount` (cellSysutil.c:422-447); desrun.sh `COLD_CACHE` | 0.5 day | Low: first loads copy files again, as on RPCS3. Measure the cold boot once |
-| M1 | Diagnostics: T1 (`DES_MEMSTAT`) and T2 (loud out-of-memory report, fatal DL_PANIC) | port hooks at `func_00FB7F80`, `func_00A9DD58`; sys_memory.c; des_heap.cpp | 1-2 days | Low |
+| M1 | Diagnostics: T1 (`DES_MEMSTAT`) and T2 (loud out-of-memory report, fatal DL_PANIC) | port hooks at `func_00FB7F80`, `func_00A9DD58`; sys_memory.c; des_heap.cpp | 1-2 days | Low. T1 done (1.5). A game error logs `[des] game error` and, even with `DES_MEMSTAT` off, one heap table, so a report shows which heap was full |
+| M1b | A net under the heaps: a block a full heap can't give comes from the port's heap. Done for LUA and FFX (des_luaheap.cpp). For CORERES, MAIN, HGSYS and MENU it was tried and left out (1.5) | `func_00A36220` (the address-to-heap lookup) must know the port's blocks first | 1-2 days, only if a report shows a full one of these | The global free sends unknown addresses to Dantelion's system heap; the net must take only what would otherwise be fatal |
 | F2 | `mods/` overlay with load order, plus launcher list | the three path layers (2.4); docs/45 launcher | 2-4 days | Low |
 | M2 | Heap-size knobs: instruction hooks at the 39 `lis` sites; sizes from settings; checked against the window | `port/insn_hooks.txt`, a `des_heap_size` hook | 1 day plus a re-lift and T3 | Medium: other code may assume the old sizes |
 | M3 | Bigger sys_memory window: take room from `ds_heap` after reading its peak; update syscall 14's ranges; move the sys_vm range out of `ds_heap` | sys_memory.c:27-28, lv2_register.c:2409-2433, sys_vm.h:38-39, des_heap.cpp:33-34 | 1-2 days | Medium: address-map couplings |
@@ -508,7 +607,8 @@ F1 and M1 come first: they are cheap and make every later test readable.
    ever call `cellFsUnlink` on cache files, which the port ignores today?
 7. How much slower is a cold-cache boot in the port? This decides whether F1 clears
    at every boot or only on a mod change.
-8. What is `ds_heap`'s real peak? This decides how much room M3 can take.
+8. What is `ds_heap`'s real peak? This decides how much room M3 can take. Answered (1.5): 0.2 MB in every
+   measured spot, with or without mods (the Lua net puts blocks there only when Lua's own heap is full).
 9. Why do RPCS3 guides still say to empty `dev_hdd1/caches`, when current RPCS3 clears
    it itself? Are older builds the reason?
 10. What do the two untraced MD5 users (`func_009A68E8`, `func_009A6BC0`) hash?
