@@ -9,11 +9,15 @@ the start screen's Mods button. It is made for players who have never used a mod
 - **A summary:** how many mods are on, "Restart the game to use your changes" when the list differs from what this
   session runs with, and "Playing offline" when a gameplay mod is on.
 - **Two buttons:** Open the mods folder, and Refresh the list (after you add, remove or rename a mod's folder).
-- **Your mods:** one card per mod, with a big check box, its name, a sentence on what it changes ("Changes how the
-  game looks or sounds", or "Changes how the game plays. You play offline while it's on.") and On or Off. Pressing
-  a card (Cross, Enter or a click) turns it on or off. A card that is on is drawn in the accent colour, and one that
-  differs from this session says "after a restart". When another mod that is on comes first and has some of the same
-  files, the card says so.
+- **Your mods:** one card per mod, in their order, with arrows to move it, a big check box, its name, a sentence on
+  what it changes ("Changes how the game looks or sounds", or "Changes how the game plays. You play offline while
+  it's on.") and On or Off.
+  - Pressing a card (Cross, Enter or a click) turns it on or off.
+  - Its arrows, the shoulder buttons (L1 and R1) or Page Up and Page Down move it up or down. The higher mod wins
+    when two change the same file.
+  - A card that is on is green, and one that differs from this session says "after a restart".
+  - When a mod higher in the list replaces some of this one's files, the card says so: "Move this mod up to use its
+    own."
 - **Needs attention:** the folders the game can't use as they are (below), each saying what is wrong and what to do.
 - **Good to know:** a few lines on saves, online play, the order and big texture mods.
 
@@ -58,14 +62,56 @@ Everything is in one list, so Up and Down reach it all with a pad.
 
 ## 2. On, off and the order
 
-- **New mods are off.** Turning one on takes effect the next time the game starts. A card that differs from this
-  session says "after a restart" until then, and the summary says to restart.
-- **The setting:** `DES_MODS` in `settings.ini`, the names of the mods that are on, separated by `|`.
-- **The order:** the folders' names, A to Z. When two mods that are on have the same file, the one that comes first
-  gives it. To change which one wins, rename the folders (`1 Textures`, `2 Fonts`).
+- **New mods are off,** at the bottom of the list. Turning one on, or moving it, takes effect the next time the game
+  starts. A card that differs from this session says "after a restart" until then, and the summary says to restart
+  (also when only the order changed).
+- **The order file:** `mods\load_order.txt` holds the order and which mods are on (section 2a). The Mods window writes
+  it at every change; the game reads it at start.
+- **The order:** the file's, then the folders it doesn't name, A to Z. When two mods that are on have the same file,
+  the higher one gives it.
 - **Same files:** when mods that are on share files, the card of each mod that loses some says which mod is higher in
   the list and wins for those (`mods::overlaps`).
 - **Refresh the list** reads the folder again after you add, remove or rename a mod.
+- **From before the order file:** `DES_MODS` in `settings.ini` named the mods that were on. At the first start with a
+  mods folder and no order file, those mods go into a new order file (on, the folders A to Z as before), and
+  `DES_MODS` is emptied. A `DES_MODS` in the environment still sets the mods for a test run (section 6).
+
+## 2a. For mod managers: the mods folder is the contract
+
+A mod manager (issue #404) installs, updates, removes, orders and turns mods on or off by changing the mods folder
+alone. The game never writes anywhere else for mods, and never changes a mod's files, except when the player presses
+**Fix it** on a mod with loose files.
+
+- **Where:** `<data folder>\mods`, where `<data folder>` holds `settings.ini`: `%APPDATA%\DemonsSoulsRecomp\DemonsSouls`
+  on Windows, `$XDG_DATA_HOME/DemonsSoulsRecomp/DemonsSouls` (else `~/.local/share/...`) on Linux, and `data` beside
+  the program in a portable install. `DES_MODS_DIR` points the game elsewhere.
+- **A mod:** one folder, its name the mod's name. Inside, the game's folders as below the disc's `PS3_GAME\USRDIR`
+  (section 1 lists what else is found). Installing is unpacking into a new folder; updating is replacing that
+  folder; rolling back is putting the old folder back.
+- **The order file,** `mods\load_order.txt`, UTF-8 (a byte order mark is allowed), one line per mod, the first one
+  first:
+
+  ```
+  # The mods, the first one first. When two mods that are on change the same file, the higher one wins.
+  on HD Textures
+  off Old Fonts
+  on Rebalanced Weapons
+  ```
+
+  - Each line is `on` or `off` (any case), spaces or a tab, then the folder's name exactly as on disk. Spaces inside
+    the name are kept; spaces at the end of a line are not.
+  - Lines starting with `#`, blank lines and lines that start with any other word are passed over.
+  - A name with no folder is passed over (and dropped the next time the game writes the file). A name listed twice
+    counts once, at its first line.
+  - Folders the file doesn't name come after, A to Z, off.
+  - The game writes the file whole, through `load_order.txt.new` renamed over it, with three `#` lines at the top.
+    It keeps only `on` and `off` lines, so a manager's own comments or extra lines don't survive the Mods window.
+- **When:** the game reads the file at start, so change it while the game is closed. The Mods window writes it at
+  every change.
+- **Online play** is decided from the files, not from anything a mod says about itself (section 3). A mod that changes
+  how the game plays keeps the session offline, whatever the manager or the mod's own notes say.
+- **Not read:** a manager's manifest or any other file in the mods folder (other than mod folders and the order
+  file).
 
 ## 3. Mods and online play
 
@@ -134,16 +180,17 @@ the game's own files in place, or changes the program. That is the server's job:
 
 | Variable | What it does |
 |---|---|
-| `DES_MODS=<name>\|<name>` | The mods that are on, as the setting. Set in the environment, the Mods cards can't change it, and the summary says so. |
-| `DES_MODS_DIR=<folder>` | Another mods folder (a test's). |
-| `PS3_VFS_MODS=<folder>\|<folder>` | The mods' game-file folders, given directly. `DES_MODS` is then not read, and the Mods window says so. |
+| `DES_MODS=<name>\|<name>` | The mods that are on, in place of the order file's on and off (the order stays the file's). The Mods cards can't change them then, and the summary says so. |
+| `DES_MODS_DIR=<folder>` | Another mods folder (a test's), with its own order file. |
+| `PS3_VFS_MODS=<folder>\|<folder>` | The mods' game-file folders, given directly, in that order. Neither `DES_MODS` nor the order file is read, and the Mods window says so. |
 | `PS3_FSLOG=1` | Logs every file the game opens, to see what a mod would need to replace. |
 | `DES_UI_OPEN=mods` | Opens the Mods window at start (for screenshots, with `DES_UI_KEYS` and `DES_UI_SHOT`). |
 
 `port/ui/tests/mods_check.cpp` (CI, Windows and Linux) checks the look and gameplay rules, where a mod's files are
 found, the unusable cases and their reasons (locked files among them), every reason's card text and advice, loose
-files planned and put in place (against a made-up game folder), the order, shared files and which mod covers which,
-and `PS3_VFS_MODS`. ps3recomp's `libs/filesystem/tests/test_vfs_path.c` checks the path parts the runtime uses.
+files planned and put in place (against a made-up game folder), the order file (read with a byte order mark, CRLF,
+comments, unknown lines and missing folders; written over itself; `DES_MODS` taken over once), shared files and which
+mod covers which, and `PS3_VFS_MODS` in the order file's order. ps3recomp's `libs/filesystem/tests/test_vfs_path.c` checks the path parts the runtime uses.
 
 ## 7. Known limits
 

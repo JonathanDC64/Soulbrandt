@@ -95,8 +95,8 @@ constexpr Def kDefs[] = {
     {"DES_HUD_SOULS_SIZE", "100", Apply::Live},
     // Online play (apply_network): the runtime registers its sockets and NP at boot, so all of these but the password
     // need a restart.
-    // Mods (mods.hpp, Settings > Mods): the mod folders that are on, by name, separated by '|'. A new mod is off until
-    // it is turned on.
+    // Mods (mods.hpp): the mod folders that are on, by name, separated by '|'. Only from before the mods folder's order
+    // file, which takes it over once (load_and_apply_env), and as a test's DES_MODS in the environment.
     {"DES_MODS", "", Apply::Restart},
     {"DES_ONLINE", "1", Apply::Restart},       // "1" = online (the default), "0" = offline
     {"DES_NET_SERVER", kNetServers[0].key, Apply::Restart},  // a kNetServers key
@@ -650,8 +650,17 @@ void load_and_apply_env() {
     ps3_setenv("PAD_KEYS", keys_with_layout(keys).c_str());
     std::fprintf(stderr, "[ui] keyboard and mouse: the Souls layout%s%s\n", keys.empty() ? "" : ", changed by ",
                  keys.c_str());
-    // Mods before the network: a gameplay mod keeps it off.
-    mods::apply(report::data_dir(), effective("DES_MODS"));
+    // Mods before the network: a gameplay mod keeps it off. Which mods are on is the mods folder's order file
+    // (mods.hpp); settings.ini's DES_MODS, from before it, moves there once. DES_MODS in the environment still wins
+    // (a test run's mods).
+    if (pinned("DES_MODS")) {
+        mods::apply(report::data_dir(), pinned_value("DES_MODS"));
+    } else {
+        if (const std::string before = get("DES_MODS");
+            !before.empty() && mods::adopt_setting(mods::folder(report::data_dir()), before))
+            store("DES_MODS", "");
+        mods::apply(report::data_dir());
+    }
     apply_network();
     apply_window();
 #if DES_RSX_VULKAN

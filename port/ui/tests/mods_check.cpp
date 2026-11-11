@@ -342,7 +342,66 @@ int main() {
                 "overlaps: " + std::to_string(o.size()))});
     });
 
+    // ---- The order file ----
+    run("order_file", [](const fs::path& t) {
+        write(t / "mods" / "a" / "menu" / "m.tpf");
+        write(t / "mods" / "b" / "menu" / "m.tpf");
+        write(t / "mods" / "c" / "menu" / "m.tpf");
+        // (a byte order mark and CRLF, as Notepad may save it; a comment, a line it does not know, a mod named twice,
+        // one with no folder)
+        write(t / "mods" / kOrderFile,
+              "\xEF\xBB\xBFon c\r\n# a note\r\nlater a\r\noff a\r\non a\r\non gone\r\n\r\nON  name with  spaces\r\n");
+        write(t / "mods" / "name with  spaces" / "menu" / "m.tpf");
+        bool found = false;
+        const std::vector<Entry> e = read_order(t / "mods", &found);
+        const std::vector<Mod> all_ = scan(t / "mods");
+        std::vector<std::string> got;
+        for (const Mod& m : all_) got.push_back(m.name + (m.enabled ? "+" : "-"));
+        return all({expect(found, "no file found"),
+            expect(e.size() == 4 && e[0].name == "c" && e[0].on && e[1].name == "a" && !e[1].on && e[2].name == "gone" &&
+                       e[3].name == "name with  spaces" && e[3].on,
+                std::to_string(e.size()) + " entries"),
+            // the file's order (its folders), then the rest A to Z, off
+            expect(join(got, " ") == "c+ a- name with  spaces+ b-", "scan: " + join(got, " "))});
+    });
+    run("order_write", [](const fs::path& t) {
+        bool found = true;
+        const bool none = read_order(t / "mods", &found).empty() && !found;
+        const bool w1 = write_order(t / "mods", {{"x", true}, {"y", false}});
+        const bool w2 = write_order(t / "mods", {{"y", true}, {"x", false}});   // (over the first)
+        const std::vector<Entry> e = read_order(t / "mods");
+        std::error_code ec;
+        const bool leftover = fs::exists(t / "mods" / (std::string(kOrderFile) + ".new"), ec);
+        return all({expect(none, "an order file from nowhere"), expect(w1 && w2, "not written"),
+            expect(e.size() == 2 && e[0].name == "y" && e[0].on && e[1].name == "x" && !e[1].on, "read back wrong"),
+            expect(!leftover, "the temporary file stayed"),
+            expect(!write_order({}, {{"x", true}}), "written without a folder")});
+    });
+    run("order_adopt_setting", [](const fs::path& t) {
+        write(t / "mods" / "b" / "menu" / "m.tpf");
+        write(t / "mods" / "a" / "menu" / "m.tpf");
+        const bool first = adopt_setting(t / "mods", "b|gone");
+        const std::vector<Entry> e = read_order(t / "mods");
+        const bool again = adopt_setting(t / "mods", "a");   // (the file is there: left as it is)
+        const std::vector<Entry> e2 = read_order(t / "mods");
+        const bool nowhere = adopt_setting(t / "nothing", "a");
+        return all({expect(first, "not adopted"),
+            expect(e.size() == 2 && e[0].name == "a" && !e[0].on && e[1].name == "b" && e[1].on, "adopted wrong"),
+            expect(!again && e2.size() == 2 && e2[1].on && !e2[0].on, "adopted twice"),
+            expect(!nowhere, "adopted without a mods folder")});
+    });
+
     // ---- At start ----
+    run("apply_order_file", [](const fs::path& t) {
+        write(t / "mods" / "A" / "menu" / "m.tpf");
+        write(t / "mods" / "B" / "menu" / "m.tpf");
+        write(t / "mods" / "C" / "menu" / "m.tpf");
+        write_order(t / "mods", {{"B", true}, {"C", false}, {"A", true}});
+        apply(t);   // (no DES_MODS given: the file says)
+        const std::string want = utf8(t / "mods" / "B") + "|" + utf8(t / "mods" / "A");
+        return all({expect(env("PS3_VFS_MODS") == want, "PS3_VFS_MODS " + env("PS3_VFS_MODS")),
+            expect(summary() == "2: B (look, 1 files), A (look, 1 files)", summary())});
+    });
     run("apply_on", [](const fs::path& t) {
         write(t / "mods" / "B gameplay" / "param" / "gameparam" / "g.parambnd.dcx");
         write(t / "mods" / "A look" / "x" / "PS3_GAME" / "USRDIR" / "menu" / "m.tpf");

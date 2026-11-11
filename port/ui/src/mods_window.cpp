@@ -2,7 +2,9 @@
 // FFCCEOT-Recomp): one tab, a summary over one list. Everything is in that list, so Up and Down (or the mouse) reach
 // it all: the two buttons, a card per mod, the folders that need attention, then a few lines worth knowing. Pressing
 // a mod's card (Cross, Enter or a click) turns it on or off; pressing a card whose files only need moving moves them.
-// The mods folder is read when the window opens and on "Refresh the list".
+// A card's arrows (or L1 and R1, Page Up and Page Down) move the mod up or down the list: the higher one wins when two
+// change the same file. Both go to the mods folder's order file at once (mods.hpp). The mods folder is read when the
+// window opens and on "Refresh the list".
 #include "mods_window.hpp"
 
 #include "app.hpp"
@@ -25,27 +27,9 @@
 namespace ui {
 namespace {
 
-// DES_MODS as this window changes it: the environment's when set there.
-std::string mods_value() {
-    return settings::pinned("DES_MODS") ? settings::pinned_value("DES_MODS") : settings::get("DES_MODS");
-}
-
 // The mods were given when the game started (a test run): the cards can't change them.
 bool rows_fixed() {
     return settings::pinned("DES_MODS") || mods::from_environment();
-}
-
-bool mod_on(const std::string& name) {
-    const std::vector<std::string> on = mods::split_list(mods_value());
-    return std::find(on.begin(), on.end(), name) != on.end();
-}
-
-void set_mod_on(const std::string& name, bool value) {
-    if (rows_fixed()) return;
-    std::vector<std::string> on = mods::split_list(mods_value());
-    on.erase(std::remove(on.begin(), on.end(), name), on.end());
-    if (value) on.push_back(name);
-    settings::set("DES_MODS", mods::join(on, "|"));
 }
 
 bool mod_in_use(const std::string& name) {
@@ -61,21 +45,33 @@ Rml::String quoted(const std::string& name) {
 
 struct ModsWindow::State {
     std::filesystem::path dir;
-    std::vector<mods::Mod> all;            // the mods folder as read, A to Z
+    std::vector<mods::Mod> all;            // the mods folder as read, in its order (the order file's), on or off
     std::vector<mods::Overlap> overlaps;   // among the mods that are on
+    std::vector<Component*> cards;         // the card that shows all[i] (build_tab), for the focus after a move
     unsigned generation = 1;               // moves with every change the cards and the summary show
     bool lookAgain = false;                // read the folder again and build the list again (update())
 
     void load() {
         dir = mods::folder(report::data_dir());
-        all = mods::scan(dir, mods_value());
+        all = settings::pinned("DES_MODS") ? mods::scan(dir, settings::pinned_value("DES_MODS")) : mods::scan(dir);
         for (mods::Mod& m : all) mods::plan(m);   // (loose files: where the game's own files say they go)
         refresh_overlaps();
+    }
+    // The order file, as the cards now say.
+    void save() {
+        if (mods::write_order(dir, mods::entries(all))) return;
+        play_sound(kSoundWarning);
+        push_toast({
+            .type = "warning",
+            .title = "Your change wasn't saved",
+            .content = "The mods folder can't be written to: " + mods::utf8(dir / mods::kOrderFile),
+            .duration = std::chrono::seconds(8),
+        });
     }
     void refresh_overlaps() {
         std::vector<mods::Mod> on;
         for (const mods::Mod& m : all)
-            if (m.usable() && mod_on(m.name)) on.push_back(m);
+            if (m.usable() && m.enabled) on.push_back(m);
         overlaps = on.size() > 1 ? mods::overlaps(on) : std::vector<mods::Overlap>{};
         generation++;
     }
@@ -83,29 +79,54 @@ struct ModsWindow::State {
         return std::count_if(all.begin(), all.end(), [](const mods::Mod& m) { return m.usable(); });
     }
     std::size_t on() const {
-        return std::count_if(all.begin(), all.end(), [](const mods::Mod& m) { return m.usable() && mod_on(m.name); });
+        return std::count_if(all.begin(), all.end(), [](const mods::Mod& m) { return m.usable() && m.enabled; });
     }
-    // What the cards say differs from what this session runs with: a restart applies it.
+    // The usable mod next to all[i] in the list, above (step -1) or below (+1); all.size() when there is none.
+    std::size_t neighbour(std::size_t i, int step) const {
+        for (long long j = (long long)i + step; j >= 0 && j < (long long)all.size(); j += step)
+            if (all[(std::size_t)j].usable()) return (std::size_t)j;
+        return all.size();
+    }
+    // What the cards say differs from what this session runs with (which mods, or their order): a restart applies it.
     bool restart_needed() const {
         if (mods::from_environment()) return false;
+        std::vector<std::string> now, used;
         for (const mods::Mod& m : all)
-            if (m.usable() && mod_on(m.name) != mod_in_use(m.name)) return true;
-        for (const mods::Mod& used : mods::in_use())   // (on this session, gone or off since)
-            if (!mod_on(used.name)) return true;
-        return false;
+            if (m.usable() && m.enabled) now.push_back(m.name);
+        for (const mods::Mod& m : mods::in_use()) used.push_back(m.name);
+        return now != used;
     }
 };
 
 namespace {
 
-// One mod: a check box, its name and what it changes, and On or Off. Pressing it turns it on or off. A folder that
-// needs attention instead shows a warning sign, what is wrong and what to do; pressing it fixes loose files.
+// Whether `el`, or a parent of it up to the card, is a `tag` element.
+bool within(Rml::Element* el, Rml::Element* card, const char* tag) {
+    for (; el != nullptr && el != card; el = el->GetParentNode())
+        if (el->GetTagName() == tag) return true;
+    return false;
+}
+
+// One mod: arrows to move it, a check box, its name and what it changes, and On or Off. Pressing it turns it on or
+// off; an arrow, L1 or R1 moves it. A folder that needs attention instead shows a warning sign, what is wrong and
+// what to do; pressing it fixes loose files.
 class ModCard : public FluentComponent<ModCard> {
 public:
     ModCard(Rml::Element* parent, std::shared_ptr<ModsWindow::State> state, std::size_t index)
         : FluentComponent(append(parent, "mod-card")), mState(std::move(state)), mIndex(index) {
+        if (mIndex < mState->cards.size()) mState->cards[mIndex] = this;
         render();
-        on_nav_command([this](Rml::Event&, NavCommand cmd) { return cmd == NavCommand::Confirm && press(); });
+        on_nav_command([this](Rml::Event& event, NavCommand cmd) {
+            if (cmd == NavCommand::Confirm) {
+                Rml::Element* target = event.GetTargetElement();
+                if (within(target, mRoot, "move-up")) return move(-1);
+                if (within(target, mRoot, "move-down")) return move(1);
+                return press();
+            }
+            if (cmd == NavCommand::Previous) return move(-1);
+            if (cmd == NavCommand::Next) return move(1);
+            return false;
+        });
     }
 
     void update() override {
@@ -116,16 +137,32 @@ public:
 private:
     const mods::Mod& mod() const { return mState->all[mIndex]; }
 
+    // Up (step -1) or down (+1) past the next usable mod; the focus goes with it.
+    bool move(int step) {
+        if (!mod().usable()) return false;
+        const std::size_t to = mState->neighbour(mIndex, step);
+        if (rows_fixed() || to >= mState->all.size()) {   // (or the top or the bottom of the list already)
+            play_sound(kSoundWarning);
+            return true;
+        }
+        std::swap(mState->all[mIndex], mState->all[to]);
+        mState->save();
+        play_sound(kSoundItemChange);
+        mState->refresh_overlaps();   // (every card shows its mod again)
+        if (to < mState->cards.size() && mState->cards[to] != nullptr) mState->cards[to]->focus();
+        return true;
+    }
+
     bool press() {
-        const mods::Mod& m = mod();
+        mods::Mod& m = mState->all[mIndex];
         if (m.usable()) {
             if (rows_fixed()) {
                 play_sound(kSoundWarning);
                 return true;
             }
-            const bool on = !mod_on(m.name);
-            set_mod_on(m.name, on);
-            play_sound(on ? kSoundItemEnable : kSoundItemDisable);
+            m.enabled = !m.enabled;
+            mState->save();
+            play_sound(m.enabled ? kSoundItemEnable : kSoundItemDisable);
             mState->refresh_overlaps();
             return true;
         }
@@ -151,12 +188,19 @@ private:
         const mods::Mod& m = mod();
         std::string rml;
         if (m.usable()) {
-            const bool on = mod_on(m.name);
+            const bool on = m.enabled;
             const bool pending = !mods::from_environment() && on != mod_in_use(m.name);
+            const bool fixed = rows_fixed();
+            const bool top = mState->neighbour(mIndex, -1) >= mState->all.size();
+            const bool bottom = mState->neighbour(mIndex, 1) >= mState->all.size();
             mRoot->SetClass("on", on);
             mRoot->SetClass("off", !on);
-            mRoot->SetClass("fixed", rows_fixed());
-            rml = "<mod-check><icon class=\"" + std::string(on ? "check-box" : "check-box-blank") +
+            mRoot->SetClass("fixed", fixed);
+            rml = "<mod-move><move-up class=\"" + std::string(fixed || top ? "none" : "") +
+                  "\"><icon class=\"mods-up\"/></move-up><move-down class=\"" +
+                  std::string(fixed || bottom ? "none" : "") +
+                  "\"><icon class=\"mods-down\"/></move-down></mod-move>"
+                  "<mod-check><icon class=\"" + std::string(on ? "check-box" : "check-box-blank") +
                   "\"/></mod-check><mod-text><mod-name>" + escape(m.name) + "</mod-name>";
             if (m.kind == mods::Kind::Gameplay) {
                 rml += "<mod-line class=\"gameplay\"><icon class=\"warning\"/>Changes how the game plays. You play "
@@ -167,7 +211,7 @@ private:
             for (const mods::Overlap& o : mState->overlaps) {
                 if (o.covered != m.name) continue;
                 rml += "<mod-line class=\"note\">Some of its changes are replaced by " + quoted(o.by) +
-                       ", which is higher in the list.</mod-line>";
+                       ", which is higher in the list. Move this mod up to use its own.</mod-line>";
                 break;
             }
             rml += "</mod-text><mod-state><state-word>" + std::string(on ? "On" : "Off") + "</state-word>";
@@ -225,6 +269,7 @@ void ModsWindow::build_tab(Rml::Element* content) {
 
     auto& list = add_child<Pane>(content, Pane::Type::Uncontrolled);
     const auto state = mState;
+    state->cards.assign(state->all.size(), nullptr);
 
     auto& actions = list.add_child<ModsActions>();
     if (!state->dir.empty()) {
@@ -264,8 +309,9 @@ void ModsWindow::build_tab(Rml::Element* content) {
                  "<footer-line>Mods are made by players. Back up your save before you try one.</footer-line>"
                  "<footer-line>Mods that only change how the game looks or sounds keep online play. Any other mod "
                  "keeps you offline while it's on.</footer-line>"
-                 "<footer-line>When two mods change the same thing, the one higher in the list wins. To change the "
-                 "order, rename their folders, for example \"1 Textures\" and \"2 Fonts\".</footer-line>"
+                 "<footer-line>When two mods change the same thing, the one higher in the list wins. To move a mod, "
+                 "use the arrows on its card, or the shoulder buttons (L1 and R1) or Page Up and Page Down."
+                 "</footer-line>"
                  "<footer-line>Mods made for the PS3 game or for RPCS3 work when they replace the game's files. Very "
                  "large texture mods can run out of memory, as on a PS3.</footer-line></mods-footer>");
 }

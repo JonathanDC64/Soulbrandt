@@ -435,16 +435,107 @@ std::string place(const Mod& m) {
     return {};
 }
 
-std::vector<Mod> scan(const fs::path& modsFolder, const std::string& enabledList) {
-    std::vector<Mod> out;
-    if (modsFolder.empty() || !is_dir(modsFolder)) return out;
-    const std::vector<std::string> on = split(enabledList, '|');
-    for (const fs::path& sub : subfolders(modsFolder)) {
-        Mod m = read(sub);
-        m.enabled = std::find(on.begin(), on.end(), m.name) != on.end();
-        out.push_back(std::move(m));
+std::vector<Entry> read_order(const fs::path& modsFolder, bool* found) {
+    std::vector<Entry> out;
+    if (found) *found = false;
+    if (modsFolder.empty()) return out;
+    std::ifstream in(modsFolder / kOrderFile, std::ios::binary);
+    if (!in) return out;
+    if (found) *found = true;
+    std::set<std::string> seen;
+    std::string line;
+    for (bool first = true; std::getline(in, line); first = false) {
+        if (first && starts_with(line, "\xEF\xBB\xBF")) line.erase(0, 3);   // (a byte order mark, as Notepad may write)
+        while (!line.empty() && (line.back() == '\r' || line.back() == ' ' || line.back() == '\t')) line.pop_back();
+        std::size_t a = line.find_first_not_of(" \t");
+        if (a == std::string::npos || line[a] == '#') continue;
+        const std::size_t b = line.find_first_of(" \t", a);
+        if (b == std::string::npos) continue;
+        const std::string word = lower(line.substr(a, b - a));
+        if (word != "on" && word != "off") continue;
+        const std::size_t c = line.find_first_not_of(" \t", b);
+        if (c == std::string::npos) continue;
+        std::string name = line.substr(c);
+        if (!seen.insert(name).second) continue;
+        out.push_back({std::move(name), word == "on"});
     }
     return out;
+}
+
+bool write_order(const fs::path& modsFolder, const std::vector<Entry>& order) {
+    if (modsFolder.empty()) return false;
+    std::error_code ec;
+    fs::create_directories(modsFolder, ec);
+    const fs::path file = modsFolder / kOrderFile, part = modsFolder / (std::string(kOrderFile) + ".new");
+    {
+        std::ofstream out(part, std::ios::binary | std::ios::trunc);
+        if (!out) return false;
+        out << "# The mods, the first one first. When two mods that are on change the same file, the higher one wins.\n"
+               "# One line per mod: \"on\" or \"off\", a space, then the mod's folder name. Folders not listed here\n"
+               "# come after them, off. The game reads this file when it starts; its Mods window writes it.\n";
+        for (const Entry& e : order) out << (e.on ? "on " : "off ") << e.name << '\n';
+        out.flush();
+        if (!out) {
+            out.close();
+            fs::remove(part, ec);
+            return false;
+        }
+    }
+    fs::rename(part, file, ec);   // (replaces the old file)
+    if (ec) {
+        fs::remove(part, ec);
+        return false;
+    }
+    return true;
+}
+
+std::vector<Entry> entries(const std::vector<Mod>& mods) {
+    std::vector<Entry> out;
+    for (const Mod& m : mods) out.push_back({m.name, m.enabled});
+    return out;
+}
+
+std::vector<Mod> scan(const fs::path& modsFolder) {
+    std::vector<Mod> out;
+    if (modsFolder.empty() || !is_dir(modsFolder)) return out;
+    std::vector<fs::path> subs = subfolders(modsFolder);   // (A to Z)
+    std::vector<bool> taken(subs.size(), false);
+    for (const Entry& e : read_order(modsFolder)) {
+        for (std::size_t i = 0; i < subs.size(); ++i) {
+            if (taken[i] || utf8(subs[i].filename()) != e.name) continue;
+            taken[i] = true;
+            Mod m = read(subs[i]);
+            m.enabled = e.on;
+            out.push_back(std::move(m));
+            break;
+        }
+    }
+    for (std::size_t i = 0; i < subs.size(); ++i)
+        if (!taken[i]) out.push_back(read(subs[i]));   // (not in the file: new, off)
+    return out;
+}
+
+std::vector<Mod> scan(const fs::path& modsFolder, const std::string& enabledList) {
+    std::vector<Mod> out = scan(modsFolder);
+    const std::vector<std::string> on = split(enabledList, '|');
+    for (Mod& m : out) m.enabled = std::find(on.begin(), on.end(), m.name) != on.end();
+    return out;
+}
+
+bool adopt_setting(const fs::path& modsFolder, const std::string& enabledList) {
+    bool found = false;
+    read_order(modsFolder, &found);
+    if (found || modsFolder.empty() || !is_dir(modsFolder)) return false;
+    const std::vector<std::string> on = split(enabledList, '|');
+    std::vector<Entry> order;
+    for (const fs::path& sub : subfolders(modsFolder)) {
+        const std::string name = utf8(sub.filename());
+        order.push_back({name, std::find(on.begin(), on.end(), name) != on.end()});
+    }
+    if (order.empty() || !write_order(modsFolder, order)) return false;
+    std::fprintf(stderr, "[mods] the mods that were on in settings.ini (DES_MODS) are now in %s\n",
+                 utf8(modsFolder / kOrderFile).c_str());
+    return true;
 }
 
 namespace {
@@ -498,7 +589,7 @@ std::vector<Overlap> overlaps(const std::vector<Mod>& mods) {
     return out;
 }
 
-void apply(const fs::path& dataDir, const std::string& enabledList) {
+void apply(const fs::path& dataDir, const std::optional<std::string>& enabledList) {
     sInUse.clear();
     sGameplay = false;
     sFromEnv = false;
@@ -516,7 +607,12 @@ void apply(const fs::path& dataDir, const std::string& enabledList) {
     } else {
         const fs::path dir = folder(dataDir);
         if (dir.empty()) return;   // (no data folder kept: no mods folder)
-        const std::vector<Mod> all = scan(dir, enabledList);
+        const std::vector<Mod> all = enabledList ? scan(dir, *enabledList) : scan(dir);
+        std::vector<std::string> named;   // (the mods said to be on)
+        if (enabledList) named = split(*enabledList, '|');
+        else
+            for (const Entry& e : read_order(dir))
+                if (e.on) named.push_back(e.name);
         std::vector<std::string> roots;
         for (const Mod& m : all) {
             if (!m.enabled) continue;
@@ -528,7 +624,7 @@ void apply(const fs::path& dataDir, const std::string& enabledList) {
             roots.push_back(utf8(m.root));
             sInUse.push_back(m);
         }
-        for (const std::string& name : split(enabledList, '|')) {
+        for (const std::string& name : named) {
             const bool there = std::any_of(all.begin(), all.end(), [&](const Mod& m) { return m.name == name; });
             if (!there) std::fprintf(stderr, "[mods] %s is on, but the mods folder has no such folder\n", name.c_str());
         }

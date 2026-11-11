@@ -5,13 +5,14 @@
 // The runtime reads an enabled mod's file in place of the game's: settings.cpp's load_and_apply_env calls apply(),
 // which sets PS3_VFS_MODS (ps3recomp's runtime/syscalls/sys_fs.c). The Mods window (mods_window.cpp) shows them.
 //
-// The order: the mods' folder names, A to Z. When two enabled mods have the same file, the one whose name comes first
-// gives it.
+// The order and which mods are on: the mods folder's order file (load_order.txt, read_order). When two enabled mods
+// have the same file, the one higher in it gives it. Folders it does not name come after, A to Z, off.
 //
 // Online play: a mod that changes how the game plays (gameplay_file) keeps the whole session offline; mods that only
 // change how it looks or sounds do not. This file decides which; settings.cpp and des_ui.cpp act on it.
 #include <cstddef>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -54,7 +55,7 @@ struct Mod {
     bool loose = false;                 // it has no game folders (problem says so); plan() may find where its files go
     std::vector<Move> moves;            // plan(): where each loose file goes, from the game's own files; place()
                                         // moves them
-    bool enabled = false;               // named in DES_MODS
+    bool enabled = false;               // "on" in the order file (or named in a test's DES_MODS)
 
     bool usable() const { return why == Problem::None; }
 };
@@ -65,11 +66,34 @@ std::vector<std::string> split_list(const std::string& list);
 // The mods folder: DES_MODS_DIR, else <data folder>\mods; empty when nothing is kept (a test run's empty data folder).
 std::filesystem::path folder(const std::filesystem::path& dataDir);
 
-// One mod folder as it is now. `name` is its name in DES_MODS.
+// The order file: <mods folder>\load_order.txt, UTF-8, one line per mod, the first one first:
+//   on <folder name>
+//   off <folder name>
+// '#' starts a comment line; other lines, and names with no folder, are passed over. It belongs to the mods folder,
+// so a mod manager installs, updates, orders and turns mods on or off by changing that folder alone (issue #404).
+// The game reads it at start; the Mods window writes it.
+inline constexpr const char* kOrderFile = "load_order.txt";
+struct Entry {
+    std::string name;
+    bool on = false;
+};
+// The file's entries, in its order (each name once, its first line). Empty when there is no file; *found says so.
+std::vector<Entry> read_order(const std::filesystem::path& modsFolder, bool* found = nullptr);
+// Writes the file (through a temporary file, so a reader never sees half of it). False when it could not be written.
+bool write_order(const std::filesystem::path& modsFolder, const std::vector<Entry>& order);
+// The entries for these mods, in their order.
+std::vector<Entry> entries(const std::vector<Mod>& mods);
+// The mods that were on in settings.ini's DES_MODS (before the order file) go into a new order file, the folders A to
+// Z as before. Nothing when the folder has an order file already, or none of its folders. True when it wrote the file.
+bool adopt_setting(const std::filesystem::path& modsFolder, const std::string& enabledList);
+
+// One mod folder as it is now. `name` is its folder's name.
 Mod read(const std::filesystem::path& modFolder);
 
-// The mods in the mods folder, in their order (A to Z by name), each marked enabled when `enabledList` (DES_MODS:
-// names separated by '|') names it.
+// The mods in the mods folder, in their order: the order file's, then the folders it does not name, A to Z. Each is
+// enabled as the file says (a folder it does not name: off), or, with `enabledList` (a test's DES_MODS: names
+// separated by '|'), when that names it.
+std::vector<Mod> scan(const std::filesystem::path& modsFolder);
 std::vector<Mod> scan(const std::filesystem::path& modsFolder, const std::string& enabledList);
 
 // Whether a mod's file, given below its root with '/' separators ("param/gameparam/gameparamna.parambnd.dcx"), changes
@@ -98,15 +122,16 @@ struct Overlap {
 };
 std::vector<Overlap> overlaps(const std::vector<Mod>& mods);
 
-// At start, before the network knobs: the enabled mods (DES_MODS) become PS3_VFS_MODS, unless the environment set it
-// (a test run: its folders are then read as mods are). Logs what is on.
-void apply(const std::filesystem::path& dataDir, const std::string& enabledList);
+// At start, before the network knobs: the enabled mods become PS3_VFS_MODS, in their order, unless the environment
+// set it (a test run: its folders are then read as mods are). The order file says which are on, or `enabledList` (a
+// DES_MODS given in the environment) when there is one. Logs what is on.
+void apply(const std::filesystem::path& dataDir, const std::optional<std::string>& enabledList = std::nullopt);
 
 // This session's mods, as apply found them, in their order.
 const std::vector<Mod>& in_use();
 // A gameplay mod is in use: this session stays offline.
 bool gameplay_in_use();
-// PS3_VFS_MODS was set when the game started (a test run), so DES_MODS was not read.
+// PS3_VFS_MODS was set when the game started (a test run), so the order file was not read.
 bool from_environment();
 // The gameplay mods in use, by name, separated by ", ".
 std::string gameplay_names();

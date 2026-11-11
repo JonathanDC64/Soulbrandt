@@ -104,6 +104,50 @@ mod-card.fixed {
     cursor: default;
 }
 
+/* The arrows that move a mod up or down the list */
+mod-move {
+    flex: 0 0 auto;
+    display: flex;
+    flex-flow: column;
+    align-items: center;
+    gap: var(--space-2xs);
+}
+
+move-up,
+move-down {
+    display: block;
+    width: 32dp;
+    height: 26dp;
+    border-radius: var(--radius-control);
+    cursor: pointer;
+    color: rgba(var(--color-text-rgb), 55%);
+}
+
+move-up icon,
+move-down icon {
+    display: block;
+    width: 32dp;
+    height: 26dp;
+    font-size: 28dp;
+}
+
+move-up:hover,
+move-down:hover {
+    color: var(--color-accent);
+    background-color: rgba(var(--color-neutral-rgb), 10%);
+}
+
+move-up.none,
+move-down.none {
+    color: rgba(var(--color-text-rgb), 12%);
+    cursor: default;
+}
+
+move-up.none:hover,
+move-down.none:hover {
+    background-color: transparent;
+}
+
 mod-check {
     flex: 0 0 auto;
     display: flex;
@@ -267,4 +311,12 @@ icon.mods-offline {
 
 icon.mods-restart {
     decorator: text("&#xe863;" center center);  /* autorenew */
+}
+
+icon.mods-up {
+    decorator: text("&#xe316;" center center);  /* keyboard_arrow_up */
+}
+
+icon.mods-down {
+    decorator: text("&#xe313;" center center);  /* keyboard_arrow_down */
 }
