@@ -24,7 +24,8 @@
 #                             file while a cutscene plays, up to cap s (default 60)
 #   perf_run_valid <run> [map] [vblank mHz]   print "ok" or why the boot
 #                             cannot be used (a window within 10% of the vblank
-#                             rate is one)
+#                             rate is one, and so is a run whose libsre image
+#                             was missing)
 #   perf_game_pid             the pid this run's game wrote (DES_PIDFILE)
 #   perf_wincap <pid> <png>   save that game's window with PrintWindow
 #                             (wincap.ps1); prints "mean <0-255> size ... title ..."
@@ -177,6 +178,11 @@ perf_run_valid() {   # perf_run_valid <run> [map] [vblank mHz]
     got=$(grep -ao 'level loading ([^)]*/m[0-9][0-9]\.luabnd' "$r/run.txt" | head -1 | grep -o 'm[0-9][0-9]\.' | tr -d .)
     [ "$got" = "$map" ] || { echo "map ${got:-none} (want $map)"; return; }
   fi
+  # A game module with no libsre image beside it (work/libsre/libsre_image.bin) runs SPURS on its HLE fallback,
+  # which players never do; both sides of an A/B can then agree and still not be what players get. A run that
+  # asks for HLE (LIBSRE_LLE=0) prints no such line.
+  grep -aq 'could not be read -- staying on HLE' "$r/run.txt" &&
+    { echo "libsre image missing: SPURS ran on its HLE fallback"; return; }
   perf_cutscene_open "$r" && { echo "cutscene open (30 fps) during the windows"; return; }
   perf_present_ok || { echo "session locked while presenting"; return; }
   if [ "${RSX_PRESENT:-1}" != 0 ] && [ "${RSX_VSYNC:-1}" = 0 ] &&
