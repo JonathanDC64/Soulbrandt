@@ -16,8 +16,10 @@
 How find works:
   - Code: the instructions around the address, with branch offsets and address halves masked, matched near the same
     place in the European EBOOT.
-  - Data: through the TOC slot that holds the address (the slot offsets are the same on both discs), or through the
-    lis/addi pairs that build it, at the matched code.
+  - Data: through the address tables that hold it (code loads a table's base from the TOC, then the table's word:
+    the code is matched and the other disc's own TOC slot read), through the TOC slot that holds the address or a
+    base below it, or through the lis/addi pairs that build it, at the matched code. An address table names the
+    address itself, so it wins over references that only name a base below it.
 
 Addresses only: this prints and checks addresses, nothing from the game's bytes.
 """
@@ -389,26 +391,123 @@ NEAR, SITES_PER_ADDRESS = 0x1000, 12
 BETWEEN_GAP = 0x1000
 
 
-def find_data(us, eu, a, sites=None):
-    """The European address of US data address `a`, with its votes: from the TOC slots that hold it or a base below
-    it, and from the code that builds them (lis pairs)."""
-    votes = Counter()
+class SlotMap:
+    """The other disc's TOC slot for each US slot. On the European disc every slot keeps its offset; on the
+    Japanese and Asian 1.04 discs (TOC 0x18 higher) many moved, so a slot is mapped through code that loads it
+    (lwz rX,d(r2)), matched on the other disc. Which kind of pair this is is found from a sample of slots."""
+
+    SAMPLE = 200
+
+    def __init__(self, us, eu, slot_sites):
+        self.us, self.eu, self.sites, self.memo = us, eu, slot_sites, {}
+        sample = sorted(slot_sites)[::max(1, len(slot_sites) // self.SAMPLE)]
+        mapped = [(d, self.by_code(d)) for d in sample]
+        mapped = [(d, e) for d, e in mapped if e is not None]
+        self.same = bool(mapped) and sum(d == e for d, e in mapped) >= 0.98 * len(mapped)
+
+    def by_code(self, d):
+        if d not in self.memo:
+            self.memo[d] = None
+            for site in self.sites.get(d, ()):
+                m = find_code(self.us, self.eu, site)
+                x = self.eu.u32(m[0]) if m else None
+                if x is not None and x >> 26 == 32 and (x >> 16) & 31 == 2:
+                    self.memo[d] = _sext16(x & 0xFFFF)
+                    break
+        return self.memo[d]
+
+    def __call__(self, d):
+        return d if self.same else self.by_code(d)
+
+
+def find_data(us, eu, a, sites=None, slots=None):
+    """The European address of US data address `a`, with its votes and whether any of them named `a` itself (not
+    only a base below it): from the TOC slots that hold it or a base below it (at the same offset, or where
+    `slots` maps them), and from the code that builds them (lis pairs)."""
+    votes, exact = Counter(), set()
     lo = us.toc - 0x8000
     for off in range(0, 0x10000, 4):
         v = us.u32(lo + off)
         if v is not None and 0 <= a - v <= NEAR:
-            e = eu.u32(eu.toc - 0x8000 + off)
+            d2 = slots(off - 0x8000) if slots else off - 0x8000
+            e = eu.u32(eu.toc + d2) if d2 is not None else None
             if e is not None:
                 votes[e + (a - v)] += 3 if v == a else 1
+                if v == a:
+                    exact.add(e)
     for site, base in (sites if sites is not None else lis_sites(us, [a])).get(a, []):
         m = find_code(us, eu, site)
         got = _pair_at(eu, m[0]) if m else None
         if got:
             votes[got[1] + (a - base)] += 2 if base == a else 1
+            if base == a:
+                exact.add(got[1])
     if not votes:
         return None
     (v, n), *rest = votes.most_common(2) + [(None, 0)]
-    return (v, n) if n >= 2 and n > rest[0][1] else None
+    return (v, n, v in exact) if n >= 2 and n > rest[0][1] else None
+
+
+# Much of the game's data is reached through an address table: a function loads the table's base from a TOC slot
+# (lwz rX,d(r2)), then a word of the table at a fixed offset (lwz rY,k(rX)) holds the data's address (the heap
+# classes reach their arenas so). The table keeps its layout on every disc, but the TOC slot that holds its base
+# can differ (the Japanese and Asian 1.04 TOCs start 0x18 higher), so the slot is read from the matched code.
+TABLE_LOOK = 16   # instructions after the base's load in which the table's word is read
+
+
+def table_loads(us, addrs):
+    """{address: [(site, offset)]}: code that loads the address from the TOC (lwz rX,d(r2) at `site`, offset
+    None), or loads a table's base from it and then the table's word at `offset` (lwz rY,offset(rX), within
+    TABLE_LOOK instructions) that holds the address. At most SITES_PER_ADDRESS sites each. Also {TOC slot offset:
+    [sites]}, up to 4 loads of each slot (SlotMap)."""
+    want = set(addrs)
+    out = defaultdict(list)
+    slot_sites = defaultdict(list)
+    lo, w = us.words(*us.text)
+    bases = {}
+    for i, x in enumerate(w):
+        if x >> 26 != 32 or (x >> 16) & 31 != 2:
+            continue
+        rt, d = (x >> 21) & 31, _sext16(x & 0xFFFF)
+        if len(slot_sites[d]) < 4:
+            slot_sites[d].append(lo + 4 * i)
+        t = bases.get(d)
+        if t is None:
+            t = bases[d] = us.u32(us.toc + d) or 0
+        if t in want and len(out[t]) < SITES_PER_ADDRESS:
+            out[t].append((lo + 4 * i, None))
+        if not t or not us.backed(t) or t < us.text[1]:
+            continue
+        for y in w[i + 1:i + 1 + TABLE_LOOK]:
+            op = y >> 26
+            if op == 32 and (y >> 16) & 31 == rt:
+                k = _sext16(y & 0xFFFF)
+                v = us.u32(t + k)
+                if v in want and len(out[v]) < SITES_PER_ADDRESS:
+                    out[v].append((lo + 4 * i, k))
+            if (y >> 21) & 31 == rt and op in (14, 15, 32, 34, 40, 58):   # rt loaded again: the base is gone
+                break
+    return out, slot_sites
+
+
+def find_table(us, eu, a, loads):
+    """The European address of US data address `a` from the code that loads it (table_loads): the load of the TOC
+    slot is matched, and the European code's own slot gives the address, or the European table whose word at the
+    same offset does. With the number of sites that agree."""
+    votes = Counter()
+    for site, k in loads.get(a, []):
+        m = find_code(us, eu, site)
+        x = eu.u32(m[0]) if m else None
+        if x is None or x >> 26 != 32 or (x >> 16) & 31 != 2:
+            continue
+        t2 = eu.u32(eu.toc + _sext16(x & 0xFFFF))
+        v = t2 if k is None else eu.u32(t2 + k) if t2 else None
+        if v is not None:
+            votes[v] += 1
+    if not votes:
+        return None
+    (v, n), *rest = votes.most_common(2) + [(None, 0)]
+    return (v, n) if n > rest[0][1] else None
 
 
 def tocs(elf):
@@ -477,24 +576,49 @@ def find(us, eu, addrs):
     out = {}
     data = [a for a in addrs if not (us.text[0] <= a < us.text[1])]
     sites = lis_sites(us, addrs)
-    pairs = anchors(us, eu) if data else []
+    loads, slot_sites = table_loads(us, data) if data else ({}, {})
+    slots = SlotMap(us, eu, slot_sites) if data else None
+    # The anchors pair TOC slots at the same offset: only where the slots kept their offsets.
+    pairs = anchors(us, eu) if data and slots.same else []
     for a in addrs:
         got = None
         if a not in data:
             m = find_code(us, eu, a)
             got = (m[0], f"code, {m[1]:.0%} of the instructions") if m else None
         if got is None:
-            # Data: each way that answers must give the same address.
-            answers = {}
-            m = find_data(us, eu, a, sites)
-            if m:
-                answers.setdefault(m[0], []).append(f"{m[1]} references")
+            # Data: each way that answers must give the same address. Two ways read the other disc itself: the
+            # matched code's own TOC slot (find_table) and the matched words around the address (find_content).
+            # The other two assume a TOC slot sits at the same offset on both discs (find_data; not so on the
+            # Japanese and Asian 1.04 discs) or that nothing between two TOC addresses moved (find_between), so
+            # they only answer when neither of the first two does, and a disagreement is noted.
+            answers, others = {}, []
+            t = find_table(us, eu, a, loads)
+            if t:
+                answers.setdefault(t[0], []).append(f"the code that loads it, {t[1]} place{'s' * (t[1] > 1)}")
             m = find_content(us, eu, a)
             if m:
                 answers.setdefault(m[0], []).append(f"{m[1]:.0%} of the words around it")
+            m = find_data(us, eu, a, sites, slots)
+            unsure = None
+            if m and (slots.same or m[2]):
+                others.append((m[0], f"{m[1]} references"))
+            elif m:
+                # On a disc whose data was reordered (its TOC slots moved too), a base below says little: the
+                # object at the base and the address can have moved by different amounts.
+                unsure = (m[0], f"{m[1]} references to bases below it, on a disc whose data moved in pieces")
             m = find_between(pairs, a) if a in data else None
             if m and m[1] <= BETWEEN_GAP:
-                answers.setdefault(m[0], []).append(f"between TOC addresses 0x{m[1]:X} apart")
+                others.append((m[0], f"between TOC addresses 0x{m[1]:X} apart"))
+            if answers:
+                for v, how in others:
+                    if v in answers:
+                        answers[v].append(how)
+                    else:
+                        for hows in answers.values():
+                            hows.append(f"not 0x{v:08X} ({how})")
+            else:
+                for v, how in others:
+                    answers.setdefault(v, []).append(how)
             if len(answers) == 1:
                 (v, how), = answers.items()
                 got = (v, "data, " + "; ".join(how))
@@ -503,6 +627,8 @@ def find(us, eu, addrs):
                                                                 for v, h in answers.items()))
             elif m:
                 got = (None, f"perhaps 0x{m[0]:08X}: the TOC addresses around it, 0x{m[1]:X} apart, moved alike")
+            elif unsure:
+                got = (None, f"perhaps 0x{unsure[0]:08X} ({unsure[1]})")
         out[a] = got or (None, "")
     return out
 
