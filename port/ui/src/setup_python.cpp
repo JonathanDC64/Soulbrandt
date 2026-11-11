@@ -326,7 +326,9 @@ PythonFetch::Result PythonFetch::download_own(const std::filesystem::path& part)
 // The archive's names first (tar -tf), refused as fetch.py's unpack refuses them; then tar -xf into <folder>.tmp, a
 // rename into place, and the stamp. The archive is the pinned one by now, so a refusal means a changed pin (fetch.py
 // says "download" for it too). A tar that does not start hands a zip over to the host's own unzip, which lists and
-// unpacks it in tar's place; the checks around them are the same.
+// unpacks it in tar's place; the checks around them are the same. A tar -xf that ran and failed hands the zip over too
+// (issue #485): Windows' tar will not write through a folder that is a symbolic link, and a virus scanner may stop
+// tar.exe and not the host (inferred).
 PythonFetch::Result PythonFetch::unpack() {
     const std::filesystem::path dest = python_folder();
     std::filesystem::path tmp = dest;
@@ -370,6 +372,16 @@ PythonFetch::Result PythonFetch::unpack() {
         ran = run_tool("tar", {"-xf", archive, "-C", tmpRelative}, nullptr, {});
         if (!ran.started) trouble = mToolWhy;
         else if (ran.status) trouble = "tar -xf ended with exit " + std::to_string(ran.status);
+        if (!trouble.empty() && !stopping() && std::string_view(kPythonSuffix) == ".zip") {
+            std::fprintf(stderr, "[setup] %s: unpacking %s with the host's own unzip instead\n", trouble.c_str(),
+                         archive_name().c_str());
+            say(trouble + ": unpacking with the host's own unzip instead");
+            std::string why;
+            std::filesystem::remove_all(tmp, ec);
+            if (!std::filesystem::create_directories(tmp, ec) || ec) why = "no folder to unpack it in";
+            else zip_unpack(python_archive(), tmp, why);
+            trouble = why.empty() ? std::string() : trouble + ", then the host's own unzip: " + why;
+        }
     }
     if (stopping()) return Result::Stopped;
     if (trouble.empty() && !std::filesystem::is_regular_file(tmp / kPythonProgram, ec))
@@ -401,8 +413,9 @@ PythonFetch::Result PythonFetch::unpack() {
 }
 
 // One of the system's tools (curl, tar), run to its end in the data folder through the process runner: no window, and
-// stop() ends it. Its lines are plain lines for Details, or go into `listing`. `each` runs every quarter second while
-// it runs. It always waits for the tool's end, so no callback of the tool's comes after it returns.
+// stop() ends it. Its lines are plain lines for Details and the log (curl -sS and tar -xf print only what went wrong,
+// which a player's report then has), or go into `listing`. `each` runs every quarter second while it runs. It always
+// waits for the tool's end, so no callback of the tool's comes after it returns.
 PythonFetch::Ran PythonFetch::run_tool(const char* name, const std::vector<std::string>& args,
                                        std::vector<std::string>* listing, const std::function<void()>& each) {
     Ran out;
@@ -422,7 +435,8 @@ PythonFetch::Ran PythonFetch::run_tool(const char* name, const std::vector<std::
     const bool keep = listing != nullptr;
     out.started = mTool.start(
         exe, args,
-        [this, keep](std::string line) {
+        [this, keep, name](std::string line) {
+            if (!keep && !line.empty()) std::fprintf(stderr, "[setup] the first Python: %s: %s\n", name, line.c_str());
             if (keep) {
                 std::lock_guard<std::mutex> lock(mLock);
                 mListing.push_back(std::move(line));
