@@ -17,13 +17,24 @@ place of its own. Nothing is copied into the game's files, so turning a mod off 
   folders. Folders whose names start with `Original`, `Backup`, `Vanilla`, `Uninstall` or `Unmodded` are passed over:
   mods ship the game's own files in them to undo the mod. Two candidates at the same depth (two versions of the mod)
   is a problem, and the row names both.
-- **Left out:** the mod's notes and pictures beside its game folders (`.txt`, `.md`, `.pdf`, `.jpg`...) and what file
-  managers leave (`desktop.ini`, `Thumbs.db`, `.DS_Store`, `__MACOSX`).
+- **Left out:** the mod's notes and pictures, wherever they are (`.txt`, `.md`, `.pdf`, `.jpg`...; the game has no
+  file of those kinds), and what file managers leave (`desktop.ini`, `Thumbs.db`, `.DS_Store`, `__MACOSX`).
+- **Loose files.** Some mods ship their files without the game's folders: a lone `c0000.anibnd.dcx`, a
+  `mapstudio\m01_00_00_00.msb`, drawparam files in a wrapper folder. The game's own files (in the game folder the
+  game reads) say where each one goes: the file's name, and the folders it is in when two of the game's files share
+  the name. The row then reads "Not in place", lists where each file goes, and offers **Put its files in place**,
+  which moves them inside the mod's folder and removes the folders left empty. A file the game doesn't have, or one
+  that could go in more than one place (a font each language has, with no folder to tell which), stops this, and the
+  row names the file.
 - **Can't be used:**
-  - a mod with an `EBOOT.BIN`: Soulbrandt runs its own program, so a mod that changes the game's program does nothing
-    here;
-  - a folder with no game files, or more than 200,000 files;
+  - a mod with an `EBOOT.BIN`: this version runs its own program, so a mod that changes the game's program does
+    nothing here;
+  - a mod with locked files, as on the PS3 (an `NPD` `.sdat` or `.edat`): setup unlocks the game's own files, not a
+    mod's, and the game can't read a locked file;
+  - a folder with no game files that can't be put in place, or more than 200,000 files;
   - a name with `|` in it (Linux only; Windows names can't have one).
+
+  A row that can't be used still opens its help, which says why.
 
 ## 2. On, off and the order
 
@@ -75,8 +86,9 @@ the game's own files in place, or changes the program. That is the server's job:
 - **Mods for the PS3 game or for RPCS3 that replace the game's files** work as they are: textures, fonts, text, models,
   parameters.
 - **Mods that change the game's program** don't: an `EBOOT.BIN`, or RPCS3 patches (`patch.yml`).
-- **Script mods** (`.luabnd` and friends): a script file that is plain (not encrypted) is read as it is. These are
-  being tested with real mods.
+- **Script mods** (`.luabnd.dcx.sdat` and the talk scripts): a plain script file works. A published mod's
+  replacement for the tutorial's script loaded and the level ran as usual. A script locked again for the PS3
+  can't be read (section 1).
 - **Very large texture mods** can run out of the game's memory and crash, as on a PS3 and in RPCS3. Raising the
   game's memory limits is the next step (docs/59, items M1-M4).
 
@@ -92,8 +104,10 @@ the game's own files in place, or changes the program. That is the server's job:
 - **The game's cache** (`/dev_hdd1`) is emptied at every start, so a mod turned on or off applies at the next start.
 - **Not merged:** folder listings. The game opens its files by name and was not seen listing folders, so a mod can
   replace files but not add files the game would have to find by listing.
-- **Not through the mods:** what the port itself reads from the game's files outside the game (the cursor's sword
-  model, the window's icon).
+- **Not through the mods:** what the port itself reads from the game's files outside the game: the cursor's sword
+  model, the window's icon, and the button icons' pages. The button icons find the game's button page by its
+  contents, so a mod that redraws that page keeps its own buttons, and the Xbox, Nintendo and keyboard icons don't
+  replace them.
 - **Problem reports** have a "Mods:" line with the mods in use, each with its kind and file count.
 
 ## 6. For tests
@@ -106,7 +120,8 @@ the game's own files in place, or changes the program. That is the server's job:
 | `PS3_FSLOG=1` | Logs every file the game opens, to see what a mod would need to replace. |
 
 `port/ui/tests/mods_check.cpp` (CI, Windows and Linux) checks the look and gameplay rules, where a mod's files are
-found, the unusable cases, the order, shared files and `PS3_VFS_MODS`. ps3recomp's
+found, the unusable cases (locked files among them), loose files planned and put in place (against a made-up game
+folder), the order, shared files and `PS3_VFS_MODS`. ps3recomp's
 `libs/filesystem/tests/test_vfs_path.c` checks the path parts the runtime uses.
 
 ## 7. Known limits

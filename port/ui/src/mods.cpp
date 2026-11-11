@@ -6,7 +6,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <map>
+#include <mutex>
+#include <set>
 #include <system_error>
 
 extern "C" void ps3_setenv(const char* name, const char* value);  // boot_main.cpp: through the getenv cache
@@ -107,8 +110,9 @@ bool backup_folder(const fs::path& dir) {
 
 // The folder in a mod folder that holds what USRDIR holds: a USRDIR within five levels (a PS3_GAME\USRDIR, or one
 // in a wrapper folder or a version's folder), else the shallowest folder that holds one of the game's folders. Backup
-// folders are passed over. Two candidates at the same depth: none, and *problem says why.
-fs::path find_root(const fs::path& modFolder, std::string* problem) {
+// folders are passed over. Two candidates at the same depth: none, and *problem says why. No game folder at all: none,
+// and *loose is set.
+fs::path find_root(const fs::path& modFolder, std::string* problem, bool* loose) {
     std::vector<fs::path> level{modFolder};
     for (int depth = 0; depth <= 5 && !level.empty(); ++depth) {
         std::vector<fs::path> usr, game, next;
@@ -130,7 +134,80 @@ fs::path find_root(const fs::path& modFolder, std::string* problem) {
         level = std::move(next);
     }
     *problem = "No game files found. A mod's folders (menu, param, parts...) go in this folder.";
+    *loose = true;
     return {};
+}
+
+bool note_file(const std::string& low) {
+    for (const char* ext : kNoteExtensions)
+        if (ends_with(low, ext)) return true;
+    return false;
+}
+
+bool junk_file(const std::string& lowRel, const std::string& lowName) {
+    return one_of(lowName, kJunkNames) || lowRel.find("__macosx/") != std::string::npos;
+}
+
+// A file locked as on the PS3 (an NPD container, as the game's .sdat files are). This version reads unlocked files
+// only: setup unlocks the game's own, never a mod's.
+bool locked_file(const fs::path& p, const std::string& low) {
+    if (!ends_with(low, ".sdat") && !ends_with(low, ".edat")) return false;
+    std::ifstream f(p, std::ios::binary);
+    char magic[4] = {};
+    return f.read(magic, 4) && std::memcmp(magic, "NPD", 4) == 0;
+}
+
+// The game's files by name (lowercase), each with its paths below USRDIR (the game's case, '/'): where a mod's loose
+// file goes. Read once per game folder (PS3_VFS_ROOT), under sGameLock.
+std::mutex sGameLock;
+const std::map<std::string, std::vector<std::string>>& game_files() {
+    static std::string sFor = "\n";
+    static std::map<std::string, std::vector<std::string>> sFiles;
+    const char* root = std::getenv("PS3_VFS_ROOT");
+    const std::string key = root ? root : "";
+    if (key == sFor) return sFiles;
+    sFor = key;
+    sFiles.clear();
+    if (key.empty()) return sFiles;
+    const fs::path r = from_utf8(key);
+    for (const fs::path& usr : {r / "PS3_GAME" / "USRDIR", r / "USRDIR"}) {
+        if (!is_dir(usr)) continue;
+        std::error_code ec;
+        for (fs::recursive_directory_iterator it(usr, fs::directory_options::skip_permission_denied, ec), end;
+             !ec && it != end; it.increment(ec)) {
+            std::error_code e2;
+            if (!it->is_regular_file(e2)) continue;
+            std::string rel = utf8(it->path().lexically_relative(usr));
+            std::replace(rel.begin(), rel.end(), '\\', '/');
+            sFiles[lower(utf8(it->path().filename()))].push_back(rel);
+        }
+        break;
+    }
+    return sFiles;
+}
+
+// Of the game's paths for a file's name, the one whose folders match most of the folders the mod's file is in, from
+// the name up ("mapstudio/m01_00_00_00.msb" -> "map/mapstudio/m01_00_00_00.msb"). "" when two match as well.
+std::string best_place(const std::string& lowRel, const std::vector<std::string>& paths) {
+    const std::vector<std::string> mine = split(lowRel, '/');
+    std::string best;
+    std::size_t bestScore = 0;
+    bool tie = false;
+    for (const std::string& p : paths) {
+        const std::vector<std::string> theirs = split(lower(p), '/');
+        std::size_t score = 0;
+        while (score < mine.size() && score < theirs.size() &&
+               mine[mine.size() - 1 - score] == theirs[theirs.size() - 1 - score])
+            ++score;
+        if (score > bestScore) {
+            best = p;
+            bestScore = score;
+            tie = false;
+        } else if (score == bestScore) {
+            tie = true;
+        }
+    }
+    return tie ? std::string() : best;
 }
 
 // A mod's files below its root: the count, the game folders they are in, and the first few that make it a gameplay
@@ -145,12 +222,10 @@ void walk(Mod& m) {
         std::replace(generic.begin(), generic.end(), '\\', '/');
         const std::string low = lower(generic);
         const std::string name = lower(utf8(it->path().filename()));
-        if (one_of(name, kJunkNames) || low.find("__macosx/") != std::string::npos) continue;
+        // (notes and pictures anywhere: the game has no file of those kinds)
+        if (junk_file(low, name) || note_file(low)) continue;
         const bool top = low.find('/') == std::string::npos;
         if (top) {
-            bool note = false;
-            for (const char* ext : kNoteExtensions) note = note || ends_with(low, ext);
-            if (note) continue;
             if (low == "eboot.bin") {
                 m.problem = "It has an EBOOT.BIN, the game's program. This version runs its own program, so a mod "
                             "that changes it can't be used.";
@@ -167,10 +242,14 @@ void walk(Mod& m) {
             m.kind = Kind::Gameplay;
             if (m.gameplay.size() < kGameplayShown) m.gameplay.push_back(generic);
         }
+        if (m.locked.size() < kGameplayShown && locked_file(it->path(), low)) m.locked.push_back(generic);
     }
     std::sort(m.areas.begin(), m.areas.end());
     if (!m.problem.empty()) return;
     if (m.files == 0) m.problem = "It has no files.";
+    else if (!m.locked.empty())
+        m.problem = "Some of its files are locked, as on the PS3 (" + m.locked.front() +
+                    "). Setup unlocks the game's own files, not a mod's, so it can't be used.";
 }
 
 const char* kind_word(Kind kind) {
@@ -234,10 +313,69 @@ Mod read(const fs::path& modFolder) {
         m.problem = "Its name has a '|': rename the folder.";
         return m;
     }
-    m.root = find_root(modFolder, &m.problem);
+    m.root = find_root(modFolder, &m.problem, &m.loose);
     if (m.root.empty()) return m;
     walk(m);
     return m;
+}
+
+void plan(Mod& m) {
+    m.moves.clear();
+    if (!m.loose) return;
+    std::lock_guard<std::mutex> lock(sGameLock);
+    const auto& game = game_files();
+    if (game.empty()) return;   // (no game folder known: the problem stays as it is)
+    std::vector<Move> moves;
+    std::set<std::string> targets;
+    std::string why;
+    std::error_code ec;
+    for (fs::recursive_directory_iterator it(m.folder, fs::directory_options::skip_permission_denied, ec), end;
+         !ec && it != end && why.empty(); it.increment(ec)) {
+        std::error_code e2;
+        if (!it->is_regular_file(e2)) continue;
+        std::string rel = utf8(it->path().lexically_relative(m.folder));
+        std::replace(rel.begin(), rel.end(), '\\', '/');
+        const std::string low = lower(rel), name = lower(utf8(it->path().filename()));
+        if (junk_file(low, name) || note_file(low)) continue;
+        if (moves.size() == 1000) {
+            why = "it has more than 1,000 files";
+            break;
+        }
+        const auto f = game.find(name);
+        const std::string to = f == game.end() ? std::string() : best_place(low, f->second);
+        if (f == game.end()) why = rel + " is not one of the game's files";
+        else if (to.empty()) why = rel + " could go in more than one place";
+        else if (!targets.insert(lower(to)).second) why = "two of its files go to " + to;
+        else moves.push_back({rel, to});
+    }
+    if (!why.empty() || moves.empty()) {
+        if (!why.empty()) m.problem = "No game folders, and its files can't be put in place: " + why + ".";
+        return;
+    }
+    m.moves = std::move(moves);
+    m.problem = "Its files are not in the game's folders. \"Put its files in place\" moves them where the game reads "
+                "them.";
+}
+
+std::string place(const Mod& m) {
+    for (const Move& mv : m.moves) {
+        const fs::path from = m.folder / from_utf8(mv.from), to = m.folder / from_utf8(mv.to);
+        std::error_code ec;
+        if (fs::exists(to, ec)) return mv.to + " is there already";
+        fs::create_directories(to.parent_path(), ec);
+        fs::rename(from, to, ec);
+        if (ec) return "could not move " + mv.from + " (" + ec.message() + ")";
+        // The folders it leaves empty, up to the mod's folder.
+        for (fs::path d = from.parent_path(); d.has_relative_path() && d != d.parent_path(); d = d.parent_path()) {
+            const std::string rel = utf8(d.lexically_relative(m.folder));
+            if (rel.empty() || rel == "." || starts_with(rel, "..")) break;
+            std::error_code e2;
+            if (!fs::is_empty(d, e2) || e2) break;
+            fs::remove(d, e2);
+        }
+    }
+    std::fprintf(stderr, "[mods] %s: %zu files put in place\n", m.name.c_str(), m.moves.size());
+    return {};
 }
 
 std::vector<Mod> scan(const fs::path& modsFolder, const std::string& enabledList) {
@@ -264,7 +402,9 @@ std::vector<std::string> conflicts(const std::vector<Mod>& mods, std::size_t max
             std::string rel = utf8(it->path().lexically_relative(m.root));
             std::replace(rel.begin(), rel.end(), '\\', '/');
             const std::string low = lower(rel);
-            if (low.find('/') == std::string::npos) continue;   // (notes and such beside the folders)
+            // (notes and such beside the folders or anywhere)
+            if (low.find('/') == std::string::npos || note_file(low) || junk_file(low, lower(utf8(it->path().filename()))))
+                continue;
             owners[low].push_back(m.name);
         }
     }

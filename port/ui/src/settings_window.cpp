@@ -368,6 +368,17 @@ bool mod_in_use(const std::string& name) {
 // A mod row's help: what kind of mod it is, then its files.
 Rml::String mod_help(const mods::Mod& m) {
     Rml::String badge;
+    if (!m.moves.empty()) {
+        Rml::String list;
+        for (size_t k = 0; k < m.moves.size() && k < 10; ++k)
+            list += "<br/><file-path>" + escape(m.moves[k].from) + "</file-path> to <file-path>" +
+                    escape(m.moves[k].to) + "</file-path>";
+        if (m.moves.size() > 10) list += "<br/>...";
+        return "<status-badge class=\"warning\">" + escape(m.problem) + "</status-badge><br/>" +
+               with_note("DES_MODS", "Where its files go, by the game's own files:" + list +
+                                         "<br/><br/>Folder: <file-path>" + escape(mods::utf8(m.folder)) +
+                                         "</file-path>");
+    }
     if (!m.problem.empty()) {
         badge = "<status-badge class=\"error\">Can't be used: " + escape(m.problem) + "</status-badge><br/>";
     } else if (m.kind == mods::Kind::Gameplay) {
@@ -1157,6 +1168,7 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
 
         const std::filesystem::path dir = mods::folder(report::data_dir());
         auto found = std::make_shared<std::vector<mods::Mod>>(mods::scan(dir, net_value("DES_MODS")));
+        for (mods::Mod& m : *found) mods::plan(m);   // (loose files: where the game's own files say they go)
 
         leftPane.add_section("Mods");
         if (mods::from_environment()) {
@@ -1173,25 +1185,48 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
         }
         for (size_t i = 0; i < found->size(); ++i) {
             const mods::Mod& m = (*found)[i];
-            const bool usable = m.problem.empty();
-            auto& row = leftPane.add_child<BoolButton>(BoolButton::Props{
-                .key = m.name,
-                .icon = !usable ? "error" : m.kind == mods::Kind::Gameplay ? "warning" : "",
-                .getValue = [found, i] { return (*found)[i].problem.empty() && mod_on((*found)[i].name); },
-                .setValue =
-                    [found, i](bool value) {
-                        const mods::Mod& mod = (*found)[i];
-                        if (!mod.problem.empty() || value == mod_on(mod.name)) return;
-                        set_mod_on(mod.name, value);
+            // A mod that can be used: on or off. One that can't: a row whose help says why (and, for loose files,
+            // offers to put them in place), reached like an info row's.
+            Component* row = nullptr;
+            if (m.problem.empty()) {
+                row = &leftPane.add_child<BoolButton>(BoolButton::Props{
+                    .key = m.name,
+                    .icon = m.kind == mods::Kind::Gameplay ? "warning" : "",
+                    .getValue = [found, i] { return mod_on((*found)[i].name); },
+                    .setValue =
+                        [found, i](bool value) {
+                            if (value != mod_on((*found)[i].name)) set_mod_on((*found)[i].name, value);
+                        },
+                    .isDisabled = [] { return settings::pinned("DES_MODS") || mods::from_environment(); },
+                    .isModified = [found, i] { return mod_on((*found)[i].name) != mod_in_use((*found)[i].name); },
+                });
+            } else {
+                auto& sel = leftPane.add_select_button({
+                    .key = m.name,
+                    .getValue = [loose = !m.moves.empty()] {
+                        return loose ? Rml::String("Not in place") : Rml::String("Can't be used");
                     },
-                .isDisabled =
-                    [usable] { return !usable || settings::pinned("DES_MODS") || mods::from_environment(); },
-                .isModified = [found, i] { return mod_on((*found)[i].name) != mod_in_use((*found)[i].name); },
-                .valueOverride = [usable] { return usable ? Rml::String() : Rml::String("Can't be used"); },
-            });
-            leftPane.register_control(row, rightPane, [found, i](Pane& pane) {
+                });
+                sel.set_icon("error");
+                row = &sel;
+            }
+            leftPane.register_control(*row, rightPane, [found, i](Pane& pane) {
                 pane.clear();
                 pane.add_rml(mod_help((*found)[i]));
+                if (!(*found)[i].moves.empty()) {
+                    pane.add_button("Put its files in place").on_pressed([found, i] {
+                        const std::string err = mods::place((*found)[i]);
+                        play_sound(err.empty() ? kSoundClick : kSoundWarning);
+                        push_toast({
+                            .type = err.empty() ? "" : "warning",
+                            .title = err.empty() ? "Mod files put in place" : "Mod files not all moved",
+                            .content = err.empty() ? (*found)[i].name + ": its files are where the game reads them now."
+                                                   : (*found)[i].name + ": " + err + ".",
+                            .duration = std::chrono::seconds(6),
+                        });
+                        sModsLookAgain = true;
+                    });
+                }
             });
         }
 

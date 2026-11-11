@@ -18,6 +18,11 @@ namespace ui::mods {
 
 enum class Kind { Look, Gameplay };
 
+// A loose file of a mod and where in its folder it goes (below the mod's folder, '/' separators).
+struct Move {
+    std::string from, to;
+};
+
 struct Mod {
     std::string name;              // its folder's name (UTF-8)
     std::filesystem::path folder;  // <mods folder>\<name>
@@ -27,6 +32,10 @@ struct Mod {
     std::size_t files = 0;              // files below root
     std::vector<std::string> areas;     // the game's folders it has files in ("menu", "param"), A to Z
     std::vector<std::string> gameplay;  // the first few of its files that make it a gameplay mod (below root, '/')
+    std::vector<std::string> locked;    // the first few of its files that are locked as on the PS3 (NPD), unusable
+    bool loose = false;                 // it has no game folders (problem says so); plan() may find where its files go
+    std::vector<Move> moves;            // plan(): where each loose file goes, from the game's own files; place()
+                                        // moves them
     bool enabled = false;               // named in DES_MODS
 };
 
@@ -44,6 +53,14 @@ std::vector<Mod> scan(const std::filesystem::path& modsFolder, const std::string
 // how the game plays. Textures, models, text, sound, movies, effects, menus and lighting do not; the game's parameters,
 // maps' layouts and collision, characters, objects, scripts and anything the list does not know do.
 bool gameplay_file(const std::string& rel);
+
+// For a loose mod (files with no game folders, as some mods ship: "c0000.anibnd.dcx", "mapstudio\m01_00_00_00.msb"):
+// where each file goes, from the game's own files (PS3_VFS_ROOT's USRDIR). Each file's name, and the folders it is in,
+// must point to one of the game's files; otherwise moves stays empty and the problem names the file.
+void plan(Mod& mod);
+// Moves a mod's loose files where the game reads them (Mod::moves), inside its own folder, and removes the folders
+// that are left empty. "" when all moved, else what went wrong (the files moved so far stay moved).
+std::string place(const Mod& mod);
 
 // "file" lines for the files that two or more of these mods have, each with the mods that have it, the first
 // (the one that gives the file) first. At most `max` lines.

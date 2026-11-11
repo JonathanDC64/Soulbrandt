@@ -58,6 +58,7 @@ void run(const char* name, const std::function<std::string(const fs::path&)>& bo
     fs::create_directories(dir, ec);
     ps3_setenv("PS3_VFS_MODS", "");
     ps3_setenv("DES_MODS_DIR", "");
+    ps3_setenv("PS3_VFS_ROOT", "");
     std::string problem;
     try {
         problem = body(dir);
@@ -203,6 +204,77 @@ int main() {
         fs::create_directories(t / "A" / "menu");
         const Mod m = read(t / "A");
         return expect(m.problem == "It has no files.", "problem: " + m.problem);
+    });
+    run("locked", [](const fs::path& t) {   // (an NPD container, as the game's .sdat files are; a plain one is fine)
+        write(t / "A" / "script" / "m01.luabnd.dcx.sdat", std::string("NPD\0\0\0\0\3", 8));
+        write(t / "B" / "script" / "m01.luabnd.dcx.sdat", std::string("DCX\0\0\1\0\0", 8));
+        const Mod a = read(t / "A"), b = read(t / "B");
+        return all({expect(a.problem.find("locked") != std::string::npos, "A: " + a.problem),
+            expect(a.locked == std::vector<std::string>{"script/m01.luabnd.dcx.sdat"}, "A locked " + join(a.locked, ",")),
+            expect(b.problem.empty() && b.locked.empty(), "B: " + b.problem)});
+    });
+
+    // ---- Loose files: where the game's own files say they go ----
+    const auto game = [](const fs::path& t) {
+        const fs::path usr = t / "game" / "PS3_GAME" / "USRDIR";
+        write(usr / "chr" / "c0000" / "c0000.anibnd.dcx");
+        write(usr / "map" / "mapstudio" / "m01_00_00_00.msb");
+        write(usr / "param" / "drawparam" / "a01_drawparam.parambnd.dcx");
+        write(usr / "font" / "dsfont24.tpf.dcx");
+        write(usr / "font" / "na_english" / "dsfont24.tpf.dcx");
+        ps3_setenv("PS3_VFS_ROOT", utf8(t / "game").c_str());
+    };
+    run("plan_loose", [&game](const fs::path& t) {
+        game(t);
+        write(t / "A" / "Wrap 1.0" / "c0000.anibnd.dcx");
+        write(t / "A" / "Wrap 1.0" / "readme.txt");
+        write(t / "B" / "mapstudio" / "m01_00_00_00.msb");
+        write(t / "C" / "Fix" / "a01_drawparam.parambnd.dcx");
+        Mod a = read(t / "A"), b = read(t / "B"), c = read(t / "C");
+        plan(a);
+        plan(b);
+        plan(c);
+        const auto one = [](const Mod& m, const char* from, const char* to) {
+            return m.moves.size() == 1 && m.moves[0].from == from && m.moves[0].to == to;
+        };
+        return all({expect(a.loose && one(a, "Wrap 1.0/c0000.anibnd.dcx", "chr/c0000/c0000.anibnd.dcx"), "A: " + a.problem),
+            expect(one(b, "mapstudio/m01_00_00_00.msb", "map/mapstudio/m01_00_00_00.msb"), "B: " + b.problem),
+            expect(one(c, "Fix/a01_drawparam.parambnd.dcx", "param/drawparam/a01_drawparam.parambnd.dcx"), "C: " + c.problem)});
+    });
+    run("plan_unclear", [&game](const fs::path& t) {
+        game(t);
+        write(t / "A" / "dsfont24.tpf.dcx");                    // font/ or font/na_english/
+        write(t / "B" / "na_english" / "dsfont24.tpf.dcx");     // its folder says which
+        write(t / "C" / "unknown.bin");
+        Mod a = read(t / "A"), b = read(t / "B"), c = read(t / "C");
+        plan(a);
+        plan(b);
+        plan(c);
+        Mod d = read(t / "C");
+        ps3_setenv("PS3_VFS_ROOT", "");
+        plan(d);   // (no game folder known)
+        return all({expect(a.moves.empty() && a.problem.find("more than one place") != std::string::npos, "A: " + a.problem),
+            expect(b.moves.size() == 1 && b.moves[0].to == "font/na_english/dsfont24.tpf.dcx", "B: " + b.problem),
+            expect(c.moves.empty() && c.problem.find("not one of the game's files") != std::string::npos, "C: " + c.problem),
+            expect(d.moves.empty() && d.problem.find("No game files found") == 0, "D: " + d.problem)});
+    });
+    run("place", [&game](const fs::path& t) {
+        game(t);
+        write(t / "A" / "Wrap 1.0" / "c0000.anibnd.dcx");
+        write(t / "A" / "Wrap 1.0" / "readme.txt");
+        write(t / "B" / "mapstudio" / "m01_00_00_00.msb");
+        Mod a = read(t / "A"), b = read(t / "B");
+        plan(a);
+        plan(b);
+        const std::string ea = place(a), eb = place(b);
+        const Mod a2 = read(t / "A"), b2 = read(t / "B");
+        return all({expect(ea.empty() && eb.empty(), "place: " + ea + " / " + eb),
+            expect(fs::exists(t / "A" / "chr" / "c0000" / "c0000.anibnd.dcx"), "A's file not moved"),
+            expect(fs::exists(t / "A" / "Wrap 1.0" / "readme.txt"), "A's notes went"),
+            expect(!fs::exists(t / "B" / "mapstudio"), "B's emptied folder stayed"),
+            expect(a2.problem.empty() && a2.root == t / "A" && a2.kind == Kind::Gameplay && a2.files == 1,
+                "A after: " + a2.problem + ", " + std::to_string(a2.files) + " files"),
+            expect(b2.problem.empty() && b2.files == 1, "B after: " + b2.problem)});
     });
 #ifndef _WIN32
     run("bar_in_name", [](const fs::path& t) {   // (Windows names can't have one)
