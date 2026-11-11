@@ -90,6 +90,14 @@ std::string place(const Mod& mod);
 // (the one that gives the file) first. At most `max` lines.
 std::vector<std::string> conflicts(const std::vector<Mod>& mods, std::size_t max = 20);
 
+// The same, by mod: each mod some of whose files an earlier mod also has ("covered" by it, since the earlier one
+// gives them), with the earlier mod and how many files. In the mods' order.
+struct Overlap {
+    std::string covered, by;
+    std::size_t files = 0;
+};
+std::vector<Overlap> overlaps(const std::vector<Mod>& mods);
+
 // At start, before the network knobs: the enabled mods (DES_MODS) become PS3_VFS_MODS, unless the environment set it
 // (a test run: its folders are then read as mods are). Logs what is on.
 void apply(const std::filesystem::path& dataDir, const std::string& enabledList);

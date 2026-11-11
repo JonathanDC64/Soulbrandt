@@ -1,0 +1,270 @@
+/* The Mods window (mods_window.cpp): the summary above one list of cards. Laid out like trophies.rcss; the colours
+   come from theme.rcss. */
+
+/* (this window's document only) the summary on top, the list under it */
+#content {
+    flex-flow: column;
+}
+
+/* ---- The summary ---- */
+mods-summary {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    padding: var(--space-lg) var(--space-xl);
+    border-bottom-width: 1dp;
+    border-bottom-color: var(--color-border);
+    background-color: rgba(var(--color-neutral-rgb), 4%);
+}
+
+mods-summary summary-text {
+    display: flex;
+    flex-flow: column;
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: var(--space-xs);
+}
+
+mods-summary summary-line {
+    display: block;
+    font-size: var(--font-size-3xl);
+    color: var(--color-accent);
+}
+
+summary-note {
+    display: block;
+    font-size: var(--font-size-md);
+    color: rgba(var(--color-text-rgb), 80%);
+}
+
+summary-note icon {
+    margin-right: var(--space-xs);
+    font-size: 1.2em;
+}
+
+summary-note.warning {
+    color: var(--color-warning);
+}
+
+summary-note.info icon,
+summary-note.offline icon {
+    color: var(--color-info);
+}
+
+/* ---- The list ---- */
+section-heading {
+    font-size: var(--font-size-xl);
+    opacity: 0.6;
+}
+
+mods-actions {
+    display: flex;
+    gap: var(--space-md);
+    margin-bottom: var(--space-sm);
+}
+
+mods-actions button {
+    flex: 1 1 0;
+    font-size: var(--font-size-lg);
+}
+
+/* One mod: the check box, its name and what it changes, then On or Off */
+mod-card {
+    display: flex;
+    align-items: center;
+    gap: var(--space-lg);
+    padding: var(--space-md) var(--space-lg);
+    border-radius: var(--radius-window);
+    background-color: var(--button-background);
+    box-shadow: rgba(var(--color-border-rgb), 25%) 0 0 0 1dp;
+    cursor: pointer;
+    focus: auto;
+    transition: background-color 0.1s linear-in-out;
+}
+
+mod-card:hover,
+mod-card:focus-visible {
+    background-color: var(--button-background-hover);
+    box-shadow: rgba(var(--color-interactive-rgb), 70%) 0 0 0 1dp;
+}
+
+/* On: green, so it reads at a glance (the check box, the name, "On" and the border) */
+mod-card.on {
+    background-color: rgba(var(--color-success-rgb), 10%);
+    box-shadow: rgba(var(--color-success-rgb), 60%) 0 0 0 1dp;
+}
+
+mod-card.on:hover,
+mod-card.on:focus-visible {
+    background-color: rgba(var(--color-success-rgb), 18%);
+    box-shadow: rgba(var(--color-success-rgb), 95%) 0 0 0 2dp;
+}
+
+mod-card.fixed {
+    cursor: default;
+}
+
+mod-check {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44dp;
+}
+
+mod-check icon {
+    font-size: 40dp;
+    color: rgba(var(--color-text-rgb), 40%);
+}
+
+mod-card.on mod-check icon {
+    color: var(--color-success);
+}
+
+mod-card.problem mod-check icon {
+    font-size: 34dp;
+    color: var(--color-error);
+}
+
+mod-card.fixable mod-check icon {
+    color: var(--color-warning);
+}
+
+mod-text {
+    display: flex;
+    flex-flow: column;
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: var(--space-2xs);
+}
+
+mod-name {
+    display: block;
+    font-weight: bold;
+    font-size: var(--font-size-2xl);
+    color: rgba(var(--color-text-rgb), 85%);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+mod-card.on mod-name {
+    color: var(--color-white);
+}
+
+mod-line {
+    display: block;
+    font-size: var(--font-size-md);
+    color: rgba(var(--color-text-rgb), 72%);
+}
+
+mod-line icon {
+    margin-right: var(--space-xs);
+    color: var(--color-warning);
+}
+
+mod-line.note {
+    color: rgba(var(--color-text-rgb), 55%);
+}
+
+mod-line.todo {
+    color: rgba(var(--color-text-rgb), 88%);
+}
+
+mod-state {
+    display: flex;
+    flex-flow: column;
+    flex: 0 0 auto;
+    align-items: flex-end;
+    gap: var(--space-2xs);
+}
+
+state-word {
+    display: block;
+    font-size: var(--font-size-xl);
+    font-weight: bold;
+    white-space: nowrap;
+    color: rgba(var(--color-text-rgb), 50%);
+}
+
+mod-card.on state-word {
+    color: var(--color-success);
+}
+
+mod-card.problem state-word {
+    font-size: var(--font-size-md);
+    font-weight: normal;
+    color: var(--color-error);
+}
+
+mod-card.fixable state-word {
+    padding: var(--space-xs) var(--space-md);
+    border-radius: var(--radius-control);
+    font-size: var(--font-size-lg);
+    font-weight: bold;
+    color: var(--color-warning);
+    box-shadow: rgba(var(--color-warning-rgb), 70%) 0 0 0 1dp;
+}
+
+state-note {
+    display: block;
+    font-size: var(--font-size-sm);
+    white-space: nowrap;
+    color: var(--color-warning);
+}
+
+/* No mods yet: what to do, step by step */
+mods-empty {
+    display: block;
+    padding: var(--space-lg);
+    border-radius: var(--radius-window);
+    background-color: rgba(var(--color-neutral-rgb), 4%);
+    font-size: var(--font-size-lg);
+}
+
+empty-title,
+footer-title {
+    display: block;
+    margin-bottom: var(--space-sm);
+    font-family: var(--font-family-heading);
+    font-weight: bold;
+    text-transform: uppercase;
+    color: var(--color-accent);
+}
+
+empty-step {
+    display: block;
+    margin-top: var(--space-xs);
+}
+
+mods-footer {
+    display: block;
+    margin-top: var(--space-lg);
+    padding: var(--space-md) var(--space-lg);
+    border-top-width: 1dp;
+    border-top-color: rgba(var(--color-border-rgb), 40%);
+    font-size: var(--font-size-md);
+    color: rgba(var(--color-text-rgb), 65%);
+}
+
+footer-title {
+    font-size: var(--font-size-sm);
+    color: rgba(var(--color-text-rgb), 55%);
+}
+
+footer-line {
+    display: block;
+    margin-top: var(--space-xs);
+}
+
+icon.mods-info {
+    decorator: text("&#xe88e;" center center);  /* info */
+}
+
+icon.mods-offline {
+    decorator: text("&#xe2c1;" center center);  /* cloud_off */
+}
+
+icon.mods-restart {
+    decorator: text("&#xe863;" center center);  /* autorenew */
+}

@@ -275,7 +275,7 @@ int main() {
                        b.moves[0].to == "font/na_english/dsfont24.tpf.dcx",
                 "B: " + b.problem),
             expect(c.moves.empty() && c.problem.find("not one of the game's files") != std::string::npos, "C: " + c.problem),
-            expect(d.moves.empty() && d.why == Problem::NoGameFiles && d.problem.find("None of the game's folders") == 0,
+            expect(d.moves.empty() && d.why == Problem::NoGameFiles && d.problem.find("Nothing in it") == 0,
                 "D: " + d.problem)});
     });
     run("place", [&game](const fs::path& t) {
@@ -331,8 +331,15 @@ int main() {
         write(t / "mods" / "B" / "Menu" / "Same.tpf");   // the same file, another case
         write(t / "mods" / "B" / "readme.txt");
         write(t / "mods" / "A" / "readme.txt");          // (notes beside the folders: not a conflict)
-        const std::vector<std::string> c = conflicts(scan(t / "mods", ""));
-        return expect(c == std::vector<std::string>{"menu/same.tpf: A, B"}, "conflicts: " + join(c, " / "));
+        write(t / "mods" / "C" / "menu" / "same.tpf");
+        write(t / "mods" / "C" / "menu" / "a_only.tpf");
+        const std::vector<Mod> all_ = scan(t / "mods", "");
+        const std::vector<std::string> c = conflicts({all_[0], all_[1]});
+        const std::vector<Overlap> o = overlaps(all_);   // B and C: covered by A (C's 2 files, B's 1)
+        return all({expect(c == std::vector<std::string>{"menu/same.tpf: A, B"}, "conflicts: " + join(c, " / ")),
+            expect(o.size() == 2 && o[0].covered == "B" && o[0].by == "A" && o[0].files == 1 && o[1].covered == "C" &&
+                       o[1].by == "A" && o[1].files == 2,
+                "overlaps: " + std::to_string(o.size()))});
     });
 
     // ---- At start ----

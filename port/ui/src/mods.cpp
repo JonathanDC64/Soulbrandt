@@ -108,7 +108,9 @@ bool backup_folder(const fs::path& dir) {
     return false;
 }
 
-constexpr const char* kNoGameFolders = "None of the game's folders (menu, param, parts...) are in it.";
+constexpr const char* kNoGameFolders =
+    "Nothing in it is laid out like the game's own files (folders such as menu or param), so the game wouldn't find "
+    "it.";
 
 // The folder in a mod folder that holds what USRDIR holds: a USRDIR within five levels (a PS3_GAME\USRDIR, or one
 // in a wrapper folder or a version's folder), else the shallowest folder that holds one of the game's folders. Backup
@@ -127,9 +129,9 @@ fs::path find_root(const fs::path& modFolder, Mod& m) {
         if (usr.size() > 1 || (usr.empty() && game.size() > 1)) {
             const std::vector<fs::path>& two = usr.size() > 1 ? usr : game;
             m.why = Problem::TwoCopies;
-            m.problem = "It has the game's folders in two places: " + utf8(two[0].lexically_relative(modFolder)) +
+            m.problem = "It holds two versions or options of the mod (" + utf8(two[0].lexically_relative(modFolder)) +
                         " and " + utf8(two[1].lexically_relative(modFolder)) +
-                        ". That is usually two versions or options of the mod in one download.";
+                        "), and the game can only use one.";
             return {};
         }
         if (!usr.empty()) return usr.front();
@@ -232,8 +234,8 @@ void walk(Mod& m) {
         if (top) {
             if (low == "eboot.bin") {
                 m.why = Problem::Program;
-                m.problem = "It has an EBOOT.BIN, the game's program. This version doesn't run that program: it runs "
-                            "its own, built from the game's, so a changed EBOOT.BIN has nothing to change here.";
+                m.problem = "It replaces the game's program (EBOOT.BIN). This PC version runs its own program "
+                            "instead, so a mod like this can't work here.";
                 continue;
             }
         }
@@ -254,11 +256,11 @@ void walk(Mod& m) {
     if (!m.usable()) return;
     if (m.files == 0) {
         m.why = Problem::Empty;
-        m.problem = "Its folders hold no files.";
+        m.problem = "There are no files in it.";
     } else if (!m.locked.empty()) {
         m.why = Problem::Locked;
-        m.problem = "Some of its files are locked, as the game's own files are on the disc. Setup unlocks the game's "
-                    "files when it installs them, but not a mod's, and the game can't read a locked file.";
+        m.problem = "Some of its files are locked, like the files on the game disc. Setup unlocks the game's own "
+                    "files, but not a mod's, so the game can't read these.";
     }
 }
 
@@ -308,23 +310,22 @@ const char* problem_label(Problem p) {
 const char* problem_advice(Problem p) {
     switch (p) {
     case Problem::None: return "";
-    case Problem::Name: return "Rename the folder without the '|', then press Look again.";
+    case Problem::Name: return "Rename the folder without the '|', then refresh the list.";
     case Problem::TwoCopies:
-        return "Keep the one you want here. Move the other out of this folder, or into a folder of its own beside "
-               "this one, where it becomes a mod of its own. Then press Look again.";
+        return "Keep the version you want in this folder. Move the other one out, or into a folder of its own next "
+               "to this one, and it becomes a separate mod. Then refresh the list.";
     case Problem::NoGameFiles:
-        return "The mod's notes should say where its files go. Lay them out that way in this folder, as they are "
-               "below PS3_GAME\\USRDIR on the disc, then press Look again.";
+        return "The mod's notes should say where its files go. Lay them out that way in this folder (as below "
+               "PS3_GAME\\USRDIR on the disc), then refresh the list.";
     case Problem::NotInPlace:
-        return "Press \"Put its files in place\" below. It moves them where the game reads them, inside this mod's "
-               "folder, and the mod can then be turned on.";
+        return "Select it to move its files into the right folders (inside this mod's folder). Then you can turn it "
+               "on.";
     case Problem::Program:
-        return "This one can't be used. If the mod also comes without an EBOOT.BIN, try that version.";
+        return "Nothing to do here. If the mod also comes without an EBOOT.BIN, try that version.";
     case Problem::TooManyFiles: return "Check that this folder holds one mod, not several or a copy of the game.";
-    case Problem::Empty: return "Put the mod's files in it, or remove the folder.";
+    case Problem::Empty: return "Put the mod's files in it, or delete the folder.";
     case Problem::Locked:
-        return "Use a copy of the mod whose files are not locked, if its page has one. Mods that ship their script "
-               "files unlocked work.";
+        return "Use a version of the mod whose files aren't locked, if its download page has one.";
     }
     return "";
 }
@@ -410,8 +411,7 @@ void plan(Mod& m) {
     }
     m.moves = std::move(moves);
     m.why = Problem::NotInPlace;
-    m.problem = "Its files are loose: they are not in the game's folders. The game's own files show where each one "
-                "goes.";
+    m.problem = "Its files aren't in the right folders yet, but the game's own files show where each one goes.";
 }
 
 std::string place(const Mod& m) {
@@ -447,7 +447,10 @@ std::vector<Mod> scan(const fs::path& modsFolder, const std::string& enabledList
     return out;
 }
 
-std::vector<std::string> conflicts(const std::vector<Mod>& mods, std::size_t max) {
+namespace {
+
+// Each game file the mods have (lowercase, below their roots), with the mods that have it, in the mods' order.
+std::map<std::string, std::vector<std::string>> owners_of(const std::vector<Mod>& mods) {
     std::map<std::string, std::vector<std::string>> owners;
     for (const Mod& m : mods) {
         if (m.root.empty()) continue;
@@ -466,8 +469,14 @@ std::vector<std::string> conflicts(const std::vector<Mod>& mods, std::size_t max
             owners[low].push_back(m.name);
         }
     }
+    return owners;
+}
+
+}  // namespace
+
+std::vector<std::string> conflicts(const std::vector<Mod>& mods, std::size_t max) {
     std::vector<std::string> out;
-    for (const auto& [file, names] : owners) {
+    for (const auto& [file, names] : owners_of(mods)) {
         if (names.size() < 2) continue;
         if (out.size() == max) {
             out.push_back("...");
@@ -475,6 +484,17 @@ std::vector<std::string> conflicts(const std::vector<Mod>& mods, std::size_t max
         }
         out.push_back(file + ": " + join(names, ", "));
     }
+    return out;
+}
+
+std::vector<Overlap> overlaps(const std::vector<Mod>& mods) {
+    std::map<std::pair<std::string, std::string>, std::size_t> count;   // (covered, by) -> files
+    for (const auto& [file, names] : owners_of(mods))
+        for (std::size_t k = 1; k < names.size(); ++k) ++count[{names[k], names[0]}];
+    std::vector<Overlap> out;
+    for (const Mod& m : mods)   // (in the mods' order)
+        for (const auto& [pair, files] : count)
+            if (pair.first == m.name) out.push_back({pair.first, pair.second, files});
     return out;
 }
 

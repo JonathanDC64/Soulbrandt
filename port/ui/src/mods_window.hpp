@@ -1,9 +1,13 @@
-// The Mods window (docs/143), opened from the menu bar and the start screen: one row per folder in the mods folder.
-// A mod that can be used is on or off; one that can't is listed under "Can't be turned on", its row saying why and
-// its help what to do. Below: the mods folder, this session's mods and online play.
+// The Mods window (docs/143), opened from the menu bar and the start screen. Made for players who have never used a
+// mod: a summary on top (how many are on, whether a restart is needed, whether this session is offline), two buttons
+// (open the mods folder, refresh the list), then one card per mod with a big check box and a sentence that says what
+// it changes. Folders the game can't use are listed after them under "Needs attention", each saying why and what to
+// do in plain words; a mod whose files only need moving is fixed by selecting it.
 #pragma once
 
 #include "window.hpp"
+
+#include <memory>
 
 namespace ui {
 
@@ -13,8 +17,15 @@ public:
 
     void update() override;
 
+    struct State;  // the mods folder as read, shared with the cards (mods_window.cpp)
+
 private:
     void build_tab(Rml::Element* content);
+    void render_summary();
+
+    std::shared_ptr<State> mState;
+    Rml::Element* mSummary = nullptr;
+    unsigned mSummaryShown = 0;
 };
 
 }  // namespace ui

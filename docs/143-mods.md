@@ -4,7 +4,20 @@ Players can put mods in a folder and turn each one on or off in the Mods window.
 place of its own. Nothing is copied into the game's files, so turning a mod off gives the game back as it was.
 
 **The Mods window** opens from the menu bar (F1, or the pad's menu buttons), beside Settings and Trophies, and from
-the start screen's Mods button. It has its own window because Settings has no room for another tab.
+the start screen's Mods button. It is made for players who have never used a mod, top to bottom:
+
+- **A summary:** how many mods are on, "Restart the game to use your changes" when the list differs from what this
+  session runs with, and "Playing offline" when a gameplay mod is on.
+- **Two buttons:** Open the mods folder, and Refresh the list (after you add, remove or rename a mod's folder).
+- **Your mods:** one card per mod, with a big check box, its name, a sentence on what it changes ("Changes how the
+  game looks or sounds", or "Changes how the game plays. You play offline while it's on.") and On or Off. Pressing
+  a card (Cross, Enter or a click) turns it on or off. A card that is on is drawn in the accent colour, and one that
+  differs from this session says "after a restart". When another mod that is on comes first and has some of the same
+  files, the card says so.
+- **Needs attention:** the folders the game can't use as they are (below), each saying what is wrong and what to do.
+- **Good to know:** a few lines on saves, online play, the order and big texture mods.
+
+Everything is in one list, so Up and Down reach it all with a pad.
 
 ## 1. The mods folder
 
@@ -19,24 +32,23 @@ the start screen's Mods button. It has its own window because Settings has no ro
   The game looks up to five folders deep for a `USRDIR`, else for the shallowest folder that holds one of the game's
   folders. Folders whose names start with `Original`, `Backup`, `Vanilla`, `Uninstall` or `Unmodded` are passed over:
   mods ship the game's own files in them to undo the mod. Two candidates at the same depth (two versions of the mod)
-  is a problem, and the help names both.
+  is a problem, and the card names both.
 - **Left out:** the mod's notes and pictures, wherever they are (`.txt`, `.md`, `.pdf`, `.jpg`...; the game has no
   file of those kinds), and what file managers leave (`desktop.ini`, `Thumbs.db`, `.DS_Store`, `__MACOSX`).
 - **Loose files.** Some mods ship their files without the game's folders: a lone `c0000.anibnd.dcx`, a
   `mapstudio\m01_00_00_00.msb`, drawparam files in a wrapper folder. The game's own files (in the game folder the
   game reads) say where each one goes: the file's name, and the folders it is in when two of the game's files share
-  the name. The row then reads "Not in place", its help lists where each file goes, and it offers **Put its files in
-  place**, which moves them inside the mod's folder and removes the folders left empty. A file the game doesn't have,
+  the name. The card is then listed under Needs attention with **Fix it**; pressing it moves the files inside the
+  mod's folder and removes the folders left empty, and the mod moves up to Your mods. A file the game doesn't have,
   or one that could go in more than one place (a font each language has, with no folder to tell which), stops this,
-  and the help names the file.
-- **Can't be turned on.** A folder the game can't read as it is goes in its own part of the list, below the mods
-  that can be turned on. Its row says why in a few words; its help (Enter, Cross or a click) says it in full and what
-  to do:
+  and the card names the file.
+- **Needs attention.** A folder the game can't use as it is goes in its own part of the list, below the mods that
+  can be turned on. Its card says what is wrong and what to do, and on the right:
 
-  | The row says | Why | What to do |
+  | The card says | Why | What to do |
   |---|---|---|
-  | Not in place | Loose files, and the game's own files show where each goes | Put its files in place |
-  | No game files | None of the game's folders, and its files can't be put in place (the help names the file) | Lay its files out as its notes say, as below `PS3_GAME\USRDIR` |
+  | Fix it | Loose files, and the game's own files show where each goes | Press it |
+  | No game files | None of the game's folders, and its files can't be put in place (the card names the file) | Lay its files out as its notes say, as below `PS3_GAME\USRDIR` |
   | Two versions | The game's folders in two places: usually two versions or options in one download | Keep one; move the other into a folder of its own, where it becomes a mod of its own |
   | Changes the program | An `EBOOT.BIN`. This version runs its own program, built from the game's, so a changed one has nothing to change | Nothing; a version of the mod without it may work |
   | Locked files | Files locked as on the PS3 (an `NPD` `.sdat` or `.edat`). Setup unlocks the game's own files, not a mod's | A copy of the mod with the files unlocked, if there is one |
@@ -46,14 +58,14 @@ the start screen's Mods button. It has its own window because Settings has no ro
 
 ## 2. On, off and the order
 
-- **New mods are off.** Turning one on takes effect the next time the game starts. A row whose value differs from this
-  session's is marked as changed until then.
+- **New mods are off.** Turning one on takes effect the next time the game starts. A card that differs from this
+  session says "after a restart" until then, and the summary says to restart.
 - **The setting:** `DES_MODS` in `settings.ini`, the names of the mods that are on, separated by `|`.
 - **The order:** the folders' names, A to Z. When two mods that are on have the same file, the one that comes first
   gives it. To change which one wins, rename the folders (`1 Textures`, `2 Fonts`).
-- **Same files:** when mods that are on share files, a "Same files" row lists them with the mods that have each one,
-  the winner first.
-- **Look again** reads the folder again after you add, remove or rename a mod.
+- **Same files:** when mods that are on share files, the card of each mod that loses some says which mod is higher in
+  the list and wins for those (`mods::overlaps`).
+- **Refresh the list** reads the folder again after you add, remove or rename a mod.
 
 ## 3. Mods and online play
 
@@ -79,7 +91,7 @@ know, including loose files beside the game's folders.
 - If Online is on in the settings, a notice says so at start: "Playing offline: gameplay mods are on", with the mods'
   names and how to play online again.
 - Settings > Network > Online says why in its help, and This session > Network reads "Off: gameplay mods are on".
-- Mods > This session > Online play says the same.
+- The Mods window's summary says "Playing offline", with the mods' names.
 
 **What this protects, and what it doesn't.** The check keeps honest players apart. It does not stop someone who edits
 the game's own files in place, or changes the program. That is the server's job: reports, bans and server-side checks.
@@ -122,17 +134,16 @@ the game's own files in place, or changes the program. That is the server's job:
 
 | Variable | What it does |
 |---|---|
-| `DES_MODS=<name>\|<name>` | The mods that are on, as the setting. Set in the environment, the Mods rows can't change it. |
+| `DES_MODS=<name>\|<name>` | The mods that are on, as the setting. Set in the environment, the Mods cards can't change it, and the summary says so. |
 | `DES_MODS_DIR=<folder>` | Another mods folder (a test's). |
 | `PS3_VFS_MODS=<folder>\|<folder>` | The mods' game-file folders, given directly. `DES_MODS` is then not read, and the Mods window says so. |
 | `PS3_FSLOG=1` | Logs every file the game opens, to see what a mod would need to replace. |
 | `DES_UI_OPEN=mods` | Opens the Mods window at start (for screenshots, with `DES_UI_KEYS` and `DES_UI_SHOT`). |
 
 `port/ui/tests/mods_check.cpp` (CI, Windows and Linux) checks the look and gameplay rules, where a mod's files are
-found, the unusable cases and their reasons (locked files among them), every reason's row text and advice, loose
-files planned and put in place (against a made-up game
-folder), the order, shared files and `PS3_VFS_MODS`. ps3recomp's
-`libs/filesystem/tests/test_vfs_path.c` checks the path parts the runtime uses.
+found, the unusable cases and their reasons (locked files among them), every reason's card text and advice, loose
+files planned and put in place (against a made-up game folder), the order, shared files and which mod covers which,
+and `PS3_VFS_MODS`. ps3recomp's `libs/filesystem/tests/test_vfs_path.c` checks the path parts the runtime uses.
 
 ## 7. Known limits
 
