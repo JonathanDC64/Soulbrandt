@@ -212,8 +212,9 @@ void controller_row(Pane& leftPane, Pane& rightPane) {
     });
     leftPane.register_control(button, rightPane,
         [key, current, is_current,
-            help = with_note(key, "The gamepad the game reads, when more than one is connected. Automatic: the "
-                                  "first one found.<br/><br/>(PAD_CONTROLLER)")](Pane& pane) {
+            help = with_note(key, "The gamepad the game and these menus read, when more than one is connected. "
+                                  "Automatic: the game reads the first one found, the menus all of them."
+                                  "<br/><br/>(PAD_CONTROLLER)")](Pane& pane) {
             for (const PadChoice& c : pad_choices(current())) {
                 pane.add_button({
                                     .text = c.label,

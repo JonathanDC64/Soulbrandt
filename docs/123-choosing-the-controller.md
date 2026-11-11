@@ -31,7 +31,10 @@ So with an Xbox pad and a DualSense both connected, the Xbox pad always played, 
   - a PlayStation pad over HID: "DualSense", "DualSense Edge" or "DualShock 4", with "(USB)", "(Bluetooth)" or "(wireless adapter)" (`pad_hid_sony_describe`);
   - an XInput pad: XInput has no product names, so Microsoft's pads (vendor 045E, from `XInputGetCapabilitiesEx`) are "Xbox controller" or "Xbox 360 controller", and the rest go by their subtype ("Wheel", "Arcade stick", ..., else "XInput controller"), with "(wireless)" when XInput says so (`pad_controller_xinput_label`);
   - off Windows, SDL's name for the controller.
-- **The menus** still take every pad.
+- **The menus** take every pad with Automatic, or while the chosen pad isn't connected. While it is connected, they take
+  only that one, as the game does (11-11, `pad_only` in `des_ui.cpp`). They know it is connected when it is the first
+  pad `cellPad_host_controller` lists, since the swap above puts it on port 0. So a second device that holds a button
+  nobody presses stays out of the menus too, once the player picks the other one.
 
 ## 3. The row (port)
 
