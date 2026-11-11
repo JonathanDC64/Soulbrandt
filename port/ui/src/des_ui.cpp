@@ -25,6 +25,7 @@
 #include "input.hpp"
 #include "keys.hpp"
 #include "menu_bar.hpp"
+#include "mods.hpp"
 #include "mouse.hpp"
 #include "net_notices.hpp"
 #include "osk_window.hpp"
@@ -43,6 +44,7 @@
 #include "setup_screens.hpp"
 #include "setup_window.hpp"
 #include "players_window.hpp"
+#include "mods_window.hpp"
 #include "trophies_window.hpp"
 #include "trophy_toasts.hpp"
 #include "ui.hpp"
@@ -83,6 +85,7 @@ void rsx_d3d12_overlay_wake(void);
 long long ps3_ms_since_frame(void);  // boot_main.cpp: since the game's last frame, -1 before the first
 unsigned ppu_boot_frames_presented(void);  // boot_main.cpp: the game's frames so far
 void ps3_setenv(const char* name, const char* value);  // boot_main.cpp: the debug console's setenv
+void ps3_net_lock_offline(void);  // ps3_net.h: the network stays off for the rest of the session, whatever is set
 int rsx_d3d12_borderless(void);
 void* rsx_d3d12_device(void);
 long rsx_d3d12_device_lost(long long* qpc);  // 0, or why the device was lost (GetDeviceRemovedReason)
@@ -178,6 +181,7 @@ std::atomic<unsigned long long> sWakeAt{0}, sWakeMark{0};
 std::atomic<bool> sWakeByUser{false};       // that wake was the player's (not the hang notice's)
 std::atomic<bool> sHangNotice{false};      // the watch thread asks frame for the hang notice
 std::atomic<bool> sCustomServerNotice{false};  // "Playing offline" is due (des_ui_early_init); frame shows it
+std::atomic<bool> sModsNotice{false};  // "Playing offline: gameplay mods are on" is due (des_ui_early_init)
 clock_type::time_point sHangNoticeUntil{};  // repaints stay on while it shows (the game draws no frames)
 int sReportCountdown = 0;     // "Report an issue": frames until the game's picture is taken (report.cpp)
 bool sInitFailed = false;
@@ -600,14 +604,15 @@ void push_documents() {
     ui::push_document(std::make_unique<ui::MenuBar>(), false);
     if (sStartScreen) ui::push_document(std::make_unique<ui::Prelaunch>());
 
-    // DES_UI_OPEN=menu | settings | trophies | players | privacy | osk | setup | setup-run: open one at startup (for
-    // screenshots and tests; privacy is the note as Settings > Network shows it).
+    // DES_UI_OPEN=menu | settings | trophies | mods | players | privacy | osk | setup | setup-run: open one at startup
+    // (for screenshots and tests; privacy is the note as Settings > Network shows it).
     // setup is setup's start screen over the game (docs/88: its own window comes with the split host), with
     // DES_SETUP_GAME's folders to begin with; setup-run runs the setup engine at once, on those folders.
     if (const char* open = std::getenv("DES_UI_OPEN"); open && *open) {
         if (!std::strcmp(open, "menu")) open_menu_bar();
         else if (!std::strcmp(open, "settings")) ui::push_document(std::make_unique<ui::SettingsWindow>());
         else if (!std::strcmp(open, "trophies")) ui::push_document(std::make_unique<ui::TrophiesWindow>());
+        else if (!std::strcmp(open, "mods")) ui::push_document(std::make_unique<ui::ModsWindow>());
         else if (!std::strcmp(open, "players")) ui::push_document(std::make_unique<ui::PlayersWindow>());
         else if (!std::strcmp(open, "privacy"))
             ui::push_document(std::make_unique<ui::PrivacyWindow>(ui::PrivacyWindow::Mode::Read));
@@ -758,6 +763,21 @@ void push_custom_server_notice() {
         .duration = kCustomServerNoticeDuration,
     });
     std::fprintf(stderr, "[ui] the custom server notice is up\n");
+}
+
+// "Playing offline": online play is on in the settings, and a mod that changes how the game plays is on (mods.hpp).
+void push_mods_notice() {
+    ui::push_toast({
+        .type = "warning",
+        .title = "Playing offline: gameplay mods are on",
+        .content = "These mods change how the game plays: " + ui::mods::gameplay_names() +
+                   ". Online play stays off while they are on. To play online, press F1 or " +
+                   ui::input::chord_label(ui::settings::get_int("pad_menu_chord")) +
+                   " for the menu, turn them off in Mods and restart the game. Mods that only change the look can "
+                   "stay on.",
+        .duration = kCustomServerNoticeDuration,
+    });
+    std::fprintf(stderr, "[ui] the gameplay mods notice is up\n");
 }
 
 // "Report saved": a report with no desktop to open it on (report::no_desktop): where it is, and what to do with it.
@@ -1019,7 +1039,8 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
         !sOpenPending && !sReportCountdown && !(prework && !sPreworkShown) && !privacy && !sCloseRequested.load() &&
         !sOskPending.load(std::memory_order_acquire) && !ui::trophies::pending() && !ui::net_notices::pending() &&
         !sHangNotice.load(std::memory_order_relaxed) &&
-        !sCustomServerNotice.load(std::memory_order_relaxed) && !ui::report::saved_notice_pending()) {
+        !sCustomServerNotice.load(std::memory_order_relaxed) && !sModsNotice.load(std::memory_order_relaxed) &&
+        !ui::report::saved_notice_pending()) {
         return;
     }
 
@@ -1034,6 +1055,7 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
         ui::trophies::discard();  // (the unlocks are saved; only the pop-ups are lost)
         sHangNotice.store(false);
         sCustomServerNotice.store(false);
+        sModsNotice.store(false);
         ui::report::take_saved_notice();  // (the zip and its link are saved; only the toast is lost)
         if (ui::privacy::asking()) ui::privacy::answer(false);  // (no way to ask: offline, and the start goes on)
         sActive = false;
@@ -1055,6 +1077,7 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
     }
     if (sHangNotice.exchange(false)) push_hang_notice();
     if (sCustomServerNotice.exchange(false)) push_custom_server_notice();
+    if (sModsNotice.exchange(false)) push_mods_notice();
     if (ui::report::saved_notice_pending()) push_report_saved_notice();
 
     if (privacy) {
@@ -1372,6 +1395,12 @@ extern "C" void des_ui_early_init(void) {
     ui::settings::load_and_apply_env();
     if (sSetupOnly) setup_only_env();
     if (!sSetupOnly && ui::settings::net_custom_held()) sCustomServerNotice.store(true);
+    // A gameplay mod (settings.cpp's apply_network left the network knobs unset): the network also stays off when
+    // something sets them later, the environment's or the debug console's included.
+    if (!sSetupOnly && ui::mods::gameplay_in_use()) {
+        ps3_net_lock_offline();
+        if (ui::settings::net_mods_held()) sModsNotice.store(true);
+    }
     parse_debug_knobs();
     sOpenPending = sSetupOnly || env_on("DES_UI_OPEN");
     sChordMask = ui::input::chord_mask(ui::settings::get_int("pad_menu_chord"));

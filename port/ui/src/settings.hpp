@@ -154,6 +154,8 @@ bool custom_chosen_here();
 bool choose_custom_here();  // true when it marked an address that was not chosen here before
 // apply_network left online off at start because the Custom server was not chosen on this PC (des_ui.cpp says so).
 bool net_custom_held();
+// apply_network left online off at start because a mod that changes how the game plays is on (des_ui.cpp says so).
+bool net_mods_held();
 // PS3_NET_HOSTS for an address: each of kNetHosts mapped to it, joined with "&&" (RPCS3's IP/Host switch form).
 std::string net_hosts(const std::string& address);
 // Where the install's sign-in key is kept (PS3_NET_KEY_FILE): beside settings.ini, so updates keep it. "" when no

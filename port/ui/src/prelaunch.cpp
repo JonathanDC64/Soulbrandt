@@ -7,6 +7,7 @@
 #include "host.hpp"
 #include "input.hpp"
 #include "modal.hpp"
+#include "mods_window.hpp"
 #include "settings.hpp"
 #include "settings_window.hpp"
 #include "trophies_window.hpp"
@@ -37,10 +38,10 @@ const Rml::String kDocumentSource = R"RML(
             </hero>
             <menu-list id="menu-list" />
         </menu>
-        <hint-info class="intro-item delay-5">
+        <hint-info class="intro-item delay-6">
             <hint-label id="hint-text" />
         </hint-info>
-        <version-info class="intro-item delay-6">
+        <version-info class="intro-item delay-7">
             <version-label>Version <version-number id="version-text"></version-number></version-label>
         </version-info>
     </content>
@@ -103,6 +104,13 @@ void Prelaunch::build_menu_buttons() {
     });
     apply_intro_animation(mMenuButtons.back()->root(), "delay-3");
 
+    mMenuButtons.push_back(std::make_unique<Button>(menuList, "Mods"));
+    mMenuButtons.back()->on_pressed([this] {
+        play_sound(kSoundWindowOpen);
+        push(std::make_unique<ModsWindow>());
+    });
+    apply_intro_animation(mMenuButtons.back()->root(), "delay-4");
+
     // Hidden until the update check finds a newer release (show_update).
     mUpdateIndex = mMenuButtons.size();
     mMenuButtons.push_back(std::make_unique<Button>(menuList, "Update"));
@@ -117,7 +125,7 @@ void Prelaunch::build_menu_buttons() {
 
     mMenuButtons.push_back(std::make_unique<Button>(menuList, "Quit"));
     mMenuButtons.back()->on_pressed([] { request_quit_confirm(); });
-    apply_intro_animation(mMenuButtons.back()->root(), "delay-4");
+    apply_intro_animation(mMenuButtons.back()->root(), "delay-5");
 }
 
 // Play: the game is already running behind this screen; hide it and hand over the input.

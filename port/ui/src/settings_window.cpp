@@ -848,6 +848,9 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
             Rml::String help;
             if (net_cheat_session()) {
                 help = "<status-badge class=\"warning\">Off this session: a developer cheat is on.</status-badge><br/>";
+            } else if (settings::net_mods_held()) {
+                help = "<status-badge class=\"warning\">Off this session: gameplay mods are on (see Mods, beside "
+                       "Settings in the menu).</status-badge><br/>";
             }
             pane.add_rml(help + with_note("DES_ONLINE",
                 "Plays online on the server below: messages, bloodstains, ghosts, co-op and invasions. Off plays "

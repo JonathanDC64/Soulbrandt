@@ -347,6 +347,14 @@ jobs:
           cmake --build build/host --target setup_folder_check
           build/host/ui/setup_folder_check.exe
 
+      # mods.cpp on its own (port/ui/tests/mods_check.cpp): mod folders found and sorted into look and gameplay mods,
+      # in made-up folders (docs/143). Linux runs it below.
+      - name: Mods
+        shell: bash
+        run: |
+          cmake --build build/host --target mods_check
+          build/host/ui/mods_check.exe
+
       # The Discord status's connection on its own (port/ui/tests/discord_check.cpp): frames, JSON, and an exchange
       # with a stand-in for Discord on a pipe of the test's own (docs/137). Linux runs it below on a Unix socket.
       - name: The Discord status's connection
@@ -837,6 +845,12 @@ jobs:
         run: |
           cmake --build build/host --target setup_folder_check
           build/host/ui/setup_folder_check
+
+      # Mods, as on Windows above: names as they are (a case-sensitive file system).
+      - name: Mods
+        run: |
+          cmake --build build/host --target mods_check
+          build/host/ui/mods_check
 
       # The Discord status's connection, as on Windows above: on a Unix socket.
       - name: The Discord status's connection

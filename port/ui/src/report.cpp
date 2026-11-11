@@ -4,6 +4,7 @@
 
 #include "crc32.hpp"
 #include "host.hpp"
+#include "mods.hpp"
 #include "portable.hpp"
 #include "settings.hpp"
 #include "setup_engine.hpp"  // (setup::disc_summary: what setup found of the disc copy)
@@ -1195,6 +1196,9 @@ std::string system_info() {
     o << "ps3recomp: " << kPs3recompVersion << "\n";
     o << "Game dump (EBOOT.ELF SHA-256): " << (*kDumpSha256 ? kDumpSha256 : "unknown") << "\n";
     o << "Disc copy: " << setup::disc_summary() << "\n";  // (setup/disc_check.txt: its files are in the zip)
+    // The mods in use (mods.hpp), as the game found them at start; the crash dialog's process reads none itself (its
+    // environment's PS3_VFS_MODS, below, names them).
+    if (game_process) o << "Mods: " << mods::summary() << "\n";
     // The renderer that runs (the runtime's route switch, rsx_out.h), with why it is D3D12 when Vulkan was asked for.
     // None in a process that never started one (the crash dialog takes the game's from its report: renderer line).
     {

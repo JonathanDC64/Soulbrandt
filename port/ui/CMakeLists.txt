@@ -148,7 +148,7 @@ add_dependencies(des_ui des_version)
 # environments in, the environment the runtime reads out, the Renderer row's included (docs/120). With the same
 # definitions as des_ui's settings.cpp (DES_RSX_VULKAN among them: port/CMakeLists.txt). Built on demand:
 #   cmake --build <build> --target settings_check, then settings_check --row (or --no-row, without the row)
-add_executable(settings_check EXCLUDE_FROM_ALL tests/settings_check.cpp src/settings.cpp)
+add_executable(settings_check EXCLUDE_FROM_ALL tests/settings_check.cpp src/settings.cpp src/mods.cpp)
 target_include_directories(settings_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${DES_VERSION_DIR})
 target_compile_definitions(settings_check PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
 if(DES_DEV)
@@ -173,6 +173,17 @@ target_include_directories(setup_folder_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR
 target_compile_definitions(setup_folder_check PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
 if(MSVC)
   target_compile_options(setup_folder_check PRIVATE /EHsc /W3 /wd4100)
+endif()
+
+# mods.cpp on its own (tests/mods_check.cpp): mod folders found, read and sorted into look and gameplay mods, and
+# PS3_VFS_MODS from the mods that are on (docs/143), in made-up folders under the system's temporary folder. The same
+# on every platform; CI runs it on both (host.yml). Built on demand:
+#   cmake --build <build> --target mods_check, then mods_check
+add_executable(mods_check EXCLUDE_FROM_ALL tests/mods_check.cpp src/mods.cpp)
+target_include_directories(mods_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_definitions(mods_check PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
+if(MSVC)
+  target_compile_options(mods_check PRIVATE /EHsc /W3)
 endif()
 
 # The button page on its own (tests/button_icons_check.cpp): the font files read, a page decoded and drawn again for
