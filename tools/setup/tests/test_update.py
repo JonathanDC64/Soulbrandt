@@ -8,11 +8,13 @@ import http.server
 import io
 import json
 import os
+import ssl
 import sys
 import tarfile
 import tempfile
 import threading
 import unittest
+import urllib.error
 import zipfile
 from pathlib import Path
 from unittest import mock
@@ -113,6 +115,40 @@ class _Server(http.server.BaseHTTPRequestHandler):
 
     def log_message(self, *a):
         pass
+
+
+class CertificateTest(unittest.TestCase):
+    """#493: Python's check refusing GitHub's certificate. On Windows the update check and the release's small files go
+    through Windows' own curl (fetch.py says why); with no such curl it is "no connection", as before."""
+
+    def test_through_windows_curl(self):
+        if not fetch.windows_curl():
+            self.skipTest("no Windows curl here")
+        srv = http.server.HTTPServer(("127.0.0.1", 0), _Server)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        base = f"http://127.0.0.1:{srv.server_address[1]}"
+        err = urllib.error.URLError(ssl.SSLCertVerificationError(1, "unable to get local issuer certificate"))
+
+        def refuse(*a, **k):
+            raise err
+
+        _Server.files = {"feed.json": json.dumps([release("v0.2.0")]).encode(), "SHA256SUMS": b"abc  a.zip\n"}
+        try:
+            with mock.patch.object(update.urllib.request, "urlopen", refuse), \
+                    mock.patch.dict(os.environ, {"DES_UPDATE_FEED": base + "/feed.json"}):
+                self.assertEqual(update.read_feed()[0]["tag_name"], "v0.2.0")
+                self.assertEqual(update._small(base + "/SHA256SUMS", True, "checksums"), b"abc  a.zip\n")
+                with mock.patch.dict(os.environ, {"DES_UPDATE_FEED": base + "/missing.json"}):
+                    with self.assertRaisesRegex(update.UpdateFailed, "HTTP 404"):
+                        update.read_feed()
+                with mock.patch.object(fetch, "windows_curl", lambda: None):
+                    with self.assertRaisesRegex(update.UpdateFailed, "no connection"):
+                        update.read_feed()
+                    with self.assertRaises(update.UpdateFailed):
+                        update._small(base + "/SHA256SUMS", True, "checksums")
+        finally:
+            srv.shutdown()
+            srv.server_close()
 
 
 def make_package(version, files) -> bytes:

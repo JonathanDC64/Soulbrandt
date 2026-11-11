@@ -8,13 +8,16 @@ import io
 import json
 import os
 import re
+import ssl
 import sys
 import tarfile
 import tempfile
 import threading
 import unittest
+import urllib.error
 import zipfile
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from des_setup import fetch, gamefiles, journal, sfo  # noqa: E402
@@ -478,6 +481,62 @@ class FetchTest(unittest.TestCase):
                 self.assertEqual(fetch.fetch(e, d, allow_http=True).read_bytes(), blob)
             finally:
                 _Handler.ignore_range = False
+
+    def test_certificate_refused_goes_through_windows_curl(self):
+        """Python's check refusing the server's certificate (#493): on Windows the download goes through Windows' own
+        curl, from where a stopped try left off and checked by size and SHA-256 as always; with no such curl it
+        stops as before. Other failures never take that way."""
+        err = urllib.error.URLError(ssl.SSLCertVerificationError(1, "unable to get local issuer certificate"))
+        self.assertTrue(fetch.cert_failed(err))
+        self.assertFalse(fetch.cert_failed(urllib.error.URLError(TimeoutError("timed out"))))
+        self.assertFalse(fetch.cert_failed(ConnectionResetError()))
+
+        def refuse(*a, **k):
+            raise err
+
+        blob = _zip([("a.txt", b"c" * 70000)])
+        with mock.patch.object(fetch.urllib.request, "urlopen", refuse):
+            with tempfile.TemporaryDirectory() as d, mock.patch.object(fetch, "windows_curl", lambda: None):
+                with self.assertRaisesRegex(fetch.FetchError, "local issuer certificate"):
+                    fetch.fetch(self.entry(blob), d, allow_http=True)
+            if not fetch.windows_curl():
+                self.skipTest("no Windows curl here")
+            with tempfile.TemporaryDirectory() as d:
+                notes, seen = [], []
+                e = self.entry(blob)
+                got = fetch.fetch(e, d, lambda done, size: seen.append(done), allow_http=True, note=notes.append)
+                self.assertEqual(got.read_bytes(), blob)
+                self.assertEqual(len(notes), 1)
+                self.assertIn("Windows' own curl", notes[0])
+                self.assertEqual(seen[-1], len(blob))
+            with tempfile.TemporaryDirectory() as d:   # a stopped try's .part, carried on from
+                e = self.entry(blob)
+                part = fetch.archive_path(e, Path(d))
+                part.with_name(part.name + ".part").write_bytes(blob[:1000])
+                self.assertEqual(fetch.fetch(e, d, allow_http=True).read_bytes(), blob)
+            with tempfile.TemporaryDirectory() as d:   # ...or started over, when the server ignores the range
+                e = self.entry(blob)
+                part = fetch.archive_path(e, Path(d))
+                part.with_name(part.name + ".part").write_bytes(blob[:1000])
+                _Handler.ignore_range = True
+                try:
+                    self.assertEqual(fetch.fetch(e, d, allow_http=True).read_bytes(), blob)
+                finally:
+                    _Handler.ignore_range = False
+            with tempfile.TemporaryDirectory() as d:   # the checksum still decides
+                with self.assertRaises(fetch.FetchError):
+                    fetch.fetch(self.entry(blob, sha256="0" * 64), d, allow_http=True)
+                self.assertEqual(os.listdir(d), [])
+
+    def test_curl_get(self):
+        if not fetch.windows_curl():
+            self.skipTest("no Windows curl here")
+        blob = b"hello"
+        self.entry(blob)
+        status, body, headers = fetch.curl_get(self.url, {"Accept": "text/plain"}, 10, allow_http=True)
+        self.assertEqual((status, body, headers.get("content-length")), (200, blob, "5"))
+        with self.assertRaises(OSError):   # http:// only for 127.0.0.1, and only with allow_http
+            fetch.curl_get(self.url, None, 10)
 
     def test_bad_sum_is_deleted(self):
         blob = _zip([("a.txt", b"z")])

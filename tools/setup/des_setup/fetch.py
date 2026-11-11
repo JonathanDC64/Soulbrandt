@@ -8,6 +8,9 @@ Archives (.zip, and on Linux .tar.xz and .tar.gz, docs/87) are unpacked into a
 folder of their own, refusing any entry that would land outside it and any
 link.
 
+On Windows, when Python's own check of a server's certificate fails, the
+download goes through Windows' own curl.exe instead (windows_curl, below).
+
 Nothing is installed: everything stays in setup's data folder.
 """
 import hashlib
@@ -15,7 +18,10 @@ import json
 import os
 import posixpath
 import shutil
+import ssl
+import subprocess
 import tarfile
+import tempfile
 import urllib.request
 import zipfile
 from pathlib import Path, PurePosixPath
@@ -26,6 +32,107 @@ CHUNK = 1 << 20
 
 class FetchError(RuntimeError):
     pass
+
+
+# ---- Windows' own TLS, for a server whose certificate Python's check doesn't accept ----
+#
+# On Windows, Python checks a server's certificate against the root certificates it copies from Windows' store. But
+# Windows adds a root to its store only when its own check first needs it (it fetches the root from Windows Update).
+# So on a PC where nothing Windows runs has needed that root yet, Python's check fails with "unable to get local
+# issuer certificate", where Windows' own check would pass (issue #493: the compiler's download, and the update check,
+# on a PC where Windows' curl had just downloaded Python). Windows' own curl.exe (Windows 10 1803 and later) checks
+# with Windows' TLS, as the host's Python download does (port/ui/src/setup_python.cpp), so setup downloads through it
+# then. The certificate is still checked, and a download still has to match its size and SHA-256.
+
+def cert_failed(err) -> bool:
+    """True for a failure of Python's check of a server's certificate (urllib wraps it in a URLError)."""
+    return any(isinstance(x, ssl.SSLCertVerificationError) for x in (err, getattr(err, "reason", None)))
+
+
+def windows_curl():
+    """Windows' own curl.exe, by full path from the System folder (never a copy PATH would find first), or None: off
+    Windows, without it, or with DES_SETUP_NO_SYSTEM_TOOLS=1 (as the host's Python download has it)."""
+    if os.name != "nt" or os.environ.get("DES_SETUP_NO_SYSTEM_TOOLS") == "1":
+        return None
+    import ctypes
+    buf = ctypes.create_unicode_buffer(260)
+    n = ctypes.windll.kernel32.GetSystemDirectoryW(buf, len(buf))
+    p = Path(buf.value) / "curl.exe" if 0 < n < len(buf) else None
+    return p if p and p.is_file() else None
+
+
+def _curl_args(curl, url, timeout, allow_http) -> list:
+    """The host's own curl options (setup_python.cpp): -q first, so no curlrc of the player's changes what it does;
+    https only (and the tests' http://127.0.0.1); no meter, only what went wrong; a stalled try ends after `timeout`
+    seconds, as urllib's does."""
+    proto = "=http,https" if allow_http and url.startswith("http://127.0.0.1") else "=https"
+    t = str(max(1, int(timeout)))
+    return [str(curl), "-q", "--location", "--proto", proto, "--proto-redir", proto, "--tlsv1.2", "--silent",
+            "--show-error", "--connect-timeout", t, "--speed-limit", "1", "--speed-time", t, "--user-agent",
+            "des-setup"]
+
+
+def _run_curl(args, watch=None):
+    """curl to its end, with no window; watch() about four times a second meanwhile. (exit code, stdout, curl's own
+    error text)."""
+    with subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)) as p:
+        while True:
+            try:
+                out, err = p.communicate(timeout=0.25)
+                break
+            except subprocess.TimeoutExpired:
+                if watch:
+                    watch()
+    return p.returncode, out, err.decode("utf-8", "replace").strip()
+
+
+def curl_get(url, headers=None, timeout=60, allow_http=False):
+    """A small GET through Windows' own curl: (HTTP status, body, the last answer's headers with lower-case names).
+    headers: name -> value, sent as they are. Raises OSError when there is no curl or the request does not finish."""
+    curl = windows_curl()
+    if not curl:
+        raise OSError("Windows' own curl.exe is not there")
+    with tempfile.TemporaryDirectory(prefix="des-curl-") as tmp:
+        body, head = Path(tmp) / "body", Path(tmp) / "head"
+        args = _curl_args(curl, url, timeout, allow_http)
+        for k, v in (headers or {}).items():
+            args += ["--header", f"{k}: {v}"]
+        args += ["-o", str(body), "-D", str(head), "-w", "%{http_code}", url]
+        rc, out, err = _run_curl(args)
+        if rc != 0:
+            raise OSError(f"curl exit {rc}" + (f": {err}" if err else ""))
+        got = {}
+        for line in (head.read_text("latin-1") if head.is_file() else "").splitlines():
+            if line.startswith("HTTP/"):   # (each answer's block in turn, redirects first: the last one counts)
+                got = {}
+            elif ":" in line:
+                k, v = line.split(":", 1)
+                got[k.strip().lower()] = v.strip()
+        code = out.decode("ascii", "replace").strip()
+        return int(code) if code.isdigit() else 0, body.read_bytes() if body.is_file() else b"", got
+
+
+def _curl_fetch(curl, e: dict, part: Path, progress, timeout, allow_http):
+    """Entry e's download through Windows' own curl into its .part file, carrying on from what is there (-C -), the
+    bar from the file's size (as setup_python.cpp does)."""
+    size = e["size"]
+
+    def watch():
+        if progress and part.is_file():
+            progress(min(part.stat().st_size, size), size)
+
+    for again in (False, True):
+        rc, _, err = _run_curl(_curl_args(curl, e["url"], timeout, allow_http) +
+                               ["--fail", "-C", "-", "-o", str(part), e["url"]], watch)
+        watch()
+        if rc == 0:
+            return
+        if rc == 33 and not again:   # (curl's "cannot resume": the server ignored the range; start over once)
+            part.unlink(missing_ok=True)
+            continue
+        raise FetchError(f"{e['name']}: the download through Windows' curl stopped (curl exit {rc}"
+                         + (f": {err}" if err else "") + "); it resumes next time")
 
 
 def load_manifest(path=None) -> dict:
@@ -65,9 +172,10 @@ def archive_path(e: dict, cache: Path) -> Path:
     return Path(cache) / f"{e['name']}-{e['version']}{suffix(e['url'])}"
 
 
-def fetch(e: dict, cache, progress=None, allow_http=False, timeout=60) -> Path:
+def fetch(e: dict, cache, progress=None, allow_http=False, timeout=60, note=None) -> Path:
     """Download entry `e` into `cache` (or reuse a matching copy) and return its path.
-    progress(done, total) is called as bytes arrive."""
+    progress(done, total) is called as bytes arrive. note(line): a line for setup's log, when the download goes
+    through Windows' own curl."""
     _check_entry(e, allow_http)
     cache = Path(cache)
     cache.mkdir(parents=True, exist_ok=True)
@@ -101,8 +209,15 @@ def fetch(e: dict, cache, progress=None, allow_http=False, timeout=60) -> Path:
                         if progress:
                             progress(done, e["size"])
         except OSError as err:
-            raise FetchError(f"{e['name']}: the download stopped ({err}); it resumes next time") from err
-    if part.stat().st_size != e["size"]:
+            curl = windows_curl() if cert_failed(err) else None
+            if not curl:
+                raise FetchError(f"{e['name']}: the download stopped ({err}); it resumes next time") from err
+            if note:
+                note(f"note {e['name']}: Python's check did not accept the server's certificate "
+                     f"({getattr(err, 'reason', err)}); downloading through Windows' own curl, which checks it as "
+                     "Windows does")
+            _curl_fetch(curl, e, part, progress, timeout, allow_http)
+    if not part.is_file() or part.stat().st_size != e["size"]:
         raise FetchError(f"{e['name']}: the download is incomplete; it resumes next time")
     got = _sha256(part)
     if got != e["sha256"]:
@@ -193,14 +308,14 @@ def unpacked(e: dict, tools) -> bool:
     return stamp.is_file() and stamp.read_text().strip() == e.get("sha256")
 
 
-def ensure(e: dict, cache, tools, progress=None, allow_http=False) -> Path:
+def ensure(e: dict, cache, tools, progress=None, allow_http=False, note=None) -> Path:
     """The tool unpacked in tools/<name>-<version>, fetched first if needed.
-    A stamp file records the SHA-256 it was unpacked from."""
+    A stamp file records the SHA-256 it was unpacked from. note: as fetch's."""
     dest = Path(tools) / f"{e['name']}-{e['version']}"
     stamp = dest / ".des-setup-sha256"
     if unpacked(e, tools):
         return dest
-    a = fetch(e, cache, progress, allow_http)
+    a = fetch(e, cache, progress, allow_http, note=note)
     if not a.name.lower().endswith((".zip",) + TARS):
         raise FetchError(f"{e['name']}: only .zip, .tar.xz and .tar.gz archives can be unpacked")
     unpack(a, dest)
