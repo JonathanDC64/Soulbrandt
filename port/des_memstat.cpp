@@ -37,9 +37,9 @@
  * A block that lives less than a millisecond can be missed, so a peak here can
  * be a little under the true one.
  *
- * DES_MEMSTAT=1        on. Off by default: no thread and nothing read, until a
- *                      game error, which still gets one table (each heap's use
- *                      at that moment), so a report shows which heap was full
+ * DES_MEMSTAT=1        on. Off by default: no thread and nothing read, until the
+ *                      first game error, which still gets one table (each heap's
+ *                      use at that moment), so a report shows which heap was full
  * DES_MEMSTAT_EVERY=s  the table every s seconds (default 60; 0: only on game errors)
  */
 #include "ps3emu/ppu_lift.h"
@@ -191,11 +191,17 @@ void run(int every)
 }  // namespace
 
 /* The table now, for the game's error report (des_options.cpp): a full heap ends in one. With DES_MEMSTAT off it is
- * one read at that moment (no thread ran, so no peaks), so a player's report still shows which heap was full. */
+ * one read at that moment (no thread ran, so no peaks), at the first game error only (the log gets up to 32 of
+ * them), so a player's report still shows which heap was full. */
 extern "C" void des_memstat_report(const char* why)
 {
     std::lock_guard<std::mutex> lk(s_mtx);
-    if (!s_on && !s_heaps[0].global) set_globals();
+    if (!s_on) {
+        static bool s_told = false;
+        if (s_told) return;
+        s_told = true;
+        set_globals();
+    }
     sample(!s_on);
     table(why, !s_on);
 }

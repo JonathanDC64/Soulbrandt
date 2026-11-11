@@ -165,7 +165,7 @@ extern "C" void des_aspect_poll(void);         /* des_aspect.cpp: their live cha
 extern "C" void des_hud_init(void);            /* des_hud.cpp: DES_HUD_SIZE, the corners, hidden groups */
 extern "C" void des_luaheap_init(void);        /* des_luaheap.cpp: room for Lua when its heap is full */
 extern "C" void des_memstat_init(void);        /* des_memstat.cpp: DES_MEMSTAT, how full the game's heaps get */
-extern "C" void des_memstat_report(const char* why);   /* des_memstat.cpp: its table now (when on) */
+extern "C" void des_memstat_report(const char* why);   /* des_memstat.cpp: its table now (off: the first time only) */
 extern "C" void des_route_init(void);         /* des_route.cpp: DES_ROUTE */
 extern "C" void des_route_on_flip(void);       /* des_route.cpp: its game clock and steps */
 extern "C" void des_route_on_open(const char* path);   /* des_route.cpp: a level's script opening (continue) */
