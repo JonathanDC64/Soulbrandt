@@ -133,7 +133,7 @@ int main() {
         write(t / "A" / "preview.jpg");
         write(t / "A" / "desktop.ini");
         const Mod m = read(t / "A");
-        return all({expect(m.problem.empty(), "problem: " + m.problem), expect(m.root == t / "A", "root " + utf8(m.root)),
+        return all({expect(m.usable(), "problem: " + m.problem), expect(m.root == t / "A", "root " + utf8(m.root)),
             expect(m.files == 2, "files " + std::to_string(m.files)), expect(m.kind == Kind::Look, "not look only"),
             expect(m.areas == std::vector<std::string>{"menu", "msg"}, "areas " + join(m.areas, ","))});
     });
@@ -142,7 +142,7 @@ int main() {
         write(t / "A" / "Some Mod v1.2" / "map" / "m01_00_00_00" / "m.flver");
         write(t / "A" / "Install.txt");
         const Mod m = read(t / "A");
-        return all({expect(m.problem.empty(), "problem: " + m.problem),
+        return all({expect(m.usable(), "problem: " + m.problem),
             expect(m.root == t / "A" / "Some Mod v1.2", "root " + utf8(m.root)),
             expect(m.files == 2, "files " + std::to_string(m.files)), expect(m.kind == Kind::Look, "not look only")});
     });
@@ -150,7 +150,7 @@ int main() {
         write(t / "A" / "PS3_GAME" / "USRDIR" / "param" / "gameparam" / "gameparamna.parambnd.dcx");
         write(t / "A" / "PS3_GAME" / "USRDIR" / "menu" / "m.tpf");
         const Mod m = read(t / "A");
-        return all({expect(m.problem.empty(), "problem: " + m.problem),
+        return all({expect(m.usable(), "problem: " + m.problem),
             expect(m.root == t / "A" / "PS3_GAME" / "USRDIR", "root " + utf8(m.root)),
             expect(m.kind == Kind::Gameplay, "not gameplay"),
             expect(m.gameplay == std::vector<std::string>{"param/gameparam/gameparamna.parambnd.dcx"},
@@ -159,7 +159,7 @@ int main() {
     run("usrdir_any_case", [](const fs::path& t) {
         write(t / "A" / "BLUS30443" / "usrdir" / "sfx" / "x.ffxbnd");
         const Mod m = read(t / "A");
-        return all({expect(m.problem.empty(), "problem: " + m.problem),
+        return all({expect(m.usable(), "problem: " + m.problem),
             expect(m.root == t / "A" / "BLUS30443" / "usrdir", "root " + utf8(m.root))});
     });
     run("deep_with_backup", [](const fs::path& t) {   // (a version's folder, and the game's files to undo it)
@@ -167,7 +167,7 @@ int main() {
         write(t / "A" / "Other Mod 1.0" / "Original" / "PS3_GAME" / "USRDIR" / "font" / "eu" / "f.tpf.dcx");
         write(t / "A" / "Other Mod 1.0" / "Backup files" / "menu" / "m.tpf");
         const Mod m = read(t / "A");
-        return all({expect(m.problem.empty(), "problem: " + m.problem),
+        return all({expect(m.usable(), "problem: " + m.problem),
             expect(m.root == t / "A" / "Other Mod 1.0" / "Modded" / "PS3_GAME" / "USRDIR", "root " + utf8(m.root)),
             expect(m.files == 1, "files " + std::to_string(m.files))});
     });
@@ -175,7 +175,7 @@ int main() {
         const fs::path dir = t / from_utf8("Texturas \xc3\xa9picas \xe6\x97\xa5\xe6\x9c\xac");
         write(dir / "menu" / "m.tpf");
         const Mod m = read(dir);
-        return all({expect(m.problem.empty(), "problem: " + m.problem),
+        return all({expect(m.usable(), "problem: " + m.problem),
             expect(m.name == "Texturas \xc3\xa9picas \xe6\x97\xa5\xe6\x9c\xac", "name " + m.name),
             expect(m.files == 1, "files " + std::to_string(m.files))});
     });
@@ -185,33 +185,46 @@ int main() {
         write(t / "A" / "EBOOT.BIN");
         write(t / "A" / "menu" / "m.tpf");
         const Mod m = read(t / "A");
-        return expect(m.problem.find("EBOOT.BIN") != std::string::npos, "no EBOOT.BIN problem: " + m.problem);
+        return expect(m.why == Problem::Program && m.problem.find("EBOOT.BIN") != std::string::npos,
+            "no EBOOT.BIN problem: " + m.problem);
     });
     run("two_copies", [](const fs::path& t) {
         write(t / "A" / "v1" / "menu" / "m.tpf");
         write(t / "A" / "v2" / "menu" / "m.tpf");
         const Mod m = read(t / "A");
-        return all({expect(m.problem.find("v1") != std::string::npos && m.problem.find("v2") != std::string::npos,
+        return all({expect(m.why == Problem::TwoCopies && m.problem.find("v1") != std::string::npos &&
+                            m.problem.find("v2") != std::string::npos,
                         "the copies not named: " + m.problem),
             expect(m.root.empty(), "a root: " + utf8(m.root))});
     });
     run("no_game_files", [](const fs::path& t) {
         write(t / "A" / "textures" / "x.dds");
         const Mod m = read(t / "A");
-        return all({expect(!m.problem.empty(), "no problem"), expect(m.root.empty(), "a root: " + utf8(m.root))});
+        return all({expect(m.why == Problem::NoGameFiles && m.loose, "problem: " + m.problem),
+            expect(m.root.empty(), "a root: " + utf8(m.root))});
     });
     run("empty_folders", [](const fs::path& t) {
         fs::create_directories(t / "A" / "menu");
         const Mod m = read(t / "A");
-        return expect(m.problem == "It has no files.", "problem: " + m.problem);
+        return expect(m.why == Problem::Empty, "problem: " + m.problem);
     });
     run("locked", [](const fs::path& t) {   // (an NPD container, as the game's .sdat files are; a plain one is fine)
         write(t / "A" / "script" / "m01.luabnd.dcx.sdat", std::string("NPD\0\0\0\0\3", 8));
         write(t / "B" / "script" / "m01.luabnd.dcx.sdat", std::string("DCX\0\0\1\0\0", 8));
         const Mod a = read(t / "A"), b = read(t / "B");
-        return all({expect(a.problem.find("locked") != std::string::npos, "A: " + a.problem),
+        return all({expect(a.why == Problem::Locked && a.problem.find("locked") != std::string::npos,
+                        "A: " + a.problem),
             expect(a.locked == std::vector<std::string>{"script/m01.luabnd.dcx.sdat"}, "A locked " + join(a.locked, ",")),
-            expect(b.problem.empty() && b.locked.empty(), "B: " + b.problem)});
+            expect(b.usable() && b.locked.empty(), "B: " + b.problem)});
+    });
+
+    run("problem_words", [](const fs::path&) {
+        std::string bad;
+        for (Problem p : {Problem::Name, Problem::TwoCopies, Problem::NoGameFiles, Problem::NotInPlace, Problem::Program,
+                 Problem::TooManyFiles, Problem::Empty, Problem::Locked})
+            if (!*problem_label(p) || !*problem_advice(p)) bad += std::to_string(int(p)) + " ";
+        return all({expect(bad.empty(), "no label or advice: " + bad),
+            expect(!*problem_label(Problem::None) && Mod{}.usable(), "a new Mod is not usable")});
     });
 
     // ---- Loose files: where the game's own files say they go ----
@@ -237,7 +250,9 @@ int main() {
         const auto one = [](const Mod& m, const char* from, const char* to) {
             return m.moves.size() == 1 && m.moves[0].from == from && m.moves[0].to == to;
         };
-        return all({expect(a.loose && one(a, "Wrap 1.0/c0000.anibnd.dcx", "chr/c0000/c0000.anibnd.dcx"), "A: " + a.problem),
+        return all({expect(a.loose && a.why == Problem::NotInPlace &&
+                               one(a, "Wrap 1.0/c0000.anibnd.dcx", "chr/c0000/c0000.anibnd.dcx"),
+                        "A: " + a.problem),
             expect(one(b, "mapstudio/m01_00_00_00.msb", "map/mapstudio/m01_00_00_00.msb"), "B: " + b.problem),
             expect(one(c, "Fix/a01_drawparam.parambnd.dcx", "param/drawparam/a01_drawparam.parambnd.dcx"), "C: " + c.problem)});
     });
@@ -253,10 +268,15 @@ int main() {
         Mod d = read(t / "C");
         ps3_setenv("PS3_VFS_ROOT", "");
         plan(d);   // (no game folder known)
-        return all({expect(a.moves.empty() && a.problem.find("more than one place") != std::string::npos, "A: " + a.problem),
-            expect(b.moves.size() == 1 && b.moves[0].to == "font/na_english/dsfont24.tpf.dcx", "B: " + b.problem),
+        return all({expect(a.moves.empty() && a.why == Problem::NoGameFiles &&
+                               a.problem.find("more than one place") != std::string::npos,
+                        "A: " + a.problem),
+            expect(b.moves.size() == 1 && b.why == Problem::NotInPlace &&
+                       b.moves[0].to == "font/na_english/dsfont24.tpf.dcx",
+                "B: " + b.problem),
             expect(c.moves.empty() && c.problem.find("not one of the game's files") != std::string::npos, "C: " + c.problem),
-            expect(d.moves.empty() && d.problem.find("No game files found") == 0, "D: " + d.problem)});
+            expect(d.moves.empty() && d.why == Problem::NoGameFiles && d.problem.find("None of the game's folders") == 0,
+                "D: " + d.problem)});
     });
     run("place", [&game](const fs::path& t) {
         game(t);
@@ -272,15 +292,15 @@ int main() {
             expect(fs::exists(t / "A" / "chr" / "c0000" / "c0000.anibnd.dcx"), "A's file not moved"),
             expect(fs::exists(t / "A" / "Wrap 1.0" / "readme.txt"), "A's notes went"),
             expect(!fs::exists(t / "B" / "mapstudio"), "B's emptied folder stayed"),
-            expect(a2.problem.empty() && a2.root == t / "A" && a2.kind == Kind::Gameplay && a2.files == 1,
+            expect(a2.usable() && a2.root == t / "A" && a2.kind == Kind::Gameplay && a2.files == 1,
                 "A after: " + a2.problem + ", " + std::to_string(a2.files) + " files"),
-            expect(b2.problem.empty() && b2.files == 1, "B after: " + b2.problem)});
+            expect(b2.usable() && b2.files == 1, "B after: " + b2.problem)});
     });
 #ifndef _WIN32
     run("bar_in_name", [](const fs::path& t) {   // (Windows names can't have one)
         write(t / "A|B" / "menu" / "m.tpf");
         const Mod m = read(t / "A|B");
-        return expect(m.problem.find('|') != std::string::npos, "no problem with the '|': " + m.problem);
+        return expect(m.why == Problem::Name && m.problem.find('|') != std::string::npos, "no problem with the '|': " + m.problem);
     });
 #endif
 

@@ -108,11 +108,13 @@ bool backup_folder(const fs::path& dir) {
     return false;
 }
 
+constexpr const char* kNoGameFolders = "None of the game's folders (menu, param, parts...) are in it.";
+
 // The folder in a mod folder that holds what USRDIR holds: a USRDIR within five levels (a PS3_GAME\USRDIR, or one
 // in a wrapper folder or a version's folder), else the shallowest folder that holds one of the game's folders. Backup
-// folders are passed over. Two candidates at the same depth: none, and *problem says why. No game folder at all: none,
-// and *loose is set.
-fs::path find_root(const fs::path& modFolder, std::string* problem, bool* loose) {
+// folders are passed over. Two candidates at the same depth: none (Problem::TwoCopies). No game folder at all: none,
+// and the mod is loose (Problem::NoGameFiles until plan() finds where its files go).
+fs::path find_root(const fs::path& modFolder, Mod& m) {
     std::vector<fs::path> level{modFolder};
     for (int depth = 0; depth <= 5 && !level.empty(); ++depth) {
         std::vector<fs::path> usr, game, next;
@@ -124,17 +126,19 @@ fs::path find_root(const fs::path& modFolder, std::string* problem, bool* loose)
         }
         if (usr.size() > 1 || (usr.empty() && game.size() > 1)) {
             const std::vector<fs::path>& two = usr.size() > 1 ? usr : game;
-            *problem = "It holds the game's folders in more than one place (" +
-                       utf8(two[0].lexically_relative(modFolder)) + ", " + utf8(two[1].lexically_relative(modFolder)) +
-                       "): keep only the one you want in this folder.";
+            m.why = Problem::TwoCopies;
+            m.problem = "It has the game's folders in two places: " + utf8(two[0].lexically_relative(modFolder)) +
+                        " and " + utf8(two[1].lexically_relative(modFolder)) +
+                        ". That is usually two versions or options of the mod in one download.";
             return {};
         }
         if (!usr.empty()) return usr.front();
         if (!game.empty()) return game.front();
         level = std::move(next);
     }
-    *problem = "No game files found. A mod's folders (menu, param, parts...) go in this folder.";
-    *loose = true;
+    m.why = Problem::NoGameFiles;
+    m.problem = kNoGameFolders;
+    m.loose = true;
     return {};
 }
 
@@ -227,13 +231,15 @@ void walk(Mod& m) {
         const bool top = low.find('/') == std::string::npos;
         if (top) {
             if (low == "eboot.bin") {
-                m.problem = "It has an EBOOT.BIN, the game's program. This version runs its own program, so a mod "
-                            "that changes it can't be used.";
+                m.why = Problem::Program;
+                m.problem = "It has an EBOOT.BIN, the game's program. This version doesn't run that program: it runs "
+                            "its own, built from the game's, so a changed EBOOT.BIN has nothing to change here.";
                 continue;
             }
         }
         if (++m.files > kMaxFiles) {
-            m.problem = "It has more than 200,000 files.";
+            m.why = Problem::TooManyFiles;
+            m.problem = "It has more than 200,000 files, far more than the game itself has.";
             return;
         }
         const std::string area = top ? std::string("(top)") : low.substr(0, low.find('/'));
@@ -245,11 +251,15 @@ void walk(Mod& m) {
         if (m.locked.size() < kGameplayShown && locked_file(it->path(), low)) m.locked.push_back(generic);
     }
     std::sort(m.areas.begin(), m.areas.end());
-    if (!m.problem.empty()) return;
-    if (m.files == 0) m.problem = "It has no files.";
-    else if (!m.locked.empty())
-        m.problem = "Some of its files are locked, as on the PS3 (" + m.locked.front() +
-                    "). Setup unlocks the game's own files, not a mod's, so it can't be used.";
+    if (!m.usable()) return;
+    if (m.files == 0) {
+        m.why = Problem::Empty;
+        m.problem = "Its folders hold no files.";
+    } else if (!m.locked.empty()) {
+        m.why = Problem::Locked;
+        m.problem = "Some of its files are locked, as the game's own files are on the disc. Setup unlocks the game's "
+                    "files when it installs them, but not a mod's, and the game can't read a locked file.";
+    }
 }
 
 const char* kind_word(Kind kind) {
@@ -278,6 +288,49 @@ std::string join(const std::vector<std::string>& items, const char* sep) {
 
 const char* kind_label(Kind kind) {
     return kind == Kind::Gameplay ? "Gameplay" : "Look only";
+}
+
+const char* problem_label(Problem p) {
+    switch (p) {
+    case Problem::None: return "";
+    case Problem::Name: return "Rename its folder";
+    case Problem::TwoCopies: return "Two versions";
+    case Problem::NoGameFiles: return "No game files";
+    case Problem::NotInPlace: return "Not in place";
+    case Problem::Program: return "Changes the program";
+    case Problem::TooManyFiles: return "Too many files";
+    case Problem::Empty: return "Empty";
+    case Problem::Locked: return "Locked files";
+    }
+    return "";
+}
+
+const char* problem_advice(Problem p) {
+    switch (p) {
+    case Problem::None: return "";
+    case Problem::Name: return "Rename the folder without the '|', then press Look again.";
+    case Problem::TwoCopies:
+        return "Keep the one you want here. Move the other out of this folder, or into a folder of its own beside "
+               "this one, where it becomes a mod of its own. Then press Look again.";
+    case Problem::NoGameFiles:
+        return "The mod's notes should say where its files go. Lay them out that way in this folder, as they are "
+               "below PS3_GAME\\USRDIR on the disc, then press Look again.";
+    case Problem::NotInPlace:
+        return "Press \"Put its files in place\" below. It moves them where the game reads them, inside this mod's "
+               "folder, and the mod can then be turned on.";
+    case Problem::Program:
+        return "This one can't be used. If the mod also comes without an EBOOT.BIN, try that version.";
+    case Problem::TooManyFiles: return "Check that this folder holds one mod, not several or a copy of the game.";
+    case Problem::Empty: return "Put the mod's files in it, or remove the folder.";
+    case Problem::Locked:
+        return "Use a copy of the mod whose files are not locked, if its page has one. Mods that ship their script "
+               "files unlocked work.";
+    }
+    return "";
+}
+
+std::vector<std::string> split_list(const std::string& v) {
+    return split(v, '|');
 }
 
 fs::path folder(const fs::path& dataDir) {
@@ -310,10 +363,11 @@ Mod read(const fs::path& modFolder) {
     m.name = utf8(modFolder.filename());
     m.folder = modFolder;
     if (m.name.find('|') != std::string::npos) {
-        m.problem = "Its name has a '|': rename the folder.";
+        m.why = Problem::Name;
+        m.problem = "Its folder's name has a '|' in it. The list of mods that are on uses '|' between names.";
         return m;
     }
-    m.root = find_root(modFolder, &m.problem, &m.loose);
+    m.root = find_root(modFolder, m);
     if (m.root.empty()) return m;
     walk(m);
     return m;
@@ -322,9 +376,11 @@ Mod read(const fs::path& modFolder) {
 void plan(Mod& m) {
     m.moves.clear();
     if (!m.loose) return;
+    m.why = Problem::NoGameFiles;   // (until a place is found for every file)
+    m.problem = kNoGameFolders;
     std::lock_guard<std::mutex> lock(sGameLock);
     const auto& game = game_files();
-    if (game.empty()) return;   // (no game folder known: the problem stays as it is)
+    if (game.empty()) return;   // (no game folder known)
     std::vector<Move> moves;
     std::set<std::string> targets;
     std::string why;
@@ -349,12 +405,13 @@ void plan(Mod& m) {
         else moves.push_back({rel, to});
     }
     if (!why.empty() || moves.empty()) {
-        if (!why.empty()) m.problem = "No game folders, and its files can't be put in place: " + why + ".";
+        if (!why.empty()) m.problem = std::string(kNoGameFolders) + " Its files can't be put in place: " + why + ".";
         return;
     }
     m.moves = std::move(moves);
-    m.problem = "Its files are not in the game's folders. \"Put its files in place\" moves them where the game reads "
-                "them.";
+    m.why = Problem::NotInPlace;
+    m.problem = "Its files are loose: they are not in the game's folders. The game's own files show where each one "
+                "goes.";
 }
 
 std::string place(const Mod& m) {
@@ -403,7 +460,8 @@ std::vector<std::string> conflicts(const std::vector<Mod>& mods, std::size_t max
             std::replace(rel.begin(), rel.end(), '\\', '/');
             const std::string low = lower(rel);
             // (notes and such beside the folders or anywhere)
-            if (low.find('/') == std::string::npos || note_file(low) || junk_file(low, lower(utf8(it->path().filename()))))
+            if (low.find('/') == std::string::npos || note_file(low) ||
+                junk_file(low, lower(utf8(it->path().filename()))))
                 continue;
             owners[low].push_back(m.name);
         }
@@ -442,8 +500,9 @@ void apply(const fs::path& dataDir, const std::string& enabledList) {
         std::vector<std::string> roots;
         for (const Mod& m : all) {
             if (!m.enabled) continue;
-            if (!m.problem.empty()) {
-                std::fprintf(stderr, "[mods] %s: not used: %s\n", m.name.c_str(), m.problem.c_str());
+            if (!m.usable()) {
+                std::fprintf(stderr, "[mods] %s: not used (%s): %s\n", m.name.c_str(), problem_label(m.why),
+                             m.problem.c_str());
                 continue;
             }
             roots.push_back(utf8(m.root));

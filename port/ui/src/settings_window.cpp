@@ -11,7 +11,6 @@
 #include "hud_editor.hpp"
 #include "input.hpp"
 #include "modal.hpp"
-#include "mods.hpp"
 #include "number_button.hpp"
 #include "pane.hpp"
 #include "players_window.hpp"
@@ -36,11 +35,8 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include <filesystem>
 #include <format>
-#include <memory>
 #include <string>
-#include <system_error>
 #include <vector>
 
 namespace ui {
@@ -329,84 +325,6 @@ int hud_size_percent() {
 // The Network tab's rows (settings.hpp, "Online play"). A value in use: the environment's when set there.
 std::string net_value(const char* key) {
     return settings::pinned(key) ? settings::pinned_value(key) : settings::get(key);
-}
-
-// The Mods tab (mods.hpp, docs/143). DES_MODS names the mods that are on, by folder name, separated by '|'.
-bool sModsLookAgain = false;  // "Look again" was pressed: SettingsWindow::update builds the tab again
-
-std::vector<std::string> mods_on() {
-    std::vector<std::string> out;
-    const std::string v = net_value("DES_MODS");
-    for (size_t a = 0; a <= v.size();) {
-        const size_t b = v.find('|', a);
-        std::string part = v.substr(a, b == std::string::npos ? std::string::npos : b - a);
-        if (!part.empty()) out.push_back(std::move(part));
-        if (b == std::string::npos) break;
-        a = b + 1;
-    }
-    return out;
-}
-
-bool mod_on(const std::string& name) {
-    const std::vector<std::string> on = mods_on();
-    return std::find(on.begin(), on.end(), name) != on.end();
-}
-
-void set_mod_on(const std::string& name, bool value) {
-    if (settings::pinned("DES_MODS") || mods::from_environment()) return;
-    std::vector<std::string> on = mods_on();
-    on.erase(std::remove(on.begin(), on.end(), name), on.end());
-    if (value) on.push_back(name);
-    settings::set("DES_MODS", mods::join(on, "|"));
-}
-
-bool mod_in_use(const std::string& name) {
-    const auto& used = mods::in_use();
-    return std::any_of(used.begin(), used.end(), [&](const mods::Mod& m) { return m.name == name; });
-}
-
-// A mod row's help: what kind of mod it is, then its files.
-Rml::String mod_help(const mods::Mod& m) {
-    Rml::String badge;
-    if (!m.moves.empty()) {
-        Rml::String list;
-        for (size_t k = 0; k < m.moves.size() && k < 10; ++k)
-            list += "<br/><file-path>" + escape(m.moves[k].from) + "</file-path> to <file-path>" +
-                    escape(m.moves[k].to) + "</file-path>";
-        if (m.moves.size() > 10) list += "<br/>...";
-        return "<status-badge class=\"warning\">" + escape(m.problem) + "</status-badge><br/>" +
-               with_note("DES_MODS", "Where its files go, by the game's own files:" + list +
-                                         "<br/><br/>Folder: <file-path>" + escape(mods::utf8(m.folder)) +
-                                         "</file-path>");
-    }
-    if (!m.problem.empty()) {
-        badge = "<status-badge class=\"error\">Can't be used: " + escape(m.problem) + "</status-badge><br/>";
-    } else if (m.kind == mods::Kind::Gameplay) {
-        badge = "<status-badge class=\"warning\">Changes how the game plays: while it is on, the game stays "
-                "offline.</status-badge><br/>";
-    } else {
-        badge = "<status-badge class=\"info\">Changes only how the game looks or sounds: online play is not "
-                "affected.</status-badge><br/>";
-    }
-    Rml::String h = "Kind: " + (m.problem.empty() ? Rml::String(mods::kind_label(m.kind)) : "can't be used") + ".";
-    if (m.files) {
-        std::vector<std::string> areas;
-        for (const std::string& a : m.areas) areas.push_back(a == "(top)" ? "beside the game's folders" : a);
-        h += "<br/><br/>" + std::to_string(m.files) + (m.files == 1 ? " file, in " : " files, in ") +
-             escape(mods::join(areas, ", ")) + ".";
-    }
-    if (!m.gameplay.empty()) {
-        h += "<br/><br/>Files that change how the game plays:";
-        for (const std::string& f : m.gameplay) h += "<br/>" + escape(f);
-        if (m.gameplay.size() == 5) h += "<br/>...";
-    }
-    h += "<br/><br/>This session: " + Rml::String(mod_in_use(m.name) ? "on" : "off") + ".";
-    h += "<br/><br/>Folder: <file-path>" + escape(mods::utf8(m.folder)) + "</file-path>";
-    if (!m.root.empty() && m.root != m.folder) {
-        h += "<br/>Its game files: <file-path>" + escape(mods::utf8(m.root.lexically_relative(m.folder))) +
-             "</file-path>";
-    }
-    return badge + with_note("DES_MODS", h);
 }
 
 // A developer build's cheat session (des_dev_boot set a cheat at start and cleared the network knobs; docs/55 section
@@ -931,8 +849,8 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
             if (net_cheat_session()) {
                 help = "<status-badge class=\"warning\">Off this session: a developer cheat is on.</status-badge><br/>";
             } else if (settings::net_mods_held()) {
-                help = "<status-badge class=\"warning\">Off this session: gameplay mods are on (Settings &gt; "
-                       "Mods).</status-badge><br/>";
+                help = "<status-badge class=\"warning\">Off this session: gameplay mods are on (see Mods, beside "
+                       "Settings in the menu).</status-badge><br/>";
             }
             pane.add_rml(help + with_note("DES_ONLINE",
                 "Plays online on the server below: messages, bloodstains, ghosts, co-op and invasions. Off plays "
@@ -1160,153 +1078,6 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
             "PS3.");
     });
 
-    // Mods (mods.hpp, docs/143): each folder in the mods folder is a mod, on or off. Read again each time the tab is
-    // shown, and on "Look again".
-    add_tab("Mods", [this](Rml::Element* content) {
-        auto& leftPane = add_child<Pane>(content, Pane::Type::Controlled);
-        auto& rightPane = add_child<Pane>(content, Pane::Type::Uncontrolled);
-
-        const std::filesystem::path dir = mods::folder(report::data_dir());
-        auto found = std::make_shared<std::vector<mods::Mod>>(mods::scan(dir, net_value("DES_MODS")));
-        for (mods::Mod& m : *found) mods::plan(m);   // (loose files: where the game's own files say they go)
-
-        leftPane.add_section("Mods");
-        if (mods::from_environment()) {
-            info_row(leftPane, rightPane, "Set at start", "PS3_VFS_MODS",
-                "The mods for this run were given when the game started (PS3_VFS_MODS), so the rows below can't "
-                "change them.");
-        }
-        if (found->empty()) {
-            info_row(leftPane, rightPane, "No mods yet", dir.empty() ? Rml::String("No mods folder") : Rml::String("Empty"),
-                dir.empty() ? Rml::String("This run keeps no data folder, so it has no mods folder.")
-                            : "Put each mod in its own folder in the mods folder, then press Look again.<br/><br/>"
-                              "<file-path>" +
-                                  escape(mods::utf8(dir)) + "</file-path>");
-        }
-        for (size_t i = 0; i < found->size(); ++i) {
-            const mods::Mod& m = (*found)[i];
-            // A mod that can be used: on or off. One that can't: a row whose help says why (and, for loose files,
-            // offers to put them in place), reached like an info row's.
-            Component* row = nullptr;
-            if (m.problem.empty()) {
-                row = &leftPane.add_child<BoolButton>(BoolButton::Props{
-                    .key = m.name,
-                    .icon = m.kind == mods::Kind::Gameplay ? "warning" : "",
-                    .getValue = [found, i] { return mod_on((*found)[i].name); },
-                    .setValue =
-                        [found, i](bool value) {
-                            if (value != mod_on((*found)[i].name)) set_mod_on((*found)[i].name, value);
-                        },
-                    .isDisabled = [] { return settings::pinned("DES_MODS") || mods::from_environment(); },
-                    .isModified = [found, i] { return mod_on((*found)[i].name) != mod_in_use((*found)[i].name); },
-                });
-            } else {
-                auto& sel = leftPane.add_select_button({
-                    .key = m.name,
-                    .getValue = [loose = !m.moves.empty()] {
-                        return loose ? Rml::String("Not in place") : Rml::String("Can't be used");
-                    },
-                });
-                sel.set_icon("error");
-                row = &sel;
-            }
-            leftPane.register_control(*row, rightPane, [found, i](Pane& pane) {
-                pane.clear();
-                pane.add_rml(mod_help((*found)[i]));
-                if (!(*found)[i].moves.empty()) {
-                    pane.add_button("Put its files in place").on_pressed([found, i] {
-                        const std::string err = mods::place((*found)[i]);
-                        play_sound(err.empty() ? kSoundClick : kSoundWarning);
-                        push_toast({
-                            .type = err.empty() ? "" : "warning",
-                            .title = err.empty() ? "Mod files put in place" : "Mod files not all moved",
-                            .content = err.empty() ? (*found)[i].name + ": its files are where the game reads them now."
-                                                   : (*found)[i].name + ": " + err + ".",
-                            .duration = std::chrono::seconds(6),
-                        });
-                        sModsLookAgain = true;
-                    });
-                }
-            });
-        }
-
-        // The mods on (in settings.ini) that have the same file: the first by name gives it.
-        std::vector<mods::Mod> on;
-        for (const mods::Mod& m : *found)
-            if (m.problem.empty() && mod_on(m.name)) on.push_back(m);
-        if (on.size() > 1) {
-            const std::vector<std::string> same = mods::conflicts(on, 20);
-            if (!same.empty()) {
-                Rml::String list;
-                for (const std::string& line : same) list += "<br/>" + escape(line);
-                info_row(leftPane, rightPane, "Same files",
-                    std::to_string(same.size() > 20 ? 20 : same.size()) + (same.size() > 20 ? "+" : ""),
-                    "Mods that are on have some of the same files. Each file comes from the mod higher in the list "
-                    "(the first one named here). To change which one wins, rename their folders, for example "
-                    "\"1 Name\" and \"2 Name\".<br/>" +
-                        list);
-            }
-        }
-
-        leftPane.add_section("Mods folder");
-        if (!dir.empty()) {
-            leftPane.register_control(
-                leftPane.add_group_button({.text = "Open the mods folder"}).on_pressed([dir] {
-                    play_sound(kSoundClick);
-                    std::error_code ec;
-                    std::filesystem::create_directories(dir, ec);
-                    report::open_local(dir);
-                }),
-                rightPane, [dir](Pane& pane) {
-                    pane.clear();
-                    pane.add_rml("Opens the mods folder:<br/><file-path>" + escape(mods::utf8(dir)) + "</file-path>" +
-                                 "<br/><br/>Put each mod in its own folder there. A mod's folder holds the game's "
-                                 "folders it changes (menu, param, parts...), as its notes describe, or the folder "
-                                 "its archive unpacks to.");
-                });
-            leftPane.register_control(
-                leftPane.add_group_button({.text = "Look again"}).on_pressed([] {
-                    play_sound(kSoundClick);
-                    sModsLookAgain = true;
-                }),
-                rightPane, [](Pane& pane) {
-                    pane.clear();
-                    pane.add_text("Reads the mods folder again, after you add, remove or rename a mod's folder.");
-                });
-        }
-
-        leftPane.add_section("This session");
-        {
-            const auto& used = mods::in_use();
-            Rml::String list;
-            for (const mods::Mod& m : used)
-                list += "<br/>" + escape(m.name) + " (" + mods::kind_label(m.kind) + ", " + std::to_string(m.files) +
-                        " files)";
-            info_row(leftPane, rightPane, "Mods in use", used.empty() ? Rml::String("None") : std::to_string(used.size()),
-                used.empty() ? Rml::String("No mods are in use this session.")
-                             : "In use this session, the first one first:<br/>" + list +
-                                   "<br/><br/>Changes to the rows above take effect the next time you start the game.");
-            info_row(leftPane, rightPane, "Online play",
-                mods::gameplay_in_use() ? Rml::String("Off: gameplay mods are on")
-                : used.empty()          ? Rml::String("No mods")
-                                        : Rml::String("Not affected"),
-                mods::gameplay_in_use()
-                    ? "These mods change how the game plays, so this session stays offline: " +
-                          escape(mods::gameplay_names()) +
-                          ".<br/><br/>Turn them off and restart the game to play online. Mods that only change how the "
-                          "game looks or sounds can stay on."
-                    : Rml::String("Mods that only change how the game looks or sounds keep online play."));
-        }
-        info_row(leftPane, rightPane, "About mods", "Read first",
-            "Mods are made by players, not by this project, and nothing here checks them. Back up your save before "
-            "you try one.<br/><br/>"
-            "Mods made for the PS3 game or for RPCS3 work when they replace the game's files. Mods that change the "
-            "game's program (an EBOOT.BIN, or RPCS3 patches) don't.<br/><br/>"
-            "Mods that change only textures, models, text, sound or effects keep online play. Any other mod keeps "
-            "the game offline while it is on, so that players with and without such mods don't meet.<br/><br/>"
-            "Very large texture mods can run out of the game's memory and crash, as on a PS3.");
-    });
-
     add_tab("Interface", [this](Rml::Element* content) {
         auto& leftPane = add_child<Pane>(content, Pane::Type::Controlled);
         auto& rightPane = add_child<Pane>(content, Pane::Type::Uncontrolled);
@@ -1469,10 +1240,6 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
 }
 
 void SettingsWindow::update() {
-    if (sModsLookAgain) {  // (the Mods tab's Look again: built again here, not inside its press)
-        sModsLookAgain = false;
-        refresh_active_tab();
-    }
     Window::update();
 }
 

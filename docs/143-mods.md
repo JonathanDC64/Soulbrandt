@@ -1,12 +1,15 @@
 # 143. Mods
 
-Players can put mods in a folder and turn each one on or off in Settings > Mods. The game then reads a mod's files in
+Players can put mods in a folder and turn each one on or off in the Mods window. The game then reads a mod's files in
 place of its own. Nothing is copied into the game's files, so turning a mod off gives the game back as it was.
+
+**The Mods window** opens from the menu bar (F1, or the pad's menu buttons), beside Settings and Trophies, and from
+the start screen's Mods button. It has its own window because Settings has no room for another tab.
 
 ## 1. The mods folder
 
 - **Where:** `mods` in the data folder, beside `settings.ini`. In a portable install that is `data\mods` beside the
-  program. Settings > Mods > Open the mods folder creates it and opens it.
+  program. Mods > Open the mods folder creates it and opens it.
 - **One folder per mod.** The folder's name is the mod's name in the list.
 - **What goes in a mod's folder:** the game's folders it changes (`menu`, `param`, `parts`...), laid out as on the
   disc below `PS3_GAME\USRDIR`. A mod's folder can also hold:
@@ -16,25 +19,30 @@ place of its own. Nothing is copied into the game's files, so turning a mod off 
   The game looks up to five folders deep for a `USRDIR`, else for the shallowest folder that holds one of the game's
   folders. Folders whose names start with `Original`, `Backup`, `Vanilla`, `Uninstall` or `Unmodded` are passed over:
   mods ship the game's own files in them to undo the mod. Two candidates at the same depth (two versions of the mod)
-  is a problem, and the row names both.
+  is a problem, and the help names both.
 - **Left out:** the mod's notes and pictures, wherever they are (`.txt`, `.md`, `.pdf`, `.jpg`...; the game has no
   file of those kinds), and what file managers leave (`desktop.ini`, `Thumbs.db`, `.DS_Store`, `__MACOSX`).
 - **Loose files.** Some mods ship their files without the game's folders: a lone `c0000.anibnd.dcx`, a
   `mapstudio\m01_00_00_00.msb`, drawparam files in a wrapper folder. The game's own files (in the game folder the
   game reads) say where each one goes: the file's name, and the folders it is in when two of the game's files share
-  the name. The row then reads "Not in place", lists where each file goes, and offers **Put its files in place**,
-  which moves them inside the mod's folder and removes the folders left empty. A file the game doesn't have, or one
-  that could go in more than one place (a font each language has, with no folder to tell which), stops this, and the
-  row names the file.
-- **Can't be used:**
-  - a mod with an `EBOOT.BIN`: this version runs its own program, so a mod that changes the game's program does
-    nothing here;
-  - a mod with locked files, as on the PS3 (an `NPD` `.sdat` or `.edat`): setup unlocks the game's own files, not a
-    mod's, and the game can't read a locked file;
-  - a folder with no game files that can't be put in place, or more than 200,000 files;
-  - a name with `|` in it (Linux only; Windows names can't have one).
+  the name. The row then reads "Not in place", its help lists where each file goes, and it offers **Put its files in
+  place**, which moves them inside the mod's folder and removes the folders left empty. A file the game doesn't have,
+  or one that could go in more than one place (a font each language has, with no folder to tell which), stops this,
+  and the help names the file.
+- **Can't be turned on.** A folder the game can't read as it is goes in its own part of the list, below the mods
+  that can be turned on. Its row says why in a few words; its help (Enter, Cross or a click) says it in full and what
+  to do:
 
-  A row that can't be used still opens its help, which says why.
+  | The row says | Why | What to do |
+  |---|---|---|
+  | Not in place | Loose files, and the game's own files show where each goes | Put its files in place |
+  | No game files | None of the game's folders, and its files can't be put in place (the help names the file) | Lay its files out as its notes say, as below `PS3_GAME\USRDIR` |
+  | Two versions | The game's folders in two places: usually two versions or options in one download | Keep one; move the other into a folder of its own, where it becomes a mod of its own |
+  | Changes the program | An `EBOOT.BIN`. This version runs its own program, built from the game's, so a changed one has nothing to change | Nothing; a version of the mod without it may work |
+  | Locked files | Files locked as on the PS3 (an `NPD` `.sdat` or `.edat`). Setup unlocks the game's own files, not a mod's | A copy of the mod with the files unlocked, if there is one |
+  | Empty | Its folders hold no files | |
+  | Too many files | More than 200,000 | Check it is one mod |
+  | Rename its folder | A `\|` in its name (Linux only; Windows names can't have one) | Rename it |
 
 ## 2. On, off and the order
 
@@ -71,7 +79,7 @@ know, including loose files beside the game's folders.
 - If Online is on in the settings, a notice says so at start: "Playing offline: gameplay mods are on", with the mods'
   names and how to play online again.
 - Settings > Network > Online says why in its help, and This session > Network reads "Off: gameplay mods are on".
-- Settings > Mods > This session > Online play says the same.
+- Mods > This session > Online play says the same.
 
 **What this protects, and what it doesn't.** The check keeps honest players apart. It does not stop someone who edits
 the game's own files in place, or changes the program. That is the server's job: reports, bans and server-side checks.
@@ -116,11 +124,13 @@ the game's own files in place, or changes the program. That is the server's job:
 |---|---|
 | `DES_MODS=<name>\|<name>` | The mods that are on, as the setting. Set in the environment, the Mods rows can't change it. |
 | `DES_MODS_DIR=<folder>` | Another mods folder (a test's). |
-| `PS3_VFS_MODS=<folder>\|<folder>` | The mods' game-file folders, given directly. `DES_MODS` is then not read, and the Mods tab says so. |
+| `PS3_VFS_MODS=<folder>\|<folder>` | The mods' game-file folders, given directly. `DES_MODS` is then not read, and the Mods window says so. |
 | `PS3_FSLOG=1` | Logs every file the game opens, to see what a mod would need to replace. |
+| `DES_UI_OPEN=mods` | Opens the Mods window at start (for screenshots, with `DES_UI_KEYS` and `DES_UI_SHOT`). |
 
 `port/ui/tests/mods_check.cpp` (CI, Windows and Linux) checks the look and gameplay rules, where a mod's files are
-found, the unusable cases (locked files among them), loose files planned and put in place (against a made-up game
+found, the unusable cases and their reasons (locked files among them), every reason's row text and advice, loose
+files planned and put in place (against a made-up game
 folder), the order, shared files and `PS3_VFS_MODS`. ps3recomp's
 `libs/filesystem/tests/test_vfs_path.c` checks the path parts the runtime uses.
 

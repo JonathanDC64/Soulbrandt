@@ -44,6 +44,7 @@
 #include "setup_screens.hpp"
 #include "setup_window.hpp"
 #include "players_window.hpp"
+#include "mods_window.hpp"
 #include "trophies_window.hpp"
 #include "trophy_toasts.hpp"
 #include "ui.hpp"
@@ -603,14 +604,15 @@ void push_documents() {
     ui::push_document(std::make_unique<ui::MenuBar>(), false);
     if (sStartScreen) ui::push_document(std::make_unique<ui::Prelaunch>());
 
-    // DES_UI_OPEN=menu | settings | trophies | players | privacy | osk | setup | setup-run: open one at startup (for
-    // screenshots and tests; privacy is the note as Settings > Network shows it).
+    // DES_UI_OPEN=menu | settings | trophies | mods | players | privacy | osk | setup | setup-run: open one at startup
+    // (for screenshots and tests; privacy is the note as Settings > Network shows it).
     // setup is setup's start screen over the game (docs/88: its own window comes with the split host), with
     // DES_SETUP_GAME's folders to begin with; setup-run runs the setup engine at once, on those folders.
     if (const char* open = std::getenv("DES_UI_OPEN"); open && *open) {
         if (!std::strcmp(open, "menu")) open_menu_bar();
         else if (!std::strcmp(open, "settings")) ui::push_document(std::make_unique<ui::SettingsWindow>());
         else if (!std::strcmp(open, "trophies")) ui::push_document(std::make_unique<ui::TrophiesWindow>());
+        else if (!std::strcmp(open, "mods")) ui::push_document(std::make_unique<ui::ModsWindow>());
         else if (!std::strcmp(open, "players")) ui::push_document(std::make_unique<ui::PlayersWindow>());
         else if (!std::strcmp(open, "privacy"))
             ui::push_document(std::make_unique<ui::PrivacyWindow>(ui::PrivacyWindow::Mode::Read));
@@ -769,8 +771,10 @@ void push_mods_notice() {
         .type = "warning",
         .title = "Playing offline: gameplay mods are on",
         .content = "These mods change how the game plays: " + ui::mods::gameplay_names() +
-                   ". Online play stays off while they are on. To play online, turn them off in Settings > Mods and "
-                   "restart the game. Mods that only change the look can stay on.",
+                   ". Online play stays off while they are on. To play online, press F1 or " +
+                   ui::input::chord_label(ui::settings::get_int("pad_menu_chord")) +
+                   " for the menu, turn them off in Mods and restart the game. Mods that only change the look can "
+                   "stay on.",
         .duration = kCustomServerNoticeDuration,
     });
     std::fprintf(stderr, "[ui] the gameplay mods notice is up\n");
