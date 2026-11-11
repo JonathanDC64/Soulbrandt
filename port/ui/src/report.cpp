@@ -65,6 +65,7 @@ extern "C" void ps3_setenv(const char* name, const char* value);  // boot_main.c
 extern "C" void ps3_diag_report(FILE* out, unsigned sample_sec);   // boot_main.cpp: what every thread is doing
 extern "C" void* rsx_d3d12_device(void);                           // the D3D12 backend's device, or null
 extern "C" int pad_hid_sony_poll(void* out, int max);              // the DualSense / DualShock 4 reader
+extern "C" int cellPad_host_controller(int i, char* id, int idn, char* name, int namen);  // cellPad.h: the i-th pad
 extern "C" unsigned ppu_boot_frames_presented(void);               // boot_main.cpp: the game's frames so far
 
 namespace ui::report {
@@ -99,6 +100,19 @@ void replace_all(std::string& text, const std::string& what, const std::string& 
 std::string env(const char* name) {
     const char* v = std::getenv(name);
     return v ? v : "";
+}
+
+// The controllers on the game's ports now, in port order: each one's PAD_CONTROLLER name and what it is, as
+// Settings > Controls > Controller lists them ("controller1 (Steam Deck)"); "none" without one.
+std::string controllers_now() {
+    std::string s;
+    char id[16], name[64];
+    for (int i = 0; cellPad_host_controller(i, id, int(sizeof id), name, int(sizeof name)); ++i) {
+        if (!s.empty()) s += ", ";
+        s += id;
+        if (*name) s += std::string(" (") + name + ")";
+    }
+    return s.empty() ? "none" : s;
 }
 
 bool env_on(const char* name) {
@@ -1207,6 +1221,8 @@ std::string system_info() {
             o << "Renderer: " << r << (why ? std::string(" (") + why + ")" : std::string()) << "\n";
     }
     platform_facts(o, game_process);
+    // The controllers the game's pad code has (cellPad.c), port 0's first: the crash dialog's process polls none.
+    if (game_process) o << "Controllers: " << controllers_now() << "\n";
     return o.str();
 }
 
