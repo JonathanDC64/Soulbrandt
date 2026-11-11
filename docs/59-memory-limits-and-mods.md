@@ -21,7 +21,8 @@ Naming:
 - **Measured since (2026-11-10, section 1.5).** `DES_MEMSTAT=1` shows how full each heap gets. The file-loading
   heap, CORERES (12.25 MB), is the one near its limit: 92-99% during area loads without mods, and up to 12.24 MB
   with a big set of mods on. It already turns down an 8.2 MB request at the Nexus without mods, and the file
-  loader copes in that case. The other MemMan heaps stay at 80% or less. Video memory (LOCAL, 248 MB) is what
+  loader copes in that case. The other MemMan heaps stay at 84% or less (the sound heap in the tutorial; 80% or
+  less everywhere else). Video memory (LOCAL, 248 MB) is what
   texture packs fill: 73-78% without mods, up to 89% with fifteen. A net for CORERES, MAIN, HGSYS and MENU like the Lua one was tried and left
   out (it leaks, and it changes what the game does).
 - **The Reddit claim is half right.** The limit is not the PC's RAM.
@@ -311,8 +312,14 @@ texture fix. Most use of each heap's size, in %, without mods / with them:
 | m03 | 99 / 100 | 74 / 74 | 71 / 71 | 78 / 78 | 76 / 76 | 55 / 53 | 72 / 72 | 63 / 63 | 25 / 25 | 0 / 0 |
 | m05 | 92 / 99 | 68 / 68 | 69 / 69 | 78 / 78 | 76 / 76 | 49 / 49 | 72 / 72 | 63 / 63 | 30 / 19 | 0 / 0 |
 | m06 | 98 / 99 | 77 / 77 | 72 / 71 | 77 / 78 | 77 / 77 | 55 / 54 | 72 / 72 | 63 / 63 | 25 / 22 | 0 / 0 |
+| m08, the tutorial (`regress.sh`'s route, 114 s) | 96 / - | 53 / - | 67 / - | 70 / - | 84 / - | 37 / - | 72 / - | 63 / - | 13 / - | 0 / - |
 
-DEBUG, INGAME, SERVER and NETWORK stay at 22% or less everywhere.
+DEBUG, INGAME, SERVER and NETWORK stay at 22% or less everywhere. MO, the sound heap, is highest in the tutorial,
+with its opening cutscene.
+
+The seven map rows ran SPURS on its HLE fallback (the test setup lacked the libsre image), while players run
+libsre. Two of them were run again with libsre (1-2 with mods, the Palace front without): every heap within 2
+points of the first run, MO the same. The tutorial row is with libsre.
 
 **What it says.**
 - **CORERES is the one near its limit.** It holds files while they load and empties after: at the 1-2 bridge with
@@ -372,7 +379,7 @@ should still take only what the game would otherwise fail on, as the Lua net doe
 through the global free: with every Lua and FFX block taken from `ds_heap` (`DES_LUAHEAP_TEST=1`, 240 s at the
 Nexus), `ds_heap` held 10.85 MB after 17 s and the same 10.85 MB at 240 s.
 
-Not covered by any net: HAVOK, MO and TEMP (their methods are other code; they peak at 37%, 77% and 63%).
+Not covered by any net: HAVOK, MO and TEMP (their methods are other code; they peak at 37%, 84% and 63%).
 
 ## 2. Question 2: mod support
 
