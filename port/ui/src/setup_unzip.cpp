@@ -7,6 +7,7 @@
 #include <stb_image.h>
 
 #include <algorithm>
+#include <cerrno>
 #include <climits>
 #include <cstdint>
 #include <fstream>
@@ -204,9 +205,12 @@ bool zip_unpack(const std::filesystem::path& archive, const std::filesystem::pat
         }
         if (!data_of(b, e, data, why)) return false;
         std::filesystem::create_directories(to.parent_path(), ec);
+        errno = 0;  // (the C runtime's reason, which a stream does not say: "Permission denied" from a virus scanner)
         std::ofstream f(to, std::ios::binary | std::ios::trunc);
         if (!f || !f.write(reinterpret_cast<const char*>(data.data()), std::streamsize(data.size())) || !f.flush()) {
-            why = e.name + " could not be written";
+            const int err = errno;
+            why = e.name + " could not be written" +
+                  (err ? " (" + std::generic_category().message(err) + ")" : std::string());
             return false;
         }
     }

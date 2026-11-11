@@ -6,6 +6,7 @@
 //   resume    the same, stopped once the .part file has 2 MB, then started again: it carries on from the file
 //   same      system's and own's folders hold the same files, byte for byte
 //   refusals  the zip reader refuses a cut archive and a changed byte, and unpacks the archive as it is
+//   link      setup's folder through a symbolic link: unpacked all the same (tar fails there; the host's unzip does it)
 //
 //   setup_fetch_check <a new folder>
 //
@@ -204,6 +205,26 @@ int main(int argc, char** argv) {
     const bool wholeOk = ui::setup::zip_unpack(whole, root / "whole", whyWhole) && sums(root / "whole") == unpacked;
     result("refusals", cutRefused && changedRefused && wholeOk,
            "cut: " + whyCut + "; changed: " + whyChanged + (wholeOk ? "; as it is: unpacked" : "; as it is: " + whyWhole));
+
+    // link: setup's folder through a folder that is a symbolic link (issue #485), the archive already there (system's
+    // copy). Windows' tar will not write through the link, so the host's own unzip takes over; the files are the same
+    // as tar's. Skipped where a link cannot be made (it takes an administrator or Developer Mode).
+    const fs::path linkTarget = root / "link-target", link = root / "link";
+    fs::create_directories(linkTarget, ec);
+    fs::create_directory_symlink(linkTarget, link, ec);
+    if (ec) {
+        std::printf("SKIP link: %s\n", ec.message().c_str());
+    } else {
+        g_data = link / "data";
+        fs::create_directories(ui::setup::python_archive().parent_path(), ec);
+        fs::copy_file(systemArchive, ui::setup::python_archive(), ec);
+        t = run(link / "data", 0);
+        const bool tookOver =
+            has_line(t, "tar -xf ended with exit") && has_line(t, "with the host's own unzip instead");
+        const bool linkOk = t.ok && ui::setup::python_unpacked() && sums(ui::setup::python_folder()) == a;
+        result("link", linkOk, tookOver ? "tar failed, the host's own unzip unpacked it" : "tar unpacked it");
+        if (!linkOk || !tookOver) show(t);
+    }
 
     std::printf("setup_fetch_check: %d passed, %d failed\n", g_passed, g_failed);
     return g_failed ? 1 : 0;
