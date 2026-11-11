@@ -345,7 +345,7 @@ def cmd_fetch(a) -> int:
         print(f"\r{a.name}: {done * 100 // total}%", end="", flush=True)
 
     try:
-        p = fetch.ensure(e, data / "downloads", data / "tools", prog)
+        p = fetch.ensure(e, data / "downloads", data / "tools", prog, note=lambda line: print("\n" + line))
     except fetch.FetchError as err:
         print(f"\nFIX  {err}")
         return 1

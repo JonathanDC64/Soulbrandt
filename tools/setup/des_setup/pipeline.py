@@ -647,7 +647,7 @@ def _fetch(data, emit, total, manifest, cc=None, ld=None) -> bool:
             emit.progress("download", done, size)
             total.part((k + done / max(1, size)) / len(tools))
 
-        fetch.ensure(e, data / "downloads", data / "tools", prog)
+        fetch.ensure(e, data / "downloads", data / "tools", prog, note=emit.text)
     return did
 
 

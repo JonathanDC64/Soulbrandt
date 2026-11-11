@@ -120,7 +120,20 @@ def read_feed(data=None, timeout=FEED_TIMEOUT) -> list:
             return kept["body"]
         raise UpdateFailed("download", "-", f"GitHub did not answer the update check (HTTP {e.code}).") from e
     except (OSError, ValueError) as e:
-        raise UpdateFailed("download", "-", "There is no connection to GitHub for the update check.") from e
+        if not (fetch.cert_failed(e) and fetch.windows_curl()):
+            raise UpdateFailed("download", "-", "There is no connection to GitHub for the update check.") from e
+        # Python's check did not accept GitHub's certificate: through Windows' own curl (fetch.py says why).
+        try:
+            status, raw, headers = fetch.curl_get(src, dict(req.header_items()), timeout,
+                                                  allow_http=True)   # (http only for a test feed at 127.0.0.1)
+            if status == 304 and isinstance(kept.get("body"), list):
+                return kept["body"]
+            if status != 200:
+                raise UpdateFailed("download", "-", f"GitHub did not answer the update check (HTTP {status}).")
+            body = json.loads(raw.decode("utf-8"))
+            etag = headers.get("etag")
+        except (OSError, ValueError) as e2:
+            raise UpdateFailed("download", "-", "There is no connection to GitHub for the update check.") from e2
     if not isinstance(body, list):
         raise UpdateFailed("download", "-", "GitHub's answer to the update check was not a list of releases.")
     if cache and etag:
@@ -471,8 +484,16 @@ def _small(url, allow_http, what, limit=1 << 16) -> bytes:
                                     timeout=60) as r:
             body = r.read(limit + 1)
     except OSError as e:
-        raise UpdateFailed("download", "download", "The download did not finish. Check the connection, then "
-                                                   "try again.") from e
+        body = None
+        if fetch.cert_failed(e) and fetch.windows_curl():   # (through Windows' own curl: fetch.py says why)
+            try:
+                status, raw, _ = fetch.curl_get(url, None, 60, allow_http)
+                body = raw[:limit + 1] if status == 200 else None
+            except OSError:
+                body = None
+        if body is None:
+            raise UpdateFailed("download", "download", "The download did not finish. Check the connection, then "
+                                                       "try again.") from e
     if len(body) > limit:
         raise UpdateFailed("download", "download", f"The release's {what} is too large.")
     return body
@@ -567,7 +588,7 @@ def _apply(install, data, app, to, emit, timeout) -> int:
         emit.overall(0.8 * done / max(1, total))
 
     try:
-        archive = fetch.fetch(entry, data / "downloads", prog, allow_http=allow_http, timeout=timeout)
+        archive = fetch.fetch(entry, data / "downloads", prog, allow_http=allow_http, timeout=timeout, note=emit.text)
     except fetch.FetchError as e:
         emit.text(f"FIX  {e}")
         raise UpdateFailed("download", "download", "The download did not finish or did not match its checksum. "
