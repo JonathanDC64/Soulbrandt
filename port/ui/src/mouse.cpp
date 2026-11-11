@@ -24,6 +24,11 @@
 // go: the cursor shown and free, the counts not yet taken dropped, the buttons let go. So a click that brings the
 // window to the front, or one on the UI, never presses anything in the game.
 //
+// A controller in use hides the cursor over the picture too, with mouse look off or between its holds (issue #488): a
+// new press on pad 0 hides it (on_frame), and it shows again when the mouse moves or the window goes to the
+// background. Not in a menu of the game with the mouse (game_menu.cpp has the pointer there, and its clicks press the
+// pad), and never in a test run.
+//
 // Threads: the window's thread owns the state (wndproc). The counts are atomics that the camera hook takes on the
 // game's main thread (des_mouse_take). set_ui_open and on_frame (the render thread) and des_mouse_refresh (any thread)
 // post WM_DES_MOUSE, and the window's thread then looks again.
@@ -42,6 +47,7 @@
 extern "C" {
 void cellPad_host_mouse_buttons(unsigned mask);  // ps3recomp, libs/input/cellPad.h
 void cellPad_host_mouse_wheel(int notches);
+extern volatile unsigned g_pad0_buttons;  // ps3recomp, cellPad.c: pad 0's buttons as the game last read them
 }
 
 namespace {
@@ -62,6 +68,7 @@ std::atomic<bool> sHeld{false};     // the cursor is hidden and clipped (mouse l
 std::atomic<bool> sUiOpen{false};   // a document of the UI is open
 std::atomic<bool> sGameMenu{false}; // a menu of the game is open (set_game_menu)
 std::atomic<bool> sOwnCursor{false};  // the UI draws its own cursor (set_own_cursor): the system's is hidden
+std::atomic<bool> sQuiet{false};    // a pad is in use: the cursor hidden over the picture until the mouse moves
 std::atomic<HWND> sHwnd{nullptr};   // the game's window, for posting to it
 
 // The window's thread only.
@@ -72,6 +79,7 @@ bool sMenuLoop = false;     // the window's system menu is open
 bool sWaitButtons = false;  // the game would have the mouse, but a button is still held
 bool sTracking = false;     // the window is told when the cursor leaves it (TrackMouseEvent), for a game's menu
 RECT sClip{};               // the clip set last
+POINT sQuietAt{};           // where the cursor was when a pad hid it (sQuiet)
 bool sAbsValid = false;     // a device that reports positions (remote desktop, tablets): its last one, in pixels
 LONG sAbsX = 0, sAbsY = 0;
 unsigned sButtons = 0;      // the buttons held as cellPad has them: bit 0 left, 1 right, 2 middle, 3 and 4 the side ones
@@ -143,6 +151,24 @@ bool middle_of(HWND hwnd, RECT& r) {
     return true;
 }
 
+// The cursor over the window set again now, not at its next move: WM_SETCURSOR shows or hides it.
+void cursor_again(HWND hwnd) {
+    POINT p{};
+    if (GetCursorPos(&p) && WindowFromPoint(p) == hwnd) {
+        const LRESULT hit = SendMessageW(hwnd, WM_NCHITTEST, 0, MAKELPARAM(p.x, p.y));
+        SendMessageW(hwnd, WM_SETCURSOR, WPARAM(hwnd), MAKELPARAM(LOWORD(hit), WM_MOUSEMOVE));
+    }
+}
+
+// A pad in use (on: the cursor hidden over the picture where it is now) or the mouse again (off: shown). Never with
+// PS3_NO_USER_INPUT=1 (a test run): the mouse is the user's.
+void quiet(HWND hwnd, bool on, const char* why) {
+    if (on && (ui::settings::no_user_input() || !GetCursorPos(&sQuietAt))) return;
+    if (sQuiet.exchange(on) == on) return;
+    cursor_again(hwnd);
+    if (log_on()) std::fprintf(stderr, "[mouse] cursor %s (%s)\n", on ? "hidden for the pad" : "shown", why);
+}
+
 // Hides the cursor and holds it on the middle of the window (again, if held already: the window may have moved).
 // Never with PS3_NO_USER_INPUT=1 (a test run): the mouse is the user's, and the runtime keeps its raw input from the
 // window too.
@@ -177,9 +203,7 @@ void let_go(HWND hwnd, const char* why) {
     ClipCursor(nullptr);
     sDx.store(0);
     sDy.store(0);
-    // Shown at once, not at its next move: the cursor is over the window, which sets it on WM_SETCURSOR.
-    POINT p{};
-    if (GetCursorPos(&p) && WindowFromPoint(p) == hwnd) SetCursor(LoadCursor(nullptr, IDC_ARROW));
+    cursor_again(hwnd);  // (shown at once, unless a pad hid it or the UI draws its own)
     if (log_on()) std::fprintf(stderr, "[mouse] let go (%s)\n", why);
 }
 
@@ -290,33 +314,38 @@ bool wndproc(void* hwnd_, unsigned msg, unsigned long long wp, long long lp, lon
         return false;  // DefWindowProc frees the input
     case WM_SETCURSOR:
         if (LOWORD(lp) != HTCLIENT ||
-            !(sHeld.load(std::memory_order_relaxed) || sOwnCursor.load(std::memory_order_relaxed)))
+            !(sHeld.load(std::memory_order_relaxed) || sOwnCursor.load(std::memory_order_relaxed) ||
+              sQuiet.load(std::memory_order_relaxed)))
             return false;
         SetCursor(nullptr);
         *result = TRUE;
         return true;
-    case WM_DES_OWN_CURSOR: {  // set again now, not at the next move, if the cursor is over the window
-        POINT p{};
-        if (GetCursorPos(&p) && WindowFromPoint(p) == hwnd) {
-            const LRESULT hit = SendMessageW(hwnd, WM_NCHITTEST, 0, MAKELPARAM(p.x, p.y));
-            SendMessageW(hwnd, WM_SETCURSOR, WPARAM(hwnd), MAKELPARAM(LOWORD(hit), WM_MOUSEMOVE));
-        }
+    case WM_DES_OWN_CURSOR:  // set again now, not at the next move, if the cursor is over the window
+        cursor_again(hwnd);
         *result = 0;
         return true;
-    }
     case WM_DES_MOUSE:
-        update(hwnd, "menu closed, camera running or setting changed");
+        if (wp == 1) {  // a new press on pad 0 (on_frame)
+            if (GetForegroundWindow() == hwnd && !IsIconic(hwnd) && !sGameMenu.load(std::memory_order_acquire))
+                quiet(hwnd, true, "a press on the pad");
+        } else {
+            update(hwnd, "menu closed, camera running or setting changed");
+        }
         *result = 0;
         return true;
     case WM_ACTIVATE:
         if (LOWORD(wp) == WA_INACTIVE) {
+            quiet(hwnd, false, "window in the background");
             let_go(hwnd, "window in the background");
         } else {
             update(hwnd, "window in front");
         }
         return false;
     case WM_ACTIVATEAPP:
-        if (!wp) let_go(hwnd, "another program in front");
+        if (!wp) {
+            quiet(hwnd, false, "another program in front");
+            let_go(hwnd, "another program in front");
+        }
         return false;
     case WM_SETFOCUS:
         update(hwnd, "focus");
@@ -361,6 +390,10 @@ bool wndproc(void* hwnd_, unsigned msg, unsigned long long wp, long long lp, lon
             TRACKMOUSEEVENT t{sizeof t, TME_LEAVE, hwnd, 0};
             sTracking = TrackMouseEvent(&t) != FALSE;
         }
+        if (sQuiet.load(std::memory_order_relaxed)) {  // the mouse again, if it moved (Windows also sends one when not)
+            POINT p{};
+            if (GetCursorPos(&p) && (p.x != sQuietAt.x || p.y != sQuietAt.y)) quiet(hwnd, false, "mouse moved");
+        }
         if (sWaitButtons && !buttons_down()) update(hwnd, "buttons up");
         return false;
     case WM_MOUSELEAVE:
@@ -400,9 +433,19 @@ void on_frame() {
         sCamera.store(camera, std::memory_order_release);
         post_look_again();
     }
+    // A new press on pad 0 (a pad's button, or a key or mouse button bound to one) hides the cursor until the mouse
+    // moves. Not while a menu of the game has the mouse: a click there presses the pad (des_menu_mouse.cpp).
+    static unsigned sPadSeen = 0;
+    const unsigned pad = g_pad0_buttons;
+    const bool pressed = (pad & ~sPadSeen) != 0;
+    sPadSeen = pad;
+    if (pressed && !sQuiet.load(std::memory_order_relaxed) && !sGameMenu.load(std::memory_order_acquire)) {
+        if (const HWND hwnd = sHwnd.load()) PostMessageW(hwnd, WM_DES_MOUSE, 1, 0);
+    }
 }
 
 void release_now() {
+    sQuiet.store(false);
     if (sHeld.exchange(false)) ClipCursor(nullptr);
 }
 
