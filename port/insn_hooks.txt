@@ -262,3 +262,8 @@
 0x00419DCC=des_coop_hook   # lwz r9,0(r29) after a load's world swap of the flags (bl 0x005098D8): a guest's own world kept
 0x0044C780=des_coop_hook   # ld r0,0x90(r1), the end of WarpNextStageKick: a guest going home loads its own area, where it stood
 0x00447EF4=des_coop_hook   # ld r0,0x90(r1), the end of SetChrTypeDataGreyNext: a guest going home after a boss kill is revived
+0x00299B74=des_coop_hook   # lbz r0,0xE8(r9) in an NPC's setup 0x002999C8: a friend sees the NPCs as the host does, not as phantoms
+0x002C2830=des_coop_hook   # lbz r0,0xE8(r11) in an NPC controller's setup 0x002C2588: the same
+0x002C32C0=des_coop_hook   # lbz r0,0xE8(r11) in an NPC controller's setup 0x002C3018: the same
+0x004C9638=des_coop_hook   # bl 0x0026F378 (the player's type) in the talk check 0x004C9600: a friend can talk to the NPCs
+0x004C9C5C=des_coop_hook   # bl 0x0026F378 (the player's type) in the talk check 0x004C9C18: the same

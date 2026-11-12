@@ -39,6 +39,9 @@
 //     ones its own game didn't set (a lever pulled far away). Flags only move forward: a flag cleared is never sent
 //     or kept.
 //   - A boss's soul taken by a guest: kept for its own world too, so its own world doesn't offer it again.
+// The Nexus in a session (shared, as the host has it):
+//   - The NPCs a visitor's game would set up as phantoms (drawn as such) stay as the host has them, and a guest can
+//     talk to them: the talk scripts' phantom check sees it as alive.
 #include "des_seamless.h"
 
 #include "ps3emu/ppu_lift.h"
@@ -1087,6 +1090,20 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
         }
         break;
     }
+    case 0x00299B74u:   // an NPC's setup (0x002999C8), after lbz r0,0xE8(r9) of its param row
+    case 0x002C2830u:   // the same test where its controller is set up (0x002C2588, 0x002C3018), after lbz r0,0xE8(r11)
+    case 0x002C32C0u:
+        // A visitor's game (a phantom) sets up the NPCs whose row has that byte in mode 4: drawn as phantoms, and no
+        // talk. In co-op a friend shares the host's world, so the NPCs stay as the host has them (0 skips the 4).
+        if (m == co::Mode::Join) ctx->gpr[0] = 0;
+        break;
+    case 0x004C9638u:   // the talk scripts' check of the player's type (bl 0x0026F378 in 0x004C9600 and 0x004C9C18)
+    case 0x004C9C5Cu:
+        // The check marks the player as a phantom (the talk scripts' function 19) unless the type is 0 (alive) or 8
+        // (soul form), and their scripts then show no talk prompt. A friend is a phantom in the host's world, but in
+        // co-op it talks to the NPCs as in its own game (0 is the alive player's type).
+        if (m == co::Mode::Join) ctx->gpr[3] = 0;
+        break;
     case 0x00508C00u:   // a join fills the flags' copies (r3 = the flags), at its stdu
         if (m == co::Mode::Join && (uint32_t)ctx->gpr[3] == flag_base()) keep_own_world((uint32_t)ctx->gpr[3]);
         break;

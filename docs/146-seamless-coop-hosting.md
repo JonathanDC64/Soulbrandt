@@ -66,6 +66,8 @@ once: after that, co-op has characters of its own.
 - **Going back:** when the host leaves, its friends go back to their own worlds, where they stood when they joined,
   and their games save there. A friend goes back in body form if it was in body form before the join, or was there
   when a boss died.
+- **The Nexus is shared.** Friends stand in the host's Nexus and see its people as the host does, not as phantoms,
+  and can talk to them.
 
 ### If your friends can't connect
 
@@ -174,6 +176,13 @@ game's own join does.
   (they see the pickup animation) and use up their once-only prompt. The edit registers it between
   `NotNetMessage_begin` and `_end`, so each player's prompt is its own. A friend who takes it keeps the taken flag in its own world, so its own world doesn't
   offer it again; one who doesn't can still take it at the same place in its own world.
+- **The Nexus's people.** A visitor's game (a phantom's) sets up each person whose character row has byte `0xE8` set
+  in a mode of its own (4): drawn as a phantom. The three places that choose it (a person's setup, US 0x002999C8, and
+  its controller's two, 0x002C2588 and 0x002C3018) are hooked after they read that byte, and on a friend they read 0.
+- **Talking to them.** The talk scripts ask whether the player is a phantom (their function 19), and give a phantom no
+  talk prompt. The answer comes from the player's type, read through 0x0026F378 in two places (US 0x004C9600 and
+  0x004C9C18): any type but 0 (alive) or 8 (soul form) is a phantom. Both calls are hooked, and on a friend they
+  return 0.
 
 **The scripts' edits,** in memory, as each script is read (the game's Lua reader and Lua's string reader, hooked at
 their first instruction):
@@ -253,6 +262,10 @@ the newer generation, and saves as usual.
 
 - Checked by hand so far: a boss kill with a friend, each taking the boss's soul, the friend's Leave, and its rejoin.
   Not yet: a door or shortcut opened by a friend, and that progress in the friend's save after going home.
+- What a friend's talk changes (a conversation heard, a choice made, an item given) stays in its copy of the host's
+  world: it is neither kept in the friend's own world nor sent to the host.
+- A friend's talk is checked as far as the Crestfallen's prompt and first line. The menus behind other people (the
+  Maiden's level up, the smith, the storage) aren't checked with a friend yet.
 - Closing the game window as a friend: the session is lost and nothing from it is saved (the game only saves at
   home).
 - A friend in body form who leaves co-op after taking soul form for a join that never completed stays in soul form.

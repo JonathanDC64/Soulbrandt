@@ -103,6 +103,7 @@ DES_REGION_ADDR(0x00286614, 0x0028464C)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x0028B224, 0x0028925C)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x002977C0, 0x002A2A20)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x002986B8, 0x002966F0)  /* call */
+DES_REGION_ADDR(0x00299B74, 0x002A4ECC)  /* hook des_coop_hook: an NPC's setup after lbz r0,0xE8(r9) (a friend sees the NPCs as the host does) */
 DES_REGION_ADDR(0x002A6AA8, 0x002A4AE0)  /* wrapped kChrInsThread */
 DES_REGION_ADDR(0x002A6AF4, 0x002A4B2C)  /* return address in 0x002A6AA8 */
 DES_REGION_ADDR(0x002A6B14, 0x002A4B4C)  /* return address in 0x002A6AA8 */
@@ -122,6 +123,8 @@ DES_REGION_ADDR(0x002A6C58, 0x002A4C90)  /* return address in 0x002A6AA8 */
 DES_REGION_ADDR(0x002A6C60, 0x002A4C98)  /* return address in 0x002A6AA8 */
 DES_REGION_ADDR(0x002A6C70, 0x002A4CA8)  /* return address in 0x002A6AA8 */
 DES_REGION_ADDR(0x002A6CA8, 0x002A4CE0)  /* return address in 0x002A6AA8 */
+DES_REGION_ADDR(0x002C2830, 0x002CDFF0)  /* hook des_coop_hook: an NPC controller's setup after lbz r0,0xE8(r11) (a friend sees the NPCs as the host does) */
+DES_REGION_ADDR(0x002C32C0, 0x002CEB10)  /* hook des_coop_hook: an NPC controller's setup after lbz r0,0xE8(r11) (a friend sees the NPCs as the host does) */
 DES_REGION_ADDR(0x002D8978, 0x002D7140)  /* call */
 DES_REGION_ADDR(0x002DD368, 0x002DC058)  /* call kUseGoods */
 DES_REGION_ADDR(0x002EC2B8, 0x002EA2B0)  /* call */
@@ -169,6 +172,8 @@ DES_REGION_ADDR(0x0044A368, 0x00458D28)  /* call des_seamless_game (by address) 
 DES_REGION_ADDR(0x0044C6F0, 0xFFFFFFFF)  /* call des_seamless_game (by address) (not looked up: co-op refuses this disc) */
 DES_REGION_ADDR(0x0044C780, 0xFFFFFFFF)  /* hook des_coop_hook: the end of WarpNextStageKick (a guest going home loads its own area) (not looked up: co-op refuses this disc) */
 DES_REGION_ADDR(0x00451430, 0x0044F720)  /* call */
+DES_REGION_ADDR(0x004C9638, 0x004D90B8)  /* hook des_coop_hook: the talk check after bl 0x0026F378 (a friend can talk to the NPCs) */
+DES_REGION_ADDR(0x004C9C5C, 0x004D96DC)  /* hook des_coop_hook: the talk check after bl 0x0026F378 (a friend can talk to the NPCs) */
 DES_REGION_ADDR(0x005086F8, 0x00518CB0)  /* hook des_coop_hook: the event flags' set (progress kept for every player) */
 DES_REGION_ADDR(0x00508820, 0x00518DD8)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00508C00, 0x005191A8)  /* hook des_coop_hook: a guest's join fills its flag copies (its own world's flags kept) */
