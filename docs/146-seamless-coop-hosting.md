@@ -220,8 +220,8 @@ resolves) and `PS3_SAVEDATA_ROOT` (the co-op save). A value set in the environme
 
 ## Not done yet
 
-- Checked by hand: a boss kill with friends (the soul for each, the walls), a door or shortcut opened by a friend,
-  and the progress kept in the friend's save after going home.
+- Checked by hand so far: a boss kill with a friend, each taking the boss's soul, the friend's Leave, and its rejoin.
+  Not yet: a door or shortcut opened by a friend, and that progress in the friend's save after going home.
 - Closing the game window as a friend: the session is lost and nothing from it is saved (the game only saves at
   home).
 - A friend in body form who leaves co-op after taking soul form for a join that never completed stays in soul form.
