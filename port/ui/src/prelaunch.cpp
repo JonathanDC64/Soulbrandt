@@ -4,6 +4,7 @@
 #include "prelaunch.hpp"
 
 #include "app.hpp"
+#include "coop_window.hpp"
 #include "host.hpp"
 #include "input.hpp"
 #include "modal.hpp"
@@ -110,6 +111,13 @@ void Prelaunch::build_menu_buttons() {
         push(std::make_unique<ModsWindow>());
     });
     apply_intro_animation(mMenuButtons.back()->root(), "delay-4");
+
+    mMenuButtons.push_back(std::make_unique<Button>(menuList, "Co-op"));
+    mMenuButtons.back()->on_pressed([this] {
+        play_sound(kSoundWindowOpen);
+        push(make_coop_window());
+    });
+    apply_intro_animation(mMenuButtons.back()->root(), "delay-5");
 
     // Hidden until the update check finds a newer release (show_update).
     mUpdateIndex = mMenuButtons.size();
