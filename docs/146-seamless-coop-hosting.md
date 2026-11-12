@@ -68,6 +68,10 @@ once: after that, co-op has characters of its own.
   when a boss died.
 - **The Nexus is shared.** Friends stand in the host's Nexus and see its people as the host does, not as phantoms,
   and can talk to them.
+- **The Nexus's cutscenes** (the one after a boss, the Monumental's story) play for each player who hasn't seen them
+  in their own world yet, even when the host has.
+- **The Monumental's question:** whoever talks to the Monumental answers it. Once the other Archstones open, they open
+  in every player's world.
 
 ### If your friends can't connect
 
@@ -158,6 +162,7 @@ game's own join does.
 | `HER?` | friend | none | send a `REDY` now (a friend's respawn) |
 | `FLGS` | host | area, offset, up to 1,000 bytes of its event flags | the host's flags, in three parts, before each `REDY` |
 | `FLAG` | host | flag, area | a progress flag was set in the host's world |
+| `FLAG` | friend | flag, area | the Archstones' seal was opened by this friend: the host's world takes it |
 
 **The flags** (event flags: bit `n & 7` of byte `n >> 3`, 17,024 of them):
 - **Each world has its own flags,** flags 0-3,199 and 8,192-12,287; the rest (bosses, for one) are shared by every
@@ -189,6 +194,15 @@ game's own join does.
   talk prompt. The answer comes from the player's type, read through 0x0026F378 in two places (US 0x004C9600 and
   0x004C9C18): any type but 0 (alive) or 8 (soul form) is a phantom. Both calls are hooked, and on a friend they
   return 0.
+- **The Nexus's cutscenes.** Each cutscene in the Nexus's script is a `RequestRemo(scene, REMO_FLAG, event, 1)` (and
+  the Monumental's story a `RequestPlayMovie`), started once the event's flag is clear. A friend plays with the host's
+  flags, so it would never see one the host has seen. When a friend's game reads the Nexus's script, the program
+  clears each of those flags that the friend hasn't set in its own world, and the cutscene plays there. Seeing it sets
+  the flag in the friend's own world, as any other. The script sets it as the area starts, before the friend counts
+  as arrived, so a cutscene's flag is kept from then on.
+- **The Archstones' seal.** The events whose header names the seal (要石の封印), and the flags their handlers set, are
+  the seal's. When one is set on a friend, it is kept in the friend's own world and sent to the host (`FLAG`), whose
+  world sets it through the game's own flag setter. The host's own, as other progress, goes to its friends.
 
 **The scripts' edits,** in memory, as each script is read (the game's Lua reader and Lua's string reader, hooked at
 their first instruction):
@@ -269,7 +283,9 @@ the newer generation, and saves as usual.
 - Checked by hand so far: a boss kill with a friend, each taking the boss's soul, the friend's Leave, and its rejoin.
   Not yet: a door or shortcut opened by a friend, and that progress in the friend's save after going home.
 - What a friend's talk changes (a conversation heard, a choice made, an item given) stays in its copy of the host's
-  world: it is neither kept in the friend's own world nor sent to the host.
+  world: it is neither kept in the friend's own world nor sent to the host. Only the Archstones' seal is shared.
+- The Archstones' seal from a friend is checked through its four flags, set on the friend through the game's own
+  setter, not yet by a friend hearing the Monumental's tale.
 - A friend's talk is checked as far as the Crestfallen's prompt and first line. The menus behind other people (the
   Maiden's level up, the smith, the storage) aren't checked with a friend yet.
 - Closing the game window as a friend: the session is lost and nothing from it is saved (the game only saves at

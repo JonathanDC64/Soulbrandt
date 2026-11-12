@@ -18,8 +18,9 @@
 //   - the Archstones: the host may use them in a session (the guests then follow it, des_seamless_game.cpp); a guest
 //     still gets "You can't return during multiplayer.";
 //   - a boss's soul: a blue phantom may take its own, as the host takes its own.
-// And from each area's script, the flags that move forward in every player's world (progress_flags) and the soul
-// pickups each player makes for itself (own_flags), for des_seamless_game.cpp.
+// And from each area's script, the flags that move forward in every player's world (progress_flags), the soul
+// pickups each player makes for itself (own_flags) and the Nexus's cutscenes each player sees for itself
+// (scene_flags), for des_seamless_game.cpp.
 #include "des_seamless.h"
 
 #include "ps3emu/ppu_lift.h"
@@ -38,6 +39,8 @@
 #include <vector>
 
 extern "C" void ds_malloc(ppu_context* ctx);   // des_heap.cpp: the guest heap
+// des_seamless_game.cpp: an area script of world was just read (its Nexus cutscenes, if any), before the area starts
+void des_seamless_area_read(uint32_t world, const std::vector<uint32_t>& scenes);
 
 namespace {
 
@@ -254,6 +257,9 @@ int edit_area(std::string& t, bool nexus)
 //   - Doors, levers, elevators, shortcuts, bridges and fog walls: an event whose header comment (--■<id>■<what>■)
 //     names one of them, and names no treasure, item, corpse, shop, talk, NPC, checkpoint, host-only wall, cutscene
 //     or the like. Its ID.
+//   - The Archstones' seal opened (the Nexus, after the Monumental's tale): its ID and every flag its handlers set,
+//     a list of their own (seal). Its handlers run between NotNetMessage_begin and _end, so the game never tells the
+//     others: whoever hears the tale opens the seal, and des_seamless_game.cpp takes it to the host's world too.
 // Flags below 15000 only. The headers are Shift-JIS; the words below are their bytes.
 const char* const kInclude[] = {
     "\x94\xE0",                                                   // door
@@ -289,6 +295,7 @@ const char* const kExclude[] = {
     "\x83\x43\x83\x93\x83\x74\x83\x48",                                   // info
 };
 const char kBox[] = "\x81\xA1";   // the headers' separator
+const char kSeal[] = "\x97\x76\x90\xCE\x82\xCC\x95\x95\x88\xF3";   // the Archstones' seal (the Nexus: its opening)
 constexpr uint32_t kProgressMax = 15000;
 
 // A Shift-JIS lead byte: the character takes two bytes.
@@ -317,9 +324,9 @@ long read_number(const std::string& t, size_t* i)
     return v;
 }
 
-std::vector<uint32_t> progress_flags(const std::string& t, std::vector<uint32_t>* boss)
+std::vector<uint32_t> progress_flags(const std::string& t, std::vector<uint32_t>* boss, std::vector<uint32_t>* seal)
 {
-    std::set<uint32_t> out, kills;
+    std::set<uint32_t> out, kills, sealed;
     // the functions, by name
     std::map<std::string, std::pair<size_t, size_t>> funcs;
     for (size_t a = t.find("\nfunction "); a != std::string::npos; a = t.find("\nfunction ", a + 1)) {
@@ -336,27 +343,48 @@ std::vector<uint32_t> progress_flags(const std::string& t, std::vector<uint32_t>
         }
         return false;
     };
+    auto set_true = [&](size_t a, size_t e, std::set<uint32_t>* to) {   // every SetEventFlag(<n>, true) in t[a, e)
+        for (size_t p = t.find("SetEventFlag(", a); p != std::string::npos && p < e; p = t.find("SetEventFlag(", p + 1)) {
+            size_t k = skip_space(t, p + 13);
+            const long flag = read_number(t, &k);
+            k = skip_space(t, k);
+            if (flag < 0 || flag >= (long)kProgressMax || k >= t.size() || t[k] != ',') continue;
+            k = skip_space(t, k + 1);
+            if (t.compare(k, 4, "true") == 0 || t.compare(k, 1, "1") == 0) to->insert((uint32_t)flag);
+        }
+    };
+    auto handlers = [&](long id) {   // OnEvent_<id> and OnEvent_<id>_<k>
+        std::vector<std::pair<size_t, size_t>> hs;
+        const std::string base = "OnEvent_" + std::to_string(id);
+        for (const auto& h : funcs)
+            if (h.first == base || h.first.compare(0, base.size() + 1, base + "_") == 0) hs.push_back(h.second);
+        return hs;
+    };
     for (const auto& f : funcs) {
         if (f.first.compare(0, 8, "OnEvent_") != 0 || !body_has_clear(f.second.first, f.second.second)) continue;
         size_t i = 8;
         const long id = read_number(f.first, &i);
         if (id < 0) continue;
-        const std::string base = "OnEvent_" + std::to_string(id);
-        for (const auto& h : funcs) {   // the boss's handlers: every flag they set to true
-            if (h.first != base && h.first.compare(0, base.size() + 1, base + "_") != 0) continue;
-            for (size_t p = t.find("SetEventFlag(", h.second.first); p != std::string::npos && p < h.second.second;
-                 p = t.find("SetEventFlag(", p + 1)) {
-                size_t k = skip_space(t, p + 13);
-                const long flag = read_number(t, &k);
-                k = skip_space(t, k);
-                if (flag < 0 || flag >= (long)kProgressMax || k >= t.size() || t[k] != ',') continue;
-                k = skip_space(t, k + 1);
-                if (t.compare(k, 4, "true") == 0 || t.compare(k, 1, "1") == 0) kills.insert((uint32_t)flag);
-            }
-        }
+        for (const auto& h : handlers(id)) set_true(h.first, h.second, &kills);   // every flag they set to true
     }
     out = kills;
     if (boss) boss->assign(kills.begin(), kills.end());
+    // The Archstones' seal (the Nexus): every flag its handlers set, and the handlers they register by name (a
+    // function named in quotes, as OnKeyTime2 and OnRegistFunc take it).
+    auto seal_flags = [&](long id) {
+        std::vector<std::pair<size_t, size_t>> hs = handlers(id);
+        const size_t direct = hs.size();
+        for (size_t n = 0; n < direct; n++)
+            for (size_t q = t.find('"', hs[n].first); q != std::string::npos && q < hs[n].second; q = t.find('"', q + 1)) {
+                const size_t e = t.find('"', q + 1);
+                if (e == std::string::npos || e > hs[n].second) break;
+                auto it = funcs.find(t.substr(q + 1, e - q - 1));
+                if (it != funcs.end()) hs.push_back(it->second);
+                q = e;
+            }
+        for (const auto& h : hs) set_true(h.first, h.second, &sealed);
+        sealed.insert((uint32_t)id);
+    };
     // the headers: --■<id>■<what>■
     std::set<long> seen;
     for (size_t a = 0; a < t.size();) {
@@ -377,11 +405,13 @@ std::vector<uint32_t> progress_flags(const std::string& t, std::vector<uint32_t>
                     for (const char* k : kInclude) in = in || sjis_has(what, k);
                     for (const char* k : kExclude) ex = ex || sjis_has(what, k);
                     if (in && !ex) out.insert((uint32_t)id);
+                    if (sjis_has(what, kSeal)) seal_flags(id);
                 }
             }
         }
         a = e + 1;
     }
+    if (seal) seal->assign(sealed.begin(), sealed.end());
     return std::vector<uint32_t>(out.begin(), out.end());
 }
 
@@ -397,18 +427,42 @@ std::vector<uint32_t> own_flags(const std::string& t)
     return std::vector<uint32_t>(out.begin(), out.end());
 }
 
+// The cutscenes (RequestRemo / RequestRemoPlus(scene, REMO_FLAG, event, ...)): the event's ID is the flag its handler
+// sets once the cutscene has played, and the flag the area's start checks before playing it. And the movies an event
+// handler plays (RequestPlayMovie, the Monumental's tale): that event's ID, the flag it sets once the movie has played.
+std::vector<uint32_t> scene_flags(const std::string& t)
+{
+    std::set<uint32_t> out;
+    const std::regex re("RequestRemo(?:Plus)?\\(\\s*\\d+\\s*,\\s*REMO_FLAG\\s*,\\s*(\\d+)\\s*,");
+    for (auto it = std::sregex_iterator(t.begin(), t.end(), re); it != std::sregex_iterator(); ++it) {
+        const unsigned long id = std::stoul((*it)[1].str());
+        if (id < kProgressMax) out.insert((uint32_t)id);
+    }
+    for (size_t a = t.find("\nfunction OnEvent_"); a != std::string::npos; a = t.find("\nfunction OnEvent_", a + 1)) {
+        size_t i = a + 18;
+        const long id = read_number(t, &i);
+        if (id < 0 || id >= (long)kProgressMax || i >= t.size() || t[i] != '(') continue;
+        const size_t e = t.find("\nfunction ", i);
+        const size_t m = t.find("RequestPlayMovie", i);
+        if (m != std::string::npos && (e == std::string::npos || m < e)) out.insert((uint32_t)id);
+    }
+    return std::vector<uint32_t>(out.begin(), out.end());
+}
+
 // The edited copies, by the original's size and hash; 0: the script is left as it is.
 struct Copy {
     uint32_t addr = 0, size = 0;
     uint32_t world = 0xFFFFFFFFu;     // an area script's world (its area's top byte - 1)
     std::vector<uint32_t> progress;   // an area script's progress flags
     std::vector<uint32_t> boss;       // the ones a boss kill sets
-    std::vector<uint32_t> own;        // and its soul pickups
+    std::vector<uint32_t> own;        // its soul pickups
+    std::vector<uint32_t> scenes;     // the Nexus's cutscenes
+    std::vector<uint32_t> seal;       // and the Archstones' seal (the Nexus)
 };
 std::mutex sLock;
 std::map<std::pair<uint32_t, uint64_t>, Copy> sCopies;
 // Each world's flags, from its area scripts (a load reads every area script of its world): sorted, no repeats.
-std::map<uint32_t, std::vector<uint32_t>> sProgress, sBoss, sOwn;
+std::map<uint32_t, std::vector<uint32_t>> sProgress, sBoss, sOwn, sScenes, sSeal;
 
 void merge(std::vector<uint32_t>& into, const std::vector<uint32_t>& from)
 {
@@ -423,6 +477,8 @@ void learn(const Copy& c)   // under sLock
     merge(sProgress[c.world], c.progress);
     merge(sBoss[c.world], c.boss);
     merge(sOwn[c.world], c.own);
+    merge(sScenes[c.world], c.scenes);
+    merge(sSeal[c.world], c.seal);
 }
 
 uint64_t fnv(const std::string& s)
@@ -459,13 +515,16 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
     if (!global && ar == std::string::npos) return false;
     const auto key = std::make_pair(size, fnv(t));
     {
-        std::lock_guard<std::mutex> g(sLock);
+        std::unique_lock<std::mutex> g(sLock);
         auto it = sCopies.find(key);
         if (it != sCopies.end()) {
             learn(it->second);
-            if (!it->second.addr) return false;
-            *out = it->second.addr;
-            *out_size = it->second.size;
+            const Copy c = it->second;
+            g.unlock();
+            if (!global) des_seamless_area_read(c.world, c.scenes);
+            if (!c.addr) return false;
+            *out = c.addr;
+            *out_size = c.size;
             return true;
         }
     }
@@ -489,20 +548,25 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
     c.addr = addr;
     c.size = n;
     if (!global) {
-        c.progress = progress_flags(t, &c.boss);
+        c.progress = progress_flags(t, &c.boss, &c.seal);
         c.own = own_flags(t);
         // "function Initialize_mXX_": the world is XX - 1
         const char d0 = t[ar + 21], d1 = t[ar + 22];
         if (d0 >= '0' && d0 <= '9' && d1 >= '1' && d1 <= '9') c.world = (uint32_t)((d0 - '0') * 10 + (d1 - '0') - 1);
+        if (c.world == 0) c.scenes = scene_flags(t);   // the Nexus only: an area's cutscenes start its fights
     }
     std::fprintf(stderr, "[coop] script %s: %s%s\n", global ? "global_event.lua" : t.substr(ar + 20, 12).c_str(),
                  addr ? (std::to_string(edits) + " edits for co-op").c_str() : global ? "left as it is (an edit didn't fit)"
                                                                                       : "nothing to edit",
                  global ? "" : ("; " + std::to_string(c.progress.size()) + " progress flags, " +
-                                std::to_string(c.own.size()) + " soul pickups").c_str());
-    std::lock_guard<std::mutex> g(sLock);
-    learn(c);
-    sCopies[key] = c;
+                                std::to_string(c.own.size()) + " soul pickups, " + std::to_string(c.scenes.size()) +
+                                " cutscenes, " + std::to_string(c.seal.size()) + " for the Archstones' seal").c_str());
+    {
+        std::lock_guard<std::mutex> g(sLock);
+        learn(c);
+        sCopies[key] = c;
+    }
+    if (!global) des_seamless_area_read(c.world, c.scenes);
     if (!addr) return false;
     *out = addr;
     *out_size = n;
@@ -511,7 +575,8 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
 
 // What flag is in world (an area's top byte - 1), from that world's area scripts: 1 a progress flag (every player's
 // world keeps it), 3 one a boss kill sets (a progress flag too), 2 a soul pickup (the player who took it keeps it),
-// 0 none of these.
+// 4 a Nexus cutscene played (the player who saw it keeps it), 5 the Archstones' seal opened (progress that a guest's
+// own game makes too: the host's world takes it), 0 none of these.
 int des_seamless_flag_kind(uint32_t world, uint32_t flag)
 {
     std::lock_guard<std::mutex> g(sLock);
@@ -519,5 +584,5 @@ int des_seamless_flag_kind(uint32_t world, uint32_t flag)
         auto it = m.find(world);
         return it != m.end() && std::binary_search(it->second.begin(), it->second.end(), flag);
     };
-    return has(sBoss) ? 3 : has(sProgress) ? 1 : has(sOwn) ? 2 : 0;
+    return has(sBoss) ? 3 : has(sSeal) ? 5 : has(sProgress) ? 1 : has(sOwn) ? 2 : has(sScenes) ? 4 : 0;
 }

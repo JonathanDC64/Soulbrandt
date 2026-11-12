@@ -39,9 +39,13 @@
 //     ones its own game didn't set (a lever pulled far away). Flags only move forward: a flag cleared is never sent
 //     or kept.
 //   - A boss's soul taken by a guest: kept for its own world too, so its own world doesn't offer it again.
+//   - The Archstones' seal (the Monumental's tale heard): its handlers run in the hearer's game alone, so a guest that
+//     opens it tells the host (FLAG), whose world takes it and passes it on as its own progress.
 // The Nexus in a session (shared, as the host has it):
 //   - The NPCs a visitor's game would set up as phantoms (drawn as such) stay as the host has them, and a guest can
 //     talk to them: the talk scripts' phantom check sees it as alive.
+//   - Each Nexus cutscene, and the Monumental's tale, plays for each player once: a guest's flag in play for one is
+//     the host's and its own, and the guest keeps the flag in its own world once it has played.
 #include "des_seamless.h"
 
 #include "ps3emu/ppu_lift.h"
@@ -66,7 +70,7 @@ extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
 #endif
 extern "C" void ds_malloc(ppu_context* ctx);                     // des_heap.cpp: the guest heap
 bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t* out, uint32_t* out_size);  // _scripts.cpp
-int des_seamless_flag_kind(uint32_t world, uint32_t flag);       // _scripts.cpp: 1 progress, 3 a boss kill's, 2 a soul pickup
+int des_seamless_flag_kind(uint32_t world, uint32_t flag);       // _scripts.cpp: 1 progress, 3 a boss kill's, 2 a soul pickup, 4 a Nexus cutscene, 5 the Archstones' seal
 extern "C" void ps3_indirect_call(ppu_context* ctx);             // ppu_loader.cpp: a call to the guest address in CTR
 extern "C" int des_player_xyz(float* x, float* y, float* z);     // des_options.cpp: 0 with no player
 
@@ -127,7 +131,7 @@ constexpr char kMsgLead[4] = {'L', 'E', 'A', 'D'};   // u32 trip: the host's loa
 // (76 bytes, or none): the host has arrived (after each load), every 2 s while it hosts, and when a guest asks
 constexpr char kMsgReady[4] = {'R', 'E', 'D', 'Y'};
 constexpr char kMsgWhere[4] = {'H', 'E', 'R', '?'};  // a guest asks for a READY now (its respawn)
-constexpr char kMsgFlag[4] = {'F', 'L', 'A', 'G'};   // u32 flag, u32 area: a progress flag set in the host's world
+constexpr char kMsgFlag[4] = {'F', 'L', 'A', 'G'};   // u32 flag, u32 area: a progress flag set in the host's world (from a guest: the seal)
 // u32 area, u32 offset, then up to kFlagChunk bytes of the host's flags from that offset (with each READY)
 constexpr char kMsgFlags[4] = {'F', 'L', 'G', 'S'};
 constexpr uint32_t kRoomMax = 0x200;
@@ -240,7 +244,7 @@ struct Ready {
 Ready sReady;                        // where the host is (a guest)
 bool sAskedWhere = false;            // a guest asked for a READY now (the host)
 struct HostFlag { uint32_t flag, area; };
-std::deque<HostFlag> sHostFlags;     // progress flags set in the host's world, not yet kept (a guest)
+std::deque<HostFlag> sHostFlags;     // FLAGs not yet taken: a guest's from the host, the host's from its guests
 struct HostFlags {
     uint32_t area = kNoArea;
     std::vector<uint8_t> bytes = std::vector<uint8_t>(kFlagBytes);
@@ -744,6 +748,28 @@ void send_ready(ppu_context* ctx, uint32_t sm, uint32_t trip, const Place& arriv
     send(kMsgReady, b);
 }
 
+// The Archstones' seal opened in a guest's game (FLAG from a guest: it heard the Monumental's tale): into the host's
+// world too, through the game's own setter, so des_coop_hook sends it on to the other guests as the host's progress.
+void take_guest_seal(ppu_context* ctx)
+{
+    std::deque<HostFlag> flags;
+    {
+        std::lock_guard<std::mutex> l(sMsgLock);
+        flags.swap(sHostFlags);
+    }
+    const uint32_t fb = flag_base();
+    if (flags.empty() || !guest_ok(fb)) return;
+    const uint32_t here = world_of(vm_read32(fb + kFlagsArea));
+    for (const HostFlag& f : flags) {
+        const uint32_t w = world_of(f.area);
+        if (f.flag >= kFlagCount || (world_flag(f.flag) && w != here)) continue;   // another world's: not in play here
+        if (des_seamless_flag_kind(w, f.flag) != 5 || ((vm_read8(fb + (f.flag >> 3)) >> (f.flag & 7)) & 1)) continue;
+        call_addr(ctx, DES_AT(0x005086F8u), {fb, f.flag, 1});
+        std::fprintf(stderr, "[coop] progress: flag %u (the Archstones' seal) set in a guest's game; set here too\n",
+                     f.flag);
+    }
+}
+
 void host_tick(ppu_context* ctx, uint32_t sm, uint32_t gm, uint32_t st, bool world)
 {
     Game& g = sGame;
@@ -769,6 +795,7 @@ void host_tick(ppu_context* ctx, uint32_t sm, uint32_t gm, uint32_t st, bool wor
     }
     g.calm = 0;
     if (st != kStateHost) return;
+    if (world) take_guest_seal(ctx);
     if (!g.room_sent && ++g.room_frames >= 30) {
         const std::vector<uint8_t> data = room_data(ctx, sm);
         if (!data.empty()) {
@@ -1030,6 +1057,36 @@ extern "C" void des_seamless_tick(ppu_context* ctx)
     else guest_tick(ctx, sm, st, world);
 }
 
+// An area script was just read (des_seamless_scripts.cpp), before the area starts. On a guest in a session, each
+// Nexus cutscene the host has seen and this player hasn't plays here too: its flag in play becomes the host's and this
+// player's own. Once it has played, the flag goes into this player's own world (des_coop_hook's flag set, kind 4).
+void des_seamless_area_read(uint32_t world, const std::vector<uint32_t>& scenes)
+{
+    if (scenes.empty() || co::active() != co::Mode::Join) return;
+    const uint32_t sm = session_manager(), fb = flag_base();
+    if (!guest_ok(sm) || !guest_ok(fb) || vm_read32(sm + kSmState) != kStateClient) return;
+    std::lock_guard<std::mutex> l(sOwn.lock);
+    if (!sOwn.kept) return;
+    for (const uint32_t flag : scenes) {
+        if (flag >= kFlagCount) continue;
+        const uint8_t bit = (uint8_t)(1u << (flag & 7));
+        bool own;
+        if (!world_flag(flag) || world == sOwn.home) {
+            own = (sOwn.flags[flag >> 3] & bit) != 0;
+        } else {
+            const long b = own_bank_at(world, flag);
+            own = b >= 0 && (sOwn.banks[b] & bit) != 0;
+        }
+        const uint32_t a = fb + (flag >> 3);
+        const uint8_t v = vm_read8(a);
+        if ((v & bit) && !own) {
+            vm_write8(a, (uint8_t)(v & ~bit));
+            std::fprintf(stderr, "[coop] cutscene %u: seen in the host's world, not yet by this player; it plays here\n",
+                         flag);
+        }
+    }
+}
+
 // Instruction hooks (port/insn_hooks.txt), with the US disc's addresses as keys.
 extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
 {
@@ -1069,24 +1126,37 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
         const uint32_t sm = session_manager();
         const uint32_t st = guest_ok(sm) ? vm_read32(sm + kSmState) : 0;
         const bool host = m == co::Mode::Host && st == kStateHost;
-        const bool guest = m == co::Mode::Join && st == kStateClient && sGame.arrived.load();
-        if (!host && !guest) break;
+        const bool joined = m == co::Mode::Join && st == kStateClient;
+        if (!host && !joined) break;
         const uint32_t area = vm_read32(fb + kFlagsArea);
         const int kind = des_seamless_flag_kind(world_of(area), flag);
+        // A Nexus cutscene's script sets its flag as the area starts, before the guest counts as arrived
+        const bool guest = joined && (sGame.arrived.load() || kind == 4);
+        if (!host && !guest) break;
         if (guest && kind == 3) helped_kill();
-        if (host && (kind == 1 || kind == 3)) {   // the host's world moved forward: its guests keep it too
+        if (host && (kind == 1 || kind == 3 || kind == 5)) {   // the host's world moved forward: its guests keep it too
             std::vector<uint8_t> b;
             put32(b, flag);
             put32(b, area);
             send(kMsgFlag, b);
             std::fprintf(stderr, "[coop] progress: flag %u set; the guests keep it too\n", flag);
-        } else if (guest && kind && keep_flag(fb, world_of(area), flag)) {
-            if (kind == 2) {
-                std::lock_guard<std::mutex> l(sOwn.lock);
-                sOwn.taken.push_back(flag);
+        } else if (guest && kind) {
+            if (kind == 5) {   // the seal, opened in this game alone (its handlers aren't sent): the host's world too
+                std::vector<uint8_t> b;
+                put32(b, flag);
+                put32(b, area);
+                send(kMsgFlag, b);
+                std::fprintf(stderr, "[coop] progress: flag %u (the Archstones' seal) set here; the host's world takes it\n",
+                             flag);
             }
-            std::fprintf(stderr, "[coop] %s: flag %u set here; kept for this player's world\n",
-                         kind == 2 ? "a boss's soul taken" : "progress", flag);
+            if (keep_flag(fb, world_of(area), flag)) {
+                if (kind == 2) {
+                    std::lock_guard<std::mutex> l(sOwn.lock);
+                    sOwn.taken.push_back(flag);
+                }
+                std::fprintf(stderr, "[coop] %s: flag %u set here; kept for this player's world\n",
+                             kind == 2 ? "a boss's soul taken" : kind == 4 ? "a cutscene seen" : "progress", flag);
+            }
         }
         break;
     }
