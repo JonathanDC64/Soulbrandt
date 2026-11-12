@@ -84,6 +84,7 @@ DES_REGION_ADDR(0x0025EB88, 0x0025CBE8)  /* hook des_fade_rate */
 DES_REGION_ADDR(0x0025EC14, 0x0025CC74)  /* hook des_fade_rate */
 DES_REGION_ADDR(0x0026558C, 0x002635EC)  /* hook des_fade_rate */
 DES_REGION_ADDR(0x00265C88, 0x00263CE8)  /* hook des_fade_rate */
+DES_REGION_ADDR(0x0026F148, 0x0027A6A0)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x0026FB20, 0x0026DB80)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x0026FC48, 0x0026DCA8)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x0026FC98, 0x0026DCF8)  /* hook des_dev_hook */

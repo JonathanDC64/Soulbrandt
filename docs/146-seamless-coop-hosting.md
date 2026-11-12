@@ -55,6 +55,7 @@ once: after that, co-op has characters of its own.
   return during multiplayer."
 - **Boss kills keep everyone together:** no rating screen, nobody sent home, and the boss room's walls drop.
 - **A friend who dies** comes back where the host last arrived (the start of the area) and stays in the session.
+  The others see it again once it is back.
 - **In a boss fight,** a friend who dies first watches until the fight ends. Once the boss is dead, it comes back at
   the area's start. If the host dies too, it goes back with everyone.
 - **When the host dies,** everyone goes back to the start together.
@@ -150,6 +151,11 @@ joins the room. So after each load, each game puts the other players back on its
 game's own join does.
 
 **The host keeps its session.** The game's leaves on a load are skipped on the host. Its session ends with co-op.
+
+**A player back after a death.** Another player's death plays its death animation on each game, and the animation
+keeps that character faded out (a dead phantom leaves the game's sessions, so the game never brings one back). Once
+a player seen at 0 hit points has hit points again, each game resets that character's animation as the scripts'
+`ChrResetAnimation` does, and fades it back in.
 
 **Messages between the games** go through the room server (`psnr_app_send`, ps3recomp):
 

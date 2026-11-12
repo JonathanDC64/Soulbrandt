@@ -62,6 +62,7 @@
 #include <filesystem>
 #include <initializer_list>
 #include <mutex>
+#include <set>
 #include <thread>
 #include <vector>
 
@@ -618,6 +619,40 @@ bool in_world(uint32_t sm, uint32_t gm)
            guest_ok(rd(man + 0x1BC));
 }
 
+// Another player's death here: its character plays the death animation and stays in it, so the animation's events
+// (0x002AAE10, 0x002AF084) keep its fade (+0x35C) at 0 after taking it there from 1. A dead phantom leaves the game's
+// sessions, so the game never brings one back; in co-op it comes back, and was drawn only as its name and its aura.
+// Once a player seen dead (its game data, +0x49C, at 0 hit points, +0xC) is alive again, its animation is reset as the
+// scripts' ChrResetAnimation does (0x0026F148), and its fade is 1 again, as the character starts with. The other
+// players are the vector at the character manager's +0x19C (begin +0x1A0, end +0x1A4; each one's player id at +0x498),
+// as 0x002945F8 looks one up.
+void show_returned_players(ppu_context* ctx)
+{
+    static std::set<uint32_t> dead;   // player ids seen at 0 hit points
+    const uint32_t man = rd(DES_AT(kChrMan));
+    if (!guest_ok(man)) return;
+    const uint32_t me = rd(man + 0x1BC), pb = rd(man + 0x1A0), pe = rd(man + 0x1A4);
+    if (!guest_ok(pb) || pe < pb || pe - pb > 0x40) return;
+    std::set<uint32_t> here;
+    for (uint32_t q = pb; q < pe; q += 4) {
+        const uint32_t p = rd(q);
+        if (!guest_ok(p) || p == me) continue;
+        const uint32_t gd = rd(p + 0x49C);
+        if (!guest_ok(gd)) continue;
+        const uint32_t id = vm_read32(p + 0x498);
+        here.insert(id);
+        if ((int32_t)vm_read32(gd + 0xC) <= 0) {
+            dead.insert(id);
+            continue;
+        }
+        if (!dead.erase(id)) continue;
+        call_addr(ctx, DES_AT(0x0026F148u), {p});
+        vm_write32(p + 0x35C, 0x3F800000u);   // 1.0f
+        std::fprintf(stderr, "[coop] player %u is back: shown again\n", id);
+    }
+    for (auto it = dead.begin(); it != dead.end();) it = here.count(*it) ? std::next(it) : dead.erase(it);
+}
+
 // The host's room step (0x00540D90), as a sign's touch calls it (0x003A1160): the manager *(*(base - 0x7F98)) and
 // f1 = the float at base - 0x7F90, base = *(TOC - 0x79AC). Asks for a room; the game's callback makes it the host.
 void open_room(ppu_context* ctx, uint32_t sm)
@@ -1053,6 +1088,7 @@ extern "C" void des_seamless_tick(ppu_context* ctx)
     if (!sGame.scratch) return;
     const uint32_t st = vm_read32(sm + kSmState);
     const bool world = in_world(sm, gm);
+    if (world && (st == kStateHost || st == kStateClient)) show_returned_players(ctx);
     if (m == co::Mode::Host) host_tick(ctx, sm, gm, st, world);
     else guest_tick(ctx, sm, st, world);
 }
