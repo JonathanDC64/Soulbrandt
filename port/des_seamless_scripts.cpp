@@ -8,8 +8,11 @@
 //   - a boss kill keeps the session: a blue phantom isn't sent home (no load wait, no trip-home animation, no
 //     "Objective met. Resurrecting in your own world.", no leaving announcement, no flag rollback), and the
 //     multiplayer walls drop as at a session's end;
-//   - no rating screen after a kill: a short timer goes on to the next step instead.
+//   - no rating screen after a kill: a short timer goes on to the next step instead;
+//   - a blue phantom's death keeps it in the session: it comes back where the host last arrived, and in a boss fight
+//     it first watches until the fight ends (the boss dead, or the host dead: then it goes back with the host).
 // Each area's script:
+//   - a boss fight is marked from the boss's health bar to its clearing (for the watch above);
 //   - the boss rooms' party walls drop as in solo play;
 //   - a guest doesn't play the warp-out pose at a boss's death;
 //   - the Archstones: the host may use them in a session (the guests then follow it, des_seamless_game.cpp); a guest
@@ -123,35 +126,59 @@ bool edit_global(std::string& t, const std::string& nl)
         return false;
     if (!replace_in(t, "PartyGhostDeath", "proxy:SetFlagInitState(2);", "--SEAMLESS proxy:SetFlagInitState(2);"))
         return false;
-    if (!replace_in(t, "PartyGhostDeath_1", "MissionDeadFailed(proxy,param);", "--SEAMLESS MissionDeadFailed(proxy,param);"))
-        return false;
-    if (!replace_in(t, "PartyGhostDeath_1", "proxy:OnRequestMenuEnd(4000, \"PartyGhostDeath_2\");",
-                    "proxy:OnKeyTime2(4000,\"PartyGhostDeath_2\",1.0,0,6,once); --SEAMLESS no recall menu"))
+    // (with the boss already dead too: the phantom isn't sent home after a kill either)
+    if (!replace_func(t, "PartyGhostDeath_1",
+                      "function PartyGhostDeath_1(proxy,param)\n"
+                      "\t--SEAMLESS: no recall menu and no trip home; PartyGhostDeath_2 brings the phantom back\n"
+                      "\tproxy:NotNetMessage_begin();\n"
+                      "\t\tproxy:OnKeyTime2(4000,\"PartyGhostDeath_2\",1.0,0,6,once);\n"
+                      "\tproxy:NotNetMessage_end();\n"
+                      "end\n", nl))
         return false;
     // ... and instead of the trip home, a summoned reload into the host's world (des_seamless_game.cpp puts it where
-    // the host last arrived: the area's start)
+    // the host last arrived: the area's start). In a boss fight (SeamlessBossFight: from the boss's health bar on,
+    // edit_area) the phantom first watches until the fight ends: it looks again each second (two timer slots in turn,
+    // so a handler never sets up its own slot) until the boss is dead, or the host has died: the host's respawn
+    // then takes everyone back (des_seamless_game.cpp's follow), and this phantom goes with it at full health.
     if (!replace_func(t, "PartyGhostDeath_2",
                       "function PartyGhostDeath_2(proxy,param)\n"
                       "\t--SEAMLESS: the phantom comes back in the host's world and stays in the session\n"
-                      "\tif ClearBoss == false then\n"
+                      "\tif SeamlessHostDown == true then\n"
                       "\t\tproxy:RequestFullRecover();\n"
-                      "\t\tproxy:SummonedMapReload();\n"
                       "\t\tproxy:SetEventFlag(4047, false);\n"
                       "\t\tproxy:SetEventFlag(4000, false);\n"
+                      "\t\treturn;\n"
                       "\tend\n"
+                      "\tif SeamlessBossFight == true and ClearBoss == false then\n"
+                      "\t\tif SeamlessWatchSlot == 6 then SeamlessWatchSlot = 8 else SeamlessWatchSlot = 6 end\n"
+                      "\t\tproxy:NotNetMessage_begin();\n"
+                      "\t\t\tproxy:OnKeyTime2(4000,\"PartyGhostDeath_2\",1.0,0,SeamlessWatchSlot,once);\n"
+                      "\t\tproxy:NotNetMessage_end();\n"
+                      "\t\treturn;\n"
+                      "\tend\n"
+                      "\tproxy:RequestFullRecover();\n"
+                      "\tproxy:SummonedMapReload();\n"
+                      "\tproxy:SetEventFlag(4047, false);\n"
+                      "\tproxy:SetEventFlag(4000, false);\n"
                       "end\n", nl))
         return false;
     // The host's death: the host's respawn takes everyone back together (des_seamless_game.cpp's follow), so a blue
-    // phantom isn't recalled and sent home (MissionFailed's 8943, HostDead_1's trip).
+    // phantom isn't recalled and sent home (MissionFailed's 8943, HostDead_1's trip). A phantom watching a boss fight
+    // goes back with it (PartyGhostDeath_2).
     if (!replace_func(t, "HostDead",
                       "function HostDead(proxy, param)\n"
                       "\t--SEAMLESS: the host's respawn takes the group back together; no recall, no trip home\n"
                       "\tif proxy:IsHost() == true or proxy:IsGreyGhost() == true then\n"
                       "\t\treturn;\n"
                       "\tend\n"
+                      "\tSeamlessHostDown = true;\n"
                       "\tprint(\"SEAMLESS HostDead\");\n"
                       "end\n", nl))
         return false;
+    // A boss's health bar cleared: its fight is over (BlockClear's kill; see edit_area)
+    const std::regex clear("proxy:ClearBossGauge\\s*\\(");
+    if (!std::regex_search(t, clear)) return false;
+    t = std::regex_replace(t, clear, "SeamlessBossFight = false; proxy:ClearBossGauge(");
     return true;
 }
 
@@ -172,6 +199,10 @@ int edit_area(std::string& t, bool nexus)
     sub(std::regex("(IsClient\\(\\) == true then\\s*\\r?\\n\\s*)proxy:PlayAnimation\\(\\s*LOCAL_PLAYER\\s*,\\s*8284\\s*\\);"),
         "$1--SEAMLESS proxy:PlayAnimation( LOCAL_PLAYER , 8284 );");
     if (nexus) return n;
+    // A boss fight is on from the boss's health bar to its clearing (each is a statement of its own in every area's
+    // script): a guest who dies in it watches until it ends (global_event.lua's PartyGhostDeath_2)
+    sub(std::regex("proxy:SetBossGauge\\s*\\("), "SeamlessBossFight = true; proxy:SetBossGauge(");
+    sub(std::regex("proxy:ClearBossGauge\\s*\\("), "SeamlessBossFight = false; proxy:ClearBossGauge(");
     // The Archstones: the OnEvent_<id>[_k] handlers that show "Return to the Nexus?" (10010710) or "You can't
     // return during multiplayer." (10010720).
     std::set<std::string> ids;

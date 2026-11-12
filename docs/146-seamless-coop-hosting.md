@@ -55,6 +55,8 @@ once: after that, co-op has characters of its own.
   return during multiplayer."
 - **Boss kills keep everyone together:** no rating screen, nobody sent home, and the boss room's walls drop.
 - **A friend who dies** comes back where the host last arrived (the start of the area) and stays in the session.
+- **In a boss fight,** a friend who dies first watches until the fight ends. Once the boss is dead, it comes back at
+  the area's start. If the host dies too, it goes back with everyone.
 - **When the host dies,** everyone goes back to the start together.
 - **Progress is everyone's.** A boss killed, or a door, lever, elevator, shortcut, bridge or fog wall opened while
   friends are in the host's world counts in each friend's own world too.
@@ -179,10 +181,19 @@ their first instruction):
   - A boss kill keeps a blue phantom in the world. It gets no load wait, no trip-home animation, no "Objective met"
     recall and no leaving announcement, and nothing is rolled back. The multiplayer walls drop as at a session's end.
   - No rating screen after a kill.
-  - A blue phantom's death keeps it in the session: a summoned reload instead of the trip home, and no recall.
+  - A blue phantom's death keeps it in the session: a summoned reload instead of the trip home, and no recall
+    (`PartyGhostDeath_1` goes on to `_2` after a second, even after a boss kill).
+  - In a boss fight, `PartyGhostDeath_2` waits: it looks again each second while `SeamlessBossFight` is set and
+    `ClearBoss` isn't. Two timer slots take turns, so a handler never sets up its own slot. Once the host has died
+    (`HostDead` sets `SeamlessHostDown`), it asks for full health and leaves the load to the host's respawn, which
+    takes everyone back.
   - The host's death doesn't send the phantoms home; the host's respawn takes them along.
+  - `proxy:ClearBossGauge(` also clears `SeamlessBossFight`.
 - Each area's script: the boss rooms' party walls drop as in solo play; a guest doesn't play the warp-out pose at a
-  boss's death; the host may use the Archstones in a session; a blue phantom may take a boss's soul.
+  boss's death; the host may use the Archstones in a session; a blue phantom may take a boss's soul. A boss fight is
+  marked from its health bar: every `proxy:SetBossGauge(` (a statement of its own in every area) sets
+  `SeamlessBossFight`, and `proxy:ClearBossGauge(` clears it. All of a map's scripts share one set of globals, as
+  the area scripts' calls to `global_event.lua`'s functions show.
 
 The edited copies are cached by the original's size and hash, so a script read again costs nothing.
 
@@ -246,6 +257,6 @@ the newer generation, and saves as usual.
   home).
 - A friend in body form who leaves co-op after taking soul form for a join that never completed stays in soul form.
 - The final area's Demon's Soul is offered only outside a session (`ATTR_NOSESSION`; the game has no co-op there).
-- In a boss fight, a dead player watching until the fight ends. Today it comes back at the area's
-  start like any other death.
+- Watching a boss fight after dying is checked only as far as the scripts loading and an ordinary death still
+  respawning. A boss fight with a friend dying in it is a hand test.
 - The Japanese and Asian discs: allowed once a test with the others works.
