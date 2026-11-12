@@ -26,7 +26,8 @@ This page covers three parts:
 **To join:**
 
 1. Copy your friend's invite code.
-2. Open **Co-op**, choose **Join**, then **Paste and join**. The game starts again on your co-op characters.
+2. Open **Co-op**, choose **Join**, then **Paste and join**, or **Type code** to type it (with a keyboard or
+   the controller). The game starts again on your co-op characters.
 
 **To leave:** **Co-op** > **Leave co-op**. A friend's game first takes them back to their own world, where it saves
 what the group did; the host's leave sends its friends back to theirs. Then the game starts again on your normal
@@ -229,5 +230,4 @@ resolves) and `PS3_SAVEDATA_ROOT` (the co-op save). A value set in the environme
 - In a boss fight, a dead player watching until the fight ends. Today it comes back at the area's
   start like any other death.
 - Importing one normal character into the co-op save, once.
-- Typing a code (the Join window takes it from the clipboard only). Off Windows, the clipboard is the game's own.
 - The Japanese and Asian discs: allowed once a test with the others works.

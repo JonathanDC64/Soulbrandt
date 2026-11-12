@@ -5,6 +5,8 @@
 
 #include "app.hpp"
 #include "crash_report.hpp"
+#include "osk_window.hpp"
+#include "platform.hpp"
 #include "sound.hpp"
 #include "ui.hpp"
 
@@ -64,26 +66,43 @@ void open_host() {
     }));
 }
 
+// Join with a code the player pasted or typed; a toast says why not if it doesn't read as one.
+void join_with(const std::string& text, const char* if_empty) {
+    std::string code;
+    const std::string why = co::check_code(text, &code);
+    if (!why.empty()) {
+        play_sound(kSoundItemDisable);
+        toast("warning", text.empty() ? if_empty : why);
+        return;
+    }
+    play_sound(kSoundPlay);
+    restart_with({"DES_SEAMLESS=join", "DES_SEAMLESS_CODE=" + code});
+}
+
 void open_join() {
     push_document(std::make_unique<Modal>(Modal::Props{
         .title = "Join co-op",
         .bodyRml = "Copy your friend's invite code (16 letters and digits, like 7KQ2-M9XD-0RTB-4HWE), then choose "
-                   "Paste and join. The game starts again on your co-op characters, in your friend's world.",
+                   "Paste and join, or type it. The game starts again on your co-op characters, in your friend's "
+                   "world.",
         .actions = {ModalAction{.label = "Cancel", .onPressed = close_action},
+                    ModalAction{.label = "Type code",
+                                .onPressed = [](Modal&) {
+                                    play_sound(kSoundItemChange);
+                                    push_document(std::make_unique<OskWindow>(OskWindow::Props{
+                                        .prompt = "Your friend's invite code",
+                                        .limit = 19,  // 16 letters and digits, and three dashes
+                                        .onDone =
+                                            [](bool ok, const std::u16string& typed) {
+                                                if (ok) join_with(utf16_to_utf8(typed), "Type the code first.");
+                                            },
+                                    }));
+                                }},
                     ModalAction{.label = "Paste and join",
                                 .onPressed = [](Modal&) {
                                     Rml::String text;
                                     if (auto* sys = Rml::GetSystemInterface()) sys->GetClipboardText(text);
-                                    std::string code;
-                                    const std::string why = co::check_code(text, &code);
-                                    if (!why.empty()) {
-                                        play_sound(kSoundItemDisable);
-                                        toast("warning", text.empty() ? "Nothing to paste: copy the code first."
-                                                                      : why);
-                                        return;
-                                    }
-                                    play_sound(kSoundPlay);
-                                    restart_with({"DES_SEAMLESS=join", "DES_SEAMLESS_CODE=" + code});
+                                    join_with(text, "Nothing to paste: copy the code first.");
                                 }}},
     }));
 }
