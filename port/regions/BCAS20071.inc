@@ -151,10 +151,25 @@ DES_REGION_ADDR(0x003DBBB0, 0x003D9F18)  /* call */
 DES_REGION_ADDR(0x003E2DF0, 0x003E1158)  /* hook des_sun_gate */
 DES_REGION_ADDR(0x003E6330, 0x003E4698)  /* hook des_sun_gate */
 DES_REGION_ADDR(0x003E6518, 0x003E4880)  /* hook des_sun_gate */
+DES_REGION_ADDR(0x00419DCC, 0x00428D24)  /* hook des_coop_hook: after a load's world swap of the flags (a guest's own world kept) */
+DES_REGION_ADDR(0x00439288, 0x004486C8)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00439358, 0x00448798)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x0043EDE0, 0x0044E4E0)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x004418B8, 0x0043FC20)  /* call */
 DES_REGION_ADDR(0x00441AB8, 0x00450EB0)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00443838, 0x00441BA0)  /* call */
+DES_REGION_ADDR(0x004457A8, 0x00454B98)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00446C68, 0x00456050)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00447258, 0xFFFFFFFF)  /* call des_seamless_game (by address) (not looked up: co-op refuses this disc) */
+DES_REGION_ADDR(0x00447EA0, 0x00457288)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00447EF4, 0x004572DC)  /* hook des_coop_hook: the end of SetChrTypeDataGreyNext (a guest going home after a boss kill is revived) */
+DES_REGION_ADDR(0x0044A368, 0x004593D0)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x0044C6F0, 0xFFFFFFFF)  /* call des_seamless_game (by address) (not looked up: co-op refuses this disc) */
+DES_REGION_ADDR(0x0044C780, 0xFFFFFFFF)  /* hook des_coop_hook: the end of WarpNextStageKick (a guest going home loads its own area) (not looked up: co-op refuses this disc) */
 DES_REGION_ADDR(0x00451430, 0x0044F798)  /* call */
+DES_REGION_ADDR(0x005086F8, 0x00519360)  /* hook des_coop_hook: the event flags' set (progress kept for every player) */
+DES_REGION_ADDR(0x00508820, 0x00519488)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00508C00, 0x00519858)  /* hook des_coop_hook: a guest's join fills its flag copies (its own world's flags kept) */
 DES_REGION_ADDR(0x0052C2D8, 0x0053DD08)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x0053B31C, 0x0054CF6C)  /* hook des_coop_hook: the session's leave */
 DES_REGION_ADDR(0x0053CFE8, 0x00551CF0)  /* call des_seamless_game (by address) */

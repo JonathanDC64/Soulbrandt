@@ -257,3 +257,8 @@
 0x0053B31C=des_coop_hook   # lwz r9,0x9C(r3) in the session's leave 0x0053B300: the host keeps its session
 0x00A6B2F8=des_coop_hook   # lwz r11,8(r4) in the game's Lua reader: co-op's edits to the area scripts
 0x00CA15A8=des_coop_hook   # lwz r0,4(r4) in Lua's string reader (getS): co-op's edits to the area scripts
+0x005086F8=des_coop_hook   # cmpwi cr7,r4,0x427F, the event flags' set (r3 flags, r4 flag, r5 value): progress kept for every player
+0x00508C00=des_coop_hook   # stdu in 0x00508C00, a guest's join filling its flag copies (r3 flags): its own world's flags kept
+0x00419DCC=des_coop_hook   # lwz r9,0(r29) after a load's world swap of the flags (bl 0x005098D8): a guest's own world kept
+0x0044C780=des_coop_hook   # ld r0,0x90(r1), the end of WarpNextStageKick: a guest going home loads its own area, where it stood
+0x00447EF4=des_coop_hook   # ld r0,0x90(r1), the end of SetChrTypeDataGreyNext: a guest going home after a boss kill is revived

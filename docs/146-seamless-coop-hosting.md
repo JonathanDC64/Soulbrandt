@@ -4,13 +4,12 @@ Seamless co-op lets friends play through the game together. One player's game ho
 invite code. **No online server is used**: not this project's, and not anyone else's. Only the friends' games talk
 to each other.
 
-This page covers the first two parts:
+This page covers three parts:
 - **Part 1, connecting:** how a game hosts, how a friend joins, and what each game does with the network.
 - **Part 2, the session in the game:** joining with no sign from anywhere, following the host with one loading screen,
   boss kills and deaths.
-
-Progress for everyone (the host's world flags in each friend's save, a boss's Demon's Soul for everyone) comes in a
-later part.
+- **Part 3, progress for everyone:** what the group does together counts in each friend's own world too, each player
+  takes their own Demon's Soul, and a friend's own world is kept apart while they play in the host's.
 
 ## For players
 
@@ -29,7 +28,9 @@ later part.
 1. Copy your friend's invite code.
 2. Open **Co-op**, choose **Join**, then **Paste and join**. The game starts again on your co-op characters.
 
-**To leave:** **Co-op** > **Leave co-op**. The game starts again on your normal characters.
+**To leave:** **Co-op** > **Leave co-op**. A friend's game first takes them back to their own world, where it saves
+what the group did; the host's leave sends its friends back to theirs. Then the game starts again on your normal
+characters.
 
 **Co-op characters** are kept in their own save folder (`savedata-coop`, beside the normal one). Co-op never writes
 your normal characters.
@@ -47,6 +48,13 @@ your normal characters.
 - **Boss kills keep everyone together:** no rating screen, nobody sent home, and the boss room's walls drop.
 - **A friend who dies** comes back where the host last arrived (the start of the area) and stays in the session.
 - **When the host dies,** everyone goes back to the start together.
+- **Progress is everyone's.** A boss killed, or a door, lever, elevator, shortcut, bridge or fog wall opened while
+  friends are in the host's world counts in each friend's own world too.
+- **Each player takes their own Demon's Soul** from a boss, where the host takes theirs.
+- **Your own world stays yours.** In a friend's world you see it as it is there. Your own world's doors, items and
+  people stay as they were, and what the group did is added when you go back.
+- **Going back:** when the host leaves, its friends go back to their own worlds, where they stood when they joined,
+  and their games save there. A friend who was there when a boss died goes back in body form.
 
 ### If your friends can't connect
 
@@ -127,7 +135,32 @@ game's own join does.
 | `ROOM` | host | the room's data | join with this |
 | `ROM?` | friend | none | send the room's data |
 | `LEAD` | host | its load count | the host's load started: follow |
-| `REDY` | host | load count, area, where it arrived, where it stands | after each load, and every 2 s |
+| `REDY` | host | load count, area, where it arrived, where it stands, its area's dead characters | after each load, every 2 s, and when asked |
+| `HER?` | friend | none | send a `REDY` now (a friend's respawn) |
+| `FLGS` | host | area, offset, up to 1,000 bytes of its event flags | the host's flags, in three parts, before each `REDY` |
+| `FLAG` | host | flag, area | a progress flag was set in the host's world |
+
+**The flags** (event flags: bit `n & 7` of byte `n >> 3`, 17,024 of them):
+- **Each world has its own flags,** flags 0-3,199 and 8,192-12,287; the rest (bosses, for one) are shared by every
+  world. A load into another world puts the old world's own flags in its bank and takes the new one's.
+- **A blue phantom plays with the host's flags.** The join brings them, and each summoned reload puts them back. In
+  co-op the host sends its flags before each `REDY`, so a follow or a respawn gets the host's world as it is now.
+- **A friend's own world is kept apart.** At its join the friend's game keeps a copy of its own flags, and the
+  program keeps its own world banks. A load into another world on a friend would put the host's flags in the
+  friend's bank and the friend's own flags in play. So after each load in a session the program puts the friend's
+  banks back and the host's flags in play. The trip home puts the friend's own flags back (the game's own step),
+  and its save then holds its own world.
+- **Progress for everyone.** From each area script as it is read, the program lists the progress flags:
+  - every flag a boss kill's handlers set (the events whose handler starts the boss clear, `CustomLuaCallStart(4050)`);
+  - the events whose header comment names a door, lever, elevator, shortcut, bridge or fog wall, and names no
+    treasure, item, corpse, shop, talk, checkpoint, host-only wall or cutscene.
+
+  When one is set on a friend in a session, or the host says one was set in its world (`FLAG`), it goes into the
+  friend's own world: its own copy for shared flags and its home world's, its kept bank for another world's. Flags
+  only move forward: a flag cleared is never sent or kept.
+- **Demon's Souls.** A boss's soul is offered to the host and to players in their own world; the scripts' edit offers
+  it to a blue phantom too. A friend who takes it keeps the taken flag in its own world, so its own world doesn't
+  offer it again; one who doesn't can still take it at the same place in its own world.
 
 **The scripts' edits,** in memory, as each script is read (the game's Lua reader and Lua's string reader, hooked at
 their first instruction):
@@ -138,7 +171,7 @@ their first instruction):
   - A blue phantom's death keeps it in the session: a summoned reload instead of the trip home, and no recall.
   - The host's death doesn't send the phantoms home; the host's respawn takes them along.
 - Each area's script: the boss rooms' party walls drop as in solo play; a guest doesn't play the warp-out pose at a
-  boss's death; the host may use the Archstones in a session.
+  boss's death; the host may use the Archstones in a session; a blue phantom may take a boss's soul.
 
 The edited copies are cached by the original's size and hash, so a script read again costs nothing.
 
@@ -157,10 +190,33 @@ The runtime's knobs that co-op sets: `PS3_NET_ONLINE=1`, `PS3_NP_ONLINE_ID`, `PS
 `PSNR_KEY`, `PS3_HTTP_LOCAL` (the in-process server's port), `PS3_NET_HOSTS=localhost=127.0.0.1` (so no other name
 resolves) and `PS3_SAVEDATA_ROOT` (the co-op save). A value set in the environment wins, as for the Network rows.
 
+**A friend's leave** does what the friend's game does when the host's room is gone (`global_event.lua`'s
+`OnRoomDisappeared`, then `OnLeave_Limit`), through the same natives:
+1. leave the session (`LeaveSession`), and ask for the player's own flags back at the next load
+   (`SetFlagInitState(2)`);
+2. once out of the session: back to where the player stood before the join (`SetSummonedPos`,
+   `SetDefaultMapUid(-1)`), in soul form (`SetChrTypeDataGreyNext`), with a load (`WarpNextStageKick`);
+3. at home, the game saves by itself. The Co-op window waits for a file written in the co-op save after the arrival
+   (2 minutes at most, or **Leave now**), then starts the game again.
+
+**Going home** (a friend's leave, or the host gone):
+- **To where the friend stood.** The game's trip home reloads the area in play: a phantom of the game's own is always
+  summoned into its own area. A friend here may have joined from anywhere, so at the end of `WarpNextStageKick` (out of
+  a session, before the trip home) the load is pointed at the area and place the friend had at the join (the game
+  manager's next area, `+0x08`, and summoned place, `+0x20`).
+- **The flags that load puts in play** come from the kept banks: the swap took the new world's from a bank older than
+  the kept one.
+- **After a boss kill** with the friend in the session, the friend goes home revived, as `BlockClear2_3` does for a
+  blue phantom: at the end of `SetChrTypeDataGreyNext`, `SetAliveMotion`, `EraseEventSpecialEffect(10000, 101)`,
+  `RequestFullRecover` and `RevivePlayerNext`. Otherwise the game's own rule stands: soul form, unless the friend was
+  in body form before the join.
+
 ## Not done yet
 
-- Progress for everyone: the host's world flags (bosses, doors, shortcuts) written into each friend's co-op save, and
-  a boss's Demon's Soul for everyone present.
+- Checked by hand: a boss kill with friends (the soul for each, the walls), a door or shortcut opened by a friend,
+  and the progress kept in the friend's save after going home.
+- Closing the game window as a friend: the session is lost and nothing from it is saved (the game only saves at
+  home).
 - In a boss fight, a dead player watching until the fight ends. Today it comes back at the area's
   start like any other death.
 - Importing one normal character into the co-op save, once.

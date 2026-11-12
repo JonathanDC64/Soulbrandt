@@ -88,16 +88,64 @@ void open_join() {
     }));
 }
 
+void leave_now() {
+    play_sound(kSoundWindowClose);
+    restart_with({"DES_SEAMLESS=", "DES_SEAMLESS_CODE="});
+}
+
+// A guest's leave: its game goes back to its own world and saves there (des_seamless_game.cpp), then starts again.
+class LeavingWindow final : public Modal {
+public:
+    explicit LeavingWindow(Props props) : Modal(std::move(props)) {}
+
+    void update() override {
+        const auto now = std::chrono::steady_clock::now();
+        if (mStart == std::chrono::steady_clock::time_point{}) mStart = now;
+        if (!mDone && now >= mNext) {
+            mNext = now + std::chrono::milliseconds(500);
+            // The game side gives up after 2 minutes; this is for a game that never gets to look.
+            if (co::left() || now - mStart > std::chrono::seconds(150)) {
+                mDone = true;
+                leave_now();
+            }
+        }
+        Modal::update();
+    }
+
+private:
+    std::chrono::steady_clock::time_point mStart{}, mNext{};
+    bool mDone = false;
+};
+
+void open_leaving() {
+    co::leave();
+    push_document(std::make_unique<LeavingWindow>(Modal::Props{
+        .title = "Leaving co-op",
+        .bodyRml = "Going back to your own world. The game saves there, then starts again on your normal characters.",
+        .actions = {ModalAction{.label = "Leave now",
+                                .onPressed = [](Modal&) { leave_now(); }}},
+    }));
+}
+
 void open_leave() {
+    const bool guest = co::status().mode == co::Mode::Join;
     push_document(std::make_unique<Modal>(Modal::Props{
         .title = "Leave co-op",
-        .bodyRml = "The game starts again on your normal characters. Your co-op characters stay as they are, for the "
-                   "next time.",
+        .bodyRml = guest ? "Your game first takes you back to your own world, where it saves what you did together. "
+                           "Then it starts again on your normal characters. Your co-op characters stay as they are, "
+                           "for the next time."
+                         : "The game starts again on your normal characters. Your co-op characters stay as they are, "
+                           "for the next time.<br/><br/>Your friends go back to their own worlds.",
         .actions = {ModalAction{.label = "Cancel", .onPressed = close_action},
                     ModalAction{.label = "Leave",
-                                .onPressed = [](Modal&) {
+                                .onPressed = [guest](Modal& m) {
+                                    if (!guest) {
+                                        leave_now();
+                                        return;
+                                    }
                                     play_sound(kSoundWindowClose);
-                                    restart_with({"DES_SEAMLESS=", "DES_SEAMLESS_CODE="});
+                                    m.pop();
+                                    open_leaving();
                                 }}},
     }));
 }

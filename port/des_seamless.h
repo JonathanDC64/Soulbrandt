@@ -51,4 +51,9 @@ std::string check_code(const std::string& text, std::string* clean);
 // Cheap, for the game side (des_seamless_game.cpp, every frame): co-op started, as the host or as a guest.
 Mode active();
 
+// A guest's leave (des_seamless_game.cpp): leave() asks its game to go back to its own world first, where the game
+// saves what the group did; left() is true once that is done (or after 2 minutes), and always when not a guest.
+void leave();
+bool left();
+
 }  // namespace des::seamless

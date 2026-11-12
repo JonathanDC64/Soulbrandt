@@ -13,19 +13,26 @@
 //   - the boss rooms' party walls drop as in solo play;
 //   - a guest doesn't play the warp-out pose at a boss's death;
 //   - the Archstones: the host may use them in a session (the guests then follow it, des_seamless_game.cpp); a guest
-//     still gets "You can't return during multiplayer."
+//     still gets "You can't return during multiplayer.";
+//   - a boss's soul: a blue phantom may take its own, as the host takes its own.
+// And from each area's script, the flags that move forward in every player's world (progress_flags) and the soul
+// pickups each player makes for itself (own_flags), for des_seamless_game.cpp.
 #include "des_seamless.h"
 
 #include "ps3emu/ppu_lift.h"
 
+#include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <iterator>
 #include <map>
 #include <mutex>
 #include <regex>
 #include <set>
 #include <string>
+#include <vector>
 
 extern "C" void ds_malloc(ppu_context* ctx);   // des_heap.cpp: the guest heap
 
@@ -176,6 +183,10 @@ int edit_area(std::string& t, bool nexus)
         if (body.find("10010710") != std::string::npos || body.find("10010720") != std::string::npos)
             ids.insert((*it)[1].str());
     }
+    // A boss's soul (the prompt 10010180 at the Archstone or the boss's remains): a blue phantom may take its own too.
+    sub(std::regex("(OnDistanceActionAttribute\\(\\s*\\d+\\s*,[^\\n]*?,\\s*10010180\\s*,\\s*0\\s*,\\s*180\\s*,\\s*)"
+                   "(ATTR_HOST \\+ ATTR_LIVE \\+ ATTR_GREY|possible_chr_type)(\\s*,\\s*once\\s*\\))"),
+        "$1$2 + ATTR_WHITE$3");
     for (const std::string& id : ids) {
         // in this stone's handlers, the session check passes for the host
         const std::regex fn("\nfunction OnEvent_" + id + "(?:_\\d+)?\\s*\\(");
@@ -203,9 +214,182 @@ int edit_area(std::string& t, bool nexus)
     return n;
 }
 
+// Progress for everyone: the flags of an area's script that a session moves forward in every player's world.
+//   - Boss kills: an event whose handler starts the boss clear (CustomLuaCallStart(4050, ...)); every flag its
+//     handlers (OnEvent_<id>, OnEvent_<id>_<k>) set.
+//   - Doors, levers, elevators, shortcuts, bridges and fog walls: an event whose header comment (--■<id>■<what>■)
+//     names one of them, and names no treasure, item, corpse, shop, talk, NPC, checkpoint, host-only wall, cutscene
+//     or the like. Its ID.
+// Flags below 15000 only. The headers are Shift-JIS; the words below are their bytes.
+const char* const kInclude[] = {
+    "\x94\xE0",                                                   // door
+    "\x83\x8C\x83\x6F\x81\x5B",                                   // lever
+    "\x83\x47\x83\x8C\x83\x78\x81\x5B\x83\x5E",                   // elevator
+    "\x83\x56\x83\x87\x81\x5B\x83\x67\x83\x4A\x83\x62\x83\x67",   // shortcut
+    "\x8B\xB4",                                                   // bridge
+    "\x96\xB6",                                                   // fog
+};
+const char* const kExclude[] = {
+    "\x95\xF3",                                                           // treasure
+    "\x83\x41\x83\x43\x83\x65\x83\x80",                                   // item
+    "\x83\x7A\x83\x58\x83\x67",                                           // host
+    "\x8E\x80\x91\xCC",                                                   // corpse
+    "\x83\x56\x83\x87\x83\x62\x83\x76",                                   // shop
+    "\x89\xEF\x98\x62",                                                   // talk
+    "NPC",                                                                // NPC
+    "\x83\x60\x83\x46\x83\x62\x83\x4E\x83\x7C\x83\x43\x83\x93\x83\x67",   // checkpoint
+    "\x83\x4E\x83\x89\x83\x43\x83\x41\x83\x93\x83\x67",                   // client
+    "\x83\x56\x83\x93\x83\x4F\x83\x8B",                                   // single player
+    "\x89\x89\x8F\x6F",                                                   // staging
+    "\x95\x5C\x8E\xA6",                                                   // display
+    "\x8F\x89\x8A\xFA\x89\xBB",                                           // initialise
+    "\x89\xA4\x8E\x71",                                                   // prince
+    "\x83\x7C\x83\x8A\x8C\x80",                                           // cutscene
+    "\x8A\x4A\x8E\x6E",                                                   // start
+    "\x91\x83",                                                           // nest
+    "\x93\x47",                                                           // enemy
+    "\x88\xDA\x93\xAE",                                                   // move
+    "\x93\x9E\x92\x85",                                                   // arrival
+    "\x92\x54\x8D\xF5",                                                   // search
+    "\x95\xC2",                                                           // close
+    "\x83\x43\x83\x93\x83\x74\x83\x48",                                   // info
+};
+const char kBox[] = "\x81\xA1";   // the headers' separator
+constexpr uint32_t kProgressMax = 15000;
+
+// A Shift-JIS lead byte: the character takes two bytes.
+bool sjis_lead(unsigned char c) { return (c >= 0x81 && c <= 0x9F) || (c >= 0xE0 && c <= 0xFC); }
+
+// Whether text holds word, matched at character boundaries only.
+bool sjis_has(const std::string& text, const char* word)
+{
+    const size_t n = std::strlen(word);
+    for (size_t i = 0; i + n <= text.size(); i += sjis_lead((unsigned char)text[i]) ? 2 : 1)
+        if (text.compare(i, n, word) == 0) return true;
+    return false;
+}
+
+size_t skip_space(const std::string& t, size_t i)
+{
+    while (i < t.size() && (t[i] == ' ' || t[i] == '\t')) i++;
+    return i;
+}
+
+// A number at t[i], or -1; i moves past it.
+long read_number(const std::string& t, size_t* i)
+{
+    long v = -1;
+    while (*i < t.size() && t[*i] >= '0' && t[*i] <= '9' && v < 1000000) v = (v < 0 ? 0 : v * 10) + (t[(*i)++] - '0');
+    return v;
+}
+
+std::vector<uint32_t> progress_flags(const std::string& t, std::vector<uint32_t>* boss)
+{
+    std::set<uint32_t> out, kills;
+    // the functions, by name
+    std::map<std::string, std::pair<size_t, size_t>> funcs;
+    for (size_t a = t.find("\nfunction "); a != std::string::npos; a = t.find("\nfunction ", a + 1)) {
+        size_t i = a + 10, j = i;
+        while (j < t.size() && (std::isalnum((unsigned char)t[j]) || t[j] == '_')) j++;
+        const size_t e = t.find("\nfunction ", j);
+        funcs[t.substr(i, j - i)] = {a, e == std::string::npos ? t.size() : e};
+    }
+    auto body_has_clear = [&](size_t a, size_t e) {   // CustomLuaCallStart( 4050 ,
+        for (size_t p = t.find("CustomLuaCallStart(", a); p != std::string::npos && p < e;
+             p = t.find("CustomLuaCallStart(", p + 1)) {
+            size_t i = skip_space(t, p + 19);
+            if (read_number(t, &i) == 4050 && skip_space(t, i) < t.size() && t[skip_space(t, i)] == ',') return true;
+        }
+        return false;
+    };
+    for (const auto& f : funcs) {
+        if (f.first.compare(0, 8, "OnEvent_") != 0 || !body_has_clear(f.second.first, f.second.second)) continue;
+        size_t i = 8;
+        const long id = read_number(f.first, &i);
+        if (id < 0) continue;
+        const std::string base = "OnEvent_" + std::to_string(id);
+        for (const auto& h : funcs) {   // the boss's handlers: every flag they set to true
+            if (h.first != base && h.first.compare(0, base.size() + 1, base + "_") != 0) continue;
+            for (size_t p = t.find("SetEventFlag(", h.second.first); p != std::string::npos && p < h.second.second;
+                 p = t.find("SetEventFlag(", p + 1)) {
+                size_t k = skip_space(t, p + 13);
+                const long flag = read_number(t, &k);
+                k = skip_space(t, k);
+                if (flag < 0 || flag >= (long)kProgressMax || k >= t.size() || t[k] != ',') continue;
+                k = skip_space(t, k + 1);
+                if (t.compare(k, 4, "true") == 0 || t.compare(k, 1, "1") == 0) kills.insert((uint32_t)flag);
+            }
+        }
+    }
+    out = kills;
+    if (boss) boss->assign(kills.begin(), kills.end());
+    // the headers: --■<id>■<what>■
+    std::set<long> seen;
+    for (size_t a = 0; a < t.size();) {
+        size_t e = t.find('\n', a);
+        if (e == std::string::npos) e = t.size();
+        size_t i = skip_space(t, a);
+        if (t.compare(i, 2, "--") == 0) {
+            i = skip_space(t, i + 2);
+            if (t.compare(i, 2, kBox) == 0) {
+                i = skip_space(t, i + 2);
+                const long id = read_number(t, &i);
+                i = skip_space(t, i);
+                if (id >= 0 && t.compare(i, 2, kBox) == 0 && seen.insert(id).second && id < (long)kProgressMax) {
+                    size_t w = i + 2, we = w;
+                    while (we < e && t.compare(we, 2, kBox) != 0) we += sjis_lead((unsigned char)t[we]) ? 2 : 1;
+                    const std::string what = t.substr(w, std::min(we, e) - w);
+                    bool in = false, ex = false;
+                    for (const char* k : kInclude) in = in || sjis_has(what, k);
+                    for (const char* k : kExclude) ex = ex || sjis_has(what, k);
+                    if (in && !ex) out.insert((uint32_t)id);
+                }
+            }
+        }
+        a = e + 1;
+    }
+    return std::vector<uint32_t>(out.begin(), out.end());
+}
+
+// The soul pickups (the prompt 10010180): the event's ID is the flag its handler sets once the soul is taken.
+std::vector<uint32_t> own_flags(const std::string& t)
+{
+    std::set<uint32_t> out;
+    const std::regex re("OnDistanceActionAttribute\\(\\s*(\\d+)\\s*,[^\\n]*?,\\s*10010180\\s*,");
+    for (auto it = std::sregex_iterator(t.begin(), t.end(), re); it != std::sregex_iterator(); ++it) {
+        const unsigned long id = std::stoul((*it)[1].str());
+        if (id < kProgressMax) out.insert((uint32_t)id);
+    }
+    return std::vector<uint32_t>(out.begin(), out.end());
+}
+
 // The edited copies, by the original's size and hash; 0: the script is left as it is.
+struct Copy {
+    uint32_t addr = 0, size = 0;
+    uint32_t world = 0xFFFFFFFFu;     // an area script's world (its area's top byte - 1)
+    std::vector<uint32_t> progress;   // an area script's progress flags
+    std::vector<uint32_t> boss;       // the ones a boss kill sets
+    std::vector<uint32_t> own;        // and its soul pickups
+};
 std::mutex sLock;
-std::map<std::pair<uint32_t, uint64_t>, std::pair<uint32_t, uint32_t>> sCopies;   // -> guest address, size
+std::map<std::pair<uint32_t, uint64_t>, Copy> sCopies;
+// Each world's flags, from its area scripts (a load reads every area script of its world): sorted, no repeats.
+std::map<uint32_t, std::vector<uint32_t>> sProgress, sBoss, sOwn;
+
+void merge(std::vector<uint32_t>& into, const std::vector<uint32_t>& from)
+{
+    std::vector<uint32_t> out;
+    std::set_union(into.begin(), into.end(), from.begin(), from.end(), std::back_inserter(out));
+    into.swap(out);
+}
+
+void learn(const Copy& c)   // under sLock
+{
+    if (c.world >= 8) return;
+    merge(sProgress[c.world], c.progress);
+    merge(sBoss[c.world], c.boss);
+    merge(sOwn[c.world], c.own);
+}
 
 uint64_t fnv(const std::string& s)
 {
@@ -244,9 +428,10 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
         std::lock_guard<std::mutex> g(sLock);
         auto it = sCopies.find(key);
         if (it != sCopies.end()) {
-            if (!it->second.first) return false;
-            *out = it->second.first;
-            *out_size = it->second.second;
+            learn(it->second);
+            if (!it->second.addr) return false;
+            *out = it->second.addr;
+            *out_size = it->second.size;
             return true;
         }
     }
@@ -266,13 +451,39 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
         addr = guest_alloc(ctx, n + 16);
         if (addr) for (uint32_t i = 0; i < n; i++) vm_write8(addr + i, (uint8_t)ed[i]);
     }
-    std::fprintf(stderr, "[coop] script %s: %s\n", global ? "global_event.lua" : t.substr(ar + 20, 12).c_str(),
+    Copy c;
+    c.addr = addr;
+    c.size = n;
+    if (!global) {
+        c.progress = progress_flags(t, &c.boss);
+        c.own = own_flags(t);
+        // "function Initialize_mXX_": the world is XX - 1
+        const char d0 = t[ar + 21], d1 = t[ar + 22];
+        if (d0 >= '0' && d0 <= '9' && d1 >= '1' && d1 <= '9') c.world = (uint32_t)((d0 - '0') * 10 + (d1 - '0') - 1);
+    }
+    std::fprintf(stderr, "[coop] script %s: %s%s\n", global ? "global_event.lua" : t.substr(ar + 20, 12).c_str(),
                  addr ? (std::to_string(edits) + " edits for co-op").c_str() : global ? "left as it is (an edit didn't fit)"
-                                                                                      : "nothing to edit");
+                                                                                      : "nothing to edit",
+                 global ? "" : ("; " + std::to_string(c.progress.size()) + " progress flags, " +
+                                std::to_string(c.own.size()) + " soul pickups").c_str());
     std::lock_guard<std::mutex> g(sLock);
-    sCopies[key] = {addr, n};
+    learn(c);
+    sCopies[key] = c;
     if (!addr) return false;
     *out = addr;
     *out_size = n;
     return true;
+}
+
+// What flag is in world (an area's top byte - 1), from that world's area scripts: 1 a progress flag (every player's
+// world keeps it), 3 one a boss kill sets (a progress flag too), 2 a soul pickup (the player who took it keeps it),
+// 0 none of these.
+int des_seamless_flag_kind(uint32_t world, uint32_t flag)
+{
+    std::lock_guard<std::mutex> g(sLock);
+    auto has = [&](const std::map<uint32_t, std::vector<uint32_t>>& m) {
+        auto it = m.find(world);
+        return it != m.end() && std::binary_search(it->second.begin(), it->second.end(), flag);
+    };
+    return has(sBoss) ? 3 : has(sProgress) ? 1 : has(sOwn) ? 2 : 0;
 }

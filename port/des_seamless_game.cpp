@@ -22,6 +22,23 @@
 //   - A guest's death: a summoned reload instead of the trip home, to where the host last arrived (the area's start
 //     after a trip or a death). It stays in the session.
 //   - The host's death: its respawn is a load like any other, so the guests follow it.
+// The flags: a guest sees the host's world, and keeps its own world apart.
+//   - A phantom's game plays with the host's flags (the join brings them; each summoned reload puts them back from
+//     a copy, +0x20CC). The host sends its flags with each READY (FLGS), so that copy is the host's world as it is
+//     now, not as it was at the join.
+//   - A load into another world keeps the old world's own flags in its bank and takes the new world's. On a guest,
+//     the old world's are the host's, and the new world's are the guest's own. So at the join the guest's own banks
+//     are kept apart, put back after each load in the session, and the host's own flags of its world take the place
+//     of the guest's.
+//   - The trip home puts back the guest's own flags (+0x187C) after its load; its save holds what that copy and its
+//     banks hold.
+// Progress for everyone (the lists are des_seamless_scripts.cpp's: boss kills, doors, levers, elevators, shortcuts,
+// bridges, fog walls):
+//   - A progress flag set on a guest in a session also goes into its own world: the home copy, or the bank of the
+//     world it was set in. The host tells its guests each progress flag set in its world (FLAG), so a guest gets the
+//     ones its own game didn't set (a lever pulled far away). Flags only move forward: a flag cleared is never sent
+//     or kept.
+//   - A boss's soul taken by a guest: kept for its own world too, so its own world doesn't offer it again.
 #include "des_seamless.h"
 
 #include "ps3emu/ppu_lift.h"
@@ -32,8 +49,10 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <filesystem>
 #include <initializer_list>
 #include <mutex>
 #include <thread>
@@ -44,6 +63,7 @@ extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
 #endif
 extern "C" void ds_malloc(ppu_context* ctx);                     // des_heap.cpp: the guest heap
 bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t* out, uint32_t* out_size);  // _scripts.cpp
+int des_seamless_flag_kind(uint32_t world, uint32_t flag);       // _scripts.cpp: 1 progress, 3 a boss kill's, 2 a soul pickup
 extern "C" void ps3_indirect_call(ppu_context* ctx);             // ppu_loader.cpp: a call to the guest address in CTR
 extern "C" int des_player_xyz(float* x, float* y, float* z);     // des_options.cpp: 0 with no player
 
@@ -67,6 +87,8 @@ constexpr uint32_t kSmArea = 0x2A8;      // the area this game is in, FFFFFFFF w
 constexpr uint32_t kStateHost = 3, kStateClient = 6;
 // GameMan.
 constexpr uint32_t kGmNextArea = 0x08;                       // FFFFFFFF unless a load was asked for
+constexpr uint32_t kGmNextPoint = 0x0C;                      // the next load's warp point (-1: a place)
+constexpr uint32_t kGmSummonedPlace = 0x1C;                  // a byte: the next load puts the player at +0x20
 constexpr uint32_t kGmPlace[4] = {0x20, 0xA40, 0xAE0, 0xB20}; // where a summoned reload puts the player (x, y, z)
 // The dead-character records ("\0CHR", one bit per character of the area; always 76 bytes, 0x00294B10): the host's
 // (slot 0, bytes at +0xB34), which a summoned reload's load applies, and this game's own (slot 1, +0xB3C), which its
@@ -74,6 +96,23 @@ constexpr uint32_t kGmPlace[4] = {0x20, 0xA40, 0xAE0, 0xB20}; // where a summone
 constexpr uint32_t kGmHostRecord = 0xB34;
 constexpr uint32_t kGmOwnRecord = 0xB3C;
 constexpr uint32_t kRecordSize = 0x4C;
+// The event flags, *(*(*(TOC - 0x7B44) - 0x8000)): flag n is bit n & 7 of byte n >> 3, 17,024 of them (0x850 bytes;
+// the setter 0x005086F8). The structure also holds:
+//   - from a guest's join (0x00508C00): its own flags (+0x187C), which the trip home puts back (0x00508BA8), and the
+//     host's (+0x20CC), which each summoned reload puts in place (0x00508B70);
+//   - the current area (+0x3AD0);
+//   - each world's own flags (the world: an area's top byte - 1, 0-7): flags 0-3199 (bytes 0-0x18F) in a bank at
+//     +0x850 + w * 0x190, and 8192-12287 (bytes 0x400-0x5FF) at +0x291C + w * 0x200. A load into another world
+//     (0x005098D8) keeps the old world's there, clears flags 0-4095 and 8192-12287 and takes the new world's.
+constexpr uint32_t kFlagCount = 0x4280, kFlagBytes = 0x850;
+constexpr uint32_t kFlagsHome = 0x187C, kFlagsReload = 0x20CC, kFlagsArea = 0x3AD0;
+constexpr uint32_t kBank1 = 0x850, kBank1Size = 0x190, kBank2 = 0x291C, kBank2Size = 0x200, kWorlds = 8;
+constexpr uint32_t kLocal2 = 0x400;   // the byte of flag 8192
+constexpr uint32_t kBanksSize = kWorlds * (kBank1Size + kBank2Size);
+constexpr uint32_t kFlagChunk = 1000;   // FLGS: the flags in three messages (a message is at most 1024 bytes)
+
+bool world_flag(uint32_t flag) { return flag < 3200 || (flag >= 8192 && flag < 12288); }
+uint32_t world_of(uint32_t area) { return (area >> 24) - 1; }   // 0xFFFFFFFF with no area
 
 constexpr uint32_t kNoArea = 0xFFFFFFFFu;
 
@@ -85,6 +124,9 @@ constexpr char kMsgLead[4] = {'L', 'E', 'A', 'D'};   // u32 trip: the host's loa
 // (76 bytes, or none): the host has arrived (after each load), every 2 s while it hosts, and when a guest asks
 constexpr char kMsgReady[4] = {'R', 'E', 'D', 'Y'};
 constexpr char kMsgWhere[4] = {'H', 'E', 'R', '?'};  // a guest asks for a READY now (its respawn)
+constexpr char kMsgFlag[4] = {'F', 'L', 'A', 'G'};   // u32 flag, u32 area: a progress flag set in the host's world
+// u32 area, u32 offset, then up to kFlagChunk bytes of the host's flags from that offset (with each READY)
+constexpr char kMsgFlags[4] = {'F', 'L', 'G', 'S'};
 constexpr uint32_t kRoomMax = 0x200;
 
 bool guest_ok(uint32_t a) { return a >= 0x00010000u && a < 0xF0000000u; }
@@ -107,6 +149,8 @@ void wrf(uint32_t a, float f)
 
 uint32_t session_manager() { return rd(rd(rd(DES_AT(kSessionSlot)) - 0x7F08u)); }
 uint32_t game_manager() { return rd(rd(rd(DES_AT(kGameSlot)) - 0x7FFCu)); }
+uint32_t flag_base() { return rd(rd(rd(DES_AT(kGameSlot)) - 0x8000u)); }
+
 
 void drain(ppu_context* ctx)
 {
@@ -192,6 +236,15 @@ struct Ready {
 };
 Ready sReady;                        // where the host is (a guest)
 bool sAskedWhere = false;            // a guest asked for a READY now (the host)
+struct HostFlag { uint32_t flag, area; };
+std::deque<HostFlag> sHostFlags;     // progress flags set in the host's world, not yet kept (a guest)
+struct HostFlags {
+    uint32_t area = kNoArea;
+    std::vector<uint8_t> bytes = std::vector<uint8_t>(kFlagBytes);
+    uint32_t parts = 0;              // the chunks received for this area since the last full set (a bit each)
+    bool fresh = false;              // a full set not yet put in place
+};
+HostFlags sHostFlagSet;              // the host's flags (a guest)
 
 float getf(const uint8_t* p)
 {
@@ -230,6 +283,23 @@ void on_message(uint32_t from, const uint8_t* d, uint32_t n)
         sReady = std::move(r);
     } else if (!std::memcmp(d, kMsgWhere, 4)) {
         sAskedWhere = true;
+    } else if (!std::memcmp(d, kMsgFlag, 4) && n >= 12 && get32(d + 4) < kFlagCount && sHostFlags.size() < 4096) {
+        sHostFlags.push_back({get32(d + 4), get32(d + 8)});
+    } else if (!std::memcmp(d, kMsgFlags, 4) && n > 12) {
+        HostFlags& f = sHostFlagSet;
+        const uint32_t area = get32(d + 4), off = get32(d + 8), len = n - 12;
+        if (off % kFlagChunk || off >= kFlagBytes || len > kFlagBytes - off || len > kFlagChunk) return;
+        if (area != f.area) {
+            f.area = area;
+            f.parts = 0;
+        }
+        std::memcpy(f.bytes.data() + off, d + 12, len);
+        f.parts |= 1u << (off / kFlagChunk);
+        const uint32_t all = (1u << ((kFlagBytes + kFlagChunk - 1) / kFlagChunk)) - 1;
+        if ((f.parts & all) == all) {
+            f.parts = 0;
+            f.fresh = true;
+        }
     }
 }
 
@@ -251,6 +321,275 @@ struct Game {
     uint32_t record_buf = 0;  // a guest: guest memory for the host's dead-character record (its load step)
 };
 Game sGame;
+
+// A guest's own world while it plays in the host's: its banks from the join (both kinds, world by world, its home
+// world's from the flags in play) with the progress since, its home world (the world of its own flags' copy), and
+// where it stood. Read and written by hooks on the game's threads and by the main thread.
+struct Own {
+    std::mutex lock;
+    bool kept = false;
+    uint32_t home = kNoArea;
+    uint32_t area = kNoArea;    // its area at the join, and where it stood
+    float x = 0, y = 0, z = 0;
+    bool stood = false;
+    bool helped = false;        // a boss was killed while it was in the session: it goes home revived
+    bool sent = false;          // its trip home was pointed at area (going_home)
+    std::vector<uint8_t> flags = std::vector<uint8_t>(kFlagBytes);   // its own flags (the trip home's copy, +0x187C)
+    std::vector<uint8_t> banks = std::vector<uint8_t>(kBanksSize);
+    std::vector<uint32_t> taken;   // the boss souls it took in the session (its view keeps them taken)
+};
+Own sOwn;
+
+bool own_kept()
+{
+    std::lock_guard<std::mutex> l(sOwn.lock);
+    return sOwn.kept;
+}
+
+// A boss was killed with this guest in the session: as the game revives a blue phantom after a boss kill, it goes
+// home in body form.
+void helped_kill()
+{
+    std::lock_guard<std::mutex> l(sOwn.lock);
+    if (sOwn.kept && !sOwn.helped) {
+        sOwn.helped = true;
+        std::fprintf(stderr, "[coop] a boss killed with this player in the session: it goes home revived\n");
+    }
+}
+
+// The load that takes a guest home (WarpNextStageKick, out of the session) asks for the area it was in, where it
+// stood (the game's trip home reloads the area in play: a phantom of the game's own stands in its own area). Into the
+// game manager's next load: the area (+0x08) and the summoned place (+0x20 and its copies; SetSummonedPos set +0x1C).
+void going_home(uint32_t gm)
+{
+    std::lock_guard<std::mutex> l(sOwn.lock);
+    if (!sOwn.kept || sOwn.area == kNoArea || !guest_ok(gm)) return;
+    const uint32_t was = vm_read32(gm + kGmNextArea);
+    vm_write32(gm + kGmNextArea, sOwn.area);
+    vm_write32(gm + kGmNextPoint, 0xFFFFFFFFu);
+    sOwn.sent = true;
+    if (sOwn.stood) {
+        vm_write8(gm + kGmSummonedPlace, 1);
+        for (uint32_t off : kGmPlace) {
+            wrf(gm + off, sOwn.x);
+            wrf(gm + off + 4, sOwn.y);
+            wrf(gm + off + 8, sOwn.z);
+        }
+    }
+    std::fprintf(stderr, "[coop] going home: area %08X (the game asked for %08X), at %.2f %.2f %.2f\n", sOwn.area, was,
+                 sOwn.x, sOwn.y, sOwn.z);
+}
+
+// The end of SetChrTypeDataGreyNext on a guest going home (its form after the next load: soul form unless it was in
+// body form before the join): revived instead after a boss kill, as global_event.lua's BlockClear2_3 does for a blue
+// phantom (SetAliveMotion, EraseEventSpecialEffect(10000, 101), RequestFullRecover, RevivePlayerNext).
+void going_home_form(ppu_context* ctx)
+{
+    {
+        std::lock_guard<std::mutex> l(sOwn.lock);
+        if (!sOwn.kept || !sOwn.helped) return;
+    }
+    call_addr(ctx, DES_AT(0x004457A8u), {0, 1});            // SetAliveMotion(true)
+    call_addr(ctx, DES_AT(0x00446C68u), {0, 10000, 101});   // EraseEventSpecialEffect(10000, 101)
+    call_addr(ctx, DES_AT(0x00439358u), {0});               // RequestFullRecover
+    call_addr(ctx, DES_AT(0x00439288u), {0});               // RevivePlayerNext
+    std::fprintf(stderr, "[coop] going home: revived (a boss was killed in the session)\n");
+}
+
+// Where flag is in Own::banks for world w, or -1 if it isn't a world's own flag.
+long own_bank_at(uint32_t w, uint32_t flag)
+{
+    if (w >= kWorlds || !world_flag(flag)) return -1;
+    const uint32_t at = flag >> 3;
+    return flag < 3200 ? (long)(w * kBank1Size + at) : (long)(kWorlds * kBank1Size + w * kBank2Size + (at - kLocal2));
+}
+
+// A flag into this guest's own world (world: the one it was set in); false if it was there already. A world's own
+// flag goes into that world's kept bank, and for the home world into the home copy too; any other into the home copy.
+bool keep_flag(uint32_t fb, uint32_t world, uint32_t flag)
+{
+    const uint8_t bit = (uint8_t)(1u << (flag & 7));
+    bool changed = false;
+    std::lock_guard<std::mutex> l(sOwn.lock);
+    if (!sOwn.kept) return false;
+    if (!world_flag(flag) || world == sOwn.home) {
+        if (!(sOwn.flags[flag >> 3] & bit)) {
+            sOwn.flags[flag >> 3] |= bit;
+            changed = true;
+        }
+        const uint32_t a = fb + kFlagsHome + (flag >> 3);
+        vm_write8(a, (uint8_t)(vm_read8(a) | bit));
+    }
+    const long b = own_bank_at(world, flag);
+    if (b >= 0 && !(sOwn.banks[b] & bit)) {
+        sOwn.banks[b] |= bit;
+        changed = true;
+    }
+    return changed;
+}
+
+// A guest's join is about to fill the flags' copies (0x00508C00, before its first load into the host's world, with
+// its own flags still in play): its own flags and banks, kept apart for the session. A join again before the trip
+// home (the session ended with the guest still in the host's world, which then plays with the host's flags) keeps
+// the first join's: they are still the guest's own.
+void keep_own_world(uint32_t fb)
+{
+    std::lock_guard<std::mutex> l(sOwn.lock);
+    if (sOwn.kept) {
+        std::fprintf(stderr, "[coop] flags: a join again before going home; the own world stays as kept\n");
+        return;
+    }
+    for (uint32_t i = 0; i < kFlagBytes; i++) sOwn.flags[i] = vm_read8(fb + i);
+    for (uint32_t i = 0; i < kWorlds * kBank1Size; i++) sOwn.banks[i] = vm_read8(fb + kBank1 + i);
+    for (uint32_t i = 0; i < kWorlds * kBank2Size; i++) sOwn.banks[kWorlds * kBank1Size + i] = vm_read8(fb + kBank2 + i);
+    sOwn.area = vm_read32(fb + kFlagsArea);
+    sOwn.home = world_of(sOwn.area);
+    if (sOwn.home < kWorlds) {   // the world it stands in: its flags in play are newer than its bank
+        for (uint32_t i = 0; i < kBank1Size; i++) sOwn.banks[sOwn.home * kBank1Size + i] = sOwn.flags[i];
+        for (uint32_t i = 0; i < kBank2Size; i++)
+            sOwn.banks[kWorlds * kBank1Size + sOwn.home * kBank2Size + i] = sOwn.flags[kLocal2 + i];
+    }
+    sOwn.stood = des_player_xyz(&sOwn.x, &sOwn.y, &sOwn.z) != 0;
+    sOwn.helped = false;
+    sOwn.sent = false;
+    sOwn.taken.clear();
+    sOwn.kept = true;
+    std::fprintf(stderr, "[coop] flags: this player's own world is kept apart for the session (home world %u, area %08X%s)\n",
+                 sOwn.home, sOwn.area, sOwn.stood ? "" : ", no place");
+}
+
+// After a load's world swap (0x005098D8) on a guest: its own banks back in place. In a session, the host's flags
+// (the copy +0x20CC: the join's, then each READY's) in place of the ones the swap took from this guest's banks, and
+// the boss souls this guest took still taken. Out of a session this is the trip home (its own flags already back,
+// 0x00508BA8, its home world's in play): the swap put those in the bank of the world it left, and took the new
+// world's from its bank, which for the world it left is now those; so the new world's come from the kept banks. The
+// trip goes to the area it had at the join (going_home), or else reloads the area in play (+0x3AD0, not yet the new
+// one here). The own world is the game's own again.
+void after_world_swap(uint32_t fb, bool in_session)
+{
+    std::lock_guard<std::mutex> l(sOwn.lock);
+    if (!sOwn.kept) return;
+    for (uint32_t i = 0; i < kWorlds * kBank1Size; i++) vm_write8(fb + kBank1 + i, sOwn.banks[i]);
+    for (uint32_t i = 0; i < kWorlds * kBank2Size; i++) vm_write8(fb + kBank2 + i, sOwn.banks[kWorlds * kBank1Size + i]);
+    if (!in_session) {
+        const uint32_t to = sOwn.sent ? sOwn.area : vm_read32(fb + kFlagsArea);
+        const uint32_t w = world_of(to);
+        if (w < kWorlds) {
+            for (uint32_t i = 0; i < kBank1Size; i++) vm_write8(fb + i, sOwn.banks[w * kBank1Size + i]);
+            for (uint32_t i = 0; i < kBank2Size; i++)
+                vm_write8(fb + kLocal2 + i, sOwn.banks[kWorlds * kBank1Size + w * kBank2Size + i]);
+        }
+        sOwn.kept = false;
+        std::fprintf(stderr, "[coop] flags: back in this player's own world (%08X), with the session's progress\n", to);
+        return;
+    }
+    for (uint32_t i = 0; i < kFlagBytes; i++) vm_write8(fb + kFlagsHome + i, sOwn.flags[i]);   // a join again refills it
+    for (uint32_t i = 0; i < kFlagBytes; i++) vm_write8(fb + i, vm_read8(fb + kFlagsReload + i));
+    for (uint32_t f : sOwn.taken) vm_write8(fb + (f >> 3), (uint8_t)(vm_read8(fb + (f >> 3)) | (1u << (f & 7))));
+}
+
+// Leaving (a guest: the Co-op window's Leave). The game's own session leave leaves a phantom standing in the host's
+// world, so the guest does what its game does when the host's room is gone (global_event.lua's OnRoomDisappeared,
+// then OnLeave_Limit): it leaves the session (LeaveSession's native) and asks for its own flags back at the next load
+// (0x00508820: SetFlagInitState(2)); once out of the session it goes back to where it stood before the join
+// (SetSummonedPos, SetDefaultMapUid(-1)), in soul form (SetChrTypeDataGreyNext), with a load (WarpNextStageKick).
+// Its game saves once home: the leave is done when the save folder has a file written since the arrival.
+enum { kLeaveNone, kLeaveAsked, kLeaveOut, kLeaveGoing, kLeaveHome, kLeaveDone };
+std::atomic<int> sLeave{kLeaveNone};
+struct LeaveState {   // the game thread's only
+    bool seen = false;
+    std::chrono::steady_clock::time_point asked{};
+    std::filesystem::file_time_type home_at{};
+};
+LeaveState sLeaveState;
+
+// A file under the save folder (PS3_SAVEDATA_ROOT, co-op's own) written after t.
+bool saved_since(std::filesystem::file_time_type t)
+{
+    const char* root = std::getenv("PS3_SAVEDATA_ROOT");
+    std::error_code ec;
+    if (!root || !*root) return false;
+    for (std::filesystem::recursive_directory_iterator it(root, ec), end; !ec && it != end; it.increment(ec)) {
+        std::error_code e2;
+        if (it->is_regular_file(e2) && it->last_write_time(e2) > t && !e2) return true;
+    }
+    return false;
+}
+
+void leave_tick(ppu_context* ctx, uint32_t st, bool world)
+{
+    const int lv = sLeave.load();
+    if (lv == kLeaveNone || lv == kLeaveDone) return;
+    LeaveState& s = sLeaveState;
+    const auto now = std::chrono::steady_clock::now();
+    if (!s.seen) {
+        s.seen = true;
+        s.asked = now;
+    }
+    if (now - s.asked > std::chrono::seconds(120)) {
+        std::fprintf(stderr, "[coop] leave: not home and saved after 2 minutes; leaving all the same\n");
+        sLeave = kLeaveDone;
+        return;
+    }
+    if (lv == kLeaveAsked) {
+        if (st == kStateClient && sGame.arrived.load() && world) {
+            call_addr(ctx, DES_AT(0x00447258u), {0});                // LeaveSession
+            call_addr(ctx, DES_AT(0x00508820u), {flag_base(), 2});   // SetFlagInitState(2)
+            sLeave = kLeaveOut;
+            std::fprintf(stderr, "[coop] leave: out of the host's session; going home\n");
+        } else if (st == 0 && own_kept() && world) {   // out of the session but still in the host's world
+            call_addr(ctx, DES_AT(0x00508820u), {flag_base(), 2});
+            sLeave = kLeaveOut;
+            std::fprintf(stderr, "[coop] leave: going home\n");
+        } else if (st == 0 && !own_kept()) {
+            sLeave = kLeaveDone;   // not in a session: nothing to take home
+            std::fprintf(stderr, "[coop] leave: not in a session\n");
+        }
+    } else if (lv == kLeaveOut) {
+        if (st == 0) {
+            call_addr(ctx, DES_AT(0x0043EDE0u), {0});       // SetSummonedPos
+            call_addr(ctx, DES_AT(0x0044A368u), {0, -1});   // SetDefaultMapUid(-1)
+            call_addr(ctx, DES_AT(0x0044C6F0u), {0});       // WarpNextStageKick
+            call_addr(ctx, DES_AT(0x00447EA0u), {0});       // SetChrTypeDataGreyNext
+            sLeave = kLeaveGoing;
+        }
+    } else if (lv == kLeaveGoing) {
+        if (!own_kept() && st == 0 && world) {   // the trip home's load is done (after_world_swap)
+            s.home_at = std::filesystem::file_time_type::clock::now();
+            sLeave = kLeaveHome;
+            std::fprintf(stderr, "[coop] leave: home; waiting for the game's save\n");
+        }
+    } else if (lv == kLeaveHome) {
+        if (saved_since(s.home_at)) {
+            sLeave = kLeaveDone;
+            std::fprintf(stderr, "[coop] leave: saved at home; done\n");
+        }
+    }
+}
+
+// The host's latest flags (FLGS) into the copy each summoned reload puts in place, if a full set came since.
+void take_host_flags(uint32_t fb)
+{
+    std::lock_guard<std::mutex> l(sMsgLock);
+    HostFlags& f = sHostFlagSet;
+    if (!f.fresh || !guest_ok(fb)) return;
+    f.fresh = false;
+    for (uint32_t i = 0; i < kFlagBytes; i++) vm_write8(fb + kFlagsReload + i, f.bytes[i]);
+}
+
+// The host's flags to its guests, in chunks (before each READY, so a guest's load step has them once READY comes).
+void send_flags(uint32_t sm)
+{
+    const uint32_t fb = flag_base();
+    if (!guest_ok(fb)) return;
+    for (uint32_t off = 0; off < kFlagBytes; off += kFlagChunk) {
+        std::vector<uint8_t> b;
+        put32(b, vm_read32(sm + kSmArea));
+        put32(b, off);
+        for (uint32_t i = off; i < kFlagBytes && i < off + kFlagChunk; i++) b.push_back(vm_read8(fb + i));
+        send(kMsgFlags, b);
+    }
+}
 
 // The player stands in a loaded area: no load asked for or under way, and a character.
 bool in_world(uint32_t sm, uint32_t gm)
@@ -386,6 +725,7 @@ void send_ready(ppu_context* ctx, uint32_t sm, uint32_t trip, const Place& arriv
     }
     const std::vector<uint8_t> rec = dead_record(ctx);
     b.insert(b.end(), rec.begin(), rec.end());
+    send_flags(sm);
     send(kMsgReady, b);
 }
 
@@ -454,6 +794,8 @@ void host_tick(ppu_context* ctx, uint32_t sm, uint32_t gm, uint32_t st, bool wor
 void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
 {
     Game& g = sGame;
+    leave_tick(ctx, st, world);
+    if (st == 0 && sLeave.load() != kLeaveNone) return;   // leaving: no join again
     if (st == 0) {
         g.arrived = false;
         g.in_load = false;
@@ -492,6 +834,20 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
     }
     g.calm = 0;
     if (st != kStateClient) return;
+    // the host's flags for the next reload, and its progress flags into this player's own world (they wait for the
+    // session: the join keeps the own world apart)
+    const uint32_t fb = flag_base();
+    take_host_flags(fb);
+    std::deque<HostFlag> flags;
+    {
+        std::lock_guard<std::mutex> l(sMsgLock);
+        flags.swap(sHostFlags);
+    }
+    for (const HostFlag& f : flags) {
+        if (des_seamless_flag_kind(world_of(f.area), f.flag) == 3) helped_kill();
+        if (guest_ok(fb) && keep_flag(fb, world_of(f.area), f.flag))
+            std::fprintf(stderr, "[coop] progress: flag %u (set in the host's world) kept for this player's world\n", f.flag);
+    }
     const bool here = world && vm_read32(sm + kSmArrival) == 4;
     if (!g.arrived) {
         if (here) {
@@ -566,6 +922,7 @@ void guest_load_step(ppu_context* ctx)
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
     const Place at = trip || !joined ? r.now : r.arrived;
+    take_host_flags(flag_base());   // the host's flags where it is now (sent just before that READY), for this load
     char want[16];
     std::snprintf(want, sizeof want, "m%02u_%02u_%02u_%02u", r.area >> 24, (r.area >> 16) & 0xFFu, (r.area >> 8) & 0xFFu,
                   r.area & 0xFFu);
@@ -605,6 +962,23 @@ void guest_load_step(ppu_context* ctx)
 
 }  // namespace
 
+namespace des::seamless {
+
+void leave()
+{
+    if (active() != Mode::Join) return;
+    int none = kLeaveNone;
+    if (sLeave.compare_exchange_strong(none, kLeaveAsked))
+        std::fprintf(stderr, "[coop] leave: asked; going home first\n");
+}
+
+bool left()
+{
+    return active() != Mode::Join || sLeave.load() == kLeaveDone;
+}
+
+}  // namespace des::seamless
+
 // From des_menu_tick, every frame, on the game's main thread.
 extern "C" void des_seamless_tick(ppu_context* ctx)
 {
@@ -616,7 +990,12 @@ extern "C" void des_seamless_tick(ppu_context* ctx)
         psnr_app_on_message(on_message);
     }
     const uint32_t sm = session_manager(), gm = game_manager();
-    if (!guest_ok(sm) || !guest_ok(gm)) return;
+    if (!guest_ok(sm) || !guest_ok(gm)) {
+        int asked = kLeaveAsked;   // a leave before the game is in (the title screen): nothing to take home
+        if (!own_kept() && sLeave.compare_exchange_strong(asked, kLeaveDone))
+            std::fprintf(stderr, "[coop] leave: not in the game yet\n");
+        return;
+    }
     if (!sGame.scratch) sGame.scratch = guest_alloc(ctx, 0x1000);
     if (!sGame.record_buf) sGame.record_buf = guest_alloc(ctx, 0x100);
     if (!sGame.scratch) return;
@@ -655,6 +1034,53 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
         vm_write32(ud, to);
         vm_write32(ud + 4, size);
         if (!game_reader) ctx->gpr[0] = size;   // the size it just read
+        break;
+    }
+    case 0x005086F8u: { // the event flags' set, after its cmpwi: r3 = the flags, r4 = the flag, r5 = the value
+        const uint32_t flag = (uint32_t)ctx->gpr[4];
+        if ((uint32_t)ctx->gpr[5] == 0 || flag >= kFlagCount) break;   // flags only move forward
+        const uint32_t fb = (uint32_t)ctx->gpr[3];
+        if (!guest_ok(fb) || fb != flag_base() || ((vm_read8(fb + (flag >> 3)) >> (flag & 7)) & 1)) break;   // set already
+        const uint32_t sm = session_manager();
+        const uint32_t st = guest_ok(sm) ? vm_read32(sm + kSmState) : 0;
+        const bool host = m == co::Mode::Host && st == kStateHost;
+        const bool guest = m == co::Mode::Join && st == kStateClient && sGame.arrived.load();
+        if (!host && !guest) break;
+        const uint32_t area = vm_read32(fb + kFlagsArea);
+        const int kind = des_seamless_flag_kind(world_of(area), flag);
+        if (guest && kind == 3) helped_kill();
+        if (host && (kind == 1 || kind == 3)) {   // the host's world moved forward: its guests keep it too
+            std::vector<uint8_t> b;
+            put32(b, flag);
+            put32(b, area);
+            send(kMsgFlag, b);
+            std::fprintf(stderr, "[coop] progress: flag %u set; the guests keep it too\n", flag);
+        } else if (guest && kind && keep_flag(fb, world_of(area), flag)) {
+            if (kind == 2) {
+                std::lock_guard<std::mutex> l(sOwn.lock);
+                sOwn.taken.push_back(flag);
+            }
+            std::fprintf(stderr, "[coop] %s: flag %u set here; kept for this player's world\n",
+                         kind == 2 ? "a boss's soul taken" : "progress", flag);
+        }
+        break;
+    }
+    case 0x00508C00u:   // a join fills the flags' copies (r3 = the flags), at its stdu
+        if (m == co::Mode::Join && (uint32_t)ctx->gpr[3] == flag_base()) keep_own_world((uint32_t)ctx->gpr[3]);
+        break;
+    case 0x00419DCCu:   // after a load's world swap of the flags (bl 0x005098D8), at lwz r9,0(r29)
+        if (m == co::Mode::Join) {
+            const uint32_t sm = session_manager(), gm = game_manager(), fb = flag_base();
+            if (guest_ok(fb) && guest_ok(gm))
+                after_world_swap(fb, guest_ok(sm) && vm_read32(sm + kSmState) == kStateClient);
+        }
+        break;
+    case 0x0044C780u:   // the end of WarpNextStageKick (ld r0,0x90(r1)): a load asked for
+    case 0x00447EF4u: { // the end of SetChrTypeDataGreyNext: the form after the next load
+        const uint32_t sm = session_manager();
+        if (m != co::Mode::Join || !guest_ok(sm) || vm_read32(sm + kSmState) != 0) break;   // only out of a session
+        if (addr == 0x0044C780u) going_home(game_manager());
+        else going_home_form(ctx);
         break;
     }
     default:
