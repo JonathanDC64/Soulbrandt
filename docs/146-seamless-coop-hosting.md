@@ -41,6 +41,8 @@ your normal characters.
 
 - **Joining needs no sign.** Once the host stands in an area, a friend's game joins by itself, wherever the friend
   is. The friend loads the host's area and arrives beside the host as a blue phantom.
+- **Body form or soul form.** A friend in body form joins in soul form, since the game summons only soul-form
+  players, and gets its body form back when it goes home.
 - **Friends follow the host.** When the host travels (an Archstone, the Nexus, a death), its friends go too: one
   loading screen, then they stand beside the host again.
 - **Archstones:** the host can use them during co-op, and the group travels with it. A friend still gets "You can't
@@ -54,7 +56,8 @@ your normal characters.
 - **Your own world stays yours.** In a friend's world you see it as it is there. Your own world's doors, items and
   people stay as they were, and what the group did is added when you go back.
 - **Going back:** when the host leaves, its friends go back to their own worlds, where they stood when they joined,
-  and their games save there. A friend who was there when a boss died goes back in body form.
+  and their games save there. A friend goes back in body form if it was in body form before the join, or was there
+  when a boss died.
 
 ### If your friends can't connect
 
@@ -159,7 +162,9 @@ game's own join does.
   friend's own world: its own copy for shared flags and its home world's, its kept bank for another world's. Flags
   only move forward: a flag cleared is never sent or kept.
 - **Demon's Souls.** A boss's soul is offered to the host and to players in their own world; the scripts' edit offers
-  it to a blue phantom too. A friend who takes it keeps the taken flag in its own world, so its own world doesn't
+  it to a blue phantom too. The prompt is a network event, so one player's pickup would also fire the others'
+  (they see the pickup animation) and use up their once-only prompt. The edit registers it between
+  `NotNetMessage_begin` and `_end`, so each player's prompt is its own. A friend who takes it keeps the taken flag in its own world, so its own world doesn't
   offer it again; one who doesn't can still take it at the same place in its own world.
 
 **The scripts' edits,** in memory, as each script is read (the game's Lua reader and Lua's string reader, hooked at
@@ -208,8 +213,10 @@ resolves) and `PS3_SAVEDATA_ROOT` (the co-op save). A value set in the environme
   the kept one.
 - **After a boss kill** with the friend in the session, the friend goes home revived, as `BlockClear2_3` does for a
   blue phantom: at the end of `SetChrTypeDataGreyNext`, `SetAliveMotion`, `EraseEventSpecialEffect(10000, 101)`,
-  `RequestFullRecover` and `RevivePlayerNext`. Otherwise the game's own rule stands: soul form, unless the friend was
-  in body form before the join.
+  `RequestFullRecover` and `RevivePlayerNext`.
+- **A friend in body form before the join:** the game summons only soul-form players. A body-form friend's join fails
+  (`OnFailedJoinSession`, "Failed to join the session"), so the program calls the game's `ChangeGreyGhost` 10
+  frames before the join. Going home, it gets its body form back the same way, without the revival animation.
 
 ## Not done yet
 
@@ -217,6 +224,8 @@ resolves) and `PS3_SAVEDATA_ROOT` (the co-op save). A value set in the environme
   and the progress kept in the friend's save after going home.
 - Closing the game window as a friend: the session is lost and nothing from it is saved (the game only saves at
   home).
+- A friend in body form who leaves co-op after taking soul form for a join that never completed stays in soul form.
+- The final area's Demon's Soul is offered only outside a session (`ATTR_NOSESSION`; the game has no co-op there).
 - In a boss fight, a dead player watching until the fight ends. Today it comes back at the area's
   start like any other death.
 - Importing one normal character into the co-op save, once.

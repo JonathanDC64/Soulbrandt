@@ -183,10 +183,13 @@ int edit_area(std::string& t, bool nexus)
         if (body.find("10010710") != std::string::npos || body.find("10010720") != std::string::npos)
             ids.insert((*it)[1].str());
     }
-    // A boss's soul (the prompt 10010180 at the Archstone or the boss's remains): a blue phantom may take its own too.
-    sub(std::regex("(OnDistanceActionAttribute\\(\\s*\\d+\\s*,[^\\n]*?,\\s*10010180\\s*,\\s*0\\s*,\\s*180\\s*,\\s*)"
-                   "(ATTR_HOST \\+ ATTR_LIVE \\+ ATTR_GREY|possible_chr_type)(\\s*,\\s*once\\s*\\))"),
-        "$1$2 + ATTR_WHITE$3");
+    // A boss's soul (the prompt 10010180 at the Archstone or the boss's remains): a blue phantom may take its own too,
+    // and each player's prompt is its own. A prompt is a network event, so one player's pickup would also fire every
+    // other player's (they see the pickup animation) and use up their once-only prompt; registered between
+    // NotNetMessage_begin and _end it fires only for the player who took it. (None of these sits in such a block.)
+    sub(std::regex("proxy:(OnDistanceActionAttribute\\(\\s*\\d+\\s*,[^\\n]*?,\\s*10010180\\s*,\\s*0\\s*,\\s*180\\s*,\\s*)"
+                   "(ATTR_HOST \\+ ATTR_LIVE \\+ ATTR_GREY|possible_chr_type)(\\s*,\\s*once\\s*\\)\\s*;)"),
+        "proxy:NotNetMessage_begin(); proxy:$1$2 + ATTR_WHITE$3 proxy:NotNetMessage_end();");
     for (const std::string& id : ids) {
         // in this stone's handlers, the session check passes for the host
         const std::regex fn("\nfunction OnEvent_" + id + "(?:_\\d+)?\\s*\\(");

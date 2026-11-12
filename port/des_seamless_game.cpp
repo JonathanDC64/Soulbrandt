@@ -333,12 +333,14 @@ struct Own {
     float x = 0, y = 0, z = 0;
     bool stood = false;
     bool helped = false;        // a boss was killed while it was in the session: it goes home revived
+    bool body = false;          // it was in body form before the join: it goes home in body form
     bool sent = false;          // its trip home was pointed at area (going_home)
     std::vector<uint8_t> flags = std::vector<uint8_t>(kFlagBytes);   // its own flags (the trip home's copy, +0x187C)
     std::vector<uint8_t> banks = std::vector<uint8_t>(kBanksSize);
     std::vector<uint32_t> taken;   // the boss souls it took in the session (its view keeps them taken)
 };
 Own sOwn;
+std::atomic<bool> sJoinedInBody{false};   // set by guest_tick before a join from body form; taken by keep_own_world
 
 bool own_kept()
 {
@@ -380,20 +382,29 @@ void going_home(uint32_t gm)
                  sOwn.x, sOwn.y, sOwn.z);
 }
 
-// The end of SetChrTypeDataGreyNext on a guest going home (its form after the next load: soul form unless it was in
-// body form before the join): revived instead after a boss kill, as global_event.lua's BlockClear2_3 does for a blue
-// phantom (SetAliveMotion, EraseEventSpecialEffect(10000, 101), RequestFullRecover, RevivePlayerNext).
+// The end of SetChrTypeDataGreyNext on a guest going home (its form after the next load: soul form, since it joined
+// in soul form). In body form instead:
+// - after a boss kill, revived as global_event.lua's BlockClear2_3 revives a blue phantom (SetAliveMotion,
+//   EraseEventSpecialEffect(10000, 101), RequestFullRecover, RevivePlayerNext);
+// - if it was in body form before the join (it took soul form for it), its body form back as a revival gives it,
+//   with full health (EraseEventSpecialEffect(10000, 101), RequestFullRecover, RevivePlayerNext), but no revival
+//   animation.
 void going_home_form(ppu_context* ctx)
 {
+    bool helped, body;
     {
         std::lock_guard<std::mutex> l(sOwn.lock);
-        if (!sOwn.kept || !sOwn.helped) return;
+        if (!sOwn.kept) return;
+        helped = sOwn.helped;
+        body = sOwn.body;
     }
-    call_addr(ctx, DES_AT(0x004457A8u), {0, 1});            // SetAliveMotion(true)
-    call_addr(ctx, DES_AT(0x00446C68u), {0, 10000, 101});   // EraseEventSpecialEffect(10000, 101)
-    call_addr(ctx, DES_AT(0x00439358u), {0});               // RequestFullRecover
-    call_addr(ctx, DES_AT(0x00439288u), {0});               // RevivePlayerNext
-    std::fprintf(stderr, "[coop] going home: revived (a boss was killed in the session)\n");
+    if (!helped && !body) return;
+    if (helped) call_addr(ctx, DES_AT(0x004457A8u), {0, 1});   // SetAliveMotion(true)
+    call_addr(ctx, DES_AT(0x00446C68u), {0, 10000, 101});      // EraseEventSpecialEffect(10000, 101)
+    call_addr(ctx, DES_AT(0x00439358u), {0});                  // RequestFullRecover
+    call_addr(ctx, DES_AT(0x00439288u), {0});                  // RevivePlayerNext
+    std::fprintf(stderr, "[coop] going home: in body form (%s)\n",
+                 helped ? "revived: a boss was killed in the session" : "as before the join");
 }
 
 // Where flag is in Own::banks for world w, or -1 if it isn't a world's own flag.
@@ -451,6 +462,7 @@ void keep_own_world(uint32_t fb)
     }
     sOwn.stood = des_player_xyz(&sOwn.x, &sOwn.y, &sOwn.z) != 0;
     sOwn.helped = false;
+    sOwn.body = sJoinedInBody.exchange(false);
     sOwn.sent = false;
     sOwn.taken.clear();
     sOwn.kept = true;
@@ -822,6 +834,16 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
         }
         // standing in the world (150 frames), then every 20 s while not in a session
         if (g.calm == 150 || (g.calm > 150 && (g.calm - 150) % 1200 == 0)) {
+            // The game summons only players in soul form: one in body form fails its join (OnFailedJoinSession). It
+            // takes soul form for the join, as the game's own ChangeGreyGhost does, and gets its body form back at
+            // home (going_home_form). The join is 10 frames on.
+            if ((int32_t)call_addr(ctx, DES_AT(0x0043E660u), {0}) == 0) {   // GetLocalPlayerChrType: 0 body form
+                call_addr(ctx, DES_AT(0x00445E48u), {0});                   // ChangeGreyGhost
+                sJoinedInBody = true;
+                g.calm = 140;
+                std::fprintf(stderr, "[coop] this player is in body form: soul form for the join, body form again at home\n");
+                return;
+            }
             g.tries++;
             join(ctx, sm, data);
             if (g.tries % 2 == 0) {   // the host may have opened another room since: ask for its data again

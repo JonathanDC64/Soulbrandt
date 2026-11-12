@@ -154,11 +154,13 @@ DES_REGION_ADDR(0x003E6518, 0x003E4880)  /* hook des_sun_gate */
 DES_REGION_ADDR(0x00419DCC, 0x00428D24)  /* hook des_coop_hook: after a load's world swap of the flags (a guest's own world kept) */
 DES_REGION_ADDR(0x00439288, 0x004486C8)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00439358, 0x00448798)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x0043E660, 0x0044DD60)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x0043EDE0, 0x0044E4E0)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x004418B8, 0x0043FC20)  /* call */
 DES_REGION_ADDR(0x00441AB8, 0x00450EB0)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00443838, 0x00441BA0)  /* call */
 DES_REGION_ADDR(0x004457A8, 0x00454B98)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00445E48, 0x00455238)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00446C68, 0x00456050)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00447258, 0xFFFFFFFF)  /* call des_seamless_game (by address) (not looked up: co-op refuses this disc) */
 DES_REGION_ADDR(0x00447EA0, 0x00457288)  /* call des_seamless_game (by address) */
