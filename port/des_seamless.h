@@ -17,6 +17,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 namespace des::seamless {
 
@@ -55,5 +56,21 @@ Mode active();
 // saves what the group did; left() is true once that is done (or after 2 minutes), and always when not a guest.
 void leave();
 bool left();
+
+// ---- co-op's own save (des_seamless_save.cpp) ----
+// Its save root, beside the normal one (start() uses it unless PS3_SAVEDATA_ROOT is given).
+const char* coop_save_root();
+
+struct Character {
+    int slot = 0;       // 0-3, as the game's Profile List
+    std::string name;   // UTF-8
+    int level = 0;      // soul level
+};
+// The normal characters a player can bring into co-op, once: none when co-op already has a save of its own, when
+// PS3_SAVEDATA_ROOT is given (co-op then uses that folder too), or on a disc co-op refuses.
+std::vector<Character> characters_to_bring();
+// Copies one of them into co-op's save, which must have none yet; the normal save is only read. "" when done, else
+// why not, in plain words.
+std::string bring_character(int slot);
 
 }  // namespace des::seamless

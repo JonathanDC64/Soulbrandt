@@ -36,6 +36,11 @@ characters.
 **Co-op characters** are kept in their own save folder (`savedata-coop`, beside the normal one). Co-op never writes
 your normal characters.
 
+**Bringing a character along.** The first time you host or join, while co-op has no characters yet, the game asks
+whether to bring one of your normal characters. Co-op gets a copy, and your normal character stays as it is. Nothing
+from co-op comes back to it. Or choose **Start with none** and make a new character in co-op. The question comes only
+once: after that, co-op has characters of its own.
+
 **Up to 4 players** (the host and three friends).
 
 **In the game:**
@@ -219,6 +224,20 @@ resolves) and `PS3_SAVEDATA_ROOT` (the co-op save). A value set in the environme
   (`OnFailedJoinSession`, "Failed to join the session"), so the program calls the game's `ChangeGreyGhost` 10
   frames before the join. Going home, it gets its body form back the same way, without the revival animation.
 
+**Bringing a character** (`des_seamless_save.cpp`). The game's save folder (the disc's TITLE_ID and `DEMONSS005`)
+holds four character slots and a slot list:
+
+| File | What it is |
+|---|---|
+| `<g><kk>USER.DAT` | Slot k's character (k from 0 to 3; the Profile List's first slot is 0). `kk` is empty for slot 0, else `01` to `03`; `g` is the generation (empty, `1` or `2`). The game keeps two generations, loads the newer, and on each save writes the next one and deletes the oldest. |
+| `<g>04USER.DAT` | The slot list, which the game's Profile List shows. Per slot: the name at `0x21C + k * 0x140` (UTF-16, 16 characters) and the soul level `0x24` after it. At `0x20C + k`, one byte that is 1 when the slot holds a character. A deleted character keeps its name there, with a 0. |
+
+The copy takes that slot's files as they are, the slot list with only that slot marked, and the folder's other files
+(`PARAM.SFO`, the pictures), each with its time. `PARAM.PFD` (the runtime's list of secure files) keeps only the
+files copied. It is made in a `.bringing-` folder and renamed into place when complete. Checked in the game: the
+Profile List shows that one character, with "No profile data found." in the other three slots. The character loads
+the newer generation, and saves as usual.
+
 ## Not done yet
 
 - Checked by hand so far: a boss kill with a friend, each taking the boss's soul, the friend's Leave, and its rejoin.
@@ -229,5 +248,4 @@ resolves) and `PS3_SAVEDATA_ROOT` (the co-op save). A value set in the environme
 - The final area's Demon's Soul is offered only outside a session (`ATTR_NOSESSION`; the game has no co-op there).
 - In a boss fight, a dead player watching until the fight ends. Today it comes back at the area's
   start like any other death.
-- Importing one normal character into the co-op save, once.
 - The Japanese and Asian discs: allowed once a test with the others works.

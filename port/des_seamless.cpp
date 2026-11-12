@@ -529,7 +529,7 @@ bool start(const std::string& name, std::string* why) {
     knob("PSNR_KEY", key_hex);
     std::memset(key_hex, 0, sizeof key_hex);
     // The seamless characters: their own save folder (beside the normal one), so co-op never writes those.
-    if (!env_given("PS3_SAVEDATA_ROOT")) ps3_setenv("PS3_SAVEDATA_ROOT", "gamedata/dev_hdd0/home/00000001/savedata-coop");
+    if (!env_given("PS3_SAVEDATA_ROOT")) ps3_setenv("PS3_SAVEDATA_ROOT", coop_save_root());
 
     std::fprintf(stderr, "[coop] seamless co-op: %s, room server port %d\n", m == Mode::Host ? "hosting" : "joining",
                  port);

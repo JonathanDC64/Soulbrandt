@@ -49,6 +49,43 @@ void close_action(Modal& modal) {
     modal.pop();
 }
 
+// Into co-op: the first time (co-op's save still empty), the player may first bring one of their characters along.
+void start_coop(const std::vector<std::string>& set) {
+    const std::vector<co::Character> chars = co::characters_to_bring();
+    if (chars.empty()) {
+        play_sound(kSoundPlay);
+        restart_with(set);
+        return;
+    }
+    std::vector<ModalAction> actions;
+    for (const co::Character& c : chars)
+        actions.push_back({.label = c.name + " (soul level " + std::to_string(c.level) + ")",
+                           .onPressed = [set, slot = c.slot](Modal&) {
+                               const std::string why = co::bring_character(slot);
+                               if (!why.empty()) {
+                                   play_sound(kSoundItemDisable);
+                                   toast("warning", why);
+                                   return;
+                               }
+                               play_sound(kSoundPlay);
+                               restart_with(set);
+                           }});
+    actions.push_back({.label = "Start with none",
+                       .onPressed = [set](Modal&) {
+                           play_sound(kSoundPlay);
+                           restart_with(set);
+                       }});
+    actions.push_back({.label = "Cancel", .onPressed = close_action});
+    push_document(std::make_unique<Modal>(Modal::Props{
+        .title = "Your co-op characters",
+        .bodyRml = "Co-op keeps characters of its own. You can bring one of yours along, this once: co-op gets a "
+                   "copy, and your character here stays as it is. Nothing from co-op comes back to it.<br/><br/>"
+                   "Or start with none, and make a new character in co-op.",
+        .actions = std::move(actions),
+        .isVertical = true,
+    }));
+}
+
 void open_host() {
     push_document(std::make_unique<Modal>(Modal::Props{
         .title = "Host co-op",
@@ -59,10 +96,7 @@ void open_host() {
                    "Don't post the invite code in public: it holds your internet address.",
         .actions = {ModalAction{.label = "Cancel", .onPressed = close_action},
                     ModalAction{.label = "Host",
-                                .onPressed = [](Modal&) {
-                                    play_sound(kSoundPlay);
-                                    restart_with({"DES_SEAMLESS=host", "DES_SEAMLESS_CODE="});
-                                }}},
+                                .onPressed = [](Modal&) { start_coop({"DES_SEAMLESS=host", "DES_SEAMLESS_CODE="}); }}},
     }));
 }
 
@@ -75,8 +109,7 @@ void join_with(const std::string& text, const char* if_empty) {
         toast("warning", text.empty() ? if_empty : why);
         return;
     }
-    play_sound(kSoundPlay);
-    restart_with({"DES_SEAMLESS=join", "DES_SEAMLESS_CODE=" + code});
+    start_coop({"DES_SEAMLESS=join", "DES_SEAMLESS_CODE=" + code});
 }
 
 void open_join() {
