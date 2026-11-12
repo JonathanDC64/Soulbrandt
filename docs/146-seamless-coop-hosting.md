@@ -4,8 +4,13 @@ Seamless co-op lets friends play through the game together. One player's game ho
 invite code. **No online server is used**: not this project's, and not anyone else's. Only the friends' games talk
 to each other.
 
-This page covers the first part: how a game hosts, how a friend joins, and what each game does with the network.
-Following the host from area to area, deaths and boss fights come in later parts.
+This page covers the first two parts:
+- **Part 1, connecting:** how a game hosts, how a friend joins, and what each game does with the network.
+- **Part 2, the session in the game:** joining with no sign from anywhere, following the host with one loading screen,
+  boss kills and deaths.
+
+Progress for everyone (the host's world flags in each friend's save, a boss's Demon's Soul for everyone) comes in a
+later part.
 
 ## For players
 
@@ -30,6 +35,18 @@ Following the host from area to area, deaths and boss fights come in later parts
 your normal characters.
 
 **Up to 4 players** (the host and three friends).
+
+**In the game:**
+
+- **Joining needs no sign.** Once the host stands in an area, a friend's game joins by itself, wherever the friend
+  is. The friend loads the host's area and arrives beside the host as a blue phantom.
+- **Friends follow the host.** When the host travels (an Archstone, the Nexus, a death), its friends go too: one
+  loading screen, then they stand beside the host again.
+- **Archstones:** the host can use them during co-op, and the group travels with it. A friend still gets "You can't
+  return during multiplayer."
+- **Boss kills keep everyone together:** no rating screen, nobody sent home, and the boss room's walls drop.
+- **A friend who dies** comes back where the host last arrived (the start of the area) and stays in the session.
+- **When the host dies,** everyone goes back to the start together.
 
 ### If your friends can't connect
 
@@ -79,6 +96,52 @@ Reading a code back ignores case, dashes and spaces, and takes O as 0 and I or L
 It holds 80 bits: the host's IPv4 address (32), the port (16), the key (28) and a check (4). The check catches most
 typos ("That code has a typo").
 
+## How the session works
+
+`des_seamless_game.cpp` drives the game's own summon code by address. `des_seamless_scripts.cpp` edits the area scripts as the game reads them. Nothing runs unless co-op
+started, and no game file changes.
+
+**Joining with no sign:**
+- The host's game opens its room with the step a sign's touch uses. It then builds the room's data as the sign code
+  does for a summon, and sends it to its friends through the room server.
+- A friend's game joins with that data, as with a sign's answer. Its join is a summoned reload.
+
+**One load for every arrival.** A friend's summoned reload is held at the game's load step (an instruction hook).
+There, the map it loads is renamed to the host's area, in memory and with the same length. Its place is set beside the
+host. So the same step serves:
+- a join, wherever the friend stood;
+- a follow: when the host's own load starts, the friends start a summoned reload, which waits on the loading screen
+  until the host has arrived;
+- a respawn after a friend's death.
+
+**Placing the players again.** A load drops the other players' characters, and the game places a player only when it
+joins the room. So after each load, each game puts the other players back on its list of players to place, as the
+game's own join does.
+
+**The host keeps its session.** The game's leaves on a load are skipped on the host. Its session ends with co-op.
+
+**Messages between the games** go through the room server (`psnr_app_send`, ps3recomp):
+
+| Tag | From | Body | Meaning |
+|---|---|---|---|
+| `ROOM` | host | the room's data | join with this |
+| `ROM?` | friend | none | send the room's data |
+| `LEAD` | host | its load count | the host's load started: follow |
+| `REDY` | host | load count, area, where it arrived, where it stands | after each load, and every 2 s |
+
+**The scripts' edits,** in memory, as each script is read (the game's Lua reader and Lua's string reader, hooked at
+their first instruction):
+- `global_event.lua`, all or nothing: if one edit doesn't fit, the file stays as it is.
+  - A boss kill keeps a blue phantom in the world. It gets no load wait, no trip-home animation, no "Objective met"
+    recall and no leaving announcement, and nothing is rolled back. The multiplayer walls drop as at a session's end.
+  - No rating screen after a kill.
+  - A blue phantom's death keeps it in the session: a summoned reload instead of the trip home, and no recall.
+  - The host's death doesn't send the phantoms home; the host's respawn takes them along.
+- Each area's script: the boss rooms' party walls drop as in solo play; a guest doesn't play the warp-out pose at a
+  boss's death; the host may use the Archstones in a session.
+
+The edited copies are cached by the original's size and hash, so a script read again costs nothing.
+
 ## Settings for developers and tests
 
 | Variable | What it does |
@@ -96,8 +159,10 @@ resolves) and `PS3_SAVEDATA_ROOT` (the co-op save). A value set in the environme
 
 ## Not done yet
 
-- Joining in the game itself (the host's room made without a sign, the friend placed in the host's world), following
-  the host, deaths and boss fights: tested in the spike (docs/145, section 6), not built into this part yet.
+- Progress for everyone: the host's world flags (bosses, doors, shortcuts) written into each friend's co-op save, and
+  a boss's Demon's Soul for everyone present.
+- In a boss fight, a dead player watching until the fight ends. Today it comes back at the area's
+  start like any other death.
 - Importing one normal character into the co-op save, once.
 - Typing a code (the Join window takes it from the clipboard only). Off Windows, the clipboard is the game's own.
 - The Japanese and Asian discs: allowed once a test with the others works.

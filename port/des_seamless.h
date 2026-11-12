@@ -1,4 +1,4 @@
-// Written for Demon's Souls. Seamless co-op (docs/145): one player's game hosts, and friends join it with an invite
+// Written for Demon's Souls. Seamless co-op (docs/146): one player's game hosts, and friends join it with an invite
 // code. No outside server is used.
 //
 //   DES_SEAMLESS=host         this game runs the room server (ps3recomp's psnr_host) on DES_SEAMLESS_PORT (36100),
@@ -47,5 +47,8 @@ Status status();
 // A code the player typed or pasted: "" if it reads as a code (normalised into *clean as XXXX-XXXX-XXXX-XXXX), else
 // why not, in plain words.
 std::string check_code(const std::string& text, std::string* clean);
+
+// Cheap, for the game side (des_seamless_game.cpp, every frame): co-op started, as the host or as a guest.
+Mode active();
 
 }  // namespace des::seamless

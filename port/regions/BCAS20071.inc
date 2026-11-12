@@ -3,6 +3,7 @@
  * (only code that runs on the other discs uses it).
  * tools/region/region_table.py checks that every address in the port is here (CI). */
 DES_REGION_ADDR(0x000112E8, 0x000112E8)  /* hook des_body_sample */
+DES_REGION_ADDR(0x00011720, 0x00011720)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00011768, 0x00011768)  /* hook des_kf_target */
 DES_REGION_ADDR(0x00013874, 0xFFFFFFFF)  /* data kOnlineTagCases */
 DES_REGION_ADDR(0x00023750, 0x000219C0)  /* call */
@@ -64,6 +65,7 @@ DES_REGION_ADDR(0x0012F19C, 0x0012D274)  /* hook des_frustum_tall */
 DES_REGION_ADDR(0x001381E8, 0x001362C0)  /* call */
 DES_REGION_ADDR(0x0015AE10, 0x00158EE8)  /* call kLoadSouls */
 DES_REGION_ADDR(0x00162D0C, 0x00160DE4)  /* data kGameParamCases */
+DES_REGION_ADDR(0x0017A4A8, 0x00183630)  /* hook des_coop_hook: the summoned reload's load step */
 DES_REGION_ADDR(0x0017B258, 0x00179330)  /* call */
 DES_REGION_ADDR(0x00196158, 0x00194230)  /* call */
 DES_REGION_ADDR(0x001D17A0, 0x001CF878)  /* call */
@@ -73,6 +75,8 @@ DES_REGION_ADDR(0x001DF83C, 0x001DD914)  /* hook des_phys_kf */
 DES_REGION_ADDR(0x001EF6D0, 0x001ED7A8)  /* hook des_phys_kf */
 DES_REGION_ADDR(0x001FEAF4, 0x001FCBCC)  /* hook des_slide_rate */
 DES_REGION_ADDR(0x001FED50, 0x001FCE28)  /* hook des_slide_rate */
+DES_REGION_ADDR(0x0020E788, 0x00219120)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x002107B8, 0xFFFFFFFF)  /* call des_seamless_game (by address) (not looked up: co-op refuses this disc) */
 DES_REGION_ADDR(0x00217E70, 0x00215F48)  /* hook des_motion_blur */
 DES_REGION_ADDR(0x002184DC, 0x002165B4)  /* hook des_dof */
 DES_REGION_ADDR(0x00226778, 0x00224850)  /* call */
@@ -97,6 +101,7 @@ DES_REGION_ADDR(0x00280F88, 0x0027F108)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x002818D0, 0x0027FA50)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x00286614, 0x002846C4)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x0028B224, 0x002892D4)  /* hook des_dev_hook */
+DES_REGION_ADDR(0x002977C0, 0x002A3068)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x002986B8, 0x00296768)  /* call */
 DES_REGION_ADDR(0x002A6AA8, 0x002A4B58)  /* wrapped kChrInsThread */
 DES_REGION_ADDR(0x002A6AF4, 0x002A4BA4)  /* return address in 0x002A6AA8 */
@@ -147,8 +152,13 @@ DES_REGION_ADDR(0x003E2DF0, 0x003E1158)  /* hook des_sun_gate */
 DES_REGION_ADDR(0x003E6330, 0x003E4698)  /* hook des_sun_gate */
 DES_REGION_ADDR(0x003E6518, 0x003E4880)  /* hook des_sun_gate */
 DES_REGION_ADDR(0x004418B8, 0x0043FC20)  /* call */
+DES_REGION_ADDR(0x00441AB8, 0x00450EB0)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00443838, 0x00441BA0)  /* call */
 DES_REGION_ADDR(0x00451430, 0x0044F798)  /* call */
+DES_REGION_ADDR(0x0052C2D8, 0x0053DD08)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x0053B31C, 0x0054CF6C)  /* hook des_coop_hook: the session's leave */
+DES_REGION_ADDR(0x0053CFE8, 0x00551CF0)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00540D90, 0xFFFFFFFF)  /* call des_seamless_game (by address) (not looked up: co-op refuses this disc) */
 DES_REGION_ADDR(0x0054E8C0, 0x00550870)  /* hook des_net_show */
 DES_REGION_ADDR(0x0054E8F8, 0x005508A8)  /* hook des_net_show */
 DES_REGION_ADDR(0x0054E934, 0x005508E4)  /* hook des_net_grade_poll */
@@ -211,7 +221,13 @@ DES_REGION_ADDR(0x008FD2A8, 0x008FE770)  /* call */
 DES_REGION_ADDR(0x0090FCD0, 0x00911198)  /* call */
 DES_REGION_ADDR(0x009E0148, 0x009E1610)  /* call */
 DES_REGION_ADDR(0x00A36220, 0x00A376E8)  /* call */
+DES_REGION_ADDR(0x00A6B2F8, 0x00A8A650)  /* hook des_coop_hook: the game's Lua reader (scripts edited for co-op) */
 DES_REGION_ADDR(0x00A7CC60, 0x00A7E128)  /* hook + call des_luaheap: a new Lua state */
+DES_REGION_ADDR(0x00A8B580, 0x00AAAB20)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00A8B770, 0x00AAAD10)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00A8B9D0, 0xFFFFFFFF)  /* call des_seamless_game (by address) (not looked up: co-op refuses this disc) */
+DES_REGION_ADDR(0x00A8BCE0, 0x00AAB268)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00A8BEA8, 0x00AAB430)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00A8CA48, 0x00A8DF10)  /* call */
 DES_REGION_ADDR(0x00A8CBF0, 0x00A8E0B8)  /* call */
 DES_REGION_ADDR(0x00A941F8, 0x00A956C0)  /* call */
@@ -221,11 +237,19 @@ DES_REGION_ADDR(0x00B495B8, 0x00B4AA80)  /* call */
 DES_REGION_ADDR(0x00B5CFA0, 0x00B5E468)  /* call */
 DES_REGION_ADDR(0x00B5D2F8, 0x00B5E7C0)  /* call */
 DES_REGION_ADDR(0x00B5D548, 0x00B5EA10)  /* call */
+DES_REGION_ADDR(0x00CA15A8, 0x00CC6C60)  /* hook des_coop_hook: Lua's string reader (scripts edited for co-op) */
 DES_REGION_ADDR(0x00CBA408, 0x00CBB8D0)  /* code kLuaMemoryThrow */
 DES_REGION_ADDR(0x00CD4854, 0x00CD5D1C)  /* hook des_hud_ctx */
 DES_REGION_ADDR(0x00D229A4, 0x00D23E6C)  /* hook des_viewport_room */
 DES_REGION_ADDR(0x00D67F80, 0x00D69448)  /* call */
 DES_REGION_ADDR(0x00D68218, 0x00D696E0)  /* call */
+DES_REGION_ADDR(0x00DFE110, 0x00E2D0C8)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00DFE2F0, 0x00E2D2B0)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00DFE768, 0xFFFFFFFF)  /* call des_seamless_game (by address) (not looked up: co-op refuses this disc) */
+DES_REGION_ADDR(0x00DFE9F8, 0x00E2DC38)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00DFF0D0, 0xFFFFFFFF)  /* call des_seamless_game (by address) (not looked up: co-op refuses this disc) */
+DES_REGION_ADDR(0x00E00D10, 0x00E2FC98)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00E2B0B8, 0x00E5A248)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00F60BD0, 0x00F62008)  /* call kDialogDraw */
 DES_REGION_ADDR(0x00F62E68, 0x00F642A0)  /* call */
 DES_REGION_ADDR(0x00FF54D4, 0x00FF690C)  /* hook des_ik_rate */
@@ -267,7 +291,10 @@ DES_REGION_ADDR(0x018CEFBC, 0x018CEE14)  /* data kCameraAspect */
 DES_REGION_ADDR(0x018F96C0, 0x018F9698)  /* data kPreviewTurnStep */
 DES_REGION_ADDR(0x0190433C, 0x0190430C)  /* data kContextAspect */
 DES_REGION_ADDR(0x019AD3B0, 0x019AD3C4)  /* data kSoulsConsts, a slot of the TOC */
+DES_REGION_ADDR(0x019AD4FC, 0x019AD510)  /* data kGameSlot, a slot of the TOC */
 DES_REGION_ADDR(0x019AD560, 0x019AD574)  /* data kChrInsConsts, a slot of the TOC */
+DES_REGION_ADDR(0x019AD694, 0x019AD6A8)  /* data kSignSlot, a slot of the TOC */
+DES_REGION_ADDR(0x019AD7B4, 0x019AD7C8)  /* data kWorldSlot, a slot of the TOC */
 DES_REGION_ADDR(0x019AD7BC, 0x019AD7D0)  /* data kDevConsts, a slot of the TOC */
 DES_REGION_ADDR(0x019ADD50, 0x019ADD64)  /* data kMenusConsts, a slot of the TOC */
 DES_REGION_ADDR(0x019ADE38, 0x019ADE4C)  /* data kScrollConsts, a slot of the TOC */

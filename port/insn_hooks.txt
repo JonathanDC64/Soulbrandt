@@ -250,3 +250,10 @@
 # in HighGraphics' command ring, as the ring's other writers do. The game sleeps
 # 30 us once when the ring is full and then writes anyway (docs/117).
 0x00D229A4=des_viewport_room   # nop after bl usleep(30) in 0x00D22670, then the write; r28 = the ring's control, r31 = put
+
+# des_coop_hook (port/des_seamless_game.cpp): seamless co-op (docs/146). Nothing
+# changes unless co-op started (DES_SEAMLESS).
+0x0017A4A8=des_coop_hook   # addi r9,r26,0x34 in the load step 0x0017A358: a guest's follow waits for the host, then loads its area
+0x0053B31C=des_coop_hook   # lwz r9,0x9C(r3) in the session's leave 0x0053B300: the host keeps its session
+0x00A6B2F8=des_coop_hook   # lwz r11,8(r4) in the game's Lua reader: co-op's edits to the area scripts
+0x00CA15A8=des_coop_hook   # lwz r0,4(r4) in Lua's string reader (getS): co-op's edits to the area scripts

@@ -11,6 +11,7 @@
 #include "mbedtls/aes.h"   // (ps3recomp's third_party/mbedtls, built into the runtime)
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <chrono>
 #include <cstdio>
@@ -54,6 +55,7 @@ constexpr const char* kUpnpName = "Demon's Souls co-op";
 std::mutex sLock;
 Status sStatus;               // under sLock
 psnr_host* sHost = nullptr;
+std::atomic<int> sActive{0};  // a Mode, once start() succeeded
 
 bool env_given(const char* name) {
     const char* v = std::getenv(name);
@@ -481,7 +483,7 @@ bool start(const std::string& name, std::string* why) {
         return false;
     };
     if (m == Mode::Off) return fail("not asked for");
-    // The US and European discs are the same program with the same game data (docs/145, 6.1). The Japanese and Asian
+    // The US and European discs are the same program with the same game data (docs/146). The Japanese and Asian
     // 1.04 program is another build, not yet tried with them.
     if (des_region_asian()) return fail("the Japanese and Asian discs can't play co-op yet");
 
@@ -531,12 +533,15 @@ bool start(const std::string& name, std::string* why) {
 
     std::fprintf(stderr, "[coop] seamless co-op: %s, room server port %d\n", m == Mode::Host ? "hosting" : "joining",
                  port);
+    sActive = static_cast<int>(m);
     std::lock_guard<std::mutex> g(sLock);
     sStatus.started = true;
     sStatus.port = port;
     if (m == Mode::Host) sStatus.router = "Asking your router to open port " + std::to_string(port) + "...";
     return true;
 }
+
+Mode active() { return static_cast<Mode>(sActive.load(std::memory_order_relaxed)); }
 
 Status status() {
     std::lock_guard<std::mutex> g(sLock);
