@@ -198,6 +198,15 @@ if(MSVC)
   target_compile_options(button_icons_check PRIVATE /EHsc /W3)
 endif()
 
+# text_fonts.hpp's test on its own (tests/text_fonts_check.cpp): which of the system's fonts a string needs, for its
+# Japanese, Chinese or Korean characters (docs/149), from made-up strings; no font is read. Built on demand:
+#   cmake --build <build> --target text_fonts_check, then text_fonts_check
+add_executable(text_fonts_check EXCLUDE_FROM_ALL tests/text_fonts_check.cpp)
+target_include_directories(text_fonts_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+if(MSVC)
+  target_compile_options(text_fonts_check PRIVATE /EHsc /W3)
+endif()
+
 # discord_ipc.cpp on its own (tests/discord_check.cpp): the Discord status's frames and JSON, and a whole exchange with
 # a stand-in for Discord on a pipe or socket of the test's own (docs/137). The same on every platform; CI runs it on
 # both (host.yml). Built on demand:
