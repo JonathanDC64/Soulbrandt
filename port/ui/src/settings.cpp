@@ -6,6 +6,8 @@
 #include "report.hpp"
 #include "version.hpp"
 
+#include "../../des_seamless.h"
+
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
@@ -467,7 +469,43 @@ std::string net_options_header() {
 // A developer build's cheat session wins over this: des_dev_boot runs after des_ui_early_init (which calls
 // load_and_apply_env) in ps3_title_options_init, and clears PS3_NET_ONLINE, PSNR_SERVER and PS3_NET_HOSTS when a cheat
 // is set at start (docs/55 section 6). So nothing here checks DES_DEV_SESSION; the Network tab reads it to say why.
+// Seamless co-op (DES_SEAMLESS, des_seamless.h) in place of the rows: no server of this project or anyone else's,
+// only the host's game. Gameplay mods keep it off too, as online (docs/143), and it needs an online name.
+static void apply_seamless() {
+    namespace co = des::seamless;
+    const bool host = co::mode() == co::Mode::Host;
+    if (mods::gameplay_in_use()) {
+        sNetModsHeld = true;
+        sNetStatus = "Off: gameplay mods are on";
+        std::fprintf(stderr, "[ui] seamless co-op: off, gameplay mods are on (%s; Settings > Mods)\n",
+                     mods::gameplay_names().c_str());
+        return;
+    }
+    const std::string name = env_set("PS3_NP_ONLINE_ID") ? std::string(std::getenv("PS3_NP_ONLINE_ID"))
+                                                         : effective("DES_NET_NAME");
+    if (!net_name_ok(name)) {
+        sNetStatus = name.empty() ? "Off: no online name" : "Off: the online name is not valid";
+        std::fprintf(stderr, "[ui] seamless co-op: off, %s (Settings > Network)\n",
+                     name.empty() ? "no online name" : "the online name is not valid (3-16 letters, digits, - or _)");
+        return;
+    }
+    int port = std::atoi(effective("DES_NET_P2P_PORT").c_str());
+    if (port < kNetP2pPortMin || port > kNetP2pPortMax) port = kNetP2pPortDefault;
+    set_net_knob("PS3_NET_P2P_PORT", std::to_string(port));
+    std::string why;
+    if (!co::start(name, &why)) {
+        sNetStatus = "Off: co-op did not start (" + why + ")";
+        return;
+    }
+    sNetOnline = true;
+    sNetStatus = host ? "Seamless co-op: hosting" : "Seamless co-op: joining a friend's game";
+}
+
 void apply_network() {
+    if (des::seamless::mode() != des::seamless::Mode::Off) {
+        apply_seamless();
+        return;
+    }
     const std::string online = effective("DES_ONLINE");
     if (online.empty() || online == "0") {
         sNetStatus = "Off: Online is off";

@@ -189,7 +189,11 @@ add_executable(des_boot
     "${CMAKE_CURRENT_SOURCE_DIR}/des_pantheon.cpp"         # the checks on Pantheon records from other players
     "${CMAKE_CURRENT_SOURCE_DIR}/des_prework.cpp"           # startup work: the shader cache, behind a progress bar
     "${CMAKE_CURRENT_SOURCE_DIR}/des_route.cpp"             # DES_ROUTE: a walk on the game clock, with screenshots
+    "${CMAKE_CURRENT_SOURCE_DIR}/des_seamless.cpp"          # seamless co-op: the host's room server, the invite code
 )
+# des_seamless.cpp decrypts the game's requests with the AES in ps3recomp's mbedTLS (built into the runtime).
+set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/des_seamless.cpp" APPEND PROPERTY INCLUDE_DIRECTORIES
+    "${PS3RECOMP_DIR}/third_party/mbedtls/include")
 
 if(WIN32)
     target_include_directories(des_boot PRIVATE
