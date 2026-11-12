@@ -259,4 +259,12 @@ the newer generation, and saves as usual.
 - The final area's Demon's Soul is offered only outside a session (`ATTR_NOSESSION`; the game has no co-op there).
 - Watching a boss fight after dying is checked only as far as the scripts loading and an ordinary death still
   respawning. A boss fight with a friend dying in it is a hand test.
-- The Japanese and Asian discs: allowed once a test with the others works.
+- The Japanese and Asian discs: allowed once a test with the others works. Co-op refuses them until then. Found so
+  far, from the programs' Lua native tables (name, then a pointer to the function's descriptor):
+  - `WarpNextStageKick` is Japanese 0x0045B630 and Asian 0x0045BCD8. The hook at its end (US 0x0044C780) is
+    0x0045B6C0 and 0x0045BD68 (the same instructions).
+  - The fixed offsets differ inside the same code: that function reads `-0x7F00(r30)` there, where the US one reads
+    `-0x7F0C(r30)`. So every fixed offset in `des_seamless_game.cpp` (the session and game managers' `-0x7F08`,
+    `-0x7FFC` and `-0x8000`, and the fields of each) needs checking on that build. So do the registers each hook
+    handler reads.
+  - A test pair needs a save on that disc with a character outside the Nexus.
