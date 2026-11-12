@@ -77,8 +77,14 @@ The host's router has to let friends in on one port (36100, TCP and UDP).
 - **"No router answered"**, or UPnP is off on the router: forward port 36100 (TCP and UDP) to the host's PC in the
   router's settings.
 - **"Behind another router"**: the router that opened the port isn't the one facing the internet. This happens with a
-  second router, or a provider that shares one address between many homes (carrier-grade NAT). Forward the port on
-  the outer router too, or ask the provider for a public address.
+  second router (often your own router plugged into the provider's box), or a provider that shares one address
+  between many homes (carrier-grade NAT).
+  - The game only reaches the first router, even when both have UPnP on: the search for routers stays on the PC's
+    own network.
+  - Best: put one of the two in access point (bridge) mode, so only one router is left.
+  - Or forward port 36100 (TCP and UDP) on the outer router to the first router's internet-side address. The game
+    can't learn the public address that way, so set `DES_SEAMLESS_ADDRESS` (below) to it.
+  - With carrier-grade NAT, ask the provider for a public address.
 - **Players on the same network** can use the **local code** that Co-op shows below the invite code.
 
 ## How it works

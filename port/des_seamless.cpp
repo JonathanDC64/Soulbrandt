@@ -407,8 +407,10 @@ void router_thread(int port, uint32_t key) {
                                                      " (TCP and UDP) must be forwarded to this PC.";
         if (use_upnp && (rc == NET_UPNP_OK || rc == NET_UPNP_ERR_PRIVATE_IP)) std::atexit(unmap_at_exit);
     } else if (!use_upnp) {
-        router = "UPnP is off. Forward port " + p + " (TCP and UDP) to this PC in your router's settings and give "
-                 "your public address. Players on your network can use the local code.";
+        // Only DES_SEAMLESS_UPNP=0 gets here: the game's own UPnP use is off, which says nothing of the router's.
+        router = "Co-op is set not to use UPnP (DES_SEAMLESS_UPNP=0), so your router wasn't asked. Forward port " + p +
+                 " (TCP and UDP) to this PC in your router's settings and give your public address. Players on your "
+                 "network can use the local code.";
     } else switch (rc) {
     case NET_UPNP_OK:
         ok = true;
