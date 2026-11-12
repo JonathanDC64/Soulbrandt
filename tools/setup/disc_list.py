@@ -7,7 +7,9 @@ sizes) and an MD5 per file. The list keeps every file under PS3_GAME with its si
 written the same way each time (no time or name in its header), so a list made again from the same IRD has the same
 bytes. It leaves out:
   - PS3_DISC.SFB and PS3_UPDATE/ (the disc's system update): the game never reads them, and many dumps lack them;
-  - a name that ends in a dot (map/m99_99_98_06/m99_99_98_06mcp.): Windows cannot write one, so unpackers rename it.
+  - a name that ends in a dot (map/m99_99_98_06/m99_99_98_06mcp.): Windows cannot write one, so unpackers rename it,
+    each its own way. It is left out in each spelling a copy may have (DOTTED), so a list made from a copy's folder
+    rather than an IRD leaves it out too (issue #499).
 
 The IRD format: a gzip stream holding "3IRD", a version byte, the title ID (9 bytes), the title (a .NET 7-bit length
 and UTF-8), the system version (4), disc version (5) and app version (5), on version 7 an ID (4), then the ISO header
@@ -23,6 +25,20 @@ import sys
 
 SECTOR = 2048
 KEEP = "PS3_GAME/"
+# The names on the supported discs that end in a dot (the US and European IRDs; the Japanese and Asian discs have the
+# same file). It is a stray 56-byte copy of m99_99_98_06.mcp, which is the file the game opens. A copy names it as its
+# unpacker wrote it: with the dot (Linux), with "_" for the dot (7-Zip), or without it (other Windows tools).
+DOTTED = ("PS3_GAME/USRDIR/map/m99_99_98_06/m99_99_98_06mcp.",)
+
+
+def spellings(path: str) -> tuple:
+    """The names a copy may give a disc file whose name ends in a dot."""
+    return path, path[:-1] + "_", path[:-1]
+
+
+def left_out(path: str) -> bool:
+    """Whether the list leaves out `path`, a file as the IRD or a copy's folder names it (the module's docstring)."""
+    return not path.startswith(KEEP) or path.endswith(".") or any(path in spellings(d) for d in DOTTED)
 
 
 def _net_string(f) -> str:
@@ -105,7 +121,7 @@ def files_of(header: bytes, joliet=True):
 
 def disc_list(title_id, title, app, files) -> bytes:
     """The list's text: a comment, then each folder (a line ending in /) and its files (name, tab, size)."""
-    kept = sorted((p, n) for p, n in files if p.startswith(KEEP) and not p.endswith("."))
+    kept = sorted((p, n) for p, n in files if not left_out(p))
     lines = [f"# {title_id} {app}: {title}. {len(kept)} files under PS3_GAME, with their sizes, from the disc's IRD",
              "# (tools/setup/disc_list.py). A line that ends in / is a folder; the lines after it are its files."]
     folder = None
