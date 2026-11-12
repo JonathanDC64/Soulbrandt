@@ -84,7 +84,6 @@ DES_REGION_ADDR(0x0025EB88, 0x0025CC60)  /* hook des_fade_rate */
 DES_REGION_ADDR(0x0025EC14, 0x0025CCEC)  /* hook des_fade_rate */
 DES_REGION_ADDR(0x0026558C, 0x00263664)  /* hook des_fade_rate */
 DES_REGION_ADDR(0x00265C88, 0x00263D60)  /* hook des_fade_rate */
-DES_REGION_ADDR(0x0026F148, 0x0027ACE8)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x0026FB20, 0x0026DBF8)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x0026FC48, 0x0026DD20)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x0026FC98, 0x0026DD70)  /* hook des_dev_hook */
@@ -105,6 +104,7 @@ DES_REGION_ADDR(0x0028B224, 0x002892D4)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x002977C0, 0x002A3068)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x002986B8, 0x00296768)  /* call */
 DES_REGION_ADDR(0x00299B74, 0x002A5514)  /* hook des_coop_hook: an NPC's setup after lbz r0,0xE8(r9) (a friend sees the NPCs as the host does) */
+DES_REGION_ADDR(0x0029EC08, 0x002AA5B0)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x002A6AA8, 0x002A4B58)  /* wrapped kChrInsThread */
 DES_REGION_ADDR(0x002A6AF4, 0x002A4BA4)  /* return address in 0x002A6AA8 */
 DES_REGION_ADDR(0x002A6B14, 0x002A4BC4)  /* return address in 0x002A6AA8 */
@@ -126,6 +126,7 @@ DES_REGION_ADDR(0x002A6C70, 0x002A4D20)  /* return address in 0x002A6AA8 */
 DES_REGION_ADDR(0x002A6CA8, 0x002A4D58)  /* return address in 0x002A6AA8 */
 DES_REGION_ADDR(0x002C2830, 0x002CE648)  /* hook des_coop_hook: an NPC controller's setup after lbz r0,0xE8(r11) (a friend sees the NPCs as the host does) */
 DES_REGION_ADDR(0x002C32C0, 0x002CF168)  /* hook des_coop_hook: an NPC controller's setup after lbz r0,0xE8(r11) (a friend sees the NPCs as the host does) */
+DES_REGION_ADDR(0x002D0EB0, 0x002DD1A0)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x002D8978, 0x002D71B8)  /* call */
 DES_REGION_ADDR(0x002DD368, 0x002DC0D0)  /* call kUseGoods */
 DES_REGION_ADDR(0x002EC2B8, 0x002EA328)  /* call */
@@ -272,6 +273,8 @@ DES_REGION_ADDR(0x00DFE768, 0xFFFFFFFF)  /* call des_seamless_game (by address) 
 DES_REGION_ADDR(0x00DFE9F8, 0x00E2DC38)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00DFF0D0, 0xFFFFFFFF)  /* call des_seamless_game (by address) (not looked up: co-op refuses this disc) */
 DES_REGION_ADDR(0x00E00D10, 0x00E2FC98)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00E2A098, 0x00E59228)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00E2A9D8, 0x00E59B68)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00E2B0B8, 0x00E5A248)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00F60BD0, 0x00F62008)  /* call kDialogDraw */
 DES_REGION_ADDR(0x00F62E68, 0x00F642A0)  /* call */

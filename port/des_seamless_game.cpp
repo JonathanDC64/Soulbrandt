@@ -20,7 +20,8 @@
 // co-op does, with the game).
 // Deaths (the scripts' side is des_seamless_scripts.cpp):
 //   - A guest's death: a summoned reload instead of the trip home, to where the host last arrived (the area's start
-//     after a trip or a death). It stays in the session.
+//     after a trip or a death). It stays in the session. Once it is back in the world it tells the others (BACK),
+//     and each makes its character again, as after a load: the copy that died stays in its death animation.
 //   - The host's death: its respawn is a load like any other, so the guests follow it.
 // The flags: a guest sees the host's world, and keeps its own world apart.
 //   - A phantom's game plays with the host's flags (the join brings them; each summoned reload puts them back from
@@ -62,7 +63,6 @@
 #include <filesystem>
 #include <initializer_list>
 #include <mutex>
-#include <set>
 #include <thread>
 #include <vector>
 
@@ -135,6 +135,7 @@ constexpr char kMsgWhere[4] = {'H', 'E', 'R', '?'};  // a guest asks for a READY
 constexpr char kMsgFlag[4] = {'F', 'L', 'A', 'G'};   // u32 flag, u32 area: a progress flag set in the host's world (from a guest: the seal)
 // u32 area, u32 offset, then up to kFlagChunk bytes of the host's flags from that offset (with each READY)
 constexpr char kMsgFlags[4] = {'F', 'L', 'G', 'S'};
+constexpr char kMsgBack[4] = {'B', 'A', 'C', 'K'};   // u32 player id: a guest back in the world after its respawn
 constexpr uint32_t kRoomMax = 0x200;
 
 bool guest_ok(uint32_t a) { return a >= 0x00010000u && a < 0xF0000000u; }
@@ -246,6 +247,7 @@ Ready sReady;                        // where the host is (a guest)
 bool sAskedWhere = false;            // a guest asked for a READY now (the host)
 struct HostFlag { uint32_t flag, area; };
 std::deque<HostFlag> sHostFlags;     // FLAGs not yet taken: a guest's from the host, the host's from its guests
+std::deque<uint32_t> sBack;          // BACKs not yet taken: the player ids
 struct HostFlags {
     uint32_t area = kNoArea;
     std::vector<uint8_t> bytes = std::vector<uint8_t>(kFlagBytes);
@@ -293,6 +295,8 @@ void on_message(uint32_t from, const uint8_t* d, uint32_t n)
         sAskedWhere = true;
     } else if (!std::memcmp(d, kMsgFlag, 4) && n >= 12 && get32(d + 4) < kFlagCount && sHostFlags.size() < 4096) {
         sHostFlags.push_back({get32(d + 4), get32(d + 8)});
+    } else if (!std::memcmp(d, kMsgBack, 4) && n >= 8 && sBack.size() < 16) {
+        sBack.push_back(get32(d + 4));
     } else if (!std::memcmp(d, kMsgFlags, 4) && n > 12) {
         HostFlags& f = sHostFlagSet;
         const uint32_t area = get32(d + 4), off = get32(d + 8), len = n - 12;
@@ -326,6 +330,7 @@ struct Game {
     bool in_load = false;     // a load seen since the last arrival
     uint32_t trip = 0;        // the host: its loads in this session; a guest: the host's load it follows
     std::atomic<uint32_t> follow{0};   // a guest: the trip its summoned reload follows (0: none)
+    std::atomic<bool> respawn{false};  // a guest: its summoned reload is a respawn (BACK once it has arrived)
     uint32_t record_buf = 0;  // a guest: guest memory for the host's dead-character record (its load step)
 };
 Game sGame;
@@ -619,39 +624,6 @@ bool in_world(uint32_t sm, uint32_t gm)
            guest_ok(rd(man + 0x1BC));
 }
 
-// Another player's death here: its character plays the death animation and stays in it, so the animation's events
-// (0x002AAE10, 0x002AF084) keep its fade (+0x35C) at 0 after taking it there from 1. A dead phantom leaves the game's
-// sessions, so the game never brings one back; in co-op it comes back, and was drawn only as its name and its aura.
-// Once a player seen dead (its game data, +0x49C, at 0 hit points, +0xC) is alive again, its animation is reset as the
-// scripts' ChrResetAnimation does (0x0026F148), and its fade is 1 again, as the character starts with. The other
-// players are the vector at the character manager's +0x19C (begin +0x1A0, end +0x1A4; each one's player id at +0x498),
-// as 0x002945F8 looks one up.
-void show_returned_players(ppu_context* ctx)
-{
-    static std::set<uint32_t> dead;   // player ids seen at 0 hit points
-    const uint32_t man = rd(DES_AT(kChrMan));
-    if (!guest_ok(man)) return;
-    const uint32_t me = rd(man + 0x1BC), pb = rd(man + 0x1A0), pe = rd(man + 0x1A4);
-    if (!guest_ok(pb) || pe < pb || pe - pb > 0x40) return;
-    std::set<uint32_t> here;
-    for (uint32_t q = pb; q < pe; q += 4) {
-        const uint32_t p = rd(q);
-        if (!guest_ok(p) || p == me) continue;
-        const uint32_t gd = rd(p + 0x49C);
-        if (!guest_ok(gd)) continue;
-        const uint32_t id = vm_read32(p + 0x498);
-        here.insert(id);
-        if ((int32_t)vm_read32(gd + 0xC) <= 0) {
-            dead.insert(id);
-            continue;
-        }
-        if (!dead.erase(id)) continue;
-        call_addr(ctx, DES_AT(0x0026F148u), {p});
-        vm_write32(p + 0x35C, 0x3F800000u);   // 1.0f
-        std::fprintf(stderr, "[coop] player %u is back: shown again\n", id);
-    }
-    for (auto it = dead.begin(); it != dead.end();) it = here.count(*it) ? std::next(it) : dead.erase(it);
-}
 
 // The host's room step (0x00540D90), as a sign's touch calls it (0x003A1160): the manager *(*(base - 0x7F98)) and
 // f1 = the float at base - 0x7F90, base = *(TOC - 0x79AC). Asks for a room; the game's callback makes it the host.
@@ -717,10 +689,28 @@ void join(ppu_context* ctx, uint32_t sm, const std::vector<uint8_t>& data)
                  r, vm_read32(sm + kSmState));
 }
 
-// Each member on the member list (sm+0x13C) with a slot goes back on the waiting list (sm+0x128), as a room join's
-// AddMember (0x0053D288, 0x0053D480..0x0053D534) puts it there: a 0x38-byte node from the list's allocator (its
-// table's +0x2C), the member copied to node+8 (0x00E2B0B8), linked at the tail. 0x0052E050 then hands it to the
-// placement step 0x001A05B8, once this game is in the world and the member's slot is ready.
+// A member of the member list (sm+0x13C) back on the waiting list (sm+0x128), as a room join's AddMember (0x0053D288,
+// 0x0053D480..0x0053D534) puts it there: a 0x38-byte node from the list's allocator (its table's +0x2C), the member
+// copied to node+8 (0x00E2B0B8), linked at the tail. 0x0052E050 then hands it to the placement step 0x001A05B8, once
+// this game is in the world and the member's slot is ready.
+bool wait_again(ppu_context* ctx, uint32_t sm, uint32_t m)
+{
+    const uint32_t wl = sm + kSmWaiting;
+    const uint32_t wsent = rd(wl + 0xC), alloc = rd(wl);
+    if (!guest_ok(wsent) || !guest_ok(alloc)) return false;
+    const uint32_t node = call_virtual(ctx, alloc, 0x2C, {alloc, 0x38, 8});
+    if (!guest_ok(node)) return false;
+    const uint32_t tail = rd(wsent + 4);
+    vm_write32(node + 0, wsent);
+    vm_write32(node + 4, tail);
+    call_addr(ctx, DES_AT(0x00E2B0B8u), {node + 8, m + 8});
+    vm_write32(wl + 0x10, vm_read32(wl + 0x10) + 1);
+    vm_write32(wsent + 4, node);
+    vm_write32(tail + 0, node);
+    return true;
+}
+
+// After a load, each member with a slot (+0x38) goes back on the waiting list.
 void requeue(ppu_context* ctx, uint32_t sm)
 {
     const uint32_t wl = sm + kSmWaiting, ml = sm + kSmMembers;
@@ -729,18 +719,48 @@ void requeue(ppu_context* ctx, uint32_t sm)
     int n = 0;
     for (uint32_t m = rd(msent); m != msent && guest_ok(m) && n < 8; m = rd(m)) {
         if ((int32_t)vm_read32(m + 0x38) == -1) continue;
-        const uint32_t node = call_virtual(ctx, alloc, 0x2C, {alloc, 0x38, 8});
-        if (!guest_ok(node)) break;
-        const uint32_t tail = rd(wsent + 4);
-        vm_write32(node + 0, wsent);
-        vm_write32(node + 4, tail);
-        call_addr(ctx, DES_AT(0x00E2B0B8u), {node + 8, m + 8});
-        vm_write32(wl + 0x10, vm_read32(wl + 0x10) + 1);
-        vm_write32(wsent + 4, node);
-        vm_write32(tail + 0, node);
+        if (!wait_again(ctx, sm, m)) break;
         n++;
     }
     if (n) std::fprintf(stderr, "[coop] %d player(s) to place again after the load\n", n);
+}
+
+// A guest back after its respawn (BACK). This game's character for it is the one that died, and a character that died
+// stays in its death animation: its fade (+0x35C) is held at 0 by the animation's events (0x002AAE10, 0x002AF084), and
+// its rolls, attacks and other moves don't play, only where it goes. The game never brings a phantom back from a death
+// (it goes home), so that character is taken out as the game takes out a member who left (0x0053BAE0..0x0053BB24:
+// 0x0029EC08), and its member goes back on the waiting list: the placement step makes a new one, as after a load.
+// The character is the one among the others with that player id (+0x498; the vector at the character manager's +0x19C,
+// begin +0x1A0, end +0x1A4, as 0x002945F8 looks one up). Its member is the one whose id is the character's, matched as
+// 0x00297410 does: the character's id made (0x002D0EB0), compared (0x00E2A098), freed (0x00E2A9D8).
+void make_again(ppu_context* ctx, uint32_t sm, uint32_t id)
+{
+    const uint32_t man = rd(DES_AT(kChrMan));
+    if (!guest_ok(man)) return;
+    const uint32_t me = rd(man + 0x1BC), pb = rd(man + 0x1A0), pe = rd(man + 0x1A4);
+    if (!guest_ok(pb) || pe < pb || pe - pb > 0x40) return;
+    uint32_t chr = 0;
+    for (uint32_t q = pb; q < pe; q += 4) {
+        const uint32_t p = rd(q);
+        if (guest_ok(p) && p != me && vm_read32(p + 0x498) == id) chr = p;
+    }
+    if (!chr) return;   // none here: the placement makes one
+    const uint32_t key = sGame.scratch + 0xB00;
+    call_addr(ctx, DES_AT(0x002D0EB0u), {key, chr});
+    const uint32_t msent = rd(sm + kSmMembers + 0xC);
+    uint32_t member = 0;
+    int n = 0;
+    for (uint32_t m = guest_ok(msent) ? rd(msent) : msent; m != msent && guest_ok(m) && n < 8; m = rd(m), n++)
+        if ((int32_t)vm_read32(m + 0x38) != -1 && (call_addr(ctx, DES_AT(0x00E2A098u), {m + 8, key}) & 0xFFu)) member = m;
+    call_addr(ctx, DES_AT(0x00E2A9D8u), {key});
+    if (!member || !guest_ok(rd(sm + kSmWaiting + 0xC)) || !guest_ok(rd(sm + kSmWaiting))) {
+        std::fprintf(stderr, "[coop] player %u is back, but its member isn't here: its character stays\n", id);
+        return;
+    }
+    call_addr(ctx, DES_AT(0x0029EC08u), {man, chr});
+    const bool queued = wait_again(ctx, sm, member);
+    std::fprintf(stderr, "[coop] player %u is back after its respawn: its character made again%s\n", id,
+                 queued ? "" : " (not placed: no node for the waiting list)");
 }
 
 Place player_place()
@@ -948,6 +968,13 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
     else if (g.in_load && here) {   // arrived after a load in the session: the host and the others are placed again
         g.in_load = false;
         requeue(ctx, sm);
+        const uint32_t man = rd(DES_AT(kChrMan));
+        if (g.respawn.exchange(false) && guest_ok(man) && guest_ok(rd(man + 0x1BC))) {   // and they make this one again
+            std::vector<uint8_t> b;
+            put32(b, vm_read32(rd(man + 0x1BC) + 0x498));
+            send(kMsgBack, b);
+            std::fprintf(stderr, "[coop] back after the respawn: the others make this player's character again\n");
+        }
     }
     uint32_t lead;
     {
@@ -980,6 +1007,7 @@ void guest_load_step(ppu_context* ctx)
     const uint32_t trip = sGame.follow.exchange(0);
     const bool joined = sGame.arrived.load();
     const char* why = trip ? "follow" : joined ? "respawn" : "join";
+    if (joined && !trip) sGame.respawn = true;
     const uint32_t th = (uint32_t)ctx->gpr[26];
     const uint32_t size = rd(th + 0xC8), cap = rd(th + 0xCC);
     const uint32_t buf = cap > 7 ? rd(th + 0xB8) : th + 0xB8;
@@ -1088,7 +1116,14 @@ extern "C" void des_seamless_tick(ppu_context* ctx)
     if (!sGame.scratch) return;
     const uint32_t st = vm_read32(sm + kSmState);
     const bool world = in_world(sm, gm);
-    if (world && (st == kStateHost || st == kStateClient)) show_returned_players(ctx);
+    std::deque<uint32_t> back;
+    {
+        std::lock_guard<std::mutex> l(sMsgLock);
+        back.swap(sBack);
+    }
+    // not in the world or the session: this game's next placement (after its load, or the join's) makes them anyway
+    if (world && (st == kStateHost || st == kStateClient))
+        for (const uint32_t id : back) make_again(ctx, sm, id);
     if (m == co::Mode::Host) host_tick(ctx, sm, gm, st, world);
     else guest_tick(ctx, sm, st, world);
 }

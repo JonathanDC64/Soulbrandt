@@ -55,7 +55,7 @@ once: after that, co-op has characters of its own.
   return during multiplayer."
 - **Boss kills keep everyone together:** no rating screen, nobody sent home, and the boss room's walls drop.
 - **A friend who dies** comes back where the host last arrived (the start of the area) and stays in the session.
-  The others see it again once it is back.
+  Once it is back, the others see it again, with its rolls, attacks and other moves.
 - **In a boss fight,** a friend who dies first watches until the fight ends. Once the boss is dead, it comes back at
   the area's start. If the host dies too, it goes back with everyone.
 - **When the host dies,** everyone goes back to the start together.
@@ -152,10 +152,11 @@ game's own join does.
 
 **The host keeps its session.** The game's leaves on a load are skipped on the host. Its session ends with co-op.
 
-**A player back after a death.** Another player's death plays its death animation on each game, and the animation
-keeps that character faded out (a dead phantom leaves the game's sessions, so the game never brings one back). Once
-a player seen at 0 hit points has hit points again, each game resets that character's animation as the scripts'
-`ChrResetAnimation` does, and fades it back in.
+**A player back after a death.** A dead phantom leaves the game's sessions, so the game never brings its character
+back: on the other games that character stays in its death animation, faded out, and plays none of its moves after.
+So a friend back in the world after its respawn says so (`BACK`). Each other game then takes that character out, as
+the game does when a member leaves, and puts the player back on its list of players to place. The game makes a new
+character for it, as after a load.
 
 **Messages between the games** go through the room server (`psnr_app_send`, ps3recomp):
 
@@ -166,6 +167,7 @@ a player seen at 0 hit points has hit points again, each game resets that charac
 | `LEAD` | host | its load count | the host's load started: follow |
 | `REDY` | host | load count, area, where it arrived, where it stands, its area's dead characters | after each load, every 2 s, and when asked |
 | `HER?` | friend | none | send a `REDY` now (a friend's respawn) |
+| `BACK` | friend | its player id | back in the world after its respawn: make its character again |
 | `FLGS` | host | area, offset, up to 1,000 bytes of its event flags | the host's flags, in three parts, before each `REDY` |
 | `FLAG` | host | flag, area | a progress flag was set in the host's world |
 | `FLAG` | friend | flag, area | the Archstones' seal was opened by this friend: the host's world takes it |
