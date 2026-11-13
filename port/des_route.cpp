@@ -17,7 +17,8 @@
  *                          cutscene for 2 s after it), or, with no cutscene,
  *                          the player present for 10 s; the anchor is the
  *                          first frame after the cutscene, or the player's
- *                          first frame
+ *                          first frame (so the steps planned in the 10 s
+ *                          before it is found all come at once then)
  *   wait <s>               the next step comes s game seconds later
  *   shot <name>            save the next frame with draws as <name>.bmp
  *   hold <s> lx ly rx ry   hold the sticks (0-255, 128 centred; ly 0 is
