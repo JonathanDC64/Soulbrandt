@@ -80,6 +80,9 @@ DES_REGION_ADDR(0x002107B8, 0x0020E890)  /* call des_seamless_game (by address) 
 DES_REGION_ADDR(0x00217E70, 0x00215F48)  /* hook des_motion_blur */
 DES_REGION_ADDR(0x002184DC, 0x002165B4)  /* hook des_dof */
 DES_REGION_ADDR(0x00226778, 0x00224850)  /* call */
+DES_REGION_ADDR(0x0025C5EC, 0x0025A6C4)  /* call des_coop_hook: the area items' remove, its taken flag's set (a friend keeps its pickups) */
+DES_REGION_ADDR(0x0025CB6C, 0x0025AC44)  /* hook des_coop_hook: the area items' add after lwz r9,0x8C(r9) (a friend gets the items too) */
+DES_REGION_ADDR(0x0025CC34, 0x0025AD0C)  /* hook des_coop_hook: the area items' add after bl 0x005087C8 (a friend's own taken flags) */
 DES_REGION_ADDR(0x0025EB88, 0x0025CC60)  /* hook des_fade_rate */
 DES_REGION_ADDR(0x0025EC14, 0x0025CCEC)  /* hook des_fade_rate */
 DES_REGION_ADDR(0x0026558C, 0x00263664)  /* hook des_fade_rate */
@@ -124,6 +127,7 @@ DES_REGION_ADDR(0x002A6C58, 0x002A4D08)  /* return address in 0x002A6AA8 */
 DES_REGION_ADDR(0x002A6C60, 0x002A4D10)  /* return address in 0x002A6AA8 */
 DES_REGION_ADDR(0x002A6C70, 0x002A4D20)  /* return address in 0x002A6AA8 */
 DES_REGION_ADDR(0x002A6CA8, 0x002A4D58)  /* return address in 0x002A6AA8 */
+DES_REGION_ADDR(0x002B2984, 0x002B0A34)  /* hook des_coop_hook: a corpse's drop add after lwz r9,0x8C(r9) (a friend gets drops too) */
 DES_REGION_ADDR(0x002C2830, 0x002C08E0)  /* hook des_coop_hook: an NPC controller's setup after lbz r0,0xE8(r11) (a friend sees the NPCs as the host does) */
 DES_REGION_ADDR(0x002C32C0, 0x002C1370)  /* hook des_coop_hook: an NPC controller's setup after lbz r0,0xE8(r11) (a friend sees the NPCs as the host does) */
 DES_REGION_ADDR(0x002D0EB0, 0x002CF350)  /* call des_seamless_game (by address) */

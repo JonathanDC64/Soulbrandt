@@ -47,6 +47,13 @@
 //     talk to them: the talk scripts' phantom check sees it as alive.
 //   - Each Nexus cutscene, and the Monumental's tale, plays for each player once: a guest's flag in play for one is
 //     the host's and its own, and the guest keeps the flag in its own world once it has played.
+// Items, each player's own (a phantom's game makes none: the item lists' adds return early for any type but body or
+// soul form, read from the type the next load is for):
+//   - The area's items (TreasureMan, at each load) and a dead enemy's drop (CorpseMan, rolled by each game) are made
+//     for a guest too. Nothing about them goes over the network: each game has its own list, so one player's pickup
+//     doesn't take the item from the others.
+//   - Whether an area item was taken is read from the guest's own world, not from the host's flags in play: a guest
+//     sees the items it hasn't taken, wherever it took them. One it takes is kept in its own world, as a boss's soul is.
 #include "des_seamless.h"
 
 #include "ps3emu/ppu_lift.h"
@@ -486,6 +493,18 @@ bool keep_flag(uint32_t fb, uint32_t world, uint32_t flag)
         changed = true;
     }
     return changed;
+}
+
+// A flag as this guest's own world has it (world: the one it is read in), where keep_flag keeps it: 1 set, 0 clear,
+// -1 when there is no own world (not joined since the start).
+int own_flag(uint32_t world, uint32_t flag)
+{
+    const uint8_t bit = (uint8_t)(1u << (flag & 7));
+    std::lock_guard<std::mutex> l(sOwn.lock);
+    if (!sOwn.kept || flag >= kFlagCount) return -1;
+    if (!world_flag(flag) || world == sOwn.home) return (sOwn.flags[flag >> 3] & bit) ? 1 : 0;
+    const long b = own_bank_at(world, flag);
+    return b < 0 ? -1 : ((sOwn.banks[b] & bit) ? 1 : 0);
 }
 
 // A guest's join is about to fill the flags' copies (0x00508C00, before its first load into the host's world, with
@@ -1301,6 +1320,38 @@ void des_seamless_area_read(uint32_t world, const std::vector<uint32_t>& scenes)
     }
 }
 
+// Items (see the top): a guest in a session, its own copies.
+bool guest_in_session()
+{
+    const uint32_t sm = session_manager();
+    return guest_ok(sm) && vm_read32(sm + kSmState) == kStateClient;
+}
+
+// The area items' add reads whether an item was taken (r3, after bl 0x005087C8; r14 = the item's flag): on a guest in
+// a session, as the guest's own world has it, not the host's flags in play.
+void item_shown(ppu_context* ctx)
+{
+    const uint32_t flag = (uint32_t)ctx->gpr[14];
+    const uint32_t fb = flag_base();
+    if (flag >= kFlagCount || !guest_ok(fb) || !guest_in_session()) return;
+    const int own = own_flag(world_of(vm_read32(fb + kFlagsArea)), flag);
+    if (own < 0) return;
+    const int in_play = ((uint32_t)ctx->gpr[3] & 0xFF) ? 1 : 0;
+    static std::atomic<int> said{0};
+    if (own != in_play && said.fetch_add(1) < 32)
+        std::fprintf(stderr, "[coop] an item here (flag %u): %s\n", flag,
+                     own ? "taken in this player's world, so not here" : "the host's taken, this player's not");
+    ctx->gpr[3] = (uint64_t)own;
+}
+
+// An area item taken by a guest in the host's world: kept in its own world, as a boss's soul is.
+void item_taken(uint32_t fb, uint32_t flag)
+{
+    if (!guest_in_session() || !sGame.arrived.load()) return;
+    if (keep_flag(fb, world_of(vm_read32(fb + kFlagsArea)), flag))
+        std::fprintf(stderr, "[coop] an item taken: flag %u kept for this player's world\n", flag);
+}
+
 // Instruction hooks (port/insn_hooks.txt), with the US disc's addresses as keys.
 extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
 {
@@ -1336,7 +1387,14 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
         const uint32_t flag = (uint32_t)ctx->gpr[4];
         if ((uint32_t)ctx->gpr[5] == 0 || flag >= kFlagCount) break;   // flags only move forward
         const uint32_t fb = (uint32_t)ctx->gpr[3];
-        if (!guest_ok(fb) || fb != flag_base() || ((vm_read8(fb + (flag >> 3)) >> (flag & 7)) & 1)) break;   // set already
+        if (!guest_ok(fb) || fb != flag_base()) break;
+        // An area item taken (the item list's remove sets its flag): a guest keeps it in its own world, where its
+        // item list reads it (0x0025CC34). In play it can be set already: the host may have taken its own copy.
+        if (m == co::Mode::Join && (uint32_t)ctx->lr - 4 == DES_AT(0x0025C5ECu)) {
+            item_taken(fb, flag);
+            break;
+        }
+        if ((vm_read8(fb + (flag >> 3)) >> (flag & 7)) & 1) break;   // set already
         const uint32_t sm = session_manager();
         const uint32_t st = guest_ok(sm) ? vm_read32(sm + kSmState) : 0;
         const bool host = m == co::Mode::Host && st == kStateHost;
@@ -1387,6 +1445,14 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
         // (soul form), and their scripts then show no talk prompt. A friend is a phantom in the host's world, but in
         // co-op it talks to the NPCs as in its own game (0 is the alive player's type).
         if (m == co::Mode::Join) ctx->gpr[3] = 0;
+        break;
+    case 0x0025CB6Cu:   // the area items' add (0x0025CAE8), after lwz r9,0x8C(r9): the type the area was loaded for
+    case 0x002B2984u:   // a corpse's drop add (0x002B2900), the same
+        // Only body (0) and soul form (8) get items; a friend is a blue phantom (1) in the host's world
+        if (m == co::Mode::Join && (uint32_t)ctx->gpr[9] == 1) ctx->gpr[9] = 0;
+        break;
+    case 0x0025CC34u:   // the area items' add, after bl 0x005087C8: the item taken already?
+        if (m == co::Mode::Join) item_shown(ctx);
         break;
     case 0x00508C00u:   // a join fills the flags' copies (r3 = the flags), at its stdu
         if (m == co::Mode::Join && (uint32_t)ctx->gpr[3] == flag_base()) keep_own_world((uint32_t)ctx->gpr[3]);

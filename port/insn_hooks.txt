@@ -267,3 +267,6 @@
 0x002C32C0=des_coop_hook   # lbz r0,0xE8(r11) in an NPC controller's setup 0x002C3018: the same
 0x004C9638=des_coop_hook   # bl 0x0026F378 (the player's type) in the talk check 0x004C9600: a friend can talk to the NPCs
 0x004C9C5C=des_coop_hook   # bl 0x0026F378 (the player's type) in the talk check 0x004C9C18: the same
+0x0025CB6C=des_coop_hook   # lwz r9,0x8C(r9) in the area items' add 0x0025CAE8 (the player's type for this area): a friend gets the items too
+0x0025CC34=des_coop_hook   # bl 0x005087C8 (the item's taken flag, r14) in the same add: a friend sees each item as its own world has it
+0x002B2984=des_coop_hook   # lwz r9,0x8C(r9) in a corpse's drop add 0x002B2900: a friend gets drops from dead enemies too

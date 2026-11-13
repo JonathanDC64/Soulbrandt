@@ -63,6 +63,9 @@ once: after that, co-op has characters of its own.
   return during multiplayer.", at the Nexus's stones too.
 - **The White Eye Stone** takes a friend home as its own trip home does (in body form, its own world back); co-op
   then joins the host again a few seconds later. Leave co-op is the way out of co-op.
+- **Items are each player's own.** A friend sees the items lying in the area and gets drops from dead enemies, as the
+  host does. Each player has its own copy: one player's pickup leaves the others' where it was. An item a friend
+  takes is also gone in its own world.
 - **Boss kills keep everyone together:** no rating screen, nobody sent home, and the boss room's walls drop.
 - **A friend who dies** comes back where the host last arrived (the start of the area) and stays in the session.
   Once it is back, the others see it again, with its rolls, attacks and other moves.
@@ -222,6 +225,15 @@ character for it, as after a load.
   (they see the pickup animation) and use up their once-only prompt. The edit registers it between
   `NotNetMessage_begin` and `_end`, so each player's prompt is its own. A friend who takes it keeps the taken flag in its own world, so its own world doesn't
   offer it again; one who doesn't can still take it at the same place in its own world.
+- **Items.** A phantom's game makes no items: the area's items (lying on corpses, made at each load, US 0x0025CAE8)
+  and a dead enemy's drop (rolled by each game when the enemy dies, 0x002B2900) are made only when the player type
+  the area was loaded for is body form (0) or soul form (8), and a friend is a blue phantom (1). Both reads of that
+  type are hooked (0x0025CB6C, 0x002B2984), and on a friend they read 0. Nothing about these items goes over the
+  network: each game has its own list, so a pickup takes the item from that player's game only, and each player's
+  drops are its own rolls. Whether an area item was already taken is its flag; on a friend the flags in play are
+  the host's, so that read (0x0025CC34) gives the friend's own world's instead. A friend sees the items it hasn't
+  taken, whether the host has or not. One it takes is kept in its own world (the item list's flag set, from
+  0x0025C5EC), as a boss's soul is: its own world doesn't offer it again.
 - **The Nexus's people.** A visitor's game (a phantom's) sets up each person whose character row has byte `0xE8` set
   in a mode of its own (4): drawn as a phantom. The three places that choose it (a person's setup, US 0x002999C8, and
   its controller's two, 0x002C2588 and 0x002C3018) are hooked after they read that byte, and on a friend they read 0.
@@ -388,6 +400,9 @@ the newer generation, and saves as usual.
   game has no co-op there), so with a friend nobody got it. Its prompt is now offered with or without a session, to
   each player, like the other bosses'. Checked on the script (both of its registrations change, and only those); not
   yet in the game. (An earlier note here called it the final area's soul: `m08` is the tutorial.)
+- Items for a friend: the area's items and enemy drops (above). Not covered: a drop that an item lot allows only once
+  (its flag is read from the host's flags in play), and the scripted pickups (the Demonbrand, the keys) that an
+  area's script offers to the host and to players in their own world only, as the boss souls were.
 - The final area under the Nexus (King Allant, `m01_00`) was made for sessions: its soul prompts are the host's, as
   in the levels, so the soul edit above gives a friend its own. The solo clear bonus is skipped in a party, and only
   the host's game sets the clear state and plays the ending. Not tested.
