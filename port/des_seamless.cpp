@@ -56,13 +56,13 @@ constexpr uint16_t kStunPort = 19302;
 
 std::mutex sLock;
 Status sStatus;               // under sLock
-// The host's code, under sLock: its key and port, the public address the player gave ("" = none), and the router's
-// own answer (its code, if it gave a public address).
+// The host's code, under sLock: its key and port, the public address the player gave ("" = none), the router's own
+// answer (the public address its code uses, if any) and this PC's address on its own network (the local code's).
 uint32_t sKey = 0;
 int sPort = 0;
-std::string sGiven;
+std::string sGiven, sLan;
 struct RouterAnswer {
-    std::string text, code;
+    std::string text, ip;
     bool ok = false;
     bool opened = false;  // UPnP opened the port
     bool behind = false;  // ...on a router behind another one (its own address private)
@@ -417,11 +417,13 @@ int tidy_public_ipv4(const std::string& text, std::string* out) {
     return 0;
 }
 
-// The invite code and the words beside it (sLock held): from the address the player gave, else the router's answer.
+// The invite codes and the words beside them (sLock held): from the address the player gave, else the router's
+// answer; and the local one.
 void compose_locked() {
     sStatus.address_given = !sGiven.empty();
+    sStatus.lan_code = sLan.empty() ? std::string() : encode(sLan.c_str(), sPort, sKey);
     if (sGiven.empty()) {
-        sStatus.code = sRouter.code;
+        sStatus.code = sRouter.ip.empty() ? std::string() : encode(sRouter.ip.c_str(), sPort, sKey);
         sStatus.router_ok = sRouter.ok;
         sStatus.router = sRouter.text;
         return;
@@ -472,7 +474,7 @@ std::string stun_public_ipv4(std::string* who) {
 // Off the game's thread: the router forwards the port, and its address makes the code. DES_SEAMLESS_UPNP=0 leaves
 // the router alone (the port forwarded by hand). A public address the player gave (DES_SEAMLESS_ADDRESS, or the
 // Co-op window's Public address) wins over the router's.
-void router_thread(int port, uint32_t key) {
+void router_thread(int port) {
     char ext[16] = {};
     const char* upnp = std::getenv("DES_SEAMLESS_UPNP");
     const bool use_upnp = !(upnp && !std::strcmp(upnp, "0"));
@@ -489,7 +491,7 @@ void router_thread(int port, uint32_t key) {
     } else switch (rc) {
     case NET_UPNP_OK:
         r.ok = r.opened = true;
-        r.code = encode(ext, port, key);
+        r.ip = ext;
         r.text = "Your router opened port " + p + " for co-op.";
         break;
     case NET_UPNP_ERR_PRIVATE_IP:
@@ -514,9 +516,9 @@ void router_thread(int port, uint32_t key) {
     // No public address from the router: a STUN server tells the address this PC's traffic leaves from, so the
     // code is right. Whether friends get through still depends on the port being forwarded, so the words say how.
     std::string who;
-    const std::string stun_ip = r.code.empty() && rc != NET_UPNP_ERR_TAKEN ? stun_public_ipv4(&who) : std::string();
+    const std::string stun_ip = r.ip.empty() && rc != NET_UPNP_ERR_TAKEN ? stun_public_ipv4(&who) : std::string();
     if (!stun_ip.empty()) {
-        r.code = encode(stun_ip.c_str(), port, key);
+        r.ip = stun_ip;
         const std::string from = "Your internet address came from " + who + ". ";
         if (!use_upnp)
             r.text = from + "Co-op is set not to use UPnP, so forward port " + p +
@@ -533,16 +535,16 @@ void router_thread(int port, uint32_t key) {
                      "): forward it to this PC in your router's settings.";
     }
     if (r.opened) std::atexit(unmap_at_exit);
-    const std::string lan_code = lan.empty() ? std::string() : encode(lan.c_str(), port, key);
-    std::string code, said;
+    std::string code, lan_code;
     bool given = false;
     {
         std::lock_guard<std::mutex> g(sLock);
         sRouter = r;
+        sLan = lan;
         compose_locked();
         sStatus.router_done = true;
-        sStatus.lan_code = lan_code;
         code = sStatus.code;
+        lan_code = sStatus.lan_code;
         given = sStatus.address_given;
     }
     // (no addresses in the log)
@@ -616,6 +618,7 @@ bool start(const std::string& name, std::string* why) {
         cfg.port = (uint16_t)port;
         cfg.has_key = 1;
         net_invite_key_blob(key, cfg.key);
+        cfg.own_key_local = 1;   // this game's own connection keeps its key (PSNR_KEY) after a new code
         // Each disc signs in with its own communication ID: the European disc's (NPWR01249_00) and the Japanese and
         // Asian discs' (NPWR00245_00) play in the US disc's rooms (NPWR00881_00), as on the game server (its
         // sameGames). Without this a European friend's join of a US host's room fails as "no such room", and the
@@ -639,7 +642,7 @@ bool start(const std::string& name, std::string* why) {
         }
         net_invite_key_hex(key, key_hex);
         server = "127.0.0.1:" + std::to_string(port);
-        std::thread(router_thread, port, key).detach();
+        std::thread(router_thread, port).detach();
     } else {
         std::string code = env_given("DES_SEAMLESS_CODE") ? std::getenv("DES_SEAMLESS_CODE") : "";
         if (code.empty()) code = code_from_file();
@@ -680,7 +683,10 @@ Mode active() { return static_cast<Mode>(sActive.load(std::memory_order_relaxed)
 Status status() {
     std::lock_guard<std::mutex> g(sLock);
     Status s = sStatus;
-    if (sHost) s.players = psnr_host_players(sHost);
+    if (sHost) {
+        s.players = psnr_host_players(sHost);
+        s.code_spent = psnr_host_key_spent(sHost) != 0;
+    }
     if (s.mode == Mode::Join) s.link = guest_link();
     return s;
 }
@@ -710,6 +716,33 @@ std::string set_public_address(const std::string& text, std::string* clean) {
     std::fprintf(stderr, "[coop] public address %s\n", ip.empty() ? "cleared: the router's is used" : "given");
     if (done) write_code_file(code, lan_code);
     if (clean) *clean = ip;
+    return {};
+}
+
+std::string new_code() {
+    psnr_host* host = nullptr;
+    {
+        std::lock_guard<std::mutex> g(sLock);
+        if (sStatus.mode != Mode::Host || !sStatus.started || !sHost) return "Only while hosting.";
+        host = sHost;
+    }
+    const uint32_t key = net_invite_new_key();
+    uint8_t blob[PSNR_HOST_KEY_LEN];
+    net_invite_key_blob(key, blob);
+    psnr_host_new_key(host, blob);   // (waits for the room server to take it: status() then reads it as not spent)
+    std::memset(blob, 0, sizeof blob);
+    std::string code, lan_code;
+    bool done = false;
+    {
+        std::lock_guard<std::mutex> g(sLock);
+        sKey = key;
+        done = sStatus.router_done;
+        if (done) compose_locked();   // (else the router's answer, when it comes, uses the new key)
+        code = sStatus.code;
+        lan_code = sStatus.lan_code;
+    }
+    std::fprintf(stderr, "[coop] a new invite code: the old one lets no one else in\n");
+    if (done) write_code_file(code, lan_code);
     return {};
 }
 

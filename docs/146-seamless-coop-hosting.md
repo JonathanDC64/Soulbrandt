@@ -22,6 +22,8 @@ This page covers three parts:
    clipboard. Send it to your friends.
 
 **Don't post the code in public.** It holds your internet address. Send it only to the friends you play with.
+If a code went further than you meant, choose **New code**: the old one stops working, and players already in your
+game stay. The game makes a new code by itself only when someone has tried many wrong ones; Co-op then says so.
 
 **To join:**
 
@@ -162,6 +164,21 @@ Reading a code back ignores case, dashes and spaces, and takes O as 0 and I or L
 
 It holds 80 bits: the host's IPv4 address (32), the port (16), the key (28) and a check (4). The check catches most
 typos ("That code has a typo").
+
+**Who can join.** The room server (ps3recomp's `psnr_host`) is the only thing the router opens. The game's own
+online server runs on this PC's loopback only. Every connection must say `HELLO` with the key, as a 32-byte blob
+made from it, within 10 s; without it, nothing else is answered. So:
+- A scan of the internet can find that something answers on the port, but can't join, list rooms or send anything
+  to the players without the key.
+- Guessing the key: one address is ignored for a minute after 5 wrong keys. After 100 wrong keys from any
+  addresses, the key is spent: no one else gets in, players already in stay, and the Co-op window asks the host for
+  a new code. A guess gets 100 tries a code, 1 in 2.7 million of finding a 28-bit key.
+- One address may have only 2 connections that haven't said `HELLO` yet, and each gets 10 s, so connections that
+  never send a key can't take the players' places.
+- The UDP side (the probes and the relay) answers only a player's id with its token, from its `HELLO`. A probe's
+  answer is smaller than the probe.
+- **New code** gives the room server a new key at once. The host's own game keeps the key it started with, from this
+  PC only.
 
 ## How the session works
 

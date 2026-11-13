@@ -222,6 +222,29 @@ void open_public_address() {
     }));
 }
 
+// A new invite code: for a code that went further than meant, or once too many wrong codes spent it.
+void open_new_code() {
+    push_document(std::make_unique<Modal>(Modal::Props{
+        .title = "New invite code",
+        .bodyRml = "Your code stops working: friends who haven't joined yet need the new one. Players already here "
+                   "stay.",
+        .actions = {ModalAction{.label = "Cancel", .onPressed = close_action},
+                    ModalAction{.label = "New code",
+                                .onPressed =
+                                    [](Modal& m) {
+                                        const std::string why = co::new_code();
+                                        if (!why.empty()) {
+                                            play_sound(kSoundItemDisable);
+                                            toast("warning", why);
+                                            return;
+                                        }
+                                        play_sound(kSoundItemEnable);
+                                        toast("info", "A new invite code. Copy it again for your friends.");
+                                        m.pop();
+                                    }}},
+    }));
+}
+
 void leave_now() {
     play_sound(kSoundWindowClose);
     restart_with({"DES_SEAMLESS=", "DES_SEAMLESS_CODE="});
@@ -303,6 +326,9 @@ std::string body(const co::Status& s) {
                "starts hosting again, its invite code is a new one: <b>Leave co-op</b>, then join with the new code.";
     }
     std::string b;
+    if (s.code_spent)
+        b += "<b>Many wrong codes were tried</b>, so your code no longer lets anyone in. Choose <b>New code</b> and "
+             "send the new one to your friends. Players already here stay.<br/><br/>";
     if (!s.code.empty()) {
         b += "Your invite code:<br/><b>" + escape(s.code) + "</b><br/>Send it to your friends. Don't post it in "
              "public: it holds your internet address.<br/><br/>";
@@ -370,8 +396,10 @@ std::unique_ptr<Modal> make_coop_window() {
                                    const co::Status now = co::status();
                                    return now.code.empty() && now.lan_code.empty();
                                }});
-        if (s.mode == co::Mode::Host)
+        if (s.mode == co::Mode::Host) {
+            actions.push_back({.label = "New code", .onPressed = [](Modal&) { open_new_code(); }});
             actions.push_back({.label = "Public address", .onPressed = [](Modal&) { open_public_address(); }});
+        }
         actions.push_back({.label = "Leave co-op", .onPressed = [](Modal&) { open_leave(); }});
     }
     return std::make_unique<CoopWindow>(Modal::Props{

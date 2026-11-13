@@ -48,6 +48,7 @@ struct Status {
     bool address_given = false;  // host: the code is from the public address the player gave, not the router's
     int port = 0;            // host: the room server's port
     int players = 0;         // host: games connected to the room server, this one included
+    bool code_spent = false; // host: too many wrong codes came, so the code lets no one else in (new_code())
     enum class Link { Connecting, Connected, Lost };
     Link link = Link::Connecting;  // join: the connection to the host's game (Lost: it was there, and is gone)
 };
@@ -60,6 +61,10 @@ Status::Link guest_link();
 // (behind another router, no UPnP). The invite code is made from it at once; "" goes back to the router's answer.
 // "" when taken (the address, tidied, in *clean), else why not, in plain words.
 std::string set_public_address(const std::string& text, std::string* clean);
+
+// Host: a new invite code (a new key): the old one lets no one else in, and players already in stay. For a code
+// that went further than meant, or once it is spent (Status::code_spent). "" when done, else why not.
+std::string new_code();
 
 // A code the player typed or pasted: "" if it reads as a code (normalised into *clean as XXXX-XXXX-XXXX-XXXX), else
 // why not, in plain words.
