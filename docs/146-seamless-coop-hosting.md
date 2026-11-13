@@ -302,6 +302,13 @@ their first instruction):
   kept the wall itself, so they couldn't pass. The edit makes the same call in the true branch, between
   `NotNetMessage_begin` and `_end`, wherever a handler drops its wall by a direct call to a function with
   `SetColiEnable(..., false)` and has no `LuaCallStart`; only 14291 matches.
+- The Nexus's timers and checks (`OnKeyTime2`, `OnRegistFunc`) are each player's own. No phantom reaches the Nexus in
+  the original game, so its script registers them outside `NotNetMessage_begin` and `_end`, and in a session each one
+  is a network event: a step that fires in one game runs in the others too, where it registers the next step again.
+  Each game runs its own chains from its own flags (the first visit's messages and the Nexial Binding at their end,
+  the Maiden's revival, the clear items), so when two ran at once in a session each step multiplied: a friend got
+  three Bindings after the tutorial's end. The edit registers all 29 between `NotNetMessage_begin` and `_end` (not
+  the ones in a comment). The Nexus's other network events (the Archstones, the NPCs' events) stay as they are.
 
 The edited copies are cached by the original's size and hash, so a script read again costs nothing.
 

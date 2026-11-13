@@ -20,7 +20,8 @@
 //   - a boss's soul: a blue phantom may take its own, as the host takes its own;
 //   - the wandering ghosts' sightings are each player's own (local_wander_loops);
 //   - a light wall one player walks through is gone in every player's game (walls_for_watchers);
-//   - the room is never locked (LockSession), here or at a kill in global_event.lua, so a friend can always join again.
+//   - the room is never locked (LockSession), here or at a kill in global_event.lua, so a friend can always join again;
+//   - the Nexus's timers and checks are each player's own (local_timers).
 // And from each area's script, the flags that move forward in every player's world (progress_flags), the soul
 // pickups each player makes for itself (own_flags) and the Nexus's cutscenes each player sees for itself
 // (scene_flags), for des_seamless_game.cpp.
@@ -272,6 +273,34 @@ int local_wander_loops(std::string& t)
     return (int)wrap.size();
 }
 
+// The Nexus's timers and checks (OnKeyTime2, OnRegistFunc). No phantom reaches the Nexus in the original game, so its
+// script registers them outside NotNetMessage_begin and _end, and in a session each one is a network event: a step
+// that fires in one game runs in the others too, where it registers the next step again. Each game runs its own
+// chains (the first visit's messages, the Maiden's revival, the clear items), so when two ran at once each step
+// multiplied: a friend got three Nexial Bindings at the end of the first visit's messages (OnEvent_30_RemoFinish, then
+// 32 to 37's GetRateItem(10860)). Each game's steps now stay in that game. (Not the calls in a comment.) Returns the
+// number of edits.
+int local_timers(std::string& t)
+{
+    std::vector<std::pair<size_t, size_t>> wrap;
+    const std::regex reg("proxy:(?:OnKeyTime2|OnRegistFunc)\\s*\\([^;\\n]*\\)\\s*;");
+    for (auto it = std::sregex_iterator(t.begin(), t.end(), reg); it != std::sregex_iterator(); ++it) {
+        const size_t a = (size_t)it->position(0);
+        const size_t bol = t.rfind('\n', a);
+        const size_t ls = bol == std::string::npos ? 0 : bol + 1;
+        if (t.substr(ls, a - ls).find("--") != std::string::npos) continue;   // a line comment
+        const size_t open = t.rfind("--[[", a), close = t.rfind("]]", a);
+        if (open != std::string::npos && (close == std::string::npos || close < open)) continue;   // a block comment
+        if (in_not_net(t, a)) continue;
+        wrap.push_back({a, a + (size_t)it->length(0)});
+    }
+    for (auto w = wrap.rbegin(); w != wrap.rend(); ++w) {
+        t.insert(w->second, " proxy:NotNetMessage_end();");
+        t.insert(w->first, "proxy:NotNetMessage_begin(); ");
+    }
+    return (int)wrap.size();
+}
+
 // A line's code without its Lua comment (from "--" on; the scripts have no "--" inside strings).
 std::string code_of(const std::string& text)
 {
@@ -376,6 +405,8 @@ int edit_area(std::string& t, bool nexus)
             sub(std::regex("(\\nfunction OnEvent_" + id + "\\s*\\(\\s*proxy\\s*,\\s*param\\s*\\)[^\\n]*\\n)"),
                 ("$1" + guard).c_str());
         }
+        // Each game's timers and checks stay its own (local_timers)
+        n += local_timers(t);
         return n;
     }
     // A boss fight is on from the boss's health bar to its clearing (each is a statement of its own in every area's
