@@ -53,7 +53,7 @@ once: after that, co-op has characters of its own.
 **In the game:**
 
 - **Joining needs no sign.** Once the host stands in an area, a friend's game joins by itself, wherever the friend
-  is. The friend loads the host's area and arrives beside the host as a blue phantom. A friend watching a cutscene
+  is. The friend loads the host's area and arrives beside the host as a blue phantom, facing the way the host faces. A friend watching a cutscene
   in its own world (an area's opening one, say) goes when the cutscene ends: the game's load waits for it.
 - **Body form or soul form.** A friend in body form joins in soul form, since the game summons only soul-form
   players, and gets its body form back when it goes home.
@@ -179,6 +179,13 @@ host. So the same step serves:
   until the host has arrived;
 - a respawn after a friend's death.
 
+The facing goes with the place. A summoned reload takes its facing from a rotation beside each place (`gm+0x30`,
+`+0xA50`, `+0xAF0`: x, y, z, w, with y the yaw), which the game left at zero, so a friend always arrived facing one
+fixed way. The host's `REDY` carries its yaw (from the player's transform, `*(*(character + 0x20) + 0x10) + 4`)
+with each place, and the load step writes it there with the position. The game then turns the friend and puts its
+camera behind it, as for any arrival. (Setting the transform's yaw after the arrival doesn't last: the game turns
+the player back within 30 frames.)
+
 **Placing the players again.** A load drops the other players' characters, and the game places a player only when it
 joins the room. So after each load, each game puts the other players back on its list of players to place, as the
 game's own join does.
@@ -198,7 +205,7 @@ character for it, as after a load.
 | `ROOM` | host | the room's data | join with this |
 | `ROM?` | friend | none | send the room's data |
 | `LEAD` | host | its load count | the host's load started: follow |
-| `REDY` | host | load count, area, where it arrived, where it stands, its area's dead characters | after each load, every 2 s, and when asked |
+| `REDY` | host | load count, area, where it arrived and where it stands (each with its facing), its area's dead characters | after each load, every 2 s, and when asked |
 | `HER?` | friend | none | send a `REDY` now (a friend's respawn) |
 | `BACK` | friend | its player id | back in the world after its respawn: make its character again |
 | `FLGS` | host | area, offset, up to 1,000 bytes of its event flags | the host's flags, in three parts, before each `REDY` |

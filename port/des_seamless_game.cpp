@@ -13,7 +13,8 @@
 //   - When the host's own load starts (a warp, a death), it tells its guests (LEAD). Each guest starts a summoned
 //     reload (SummonedMapReload, the guest's side of a summon), which keeps its session.
 //   - The guest's load step waits, on the game's own loading screen, until the host says it has arrived (READY: its
-//     area and place). The map it loads then becomes the host's area, and its spawn point the host's place.
+//     area and place). The map it loads then becomes the host's area, and its spawn point the host's place, facing
+//     the way the host faces there (a join's too).
 //   - After a load, each game puts the other players back on its list of players to place (sm+0x128), which the game
 //     fills only when a player joins its room. So the host places the guest, and the guest the host.
 // The host keeps its session through its own loads: the game's leaves are skipped on the host (its session ends when
@@ -62,6 +63,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -109,6 +111,9 @@ constexpr uint32_t kGmSaveTask = 0xAA4;    // u32: the save task, 0 idle (1 and 
 constexpr uint32_t kGmNextPoint = 0x0C;                      // the next load's warp point (-1: a place)
 constexpr uint32_t kGmSummonedPlace = 0x1C;                  // a byte: the next load puts the player at +0x20
 constexpr uint32_t kGmPlace[4] = {0x20, 0xA40, 0xAE0, 0xB20}; // where a summoned reload puts the player (x, y, z)
+// The rotation beside the first three places (x, y, z, w; y = the yaw, as in the player's transform). Zero unless
+// written, so a summoned reload faced one fixed way, whichever way the host looked.
+constexpr uint32_t kGmFacing[3] = {0x30, 0xA50, 0xAF0};
 // The dead-character records ("\0CHR", one bit per character of the area; always 76 bytes, 0x00294B10): the host's
 // (slot 0, bytes at +0xB34), which a summoned reload's load applies, and this game's own (slot 1, +0xB3C), which its
 // own loads apply. A load's pass (0x002953F0) kills the characters marked, with no souls paid, and empties the slot.
@@ -140,8 +145,8 @@ constexpr uint32_t kNoArea = 0xFFFFFFFFu;
 constexpr char kMsgRoom[4] = {'R', 'O', 'O', 'M'};   // the host's room data
 constexpr char kMsgAsk[4] = {'R', 'O', 'M', '?'};    // a guest asks for it
 constexpr char kMsgLead[4] = {'L', 'E', 'A', 'D'};   // u32 trip: the host's load started
-// u32 trip, u32 area, f32 x, y, z where it arrived, f32 x, y, z where it is, then its area's dead-character record
-// (76 bytes, or none): the host has arrived (after each load), every 2 s while it hosts, and when a guest asks
+// u32 trip, u32 area, f32 x, y, z, yaw where it arrived, f32 x, y, z, yaw where it is, then its area's dead-character
+// record (76 bytes, or none): the host has arrived (after each load), every 2 s while it hosts, and when a guest asks
 constexpr char kMsgReady[4] = {'R', 'E', 'D', 'Y'};
 constexpr char kMsgWhere[4] = {'H', 'E', 'R', '?'};  // a guest asks for a READY now (its respawn)
 constexpr char kMsgFlag[4] = {'F', 'L', 'A', 'G'};   // u32 flag, u32 area: a progress flag set in the host's world (from a guest: the seal)
@@ -248,7 +253,7 @@ std::mutex sMsgLock;
 std::vector<uint8_t> sRoom;          // the host's room data (a guest)
 bool sAsked = false;                 // a guest asked for the room data (the host)
 uint32_t sLeadTrip = 0;              // the host's latest load (a guest)
-struct Place { float x = 0, y = 0, z = 0; };
+struct Place { float x = 0, y = 0, z = 0, yaw = NAN; };   // yaw: the facing (player_transform), NaN if unknown
 struct Ready {
     uint32_t trip = 0, area = kNoArea;
     Place arrived, now;
@@ -294,13 +299,13 @@ void on_message(uint32_t from, const uint8_t* d, uint32_t n)
         sAsked = true;
     } else if (!std::memcmp(d, kMsgLead, 4) && n >= 8) {
         sLeadTrip = get32(d + 4);
-    } else if (!std::memcmp(d, kMsgReady, 4) && n >= 36) {
+    } else if (!std::memcmp(d, kMsgReady, 4) && n >= 44) {
         Ready r;
         r.trip = get32(d + 4);
         r.area = get32(d + 8);
-        r.arrived = {getf(d + 12), getf(d + 16), getf(d + 20)};
-        r.now = {getf(d + 24), getf(d + 28), getf(d + 32)};
-        if (n == 36 + kRecordSize) r.record.assign(d + 36, d + n);
+        r.arrived = {getf(d + 12), getf(d + 16), getf(d + 20), getf(d + 24)};
+        r.now = {getf(d + 28), getf(d + 32), getf(d + 36), getf(d + 40)};
+        if (n == 44 + kRecordSize) r.record.assign(d + 44, d + n);
         r.count = sReady.count + 1;
         sReady = std::move(r);
     } else if (!std::memcmp(d, kMsgWhere, 4)) {
@@ -860,10 +865,19 @@ void make_again(ppu_context* ctx, uint32_t sm, uint32_t id)
                  queued ? "" : " (not placed: no node for the waiting list)");
 }
 
+// The player's transform: *(*(character + 0x20) + 0x10), the rotation (the yaw at +4) then the position (+0x10), as
+// the game's getters read it (0x002E7420, 0x002E73E0). 0 with no player.
+uint32_t player_transform()
+{
+    return rd(rd(rd(rd(DES_AT(kChrMan)) + 0x1BC) + 0x20) + 0x10);
+}
+
 Place player_place()
 {
     Place p;
     des_player_xyz(&p.x, &p.y, &p.z);
+    const uint32_t xf = player_transform();
+    if (guest_ok(xf)) p.yaw = rdf(xf + 4);
     return p;
 }
 
@@ -882,7 +896,8 @@ std::vector<uint8_t> dead_record(ppu_context* ctx)
 }
 
 // The host tells its guests where it is: its area, where it arrived (a respawn's place), where it stands (a join's),
-// and which of its area's characters are dead (a respawn's or a follow's load kills them as a join's does).
+// each with its facing, and which of its area's characters are dead (a respawn's or a follow's load kills them as a
+// join's does).
 void send_ready(ppu_context* ctx, uint32_t sm, uint32_t trip, const Place& arrived)
 {
     const Place now = player_place();
@@ -893,6 +908,7 @@ void send_ready(ppu_context* ctx, uint32_t sm, uint32_t trip, const Place& arriv
         putf(b, p.x);
         putf(b, p.y);
         putf(b, p.z);
+        putf(b, p.yaw);
     }
     const std::vector<uint8_t> rec = dead_record(ctx);
     b.insert(b.end(), rec.begin(), rec.end());
@@ -1207,6 +1223,8 @@ void guest_load_step(ppu_context* ctx)
             wrf(gm + off + 4, at.y);
             wrf(gm + off + 8, at.z);
         }
+        if (std::isfinite(at.yaw))   // facing the way the host faces there
+            for (uint32_t off : kGmFacing) wrf(gm + off + 4, at.yaw);
         if (joined || trip) {
             const uint32_t rb = sGame.record_buf;
             if (r.record.size() == kRecordSize && guest_ok(rb)) {
@@ -1221,8 +1239,10 @@ void guest_load_step(ppu_context* ctx)
         if (trip) vm_write32(gm + kGmOwnRecord, 0);
     }
     const long ms = (long)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
-    std::fprintf(stderr, "[coop] %s: the host is in %s, %s at %.2f %.2f %.2f; dead characters: %s (waited %ld ms, %d names)\n",
-                 why, want, joined && !trip ? "arrived" : "stands", at.x, at.y, at.z, dead, ms, swapped);
+    std::fprintf(stderr,
+                 "[coop] %s: the host is in %s, %s at %.2f %.2f %.2f facing %.2f; dead characters: %s "
+                 "(waited %ld ms, %d names)\n",
+                 why, want, joined && !trip ? "arrived" : "stands", at.x, at.y, at.z, at.yaw, dead, ms, swapped);
 }
 
 // A guest's connection to the host's game (co::Status::link), kept by des_seamless_tick for the Co-op window.
