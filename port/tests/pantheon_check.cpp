@@ -63,7 +63,7 @@ std::vector<uint8_t> game_record()
     for (uint32_t at : {0x13Cu, 0x140u, 0x144u}) putf(r, at, 98.0f);
     put(r, 0x148, 999999);
     for (uint32_t at = 0x158; at <= 0x164; at += 4) put(r, at, 40);
-    put(r, kCodeAddressAt, kEquipVt);  // the equip set's vtable: the upload blanks it
+    put(r, kCodeAddressAt, DES_AT(kEquipVt));  // the equip set's vtable: the upload blanks it
     put(r, 0x16C, 1), put(r, 0x170, 0), put(r, 0x174, 1);
     for (uint32_t at = kEquipAt; at <= 0x1BC; at += 4) put(r, at, 0xFFFFFFFFu);
     put(r, kEquipAt, 1500);           // slot 0, a weapon
@@ -143,7 +143,7 @@ int main()
     CHECK(blank(r, kNameAt, kNameSize) && blank(r, kCodeAddressAt, 4));
     CHECK(record_ok(1, r.data(), kRecordSize, why, sizeof why));
     CHECK(down(r) == 1);
-    CHECK(be32(r.data() + kCodeAddressAt) == kEquipVt);
+    CHECK(be32(r.data() + kCodeAddressAt) == DES_AT(kEquipVt));
     for (uint32_t board = 1; board <= kBoards; board++) {
         std::vector<uint8_t> b = game_record();
         CHECK(up(b, board) == 1 && down(b, board) == 1);
