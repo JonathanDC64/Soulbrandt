@@ -282,6 +282,8 @@ resolves) and `PS3_SAVEDATA_ROOT` (the co-op save). A value set in the environme
    and for the game's save to finish: no save asked for (GameMan `+0xA97`, `+0xA98`) and its save task idle
    (`+0xAA4` back at 0). A save writes PARAM.SFO first and the data after, so a new file alone is too early. Then
    (or after 2 minutes, or on **Leave now**) it starts the game again. Back or Esc doesn't close that window.
+   Scripted, with keys sent to the window as a friend in the host's Nexus: Esc there kept it, and the game started
+   again once, after the save; three presses of Leave now within 0.2 s started it once.
 
 A Leave outside a session:
 - **During a load,** for example while the game is taking the friend home itself after the host's game closed, it
@@ -351,8 +353,10 @@ the newer generation, and saves as usual.
   world: it is neither kept in the friend's own world nor sent to the host. Only the Archstones' seal is shared.
 - The Archstones' seal from a friend is checked through its four flags, set on the friend through the game's own
   setter, not yet by a friend hearing the Monumental's tale.
-- A friend's talk is checked as far as the Crestfallen's prompt and first line. The menus behind other people (the
-  Maiden's level up, the smith, the storage) aren't checked with a friend yet.
+- A friend's talk is checked as far as the Crestfallen's prompt and first line, and, scripted, the Maiden in Black's
+  prompt and early lines ("The Monumental awaits thee, above." with a host who hadn't met the Monumental yet). The
+  menus behind other people (the Maiden's level up, which needs a host past the first demon, the smith, the storage)
+  aren't checked with a friend yet.
 - Closing the game window as a friend: the session is lost and nothing from it is saved (the game only saves at
   home).
 - A friend in body form whose joins keep failing with the host's game still there stays in soul form while it tries.
