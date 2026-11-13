@@ -272,6 +272,16 @@ their first instruction):
   marked from its health bar: every `proxy:SetBossGauge(` (a statement of its own in every area) sets
   `SeamlessBossFight`, and `proxy:ClearBossGauge(` clears it. All of a map's scripts share one set of globals, as
   the area scripts' calls to `global_event.lua`'s functions show.
+- The wandering ghosts' sightings (a scripted phantom that walks by and fades, over and over: `OnWanderFade`) are
+  each player's own. The tutorial's two (`m08_00`'s 14400, `m08_01`'s 14411) loop through timers registered between
+  `RepeatMessage_begin` and `_end` with no `NotNetMessage`, as the tutorial has no co-op. In a session each pass is
+  a network event: the other games run it too and send theirs back, so the timers multiply. A friend's went from 1
+  to over 1,000 in a few minutes and filled its event heap (INGAME, 1 MB), and its game stopped ("Transaction
+  failed") and left the session. The areas made for sessions run theirs between `NotNetMessage_begin` and `_end`
+  (`m06_00`'s 124); the edit does the same here. It takes every function with `OnWanderFade`, the handlers of the
+  timers they register and the functions they call, and the functions whose timers start them, and makes their
+  `RepeatMessage` blocks, their `OnWanderFade` and the region events that start them local. Each player sees the
+  ghost when it walks into the region itself.
 
 The edited copies are cached by the original's size and hash, so a script read again costs nothing.
 

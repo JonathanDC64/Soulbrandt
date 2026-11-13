@@ -185,6 +185,86 @@ bool edit_global(std::string& t, const std::string& nl)
     return true;
 }
 
+// Whether pos in a script is between NotNetMessage_begin and _end.
+bool in_not_net(const std::string& t, size_t pos)
+{
+    const size_t b = t.rfind("NotNetMessage_begin", pos);
+    const size_t e = t.rfind("NotNetMessage_end", pos);
+    return b != std::string::npos && (e == std::string::npos || b > e);
+}
+
+// The wandering ghosts' sightings: a scripted phantom that walks by and fades, over and over (OnWanderFade). The
+// tutorial's (m08_00's 14400, m08_01's 14411) loop through timers registered between RepeatMessage_begin and _end
+// with no NotNetMessage, as the tutorial has no co-op. In a session each pass is a network event, so the other
+// games run it too and send theirs back: the timers multiply until the event heap (INGAME, 1 MB) runs out, and
+// the game stops with "Transaction failed" a few minutes in. The areas made for sessions run theirs between
+// NotNetMessage_begin and _end (m06_00's 124), each player seeing its own; so do these now. The functions are each
+// one with OnWanderFade, the timers' handlers and the functions they call, and the ones whose timers start them;
+// their RepeatMessage blocks and the region events that start them are made local. Returns the number of edits.
+int local_wander_loops(std::string& t)
+{
+    struct Span { size_t a, e; };
+    std::map<std::string, Span> fns;
+    const std::regex head("\nfunction ([A-Za-z_][A-Za-z0-9_]*)\\s*\\(");
+    for (auto it = std::sregex_iterator(t.begin(), t.end(), head); it != std::sregex_iterator(); ++it) {
+        const size_t a = (size_t)it->position(0) + 1;
+        const size_t next = t.find("\nfunction ", a + 5);
+        fns.emplace((*it)[1].str(), Span{a, next == std::string::npos ? t.size() : next + 1});
+    }
+    const auto body = [&](const std::string& f) { return t.substr(fns.at(f).a, fns.at(f).e - fns.at(f).a); };
+    std::set<std::string> loop;
+    for (const auto& [f, s] : fns)
+        if (body(f).find("OnWanderFade(") != std::string::npos) loop.insert(f);
+    if (loop.empty()) return 0;
+    const std::regex timer("OnKeyTime2\\s*\\([^,\\n]*,\\s*\"([A-Za-z0-9_]+)\"");
+    const std::regex call("(?:^|[^:.\\w])([A-Za-z_][A-Za-z0-9_]*)\\s*\\(\\s*proxy\\b");
+    for (bool grew = true; grew;) {
+        grew = false;
+        for (const auto& [f, s] : fns) {
+            const std::string b = body(f);
+            const bool in = loop.count(f) != 0;
+            for (auto it = std::sregex_iterator(b.begin(), b.end(), timer); it != std::sregex_iterator(); ++it) {
+                const std::string h = (*it)[1].str();
+                if (!fns.count(h)) continue;
+                if (in && loop.insert(h).second) grew = true;
+                if (!in && loop.count(h) && loop.insert(f).second) grew = true;
+            }
+            if (!in) continue;
+            for (auto it = std::sregex_iterator(b.begin(), b.end(), call); it != std::sregex_iterator(); ++it) {
+                const std::string c = (*it)[1].str();
+                if (c != f && fns.count(c) && loop.insert(c).second) grew = true;
+            }
+        }
+    }
+    // The places to wrap, from the end so the earlier ones keep their positions: {begin, end} of each statement or
+    // block that isn't local yet.
+    std::vector<std::pair<size_t, size_t>> wrap;
+    const std::regex block("proxy:RepeatMessage_begin\\(\\);([\\s\\S]*?)proxy:RepeatMessage_end\\(\\);");
+    const std::regex fade("proxy:OnWanderFade\\s*\\([^;\\n]*\\)\\s*;");   // an event too: the fade's end
+    for (const std::string& f : loop) {
+        const Span s = fns.at(f);
+        for (const std::regex* re : {&block, &fade})
+            for (auto it = std::sregex_iterator(t.begin() + (long)s.a, t.begin() + (long)s.e, *re);
+                 it != std::sregex_iterator(); ++it) {
+                const size_t a = s.a + (size_t)it->position(0);
+                if (it->str().find("NotNetMessage_begin") != std::string::npos || in_not_net(t, a)) continue;
+                wrap.push_back({a, a + (size_t)it->length(0)});
+            }
+        const std::regex trigger("proxy:OnRegion\\w*\\s*\\([^;\\n]*\"" + f + "\"[^;\\n]*\\)\\s*;");
+        for (auto it = std::sregex_iterator(t.begin(), t.end(), trigger); it != std::sregex_iterator(); ++it) {
+            const size_t a = (size_t)it->position(0);
+            if (!in_not_net(t, a)) wrap.push_back({a, a + (size_t)it->length(0)});
+        }
+    }
+    std::sort(wrap.begin(), wrap.end());
+    wrap.erase(std::unique(wrap.begin(), wrap.end()), wrap.end());
+    for (auto w = wrap.rbegin(); w != wrap.rend(); ++w) {
+        t.insert(w->second, " proxy:NotNetMessage_end();");
+        t.insert(w->first, "proxy:NotNetMessage_begin(); ");
+    }
+    return (int)wrap.size();
+}
+
 // An area's script: the party walls, the warp-out pose and the Archstones. Returns the number of edits.
 int edit_area(std::string& t, bool nexus)
 {
@@ -229,6 +309,8 @@ int edit_area(std::string& t, bool nexus)
     // script): a guest who dies in it watches until it ends (global_event.lua's PartyGhostDeath_2)
     sub(std::regex("proxy:SetBossGauge\\s*\\("), "SeamlessBossFight = true; proxy:SetBossGauge(");
     sub(std::regex("proxy:ClearBossGauge\\s*\\("), "SeamlessBossFight = false; proxy:ClearBossGauge(");
+    // The wandering ghosts' sightings: each player's own (local_wander_loops)
+    n += local_wander_loops(t);
     // The Archstones: the OnEvent_<id>[_k] handlers that show "Return to the Nexus?" (10010710) or "You can't
     // return during multiplayer." (10010720).
     std::set<std::string> ids;
