@@ -294,6 +294,12 @@ resolves) and `PS3_SAVEDATA_ROOT` (the co-op save). A value set in the environme
 - **A friend in body form before the join:** the game summons only soul-form players. A body-form friend's join fails
   (`OnFailedJoinSession`, "Failed to join the session"), so the program calls the game's `ChangeGreyGhost` 10
   frames before the join. Going home, it gets its body form back the same way, without the revival animation.
+  - If it leaves before a join came (the host's game gone, every join failed), it gets its body form back where it
+    stands, as the game's `OnDemonsSoulRevive` gives it (`EraseEventSpecialEffect(10000, 101)`, `RevivePlayer`).
+    Its game may have saved it in soul form while it waited, so it saves again (`SaveRequest_Profile`) before
+    starting again.
+  - If it dies before the join came, it stays a soul, as a player who dies in body form does. The program notes
+    the game's death count when the friend takes soul form, and a change means a death.
 - **The host's game closed:** the friend sees the game's own "The session has ended." once, and goes home. Two
   things keep it to that one box:
   - The program doesn't join again while the room server (the host's game) can't be reached: the room data and the
@@ -330,7 +336,8 @@ the newer generation, and saves as usual.
   Maiden's level up, the smith, the storage) aren't checked with a friend yet.
 - Closing the game window as a friend: the session is lost and nothing from it is saved (the game only saves at
   home).
-- A friend in body form who leaves co-op after taking soul form for a join that never completed stays in soul form.
+- A friend in body form who closes the game window while it waits in soul form for a join may start again in soul
+  form, if its game saved while it waited. Leave gives its body form back.
 - The final area's Demon's Soul is offered only outside a session (`ATTR_NOSESSION`; the game has no co-op there).
 - Watching a boss fight after dying is checked only as far as the scripts loading and an ordinary death still
   respawning. A boss fight with a friend dying in it is a hand test.

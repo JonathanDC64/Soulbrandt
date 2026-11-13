@@ -359,6 +359,13 @@ struct Own {
 };
 Own sOwn;
 std::atomic<bool> sJoinedInBody{false};   // set by guest_tick before a join from body form; taken by keep_own_world
+uint32_t sJoinedDeaths = 0;   // the game thread's: the player's death count when it took soul form for the join
+
+// The player's death count (0x0090BF60 reads what the scripts' AddDeathCount adds to at each death).
+uint32_t death_count(ppu_context* ctx)
+{
+    return call_addr(ctx, DES_AT(0x0090BF60u), {});
+}
 
 bool own_kept()
 {
@@ -571,9 +578,24 @@ void leave_tick(ppu_context* ctx, uint32_t st, bool world)
             call_addr(ctx, DES_AT(0x00508820u), {flag_base(), 2});
             sLeave = kLeaveOut;
             std::fprintf(stderr, "[coop] leave: going home\n");
-        } else if (st == 0 && !own_kept()) {
-            sLeave = kLeaveDone;   // not in a session: nothing to take home
-            std::fprintf(stderr, "[coop] leave: not in a session\n");
+        } else if (st == 0 && !own_kept()) {   // not in a session: nothing to take home
+            // It took soul form for a join that never came to a load (ChangeGreyGhost changes the form only; the
+            // load after it makes the soul form's own changes): its body form back in place, as global_event.lua's
+            // OnDemonsSoulRevive gives it (EraseEventSpecialEffect(10000, 101), RevivePlayer), with no animation.
+            // Its game may have saved it in soul form while it waited, so it saves (SaveRequest_Profile) and the
+            // leave waits for that save.
+            if (sJoinedInBody.exchange(false) && (int32_t)call_addr(ctx, DES_AT(0x0043E660u), {0}) != 0) {
+                call_addr(ctx, DES_AT(0x00446C68u), {0, 10000, 101});   // EraseEventSpecialEffect(10000, 101)
+                call_addr(ctx, DES_AT(0x0043EE10u), {0});               // RevivePlayer
+                call_addr(ctx, DES_AT(0x004418B8u), {0});               // SaveRequest_Profile
+                s.home_at = std::filesystem::file_time_type::clock::now();
+                sLeave = kLeaveHome;
+                std::fprintf(stderr, "[coop] leave: not in a session; body form again (the join never came), "
+                                     "waiting for the game's save\n");
+            } else {
+                sLeave = kLeaveDone;
+                std::fprintf(stderr, "[coop] leave: not in a session\n");
+            }
         }
     } else if (lv == kLeaveOut) {
         if (st == 0) {
@@ -896,6 +918,10 @@ void host_tick(ppu_context* ctx, uint32_t sm, uint32_t gm, uint32_t st, bool wor
 void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
 {
     Game& g = sGame;
+    // A death after taking soul form for the join (in its own world, before the join came): a player who dies in body
+    // form is a soul from then on, so its body form isn't given back.
+    if (sJoinedInBody.load() && death_count(ctx) != sJoinedDeaths && sJoinedInBody.exchange(false))
+        std::fprintf(stderr, "[coop] this player died after taking soul form for the join: no body form back\n");
     leave_tick(ctx, st, world);
     if (st == 0 && sLeave.load() != kLeaveNone) return;   // leaving: no join again
     if (st == 0) {
@@ -959,9 +985,11 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
         if (g.calm == 150 || (g.calm > 150 && (g.calm - 150) % 1200 == 0)) {
             // The game summons only players in soul form: one in body form fails its join (OnFailedJoinSession). It
             // takes soul form for the join, as the game's own ChangeGreyGhost does, and gets its body form back at
-            // home (going_home_form). The join is 10 frames on.
+            // home (going_home_form), or where it stands if it leaves before a join came (leave_tick), unless it dies
+            // first. The join is 10 frames on.
             if ((int32_t)call_addr(ctx, DES_AT(0x0043E660u), {0}) == 0) {   // GetLocalPlayerChrType: 0 body form
                 call_addr(ctx, DES_AT(0x00445E48u), {0});                   // ChangeGreyGhost
+                sJoinedDeaths = death_count(ctx);
                 sJoinedInBody = true;
                 g.calm = 140;
                 std::fprintf(stderr, "[coop] this player is in body form: soul form for the join, body form again at home\n");

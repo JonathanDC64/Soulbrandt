@@ -161,6 +161,7 @@ DES_REGION_ADDR(0x00439288, 0x004375F0)  /* call des_seamless_game (by address) 
 DES_REGION_ADDR(0x00439358, 0x004376C0)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x0043E660, 0x0043C9C8)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x0043EDE0, 0x0043D148)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x0043EE10, 0x0043D178)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x004418B8, 0x0043FC20)  /* call */
 DES_REGION_ADDR(0x00441AB8, 0x0043FE20)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00443838, 0x00441BA0)  /* call */
@@ -242,6 +243,7 @@ DES_REGION_ADDR(0x008EF430, 0x008F0380)  /* call kLogoUpdate */
 DES_REGION_ADDR(0x008F2A58, 0x008F3F20)  /* call kBackPlateUpdate */
 DES_REGION_ADDR(0x008FB4F0, 0x008FC9B8)  /* call */
 DES_REGION_ADDR(0x008FD2A8, 0x008FE770)  /* call */
+DES_REGION_ADDR(0x0090BF60, 0x0090D428)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x0090FCD0, 0x00911198)  /* call */
 DES_REGION_ADDR(0x009E0148, 0x009E1610)  /* call */
 DES_REGION_ADDR(0x00A36220, 0x00A376E8)  /* call */
