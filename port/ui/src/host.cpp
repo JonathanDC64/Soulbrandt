@@ -10,6 +10,7 @@
 #include "renderer.hpp"
 #include "settings.hpp"
 #include "souls_model.hpp"
+#include "text_fonts.hpp"
 #include "ui_assets.hpp"
 
 #ifdef _WIN32
@@ -418,6 +419,7 @@ void shutdown() {
     if (s.rml || s.initialised) {
         Rml::Shutdown();
         s.rml = nullptr;
+        forget_text_fonts();  // (the system's fonts went with RmlUi: text_fonts.cpp)
     }
     s.renderer.reset();
     s.system.reset();

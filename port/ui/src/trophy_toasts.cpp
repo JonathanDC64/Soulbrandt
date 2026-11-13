@@ -8,6 +8,7 @@
 #include "host.hpp"
 #include "settings.hpp"
 #include "sound.hpp"
+#include "text_fonts.hpp"
 #include "ui.hpp"
 
 #include <atomic>
@@ -94,6 +95,7 @@ Toast make_toast(const Unlock& u) {
         t.title += std::string("<grade class=\"") + grade_class(u.grade) + "\"><icon class=\"trophy\"/>" +
                    grade_label(u.grade) + "</grade>";
     }
+    host::cover_text(u.name);  // (a Japanese, Chinese or Korean name: a font for it, text_fonts.hpp)
     t.content = "<trophy-name>" + escape(u.name.empty() ? "Trophy " + std::to_string(u.id) : u.name) +
                 "</trophy-name>";
     t.duration = kToastDuration;

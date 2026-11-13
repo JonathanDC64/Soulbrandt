@@ -18,6 +18,10 @@ About tab of the settings lists the same.
 Crash reports use Windows' own dbghelp (stack and minidump) and report screenshots its Imaging Component (PNG); both
 are part of Windows, nothing is added.
 
+Japanese, Chinese and Korean text (the trophy names of the Japanese and Asian discs) is drawn with a font already on
+the PC: Yu Gothic, Malgun Gothic or Microsoft JhengHei on Windows, Noto Sans CJK (or Droid Sans Fallback, WenQuanYi)
+on Linux. No font for it is bundled (`src/text_fonts.cpp`).
+
 SDL is not used: the gamepads are read with XInput and the runtime's own Sony HID reader, the keyboard and mouse
 through the game window's messages.
 
