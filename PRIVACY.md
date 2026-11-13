@@ -71,6 +71,10 @@ may not be able to tell that the name is yours.
 - **The update check** asks GitHub for the newest release at each start, so GitHub sees your IP address. Turn it off
   in Settings > About.
 - **Crash and problem reports** are saved on your PC. Nothing is sent unless you send it yourself.
+- **Hosting co-op** (the Co-op window): your invite code holds your IP address, so send it only to friends. If your
+  router can't tell the game your internet address, the game asks Google's STUN server (`stun.l.google.com`) for it,
+  so Google sees your IP address. To stop this, set `DES_SEAMLESS_STUN=0` in settings.ini and use Public address in
+  the Co-op window instead.
 
 ## Changes
 

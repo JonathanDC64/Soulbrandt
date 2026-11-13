@@ -5,6 +5,7 @@
 #include "des_region.h"
 
 #include "ps3emu/net_invite.h"
+#include "ps3emu/net_stun.h"
 #include "ps3emu/net_upnp.h"
 #include "ps3emu/psnr_host.h"
 
@@ -51,6 +52,9 @@ namespace {
 
 constexpr int kDefaultPort = 36100;   // the room server's, TCP and UDP (psnr's usual port)
 constexpr const char* kUpnpName = "Demon's Souls co-op";
+// The STUN server a host asks for its internet address when its router gives none (DES_SEAMLESS_STUN).
+constexpr const char* kStunHost = "stun.l.google.com";
+constexpr uint16_t kStunPort = 19302;
 
 std::mutex sLock;
 Status sStatus;               // under sLock
@@ -434,6 +438,36 @@ void compose_locked() {
                                             " (TCP and UDP) must be forwarded to this PC in your router's settings.";
 }
 
+// This PC's internet address from a STUN server, for a router that gave none ("" when off or no answer). On by
+// default, with Google's server; DES_SEAMLESS_STUN=0 turns it off, DES_SEAMLESS_STUN=host:port names another one.
+// *who says whose server it was, for the window.
+std::string stun_public_ipv4(std::string* who) {
+    const char* v = std::getenv("DES_SEAMLESS_STUN");
+    if (v && !std::strcmp(v, "0")) return {};
+    std::string host = kStunHost;
+    uint16_t sport = kStunPort;
+    if (v && *v) {
+        const std::string s = v;
+        const size_t colon = s.rfind(':');
+        host = s.substr(0, colon);
+        if (colon != std::string::npos && std::atoi(s.c_str() + colon + 1) > 0)
+            sport = (uint16_t)std::atoi(s.c_str() + colon + 1);
+    }
+    *who = host == kStunHost ? "Google's STUN server" : "the STUN server " + host;
+    char ip[16] = {};
+    const int rc = net_stun_public_ipv4(host.c_str(), sport, 3500, ip, nullptr);
+    if (rc != NET_STUN_OK) {
+        std::fprintf(stderr, "[coop] STUN (%s): %s\n", host.c_str(), net_stun_error_text(rc));
+        return {};
+    }
+    if (net_upnp_is_private_ipv4(ip) != 0) {   // a server on this side of the router: no use
+        std::fprintf(stderr, "[coop] STUN (%s): it answered with a private address\n", host.c_str());
+        return {};
+    }
+    std::fprintf(stderr, "[coop] STUN (%s): the internet address is known\n", host.c_str());   // (not the address)
+    return ip;
+}
+
 // Off the game's thread: the router forwards the port, and its address makes the code. DES_SEAMLESS_UPNP=0 leaves
 // the router alone (the port forwarded by hand). A public address the player gave (DES_SEAMLESS_ADDRESS, or the
 // Co-op window's Public address) wins over the router's.
@@ -475,6 +509,27 @@ void router_thread(int port, uint32_t key) {
     default:
         r.text = std::string("The router did not open port ") + p + ": " + net_upnp_last_error();
         break;
+    }
+    // No public address from the router: a STUN server tells the address this PC's traffic leaves from, so the
+    // code is right. Whether friends get through still depends on the port being forwarded, so the words say how.
+    std::string who;
+    const std::string stun_ip = r.code.empty() && rc != NET_UPNP_ERR_TAKEN ? stun_public_ipv4(&who) : std::string();
+    if (!stun_ip.empty()) {
+        r.code = encode(stun_ip.c_str(), port, key);
+        const std::string from = "Your internet address came from " + who + ". ";
+        if (!use_upnp)
+            r.text = from + "Co-op is set not to use UPnP, so forward port " + p +
+                     " (TCP and UDP) to this PC in your router's settings, or friends can't reach you.";
+        else if (rc == NET_UPNP_ERR_PRIVATE_IP)
+            r.text = from + "Your router opened port " + p + ", but it is behind another router or your provider's "
+                     "network: friends reach you only if port " + p + " is forwarded on that one too. Players on "
+                     "your network can use the local code.";
+        else if (rc == NET_UPNP_ERR_NO_ROUTER || rc == NET_UPNP_ERR_NOT_ROUTER)
+            r.text = from + "No router answered for UPnP: forward port " + p +
+                     " (TCP and UDP) to this PC in your router's settings, or friends can't reach you.";
+        else
+            r.text = from + "The router did not open port " + p + " (" + net_upnp_last_error() +
+                     "): forward it to this PC in your router's settings.";
     }
     if (r.opened) std::atexit(unmap_at_exit);
     const std::string lan_code = lan.empty() ? std::string() : encode(lan.c_str(), port, key);

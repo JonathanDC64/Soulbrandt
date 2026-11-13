@@ -85,18 +85,24 @@ once: after that, co-op has characters of its own.
 The host's router has to let friends in on one port (36100, TCP and UDP).
 
 - The game asks the router to open it (UPnP). Co-op shows whether that worked.
+- **The address in the code.** It is the router's internet address when UPnP gives one. When it doesn't (no UPnP,
+  or a router behind another one), the game asks Google's STUN server (`stun.l.google.com:19302`, one request, a
+  few hundred bytes) what address its traffic comes from, and uses that. Google sees the host's IP address (it is
+  in PRIVACY.md). `DES_SEAMLESS_STUN=0` turns this off, and `DES_SEAMLESS_STUN=host:port` names another server. The
+  address says nothing about whether friends get through: the port still has to be open.
 - **"No router answered"**, or UPnP is off on the router: forward port 36100 (TCP and UDP) to the host's PC in the
-  router's settings. Then choose **Public address** in Co-op and give the address the internet sees (the router's
-  status page shows it, or a "what is my IP" website). The invite code is made from it at once, and the game keeps it
-  for the next time.
+  router's settings. The code already has the address from the STUN server; if it couldn't be reached, choose
+  **Public address** in Co-op and give the address the internet sees (the router's status page shows it, or a "what
+  is my IP" website). The invite code is made from it at once, and the game keeps it for the next time. An address
+  given this way wins over the STUN server's.
 - **"Behind another router"**: the router that opened the port isn't the one facing the internet. This happens with a
   second router (often your own router plugged into the provider's box), or a provider that shares one address
   between many homes (carrier-grade NAT).
   - The game only reaches the first router, even when both have UPnP on: the search for routers stays on the PC's
     own network.
   - Best: put one of the two in access point (bridge) mode, so only one router is left.
-  - Or forward port 36100 (TCP and UDP) on the outer router to the first router's internet-side address. The game
-    can't learn the public address that way, so give it in Co-op's **Public address**.
+  - Or forward port 36100 (TCP and UDP) on the outer router to the first router's internet-side address. The code
+    has the outer address from the STUN server.
   - With carrier-grade NAT, ask the provider for a public address.
 - **Players on the same network** can use the **local code** that Co-op shows below the invite code.
 
@@ -123,8 +129,8 @@ The host's router has to let friends in on one port (36100, TCP and UDP).
 - **The game's own online server** (messages, signs, ghosts, world tendency, login) is answered inside each game, by
   `des_seamless.cpp`, with nothing in it: no messages, no signs, no ghosts, and a neutral world tendency. The answers
   follow the open-source dessego server's.
-- **Nothing else is reached.** No name the game looks up (`c.demons-souls.com` and the rest) resolves, and no
-  sign-in happens. A gameplay mod keeps co-op off, as it keeps online off (docs/143).
+- **Nothing else is reached,** apart from the STUN request above, from a host whose router gives no address. No name
+  the game looks up (`c.demons-souls.com` and the rest) resolves, and no sign-in happens. A gameplay mod keeps co-op off, as it keeps online off (docs/143).
 - **Which discs:** the US and European discs play together (the same program and game data). Each signs in with
   its own communication ID (US NPWR00881_00, European NPWR01249_00), so the host's room server keeps the European
   disc's players in the US disc's rooms (`psnr_host_config.same_game`, as the game server's `sameGames`). Without
@@ -255,6 +261,7 @@ The edited copies are cached by the original's size and hash, so a script read a
 | `DES_SEAMLESS_PORT=n` | The host's port. Default 36100. |
 | `DES_SEAMLESS_UPNP=0` | The host leaves the router alone (the port forwarded by hand). |
 | `DES_SEAMLESS_ADDRESS=ip` | The host's public IPv4 address, for the code, when the router doesn't give it. Co-op's Public address keeps it in settings.ini; a report shows only whether it is set. |
+| `DES_SEAMLESS_STUN` | Unset: a host whose router gives no public address asks Google's STUN server (`stun.l.google.com:19302`) for it. `0`: never. `host:port`: that server instead. |
 | `DES_SEAMLESS_CODE_FILE=path` | Tests: the host writes its codes there (public, then local); a joining game with no `DES_SEAMLESS_CODE` waits for the file and takes the code from it. |
 
 The runtime's knobs that co-op sets: `PS3_NET_ONLINE=1`, `PS3_NP_ONLINE_ID`, `PS3_NET_P2P_PORT`, `PSNR_SERVER`,

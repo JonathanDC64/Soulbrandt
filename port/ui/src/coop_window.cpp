@@ -271,8 +271,9 @@ std::string body(const co::Status& s) {
     if (s.mode == co::Mode::Off)
         return "Play through the game with up to three friends. One of you hosts; the others join with the host's "
                "invite code and follow the host from area to area.<br/><br/>"
-               "Co-op uses its own characters, kept apart from your normal ones. No online server is used: only "
-               "your friends' games and yours.";
+               "Co-op uses its own characters, kept apart from your normal ones. No online game server is used: "
+               "only your friends' games and yours. A host whose router can't tell its internet address asks "
+               "Google's STUN server for it.";
     if (!s.started) return "Co-op did not start: " + escape(s.error) + ".";
     if (s.mode == co::Mode::Join) {
         if (s.link == co::Status::Link::Connecting) return "Reaching the host's game...";
