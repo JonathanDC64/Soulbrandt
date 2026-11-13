@@ -78,6 +78,8 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
   Once it is back, the others see it again, with its rolls, attacks and other moves.
 - **In a boss fight,** a friend who dies first watches until the fight ends. Once the boss is dead, it comes back at
   the area's start. If the host dies too, it goes back with everyone.
+- **Bosses get more health with friends,** as in the original game: half as much again with one friend, double with
+  two. Three friends get double too (the original has nothing for three, so a boss had its solo health).
 - **When the host dies,** everyone goes back to the start together.
 - **Progress is everyone's.** A boss killed, or a door, lever, elevator, shortcut, bridge or fog wall opened while
   friends are in the host's world counts in each friend's own world too.
@@ -305,6 +307,10 @@ their first instruction):
     takes everyone back.
   - The host's death doesn't send the phantoms home; the host's respawn takes them along.
   - `proxy:ClearBossGauge(` also clears `SeamlessBossFight`.
+  - A boss's extra health: `Lua_MultiDoping` (and `Lua_MultiDopingm04_02`, for 4-2), at the boss room's first entry,
+    gives each boss part effect 7500 (health x1.5) for one blue phantom and 7501 (x2) for two. The count is the
+    session's blue phantoms (`GetWhiteGhostCount`: members of type 1), so three matched neither and got no extra
+    health. `if whiteCount == 2` becomes `>= 2`.
   - No room lock at a kill (`BlockClear2`'s `LockSession`; see below).
   - The cutscenes keep their solo mode in a session. Every `RequestRemo(scene, REMO_FLAG, event, 1)` passes the
     global `REMO_FLAG` as the cutscene's mode. It is 0 when a map's scripts start, `OnEvent_4034` (the session

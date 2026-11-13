@@ -11,7 +11,8 @@
 //   - no rating screen after a kill: a short timer goes on to the next step instead;
 //   - a blue phantom's death keeps it in the session: it comes back where the host last arrived, and in a boss fight
 //     it first watches until the fight ends (the boss dead, or the host dead: then it goes back with the host);
-//   - the cutscenes keep their solo mode in a session: each player skips its own.
+//   - the cutscenes keep their solo mode in a session: each player skips its own;
+//   - a boss's extra health counts a third blue phantom (a party of four) as two: x2, the game's most.
 // Each area's script:
 //   - a boss fight is marked from the boss's health bar to its clearing (for the watch above);
 //   - the boss rooms' party walls drop as in solo play;
@@ -194,6 +195,15 @@ bool edit_global(std::string& t, const std::string& nl)
                       "\tSeamlessHostDown = true;\n"
                       "\tprint(\"SEAMLESS HostDead\");\n"
                       "end\n", nl))
+        return false;
+    // A boss's extra health with blue phantoms (Lua_MultiDoping, at the boss room's first entry, per boss part): one
+    // phantom gets effect 7500 (health x1.5), two 7501 (x2). The count is the session's blue phantoms (the game's
+    // GetWhiteGhostCount: members of type 1), so three, a party of four, matched neither and got none. Three take the
+    // most there is, 7501. Lua_MultiDopingm04_02 is the same for 4-2.
+    if (!replace_in(t, "Lua_MultiDoping", "if whiteCount == 2 then", "if whiteCount >= 2 then --SEAMLESS three too"))
+        return false;
+    if (!replace_in(t, "Lua_MultiDopingm04_02", "if whiteCount == 2 then",
+                    "if whiteCount >= 2 then --SEAMLESS three too"))
         return false;
     // A boss's health bar cleared: its fight is over (BlockClear's kill; see edit_area)
     const std::regex clear("proxy:ClearBossGauge\\s*\\(");
@@ -776,7 +786,7 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
     std::string ed = t;
     int edits = 0;
     if (global) {
-        if (edit_global(ed, nl)) edits = 14;
+        if (edit_global(ed, nl)) edits = 16;
         else ed = t;
     } else {
         static const char kNexus[] = "function Initialize_m01_00_00_00(";   // the Nexus: no Archstone edits
