@@ -19,7 +19,8 @@
 //     still gets "You can't return during multiplayer.", at the Nexus's stones too (they had no session check);
 //   - a boss's soul: a blue phantom may take its own, as the host takes its own;
 //   - the wandering ghosts' sightings are each player's own (local_wander_loops);
-//   - a light wall one player walks through is gone in every player's game (walls_for_watchers).
+//   - a light wall one player walks through is gone in every player's game (walls_for_watchers);
+//   - the room is never locked (LockSession), here or at a kill in global_event.lua, so a friend can always join again.
 // And from each area's script, the flags that move forward in every player's world (progress_flags), the soul
 // pickups each player makes for itself (own_flags) and the Nexus's cutscenes each player sees for itself
 // (scene_flags), for des_seamless_game.cpp.
@@ -92,6 +93,9 @@ bool edit_global(std::string& t, const std::string& nl)
     const size_t lw = t.find("proxy:SetLoadWait();", w);
     if (lw == std::string::npos || lw > b) return false;
     t.insert(lw, "--SEAMLESS ");
+    // BlockClear2: no room lock at a kill (see edit_area)
+    if (!replace_in(t, "BlockClear2", "proxy:LockSession();", "--[[SEAMLESS proxy:LockSession();]]"))
+        return false;
     // BlockClear2: the trip-home animation for black phantoms only
     if (!replace_in(t, "BlockClear2", "if proxy:IsWhiteGhost() == true or proxy:IsBlackGhost() == true then",
                     "if proxy:IsBlackGhost() == true then --SEAMLESS a blue phantom stays"))
@@ -343,6 +347,13 @@ int edit_area(std::string& t, bool nexus)
         "$1$2if true then --SEAMLESS: the walls drop as in solo play");
     sub(std::regex("(IsClient\\(\\) == true then\\s*\\r?\\n\\s*)proxy:PlayAnimation\\(\\s*LOCAL_PLAYER\\s*,\\s*8284\\s*\\);"),
         "$1--SEAMLESS proxy:PlayAnimation( LOCAL_PLAYER , 8284 );");
+    // No room lock. LockSession (here as a player walks into a boss room, and in global_event.lua's BlockClear2 at a
+    // kill) sets the session's lock (sm+0x2CA), which stays until the host's game leaves its room (UnLockSession is
+    // empty): the original ends the session after a boss. A locked host kicks every new join (the member handler at
+    // 0x0053D8C0, then KickoutRoomMember). A friend that follows keeps its place in the room and never noticed; one
+    // back from a trip of its own (each player's at the tutorial's end) was kicked. (Not the calls already in a
+    // comment.)
+    sub(std::regex("([^-])proxy:LockSession\\(\\);"), "$1--[[SEAMLESS proxy:LockSession();]]");
     if (nexus) {
         // The Nexus's Archstones (OnDistanceAction(<id>, 10000, <stone>, "OnEvent_<id>", WarpGimmickDist_A, ...)) have
         // no session check: no phantom reaches the Nexus in the original game. A guest's own touch took it out of the

@@ -68,7 +68,8 @@ once: after that, co-op has characters of its own.
   takes is also gone in its own world.
 - **Light walls** (the fog you press Cross at and walk through, outside boss rooms) are gone for everyone once
   one player walks through.
-- **Boss kills keep everyone together:** no rating screen, nobody sent home, and the boss room's walls drop.
+- **Boss kills keep everyone together:** no rating screen, nobody sent home, and the boss room's walls drop. The
+  host's room stays open, during a boss fight and after it, so a friend can always join again.
 - **A friend who dies** comes back where the host last arrived (the start of the area) and stays in the session.
   Once it is back, the others see it again, with its rolls, attacks and other moves.
 - **In a boss fight,** a friend who dies first watches until the fight ends. Once the boss is dead, it comes back at
@@ -267,6 +268,7 @@ their first instruction):
     takes everyone back.
   - The host's death doesn't send the phantoms home; the host's respawn takes them along.
   - `proxy:ClearBossGauge(` also clears `SeamlessBossFight`.
+  - No room lock at a kill (`BlockClear2`'s `LockSession`; see below).
 - Each area's script: the boss rooms' party walls drop as in solo play; a guest doesn't play the warp-out pose at a
   boss's death; the host may use the Archstones in a session, and the Nexus's stones (which had no session check)
   give a guest the levels' "You can't return during multiplayer." (10010720); a blue phantom may take a boss's soul.
@@ -284,6 +286,14 @@ their first instruction):
   timers they register and the functions they call, and the functions whose timers start them, and makes their
   `RepeatMessage` blocks, their `OnWanderFade` and the region events that start them local. Each player sees the
   ghost when it walks into the region itself.
+- No room lock: every `proxy:LockSession();` (a boss room's, as a player walks into its fog, and `BlockClear2`'s at a
+  kill) becomes a comment. The lock is a byte of the session (`sm+0x2CA`) that stays set until the host's game leaves
+  its room (`UnLockSession` is an empty function): the original ends the session after a boss. A locked host's game
+  kicks every new join (the member handler at `0x0053D8C0`, then `KickoutRoomMember`). A friend that follows the host
+  keeps its place in the room, so it never mattered there. A friend back from a trip of its own needs a new join: at
+  the tutorial's end each game takes its own player to the Nexus, and the host, still in its locked room, kicked the
+  friend's joins. (The friend's game then kept leaving the room it was kicked from, and the runtime took down each
+  room it joined after that; fixed in ps3recomp, see "A friend kicked out of the room" below.)
 - The light walls a player walks through (press Cross, a walk, then the wall is gone) are gone in every player's game.
   In the other games the wall's handler plays the walk on the walker's character and marks the wall passed
   (`Luafunc_PlaySynchroAnimation`'s true branch, then a return). The areas made for sessions drop the wall for them
@@ -364,6 +374,11 @@ host's boss kill while the friend was away don't count in the friend's world.
   - ps3recomp answers the game's `LeaveRoom` as left when the room's connection is lost (the room server has let the
     friend go). Before, the call failed with no connection, and the game tried again every 15 s, each time with the
     box.
+- **A friend kicked out of the room** (`0x1103`): the game leaves that room, again every 15 s while that fails, each
+  time with "The session has ended.". The room server has taken the friend out already, so it answers "not in the
+  room". ps3recomp answers a leave of a room the friend was kicked out of as left, and a leave takes down only the
+  room it names. Before, the leaves never stopped, and each one took down the room the friend had joined since, so
+  the host's game, which never heard from the friend there, gave up and left; at every new room the same.
 
 **Bringing a character** (`des_seamless_save.cpp`). The game's save folder (the disc's TITLE_ID and `DEMONSS005`)
 holds four character slots and a slot list:
