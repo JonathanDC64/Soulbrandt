@@ -58,7 +58,7 @@ once: after that, co-op has characters of its own.
 - **Friends follow the host.** When the host travels (an Archstone, the Nexus, a death), its friends go too: one
   loading screen, then they stand beside the host again.
 - **Archstones:** the host can use them during co-op, and the group travels with it. A friend still gets "You can't
-  return during multiplayer."
+  return during multiplayer.", at the Nexus's stones too.
 - **Boss kills keep everyone together:** no rating screen, nobody sent home, and the boss room's walls drop.
 - **A friend who dies** comes back where the host last arrived (the start of the area) and stays in the session.
   Once it is back, the others see it again, with its rolls, attacks and other moves.
@@ -249,7 +249,9 @@ their first instruction):
   - The host's death doesn't send the phantoms home; the host's respawn takes them along.
   - `proxy:ClearBossGauge(` also clears `SeamlessBossFight`.
 - Each area's script: the boss rooms' party walls drop as in solo play; a guest doesn't play the warp-out pose at a
-  boss's death; the host may use the Archstones in a session; a blue phantom may take a boss's soul. A boss fight is
+  boss's death; the host may use the Archstones in a session, and the Nexus's stones (which had no session check)
+  give a guest the levels' "You can't return during multiplayer." (10010720); a blue phantom may take a boss's soul.
+  A boss fight is
   marked from its health bar: every `proxy:SetBossGauge(` (a statement of its own in every area) sets
   `SeamlessBossFight`, and `proxy:ClearBossGauge(` clears it. All of a map's scripts share one set of globals, as
   the area scripts' calls to `global_event.lua`'s functions show.
@@ -351,7 +353,10 @@ the newer generation, and saves as usual.
   pulled that lever before, so a test knob cleared both flags and reloaded the area first.) Not yet by hand.
   Also scripted: a host past the first demon took the Nexus's Boletaria Archstone (put at the stone's own touch
   point, then its prompt and the "Move to Another World" menu, Boletarian Palace). The game's leave at the stone
-  was held back ("the host stays in its session"), and the friend followed into 1-1 and stood beside it.
+  was held back ("the host stays in its session"), and the friend followed into 1-1 and stood beside it. A friend's
+  own touch of a Nexus stone, scripted: it used to open the menu, and its warp took it out of the session to the
+  area alone, where its rejoin stalled. Now it shows "You can't return during multiplayer." and the friend stays.
+  The host's trip, run again with the change, is as before.
 - What a friend's talk changes (a conversation heard, a choice made, an item given) stays in its copy of the host's
   world: it is neither kept in the friend's own world nor sent to the host. Only the Archstones' seal is shared.
 - The Archstones' seal from a friend is checked through its four flags, set on the friend through the game's own
