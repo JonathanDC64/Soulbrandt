@@ -212,6 +212,16 @@ elseif(NOT WIN32)
   target_link_libraries(discord_check PRIVATE Threads::Threads)
 endif()
 
+# report_addresses.cpp on its own (tests/report_addresses_check.cpp): which numbers in a report's text are hidden as
+# internet addresses, and which stay (home addresses, version numbers). CI runs it on both (host.yml). Built on
+# demand:
+#   cmake --build <build> --target report_addresses_check, then report_addresses_check
+add_executable(report_addresses_check EXCLUDE_FROM_ALL tests/report_addresses_check.cpp src/report_addresses.cpp)
+target_include_directories(report_addresses_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+if(MSVC)
+  target_compile_options(report_addresses_check PRIVATE /EHsc /W3)
+endif()
+
 # The first Python's fetch on its own (tests/setup_fetch_check.cpp), the data folder and the free space stubbed: curl
 # and tar against the host's own download and unzip (what Wine and CrossOver get), a stopped download carried on, and
 # the zip reader's refusals. It downloads python.org's embeddable zip three times. Windows only. Built on demand:
