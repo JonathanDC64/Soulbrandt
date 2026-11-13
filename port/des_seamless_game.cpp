@@ -119,6 +119,7 @@ constexpr uint32_t kBank1 = 0x850, kBank1Size = 0x190, kBank2 = 0x291C, kBank2Si
 constexpr uint32_t kLocal2 = 0x400;   // the byte of flag 8192
 constexpr uint32_t kBanksSize = kWorlds * (kBank1Size + kBank2Size);
 constexpr uint32_t kFlagChunk = 1000;   // FLGS: the flags in three messages (a message is at most 1024 bytes)
+constexpr uint32_t kFlagReloadGuard = 4047;   // global_event.lua: a reload event under way (a trip home), no other
 
 bool world_flag(uint32_t flag) { return flag < 3200 || (flag >= 8192 && flag < 12288); }
 uint32_t world_of(uint32_t area) { return (area >> 24) - 1; }   // 0xFFFFFFFF with no area
@@ -324,6 +325,7 @@ struct Game {
     int tries = 0;            // room openings or joins tried since the last session
     bool connected = false;   // a guest: connected to the room server (the host's game) at least once
     bool host_gone = false;   // a guest: that connection lost since; said once
+    bool home_wait = false;   // a guest: its game is taking it home (flag 4047): no join until it's there; said once
     bool room_sent = false;   // the host: this room's data made and sent
     int room_frames = 0;
     bool was_world = false;   // the host: in the world last frame
@@ -933,6 +935,19 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
             g.host_gone = false;
             std::fprintf(stderr, "[coop] connected to the host's game again: asking it for its room\n");
         }
+        // The game is taking this player home (its session ended: global_event.lua's OnRoomDisappeared, then
+        // OnLeave_Limit's load 5 s later), with flag 4047 ("a reload under way: no other") set until then. A join now
+        // races that load (seen after a dropped connection that came back at once). It waits for the player at home.
+        const uint32_t fb = flag_base();
+        if (guest_ok(fb) && ((vm_read8(fb + (kFlagReloadGuard >> 3)) >> (kFlagReloadGuard & 7)) & 1)) {
+            if (!g.home_wait) {
+                g.home_wait = true;
+                std::fprintf(stderr, "[coop] this player is on its way home: no join until it is there\n");
+            }
+            g.calm = 0;
+            return;
+        }
+        g.home_wait = false;
         if (data.empty() || !host_known) {   // the room data, and where the host is (its join loads the host's area)
             if (++g.asked_at >= 120) {   // every 120 frames until the host answers
                 g.asked_at = 0;
@@ -1098,9 +1113,17 @@ void guest_load_step(ppu_context* ctx)
                  why, want, joined && !trip ? "arrived" : "stands", at.x, at.y, at.z, dead, ms, swapped);
 }
 
+// A guest's connection to the host's game (co::Status::link), kept by des_seamless_tick for the Co-op window.
+std::atomic<co::Status::Link> sLink{co::Status::Link::Connecting};
+
 }  // namespace
 
 namespace des::seamless {
+
+Status::Link guest_link()
+{
+    return sLink.load();
+}
 
 void leave()
 {
@@ -1122,6 +1145,10 @@ extern "C" void des_seamless_tick(ppu_context* ctx)
 {
     const co::Mode m = co::active();
     if (m == co::Mode::Off) return;
+    if (m == co::Mode::Join) {   // the Co-op window's line: connected, and once it was, lost (the host's game closed)
+        if (np_psnr_connected()) sLink = co::Status::Link::Connected;
+        else if (sLink.load() == co::Status::Link::Connected) sLink = co::Status::Link::Lost;
+    }
     static bool once = false;
     if (!once) {
         once = true;

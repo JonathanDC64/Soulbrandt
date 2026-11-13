@@ -607,6 +607,7 @@ Status status() {
     std::lock_guard<std::mutex> g(sLock);
     Status s = sStatus;
     if (sHost) s.players = psnr_host_players(sHost);
+    if (s.mode == Mode::Join) s.link = guest_link();
     return s;
 }
 

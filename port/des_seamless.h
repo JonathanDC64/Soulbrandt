@@ -44,8 +44,13 @@ struct Status {
     bool address_given = false;  // host: the code is from the public address the player gave, not the router's
     int port = 0;            // host: the room server's port
     int players = 0;         // host: games connected to the room server, this one included
+    enum class Link { Connecting, Connected, Lost };
+    Link link = Link::Connecting;  // join: the connection to the host's game (Lost: it was there, and is gone)
 };
 Status status();
+
+// The game side (des_seamless_game.cpp) keeps a guest's link up to date, every frame.
+Status::Link guest_link();
 
 // Host: the public IPv4 address the player gave (the Co-op window's Public address), for a router that can't say it
 // (behind another router, no UPnP). The invite code is made from it at once; "" goes back to the router's answer.

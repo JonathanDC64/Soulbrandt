@@ -274,7 +274,13 @@ std::string body(const co::Status& s) {
                "Co-op uses its own characters, kept apart from your normal ones. No online server is used: only "
                "your friends' games and yours.";
     if (!s.started) return "Co-op did not start: " + escape(s.error) + ".";
-    if (s.mode == co::Mode::Join) return "You are in a friend's game.";
+    if (s.mode == co::Mode::Join) {
+        if (s.link == co::Status::Link::Connecting) return "Reaching the host's game...";
+        if (s.link == co::Status::Link::Connected) return "You're connected to the host's game.";
+        return "The connection to the host's game was lost (the host closed its game, or a network dropped). Your "
+               "game takes you back to your own world and keeps trying to reach the host's.<br/><br/>If the host "
+               "starts hosting again, its invite code is a new one: <b>Leave co-op</b>, then join with the new code.";
+    }
     std::string b;
     if (!s.code.empty()) {
         b += "Your invite code:<br/><b>" + escape(s.code) + "</b><br/>Send it to your friends. Don't post it in "
@@ -297,7 +303,7 @@ public:
         if (now >= mNext) {
             mNext = now + std::chrono::milliseconds(500);
             const co::Status s = co::status();
-            if (s.mode == co::Mode::Host && s.started) {
+            if (s.mode != co::Mode::Off && s.started) {
                 const std::string b = body(s);
                 if (b != mShown) {
                     mShown = b;

@@ -33,6 +33,12 @@ This page covers three parts:
 what the group did; the host's leave sends its friends back to theirs. Then the game starts again on your normal
 characters.
 
+**If the host's game closes,** a friend sees the game's own "The session has ended." about 13 s later and goes back
+to their own world. **Co-op** then says the connection was lost. The friend's game keeps trying to reach the host's:
+after a network drop, with the host still hosting, it connects again and joins again by itself (not tested yet: no
+test drops a connection while the host keeps running). If the host starts hosting again, its
+invite code is a new one: **Leave co-op**, then join with the new code.
+
 **Co-op characters** are kept in their own save folder (`savedata-coop`, beside the normal one). Co-op never writes
 your normal characters.
 
