@@ -1561,6 +1561,7 @@ void ask_storage(ppu_context* ctx)
 #ifdef _WIN32
 extern "C" __declspec(dllimport) int __stdcall VirtualProtect(void*, size_t, unsigned long, unsigned long*);
 extern "C" __declspec(dllimport) void* __stdcall VirtualAlloc(void*, size_t, unsigned long, unsigned long);
+extern "C" __declspec(dllimport) int __stdcall VirtualFree(void*, size_t, unsigned long);
 extern "C" __declspec(dllimport) int __stdcall FlushInstructionCache(void*, const void*, size_t);
 extern "C" __declspec(dllimport) void* __stdcall GetCurrentProcess(void);
 #endif
@@ -1622,30 +1623,73 @@ void write_abs_jmp(uint8_t* at, void* dest)
 void pickup_detour(ppu_context* ctx);
 int32_t burden_reason();
 
-bool hook_lift(const char* name, void (*replacement)(ppu_context*), void (**original)(ppu_context*))
+struct LiftHook {
+    const char* name;
+    void (*replacement)(ppu_context*);
+    void (**original)(ppu_context*);
+    uint8_t* code = nullptr;
+    uint8_t* gate = nullptr;
+    int size = 0;
+    unsigned long protection = 0;
+};
+
+bool hook_lifts(LiftHook* hooks, size_t count)
 {
 #if defined(PS3_GAME_SPLIT) && defined(_WIN32)
-    auto fn = des_lift_find(name);
-    if (!fn) return false;
-    auto* code = (uint8_t*)fn;
-    const int n = steal_len(code);
-    if (!n) {
-        fprintf(stderr, "[des] storage: unsupported prologue for %s:", name);
-        for (int i = 0; i < 24; i++) fprintf(stderr, " %02x", code[i]);
-        fprintf(stderr, "\n");
+    size_t writable = 0;
+    auto abandon = [&]() {
+        // Two entry points may share a page. Restore in reverse order so the
+        // first protection we saw, not a later PAGE_EXECUTE_READWRITE, wins.
+        while (writable) {
+            LiftHook& h = hooks[--writable];
+            unsigned long unused;
+            if (!VirtualProtect(h.code, (size_t)h.size, h.protection, &unused))
+                fprintf(stderr, "[des] storage: could not restore protection for %s\n", h.name);
+        }
+        for (size_t i = 0; i < count; i++)
+            if (hooks[i].gate) {
+                VirtualFree(hooks[i].gate, 0, 0x8000);
+                hooks[i].gate = nullptr;
+            }
         return false;
+    };
+    // Resolve and prepare every trampoline before modifying any entry point.
+    // A missing symbol, unsupported prologue or allocation failure must not
+    // leave a notice/add hook behind when pickup itself cannot be hooked.
+    for (size_t i = 0; i < count; i++) {
+        LiftHook& h = hooks[i];
+        h.code = (uint8_t*)des_lift_find(h.name);
+        if (!h.code) return abandon();
+        h.size = steal_len(h.code);
+        if (!h.size) {
+            fprintf(stderr, "[des] storage: unsupported prologue for %s\n", h.name);
+            return abandon();
+        }
+        h.gate = (uint8_t*)VirtualAlloc(nullptr, 64, 0x3000, 0x40);
+        if (!h.gate) return abandon();
+        memcpy(h.gate, h.code, (size_t)h.size);
+        write_abs_jmp(h.gate + h.size, h.code + h.size);
+        FlushInstructionCache(GetCurrentProcess(), h.gate, 64);
     }
-    auto* gate = (uint8_t*)VirtualAlloc(nullptr, 64, 0x3000, 0x40);
-    if (!gate) return false;
-    memcpy(gate, code, (size_t)n);
-    write_abs_jmp(gate + n, code + n);
-    unsigned long old = 0;
-    if (!VirtualProtect(code, (size_t)n, 0x40, &old)) return false;
-    *original = (void (*)(ppu_context*))gate;
-    write_abs_jmp(code, (void*)replacement);
-    VirtualProtect(code, (size_t)n, old, &old);
-    FlushInstructionCache(GetCurrentProcess(), gate, 64);
-    FlushInstructionCache(GetCurrentProcess(), code, (size_t)n);
+    // Acquire all write permissions first. Failure here still leaves every
+    // function's bytes and every original callback unchanged.
+    for (size_t i = 0; i < count; i++) {
+        LiftHook& h = hooks[i];
+        if (!VirtualProtect(h.code, (size_t)h.size, 0x40, &h.protection)) return abandon();
+        writable++;
+    }
+    for (size_t i = 0; i < count; i++) *hooks[i].original = (void (*)(ppu_context*))hooks[i].gate;
+    for (size_t i = 0; i < count; i++) {
+        LiftHook& h = hooks[i];
+        write_abs_jmp(h.code, (void*)h.replacement);
+        FlushInstructionCache(GetCurrentProcess(), h.code, (size_t)h.size);
+    }
+    while (writable) {
+        LiftHook& h = hooks[--writable];
+        unsigned long unused;
+        if (!VirtualProtect(h.code, (size_t)h.size, h.protection, &unused))
+            fprintf(stderr, "[des] storage: could not restore protection for %s\n", h.name);
+    }
     return true;
 #else
     return false;
@@ -1660,9 +1704,12 @@ void install_pickup()
 #ifdef PS3_GAME_SPLIT
     s_remove_pile = des_lift_find("func_0036C238");
 #endif
-    if (!s_remove_pile || !hook_lift("func_004C7B20", pickup_notice_detour, &s_pickup_notice) ||
-        !hook_lift("func_008FB4F0", add_detour, &s_add) ||
-        !hook_lift("func_004C6DF0", pickup_detour, &s_pickup)) {
+    LiftHook hooks[] = {
+        {"func_004C7B20", pickup_notice_detour, &s_pickup_notice},
+        {"func_008FB4F0", add_detour, &s_add},
+        {"func_004C6DF0", pickup_detour, &s_pickup},
+    };
+    if (!s_remove_pile || !hook_lifts(hooks, sizeof hooks / sizeof hooks[0])) {
         fprintf(stderr, "[des] storage: pickup hooks unavailable; native pickup retained\n");
         return;
     }
