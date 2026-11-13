@@ -125,8 +125,12 @@ The host's router has to let friends in on one port (36100, TCP and UDP).
   follow the open-source dessego server's.
 - **Nothing else is reached.** No name the game looks up (`c.demons-souls.com` and the rest) resolves, and no
   sign-in happens. A gameplay mod keeps co-op off, as it keeps online off (docs/143).
-- **Which discs:** the US and European discs play together (the same program and game data). The Japanese and Asian
-  discs can't host or join yet: their 1.04 program is another build, not yet tried with the others.
+- **Which discs:** the US and European discs play together (the same program and game data). Each signs in with
+  its own communication ID (US NPWR00881_00, European NPWR01249_00), so the host's room server keeps the European
+  disc's players in the US disc's rooms (`psnr_host_config.same_game`, as the game server's `sameGames`). Without
+  that, a European friend's join of a US host failed with "no such room". Tested: a US host and a European friend
+  on this PC (the European copy from setup's own lift of this branch). The Japanese and Asian discs can't host or
+  join yet: their 1.04 program is another build, not yet tried with the others.
 
 ### The invite code
 

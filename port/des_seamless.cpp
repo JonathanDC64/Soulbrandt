@@ -547,6 +547,11 @@ bool start(const std::string& name, std::string* why) {
         cfg.port = (uint16_t)port;
         cfg.has_key = 1;
         net_invite_key_blob(key, cfg.key);
+        // Each disc signs in with its own communication ID: the European disc's (NPWR01249_00) plays in the US
+        // disc's rooms (NPWR00881_00), as on the game server (its sameGames). Without this a European friend's join
+        // of a US host's room fails as "no such room", and the other way round.
+        std::snprintf(cfg.same_game[0].other, sizeof cfg.same_game[0].other, "%s", "NPWR01249_00");
+        std::snprintf(cfg.same_game[0].game, sizeof cfg.same_game[0].game, "%s", "NPWR00881_00");
         char err[160] = {};
         sHost = psnr_host_start(&cfg, err, sizeof err);
         if (!sHost) return fail(std::string("the room server did not start: ") + err);
