@@ -24,8 +24,8 @@
 //   - the room is never locked (LockSession), here or at a kill in global_event.lua, so a friend can always join again;
 //   - the Nexus's timers and checks are each player's own (local_timers).
 // And from each area's script, the flags that move forward in every player's world (progress_flags), the soul
-// pickups each player makes for itself (own_flags) and the Nexus's cutscenes each player sees for itself
-// (scene_flags), for des_seamless_game.cpp.
+// pickups each player makes for itself (own_flags) and the cutscenes each player sees for itself (the Nexus's,
+// scene_flags, and an area's opening, opening_flags), for des_seamless_game.cpp.
 #include "des_seamless.h"
 
 #include "ps3emu/ppu_lift.h"
@@ -45,7 +45,8 @@
 #include <vector>
 
 extern "C" void ds_malloc(ppu_context* ctx);   // des_heap.cpp: the guest heap
-// des_seamless_game.cpp: an area script of world was just read (its Nexus cutscenes, if any), before the area starts
+// des_seamless_game.cpp: an area script of world was just read (its cutscenes each player sees, if any), before the
+// area starts
 void des_seamless_area_read(uint32_t world, const std::vector<uint32_t>& scenes);
 
 namespace {
@@ -673,6 +674,25 @@ std::vector<uint32_t> scene_flags(const std::string& t)
     return std::vector<uint32_t>(out.begin(), out.end());
 }
 
+// An area's opening cutscenes: the ones its start plays (Initialize calls the event's handler itself, as 1-1's
+// "if proxy:IsCompleteEvent( 2 ) == false then ... OnEvent_2(proxy,param); end" does for the dragon's flight). The
+// others start from something a player does there (a fog walked through, a region entered), in every player's game.
+std::vector<uint32_t> opening_flags(const std::string& t)
+{
+    std::set<uint32_t> out;
+    const size_t ar = t.find("\nfunction Initialize_m0");
+    if (ar == std::string::npos) return {};
+    const size_t e = t.find("\nfunction ", ar + 1);
+    const std::string init = code_of(t.substr(ar, e == std::string::npos ? std::string::npos : e - ar));
+    const std::vector<uint32_t> scenes = scene_flags(code_of(t));
+    const std::regex call("[^\\w\"]OnEvent_(\\d+)\\s*\\(\\s*proxy");
+    for (auto it = std::sregex_iterator(init.begin(), init.end(), call); it != std::sregex_iterator(); ++it) {
+        const unsigned long id = std::stoul((*it)[1].str());
+        if (std::binary_search(scenes.begin(), scenes.end(), (uint32_t)id)) out.insert((uint32_t)id);
+    }
+    return std::vector<uint32_t>(out.begin(), out.end());
+}
+
 // The edited copies, by the original's size and hash; 0: the script is left as it is.
 struct Copy {
     uint32_t addr = 0, size = 0;
@@ -680,7 +700,7 @@ struct Copy {
     std::vector<uint32_t> progress;   // an area script's progress flags
     std::vector<uint32_t> boss;       // the ones a boss kill sets
     std::vector<uint32_t> own;        // its soul pickups
-    std::vector<uint32_t> scenes;     // the Nexus's cutscenes
+    std::vector<uint32_t> scenes;     // the cutscenes each player sees: the Nexus's, an area's opening
     std::vector<uint32_t> seal;       // and the Archstones' seal (the Nexus)
 };
 std::mutex sLock;
@@ -777,7 +797,9 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
         // "function Initialize_mXX_": the world is XX - 1
         const char d0 = t[ar + 21], d1 = t[ar + 22];
         if (d0 >= '0' && d0 <= '9' && d1 >= '1' && d1 <= '9') c.world = (uint32_t)((d0 - '0') * 10 + (d1 - '0') - 1);
-        if (c.world == 0) c.scenes = scene_flags(t);   // the Nexus only: an area's cutscenes start its fights
+        // The Nexus: all its cutscenes. Elsewhere only an area's opening: the others start fights or follow what a
+        // player did there, and they play in every player's game.
+        c.scenes = c.world == 0 ? scene_flags(t) : opening_flags(t);
     }
     std::fprintf(stderr, "[coop] script %s: %s%s\n", global ? "global_event.lua" : t.substr(ar + 20, 12).c_str(),
                  addr ? (std::to_string(edits) + " edits for co-op").c_str() : global ? "left as it is (an edit didn't fit)"
@@ -799,8 +821,8 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
 
 // What flag is in world (an area's top byte - 1), from that world's area scripts: 1 a progress flag (every player's
 // world keeps it), 3 one a boss kill sets (a progress flag too), 2 a soul pickup (the player who took it keeps it),
-// 4 a Nexus cutscene played (the player who saw it keeps it), 5 the Archstones' seal opened (progress that a guest's
-// own game makes too: the host's world takes it), 0 none of these.
+// 4 a cutscene played (the Nexus's or an area's opening: the player who saw it keeps it), 5 the Archstones' seal
+// opened (progress that a guest's own game makes too: the host's world takes it), 0 none of these.
 int des_seamless_flag_kind(uint32_t world, uint32_t flag)
 {
     std::lock_guard<std::mutex> g(sLock);

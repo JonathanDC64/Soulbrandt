@@ -47,7 +47,8 @@
 //   - The NPCs a visitor's game would set up as phantoms (drawn as such) stay as the host has them, and a guest can
 //     talk to them: the talk scripts' phantom check sees it as alive.
 //   - Each Nexus cutscene, and the Monumental's tale, plays for each player once: a guest's flag in play for one is
-//     the host's and its own, and the guest keeps the flag in its own world once it has played.
+//     the host's and its own, and the guest keeps the flag in its own world once it has played. So does an area's
+//     opening (1-1's dragon): the one its start plays.
 // Items, each player's own (a phantom's game makes none: the item lists' adds return early for any type but body or
 // soul form, read from the type the next load is for):
 //   - The area's items (TreasureMan, at each load) and a dead enemy's drop (CorpseMan, rolled by each game) are made
@@ -80,7 +81,7 @@ extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
 #endif
 extern "C" void ds_malloc(ppu_context* ctx);                     // des_heap.cpp: the guest heap
 bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t* out, uint32_t* out_size);  // _scripts.cpp
-int des_seamless_flag_kind(uint32_t world, uint32_t flag);       // _scripts.cpp: 1 progress, 3 a boss kill's, 2 a soul pickup, 4 a Nexus cutscene, 5 the Archstones' seal
+int des_seamless_flag_kind(uint32_t world, uint32_t flag);       // _scripts.cpp: 1 progress, 3 a boss kill's, 2 a soul pickup, 4 a cutscene seen, 5 the Archstones' seal
 extern "C" void ps3_indirect_call(ppu_context* ctx);             // ppu_loader.cpp: a call to the guest address in CTR
 extern "C" int des_player_xyz(float* x, float* y, float* z);     // des_options.cpp: 0 with no player
 extern "C" int np_psnr_connected(void);                         // ps3recomp's np_psnr.c: connected to the room server
@@ -1311,8 +1312,9 @@ extern "C" void des_seamless_tick(ppu_context* ctx)
 }
 
 // An area script was just read (des_seamless_scripts.cpp), before the area starts. On a guest in a session, each
-// Nexus cutscene the host has seen and this player hasn't plays here too: its flag in play becomes the host's and this
-// player's own. Once it has played, the flag goes into this player's own world (des_coop_hook's flag set, kind 4).
+// Nexus cutscene, or area opening, the host has seen and this player hasn't plays here too: its flag in play becomes
+// the host's and this player's own. Once it has played, the flag goes into this player's own world (des_coop_hook's
+// flag set, kind 4).
 void des_seamless_area_read(uint32_t world, const std::vector<uint32_t>& scenes)
 {
     if (scenes.empty() || co::active() != co::Mode::Join) return;
@@ -1422,7 +1424,7 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
         if (!host && !joined) break;
         const uint32_t area = vm_read32(fb + kFlagsArea);
         const int kind = des_seamless_flag_kind(world_of(area), flag);
-        // A Nexus cutscene's script sets its flag as the area starts, before the guest counts as arrived
+        // A cutscene's flag (the Nexus's, an area's opening) is set as the area starts, before the guest has arrived
         const bool guest = joined && (sGame.arrived.load() || kind == 4);
         if (!host && !guest) break;
         if (guest && kind == 3) helped_kill();

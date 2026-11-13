@@ -86,7 +86,8 @@ once: after that, co-op has characters of its own.
 - **The Nexus is shared.** Friends stand in the host's Nexus and see its people as the host does, not as phantoms,
   and can talk to them.
 - **The Nexus's cutscenes** (the one after a boss, the Monumental's story) play for each player who hasn't seen them
-  in their own world yet, even when the host has.
+  in their own world yet, even when the host has. So does an area's opening, such as the dragon's flight at 1-1's
+  start.
 - **Skipping a cutscene** (START, then Cross) works for everyone and skips only your own: the others' go on.
 - **The Monumental's question:** whoever talks to the Monumental answers it. Once the other Archstones open, they open
   in every player's world. His story plays only for the one who hears it: when a friend hears it first, the host then
@@ -258,6 +259,11 @@ character for it, as after a load.
   clears each of those flags that the friend hasn't set in its own world, and the cutscene plays there. Seeing it sets
   the flag in the friend's own world, as any other. The script sets it as the area starts, before the friend counts
   as arrived, so a cutscene's flag is kept from then on.
+- **An area's opening.** The same goes for the cutscene an area's start plays: its script's `Initialize` calls the
+  event's handler itself (1-1's dragon, event 2:
+  `if proxy:IsCompleteEvent( 2 ) == false then ... OnEvent_2(proxy,param); end`).
+  Only those: an area's other cutscenes start from something a player does there (a fog walked through, a place
+  reached), and play in every player's game as they did.
 - **The Archstones' seal.** The events whose header names the seal (要石の封印), and the flags their handlers set, are
   the seal's. When one is set on a friend, it is kept in the friend's own world and sent to the host (`FLAG`), whose
   world sets it through the game's own flag setter. The host's own, as other progress, goes to its friends.
