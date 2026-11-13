@@ -52,7 +52,8 @@ once: after that, co-op has characters of its own.
 **In the game:**
 
 - **Joining needs no sign.** Once the host stands in an area, a friend's game joins by itself, wherever the friend
-  is. The friend loads the host's area and arrives beside the host as a blue phantom.
+  is. The friend loads the host's area and arrives beside the host as a blue phantom. A friend watching a cutscene
+  in its own world (an area's opening one, say) goes when the cutscene ends: the game's load waits for it.
 - **Body form or soul form.** A friend in body form joins in soul form, since the game summons only soul-form
   players, and gets its body form back when it goes home.
 - **Friends follow the host.** When the host travels (an Archstone, the Nexus, a death), its friends go too: one
