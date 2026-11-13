@@ -359,7 +359,10 @@ the newer generation, and saves as usual.
     Soul Power and Vitality in her menus and confirmed. Its Vitality went from 11 to 12 and its souls down by the 724
     shown. After a Leave, at home and saved, the friend's save file holds Vitality 12.
 
-  The smith's and the storage's menus aren't checked with a friend yet.
+  Scripted with the storage and the smith (same host):
+  - Stockpile Thomas: the friend took 96 Half Moon Grass from his storage, and after a Leave, at home, it still
+    carried them and his list still showed 6.
+  - Boldwin: his Forge and Repair screens listed the friend's own equipment. No forge was done.
 - Closing the game window as a friend: the session is lost and nothing from it is saved (the game only saves at
   home).
 - A friend in body form whose joins keep failing with the host's game still there stays in soul form while it tries.
