@@ -16,7 +16,7 @@
 //   - the boss rooms' party walls drop as in solo play;
 //   - a guest doesn't play the warp-out pose at a boss's death;
 //   - the Archstones: the host may use them in a session (the guests then follow it, des_seamless_game.cpp); a guest
-//     still gets "You can't return during multiplayer.";
+//     still gets "You can't return during multiplayer.", at the Nexus's stones too (they had no session check);
 //   - a boss's soul: a blue phantom may take its own, as the host takes its own.
 // And from each area's script, the flags that move forward in every player's world (progress_flags), the soul
 // pickups each player makes for itself (own_flags) and the Nexus's cutscenes each player sees for itself
@@ -201,7 +201,30 @@ int edit_area(std::string& t, bool nexus)
         "$1$2if true then --SEAMLESS: the walls drop as in solo play");
     sub(std::regex("(IsClient\\(\\) == true then\\s*\\r?\\n\\s*)proxy:PlayAnimation\\(\\s*LOCAL_PLAYER\\s*,\\s*8284\\s*\\);"),
         "$1--SEAMLESS proxy:PlayAnimation( LOCAL_PLAYER , 8284 );");
-    if (nexus) return n;
+    if (nexus) {
+        // The Nexus's Archstones (OnDistanceAction(<id>, 10000, <stone>, "OnEvent_<id>", WarpGimmickDist_A, ...)) have
+        // no session check: no phantom reaches the Nexus in the original game. A guest's own touch took it out of the
+        // session and to the area alone, where its rejoin then stalled. A guest in a session gets the levels' answer
+        // at the stone instead ("You can't return during multiplayer.", 10010720); the host's travel takes it along.
+        const std::regex stone("OnDistanceAction\\(\\s*(\\d+)\\s*,\\s*10000\\s*,\\s*(\\d+)\\s*,\\s*\"OnEvent_(\\d+)\"\\s*,"
+                               "\\s*WarpGimmickDist_A");
+        std::map<std::string, std::string> stones;   // its handler's event ID -> the stone (where the dialog shows)
+        for (auto it = std::sregex_iterator(t.begin(), t.end(), stone); it != std::sregex_iterator(); ++it)
+            if ((*it)[1].str() == (*it)[3].str()) stones[(*it)[1].str()] = (*it)[2].str();
+        for (const auto& [id, obj] : stones) {
+            const std::string guard =
+                "\tif proxy:IsSession() == true and proxy:IsClient() == true then --SEAMLESS: a guest doesn't travel alone\n"
+                "\t\tproxy:RepeatMessage_begin(); proxy:NotNetMessage_begin();\n"
+                "\t\tproxy:OnSelectMenu( SYSTEM_GENDIALOG, \"MenuClose\", 10010720, 0, 6, " + obj +
+                ", GEN_DIALOG_DIST, once );\n"
+                "\t\tproxy:NotNetMessage_end(); proxy:RepeatMessage_end();\n"
+                "\t\treturn;\n"
+                "\tend\n";
+            sub(std::regex("(\\nfunction OnEvent_" + id + "\\s*\\(\\s*proxy\\s*,\\s*param\\s*\\)[^\\n]*\\n)"),
+                ("$1" + guard).c_str());
+        }
+        return n;
+    }
     // A boss fight is on from the boss's health bar to its clearing (each is a statement of its own in every area's
     // script): a guest who dies in it watches until it ends (global_event.lua's PartyGhostDeath_2)
     sub(std::regex("proxy:SetBossGauge\\s*\\("), "SeamlessBossFight = true; proxy:SetBossGauge(");
