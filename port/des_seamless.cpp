@@ -573,6 +573,14 @@ std::string check_code(const std::string& text, std::string* clean) {
     return {};
 }
 
+void held(const std::string& why) {
+    std::fprintf(stderr, "[coop] seamless co-op off: %s\n", why.c_str());
+    std::lock_guard<std::mutex> g(sLock);
+    sStatus = Status{};
+    sStatus.mode = mode();
+    sStatus.error = why;
+}
+
 bool start(const std::string& name, std::string* why) {
     const Mode m = mode();
     {

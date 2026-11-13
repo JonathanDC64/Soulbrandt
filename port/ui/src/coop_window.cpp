@@ -35,14 +35,24 @@ void toast(const char* type, const std::string& text) {
 }
 
 // The game starts again with these set (and the rest of what it started with). False, with a toast, if it can't.
+// Once only: a second press (or a Leave's own timer in the same frame) before this game has closed would start a
+// second game on the same save.
 bool restart_with(const std::vector<std::string>& set) {
+    static bool restarting = false;   // (the UI thread's only)
+    if (restarting) return true;
     if (!crash_report::start_again(set, false)) {
         toast("warning", "The game could not start again. Close it and start it again by hand.");
         return false;
     }
+    restarting = true;
     std::fprintf(stderr, "[ui] co-op: the game starts again (%s)\n", set.front().c_str());
     if (app().quit) app().quit();
     return true;
+}
+
+// Text with nothing but spaces in it.
+bool blank(const std::string& s) {
+    return s.find_first_not_of(" \t\r\n") == std::string::npos;
 }
 
 void close_action(Modal& modal) {
@@ -176,7 +186,14 @@ void open_public_address() {
                                .limit = 15,
                                .onDone =
                                    [](bool ok, const std::u16string& typed) {
-                                       if (ok) use_public_address(utf16_to_utf8(typed));
+                                       if (!ok) return;
+                                       const std::string text = utf16_to_utf8(typed);
+                                       if (blank(text)) {   // (clearing it is "Use the router's")
+                                           play_sound(kSoundItemDisable);
+                                           toast("warning", "No address typed: nothing changed.");
+                                           return;
+                                       }
+                                       use_public_address(text);
                                    },
                            }));
                        }});
@@ -184,7 +201,7 @@ void open_public_address() {
                        .onPressed = [](Modal& m) {
                            Rml::String text;
                            if (auto* sys = Rml::GetSystemInterface()) sys->GetClipboardText(text);
-                           if (text.empty()) {
+                           if (blank(text)) {
                                play_sound(kSoundItemDisable);
                                toast("warning", "Nothing to paste: copy the address first.");
                                return;
@@ -241,6 +258,9 @@ void open_leaving() {
         .bodyRml = "Going back to your own world. The game saves there, then starts again on your normal characters.",
         .actions = {ModalAction{.label = "Leave now",
                                 .onPressed = [](Modal&) { leave_now(); }}},
+        // Back or Esc doesn't close it: the leave is under way (the session left), and only this window starts the
+        // game again. Leave now is the way out.
+        .onDismiss = [](Modal&) {},
     }));
 }
 
@@ -341,7 +361,10 @@ std::unique_ptr<Modal> make_coop_window() {
                                        }
                                        if (auto* sys = Rml::GetSystemInterface()) sys->SetClipboardText(code);
                                        play_sound(kSoundItemEnable);
-                                       toast("info", "Copied. Send it to your friends, not in public.");
+                                       toast("info", now.code.empty()
+                                                         ? "Copied the code for players on your own network: it "
+                                                           "doesn't work over the internet."
+                                                         : "Copied. Send it to your friends, not in public.");
                                    },
                                .isDisabled = [] {
                                    const co::Status now = co::status();

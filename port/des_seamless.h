@@ -32,6 +32,10 @@ Mode mode();
 // offline). name: the player's online name, already checked.
 bool start(const std::string& name, std::string* why);
 
+// In place of start when co-op is asked for (mode()) but held off before it (gameplay mods on, no online name): the
+// status says so (mode, not started, why), so the Co-op window shows why and offers Leave, not Host and Join.
+void held(const std::string& why);
+
 struct Status {
     Mode mode = Mode::Off;
     bool started = false;

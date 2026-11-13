@@ -481,6 +481,7 @@ static void apply_seamless() {
         sNetStatus = "Off: gameplay mods are on";
         std::fprintf(stderr, "[ui] seamless co-op: off, gameplay mods are on (%s; Settings > Mods)\n",
                      mods::gameplay_names().c_str());
+        co::held("gameplay mods are on (Settings > Mods)");
         return;
     }
     const std::string name = env_set("PS3_NP_ONLINE_ID") ? std::string(std::getenv("PS3_NP_ONLINE_ID"))
@@ -489,6 +490,8 @@ static void apply_seamless() {
         sNetStatus = name.empty() ? "Off: no online name" : "Off: the online name is not valid";
         std::fprintf(stderr, "[ui] seamless co-op: off, %s (Settings > Network)\n",
                      name.empty() ? "no online name" : "the online name is not valid (3-16 letters, digits, - or _)");
+        co::held(name.empty() ? "there is no online name (Settings > Network)"
+                              : "the online name is not valid (Settings > Network)");
         return;
     }
     int port = std::atoi(effective("DES_NET_P2P_PORT").c_str());
