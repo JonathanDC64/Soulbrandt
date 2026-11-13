@@ -22,6 +22,12 @@
  *   shot <name>            save the next frame with draws as <name>.bmp
  *   hold <s> lx ly rx ry   hold the sticks (0-255, 128 centred; ly 0 is
  *                          forward) for s game seconds
+ *   stick lx ly rx ry      set the sticks and leave them there, taking no
+ *                          time: a press in the next step goes down on the
+ *                          same frame (`stick 128 0 128 128` then
+ *                          `press 0.1 r1` is forward and attack together).
+ *                          `stick 128 128 128 128` lets go; so do a hold's
+ *                          end and the route's
  *   set KNOB=value         set a knob live (an empty value unsets it)
  *   press <s> <b>[+<b>..]  hold buttons on port 0 for s game seconds: start,
  *                          select, cross, circle, triangle, square, up, down,
@@ -39,6 +45,12 @@
  * step is the same game moment at any frame rate and on a slow PC. Each step
  * comes at its planned time from the anchor; a hold does not move the steps
  * after it, and a step waits only for a shot still being saved before it.
+ * A hold or a press takes its length on that plan: the step after it comes
+ * when it ends, so `hold` then `press` run one after the other (for both at
+ * once, `stick` then `press`). A shot right after another waits 3 frames
+ * more: the renderer takes a shot when CELLMARK_DUMP_NOW changes, and it must
+ * see the last shot's reset first (a shot asked on the frame the last one was
+ * saved used to be lost).
  *
  * A hold is frame-exact: the stick is set at one flip request and let go at
  * the one where the frames after it have been handed the hold's time, less
@@ -93,7 +105,11 @@ constexpr double kCutDone = 2.0;     /* game s with no cutscene after one: it ha
 constexpr double kShotWait = 20.0;   /* wall s for a shot's file */
 constexpr unsigned kGoneFrames = 30; /* frames in a row with no player: a Quit Game's level has gone */
 
-enum class Op { Anchor, Wait, Shot, Hold, Set, Press, Continue };
+enum class Op { Anchor, Wait, Shot, Hold, Stick, Set, Press, Continue };
+
+/* Flips from a shot's reset of CELLMARK_DUMP_NOW to the next shot's 1, so the
+ * renderer (which reads the knob at its presents) sees the change. */
+constexpr unsigned kShotGapFlips = 3;
 
 struct Step {
     Op op;
@@ -169,6 +185,8 @@ struct Route {
     Hold hold;
     Shot shot;
     Press press;
+    unsigned since_shot = kShotGapFlips;   /* flips since the last shot's reset of CELLMARK_DUMP_NOW */
+    bool stick_on = false;           /* a stick step left the sticks set */
     Cont cont = Cont::Off;
     unsigned gone = 0;               /* flips in a row with no player, while the level goes */
     Clock::time_point cont_t0;       /* when the continue step began */
@@ -303,6 +321,10 @@ bool parse(const std::string& text, std::vector<Step>& steps, std::string& err)
             s.op = Op::Hold;
             ok = static_cast<bool>(w >> s.secs >> s.stick[0] >> s.stick[1] >> s.stick[2] >> s.stick[3]) &&
                  s.secs > 0 && *std::max_element(s.stick, s.stick + 4) <= 255;
+        } else if (op == "stick") {
+            s.op = Op::Stick;
+            ok = static_cast<bool>(w >> s.stick[0] >> s.stick[1] >> s.stick[2] >> s.stick[3]) &&
+                 *std::max_element(s.stick, s.stick + 4) <= 255;
         } else if (op == "set") {
             s.op = Op::Set;
             ok = static_cast<bool>(w >> s.text) && s.text.find('=') != std::string::npos && s.text[0] != '=';
@@ -380,6 +402,7 @@ void shot_poll(Route& r)
     const bool late = std::chrono::duration<double>(Clock::now() - r.shot.asked).count() > kShotWait;
     if (got.empty() && !late) return;
     ps3_setenv("CELLMARK_DUMP_NOW", "");   /* the next shot's 1 is a change again */
+    r.since_shot = 0;                      /* (once the renderer has seen this: kShotGapFlips) */
     dump_dir(r, nullptr);
     if (!got.empty()) {
         const fs::path to = r.out / (r.shot.name + ".bmp");
@@ -401,6 +424,7 @@ void shot_poll(Route& r)
 void hold_end(Route& r)
 {
     ps3_setenv("PAD_STICK", "");
+    r.stick_on = false;
     Hold& h = r.hold;
     char rd[96] = "";
     if (h.want_ls != 0x8080u)
@@ -471,6 +495,7 @@ void finish(Route& r, const char* result)
 {
     if (r.hold.on) hold_end(r);
     if (r.press.on) press_end(r);
+    if (r.stick_on) ps3_setenv("PAD_STICK", "");
     r.done = true;
     summary(r, result);
     say(r, "done: %s, %d shot(s) saved, %d missing", result, r.shots, r.missing);
@@ -614,6 +639,7 @@ extern "C" void des_route_on_flip(void)
     const double step = des_frame_step();
     const double counted = step > 0 && step < 1 ? step : 0;
     r.g += counted;
+    if (r.since_shot < kShotGapFlips) r.since_shot++;
     if (r.shot.on) shot_poll(r);
     if (r.hold.on) hold_tick(r, step);
     if (r.press.on) press_tick(r, step);
@@ -653,6 +679,7 @@ extern "C" void des_route_on_flip(void)
             continue;
         }
         if (r.g + 1e-9 < r.at || r.shot.on) return;   /* not yet, or a shot is still being saved */
+        if (s.op == Op::Shot && r.since_shot < kShotGapFlips) return;   /* the last shot's reset not seen yet */
         switch (s.op) {
         case Op::Shot:
             shot_ask(r, s.text);
@@ -669,6 +696,16 @@ extern "C" void des_route_on_flip(void)
             r.hold.want_ls = (s.stick[0] << 8) | s.stick[1];
             r.hold.spec = spec;
             r.at += s.secs;
+            break;
+        }
+        case Op::Stick: {
+            if (r.hold.on) hold_end(r);
+            char spec[64];
+            snprintf(spec, sizeof spec, "%u,%u,%u,%u", s.stick[0], s.stick[1], s.stick[2], s.stick[3]);
+            const bool centred = s.stick[0] == 128 && s.stick[1] == 128 && s.stick[2] == 128 && s.stick[3] == 128;
+            ps3_setenv("PAD_STICK", centred ? "" : spec);
+            r.stick_on = !centred;
+            say(r, "stick %s at %s", spec, g_str(r, r.g).c_str());
             break;
         }
         case Op::Set: {
