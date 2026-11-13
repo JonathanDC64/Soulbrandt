@@ -58,6 +58,47 @@ class DiscCheckTest(unittest.TestCase):
             self.assertIn("EBOOT.BIN", got["PS3_GAME/USRDIR"])
             self.assertIn("PARAM.SFO", got["PS3_GAME"])
 
+    def test_no_shipped_list_names_a_file_unpackers_rename(self):
+        """Issue #499: the Japanese and Asian lists, made from a copy's folder, named the disc's m99_99_98_06mcp. as
+        that copy's 7-Zip wrote it, m99_99_98_06mcp_. A copy that names it m99_99_98_06mcp (or keeps the dot) was one
+        file short. Each list leaves out every spelling, as the IRD lists do, and every name it has is one a copy
+        can hold on Windows."""
+        t = gamefiles.load_table()
+        for tid in gamefiles.titles(t):
+            name = gamefiles.for_title(t, tid)["disc_files"]
+            got = disc.load(name)
+            for dotted in disc_list.DOTTED:
+                folder, file = dotted.rsplit("/", 1)
+                self.assertIn("m99_99_98_06.mcp", got[folder], name)       # (the file the game opens)
+                for spelt in disc_list.spellings(file):
+                    self.assertNotIn(spelt, got[folder], name)
+            for folder, files in got.items():
+                for file in files:
+                    self.assertFalse(disc_list.left_out(f"{folder}/{file}"), f"{name}: {folder}/{file}")
+                    self.assertFalse(file.endswith((".", " ")) or set(file) & set('<>:"\\|?*'),
+                                     f"{name}: {folder}/{file}")
+
+    def test_the_dotted_name_in_any_spelling(self):
+        """Issue #499 from end to end: a list made from a copy whose unpacker wrote m99_99_98_06mcp_ (7-Zip), and a
+        copy that has the file as m99_99_98_06mcp, or as m99_99_98_06mcp_, or not at all. Each is complete; a file
+        the list has is still missing when it is gone."""
+        folder = self.root / "PS3_GAME" / "USRDIR" / "map" / "m99_99_98_06"
+        folder.mkdir(parents=True)
+        (folder / "m99_99_98_06.mcp").write_bytes(b"x" * 56)
+        made = dict(self.files, **{"PS3_GAME/USRDIR/map/m99_99_98_06/m99_99_98_06.mcp": 56,
+                                   "PS3_GAME/USRDIR/map/m99_99_98_06/m99_99_98_06mcp_": 56})
+        self.list = write_list(Path(self.tmp.name), made)
+        self.assertEqual(self.check().state, "complete")                     # (no copy of the stray file)
+        for spelt in ("m99_99_98_06mcp", "m99_99_98_06mcp_"):
+            (folder / spelt).write_bytes(b"x" * 56)
+            d = self.check()
+            self.assertEqual((d.state, d.files, d.missing), ("complete", 5, []), spelt)
+            (folder / spelt).unlink()
+        (folder / "m99_99_98_06.mcp").unlink()
+        d = self.check()
+        self.assertEqual(d.missing, ["PS3_GAME/USRDIR/map/m99_99_98_06/m99_99_98_06.mcp"])
+        self.assertEqual(d.sentence(), "1 of the disc's 5 files is missing from the game folder.")
+
     def test_complete(self):
         (self.root / "PS3_GAME" / "USRDIR" / "EBOOT.elf").write_bytes(b"extra")    # (extra files are not looked at)
         d = self.check()
