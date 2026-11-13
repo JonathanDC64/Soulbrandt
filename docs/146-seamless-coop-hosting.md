@@ -353,10 +353,13 @@ the newer generation, and saves as usual.
   world: it is neither kept in the friend's own world nor sent to the host. Only the Archstones' seal is shared.
 - The Archstones' seal from a friend is checked through its four flags, set on the friend through the game's own
   setter, not yet by a friend hearing the Monumental's tale.
-- A friend's talk is checked as far as the Crestfallen's prompt and first line, and, scripted, the Maiden in Black's
-  prompt and early lines ("The Monumental awaits thee, above." with a host who hadn't met the Monumental yet). The
-  menus behind other people (the Maiden's level up, which needs a host past the first demon, the smith, the storage)
-  aren't checked with a friend yet.
+- A friend's talk is checked as far as the Crestfallen's prompt and first line. Scripted, with the Maiden in Black:
+  - with a host who hadn't met the Monumental yet, her prompt and early lines ("The Monumental awaits thee, above.");
+  - with a host past the first demon, her level up. The friend answered YES to "Seek Soul Power?", then chose Seek
+    Soul Power and Vitality in her menus and confirmed. Its Vitality went from 11 to 12 and its souls down by the 724
+    shown. After a Leave, at home and saved, the friend's save file holds Vitality 12.
+
+  The smith's and the storage's menus aren't checked with a friend yet.
 - Closing the game window as a friend: the session is lost and nothing from it is saved (the game only saves at
   home).
 - A friend in body form whose joins keep failing with the host's game still there stays in soul form while it tries.
