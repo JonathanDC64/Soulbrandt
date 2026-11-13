@@ -273,6 +273,15 @@ resolves) and `PS3_SAVEDATA_ROOT` (the co-op save). A value set in the environme
 - **A friend in body form before the join:** the game summons only soul-form players. A body-form friend's join fails
   (`OnFailedJoinSession`, "Failed to join the session"), so the program calls the game's `ChangeGreyGhost` 10
   frames before the join. Going home, it gets its body form back the same way, without the revival animation.
+- **The host's game closed:** the friend sees the game's own "The session has ended." once, and goes home. Two
+  things keep it to that one box:
+  - The program doesn't join again while the room server (the host's game) can't be reached: the room data and the
+    host's place it holds are stale. Each such join failed with two more boxes ("Failed to join the session.", "The
+    session has ended."). Once np_psnr reaches the host's game again, the friend asks it for its room as at the
+    start.
+  - ps3recomp answers the game's `LeaveRoom` as left when the room's connection is lost (the room server has let the
+    friend go). Before, the call failed with no connection, and the game tried again every 15 s, each time with the
+    box.
 
 **Bringing a character** (`des_seamless_save.cpp`). The game's save folder (the disc's TITLE_ID and `DEMONSS005`)
 holds four character slots and a slot list:

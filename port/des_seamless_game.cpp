@@ -74,6 +74,7 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
 int des_seamless_flag_kind(uint32_t world, uint32_t flag);       // _scripts.cpp: 1 progress, 3 a boss kill's, 2 a soul pickup, 4 a Nexus cutscene, 5 the Archstones' seal
 extern "C" void ps3_indirect_call(ppu_context* ctx);             // ppu_loader.cpp: a call to the guest address in CTR
 extern "C" int des_player_xyz(float* x, float* y, float* z);     // des_options.cpp: 0 with no player
+extern "C" int np_psnr_connected(void);                         // ps3recomp's np_psnr.c: connected to the room server
 
 namespace co = des::seamless;
 
@@ -321,6 +322,8 @@ struct Game {
     int calm = 0;             // frames in a loaded area out of a session
     int asked_at = 0;         // a guest: frames since it last asked for the room data
     int tries = 0;            // room openings or joins tried since the last session
+    bool connected = false;   // a guest: connected to the room server (the host's game) at least once
+    bool host_gone = false;   // a guest: that connection lost since; said once
     bool room_sent = false;   // the host: this room's data made and sent
     int room_frames = 0;
     bool was_world = false;   // the host: in the world last frame
@@ -909,6 +912,26 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
         {
             std::lock_guard<std::mutex> l(sMsgLock);
             host_known = sReady.area != kNoArea;
+        }
+        // The room server is the host's game. With the connection to it lost (the host closed its game), the room
+        // data and the host's place are stale: a join with them fails, and each failure is two more boxes ("Failed
+        // to join the session.", "The session has ended.") after the game's own. Nothing until the connection is
+        // back (np_psnr dials again in the background), then the host is asked again.
+        if (!np_psnr_connected()) {   // (or not yet connected at the start)
+            if (g.connected && !g.host_gone) {
+                g.host_gone = true;
+                std::lock_guard<std::mutex> l(sMsgLock);
+                sRoom.clear();
+                sReady = Ready();
+                std::fprintf(stderr, "[coop] the host's game is gone: no join until it is back\n");
+            }
+            g.calm = 0;
+            return;
+        }
+        g.connected = true;
+        if (g.host_gone) {
+            g.host_gone = false;
+            std::fprintf(stderr, "[coop] connected to the host's game again: asking it for its room\n");
         }
         if (data.empty() || !host_known) {   // the room data, and where the host is (its join loads the host's area)
             if (++g.asked_at >= 120) {   // every 120 frames until the host answers
