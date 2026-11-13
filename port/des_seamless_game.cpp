@@ -336,6 +336,8 @@ struct Game {
     uint32_t trip = 0;        // the host: its loads in this session; a guest: the host's load it follows
     std::atomic<uint32_t> follow{0};   // a guest: the trip its summoned reload follows (0: none)
     std::atomic<bool> respawn{false};  // a guest: its summoned reload is a respawn (BACK once it has arrived)
+    bool loading = false;     // a guest: a load asked for (gm's next area) and the world not back since (Quit Game
+                              // to the title asks for none)
     uint32_t record_buf = 0;  // a guest: guest memory for the host's dead-character record (its load step)
 };
 Game sGame;
@@ -353,6 +355,8 @@ struct Own {
     bool helped = false;        // a boss was killed while it was in the session: it goes home revived
     bool body = false;          // it was in body form before the join: it goes home in body form
     bool sent = false;          // its trip home was pointed at area (going_home)
+    bool came_home = false;     // a trip home after a session came in this run (after_world_swap), at home_at
+    std::filesystem::file_time_type home_at{};
     std::vector<uint8_t> flags = std::vector<uint8_t>(kFlagBytes);   // its own flags (the trip home's copy, +0x187C)
     std::vector<uint8_t> banks = std::vector<uint8_t>(kBanksSize);
     std::vector<uint32_t> taken;   // the boss souls it took in the session (its view keeps them taken)
@@ -534,6 +538,8 @@ void after_world_swap(uint32_t fb, bool in_session)
                 vm_write8(fb + kLocal2 + i, sOwn.banks[kWorlds * kBank1Size + w * kBank2Size + i]);
         }
         sOwn.kept = false;
+        sOwn.came_home = true;
+        sOwn.home_at = std::filesystem::file_time_type::clock::now();
         std::fprintf(stderr, "[coop] flags: back in this player's own world (%08X), with the session's progress\n", to);
         return;
     }
@@ -570,6 +576,18 @@ bool saved_since(std::filesystem::file_time_type t)
     return false;
 }
 
+// The latest trip home after a session in this run (the game's own, or a leave's), at *at, if its game hasn't saved
+// since it arrived (it saves once home).
+bool home_unsaved(std::filesystem::file_time_type* at)
+{
+    {
+        std::lock_guard<std::mutex> l(sOwn.lock);
+        if (!sOwn.came_home) return false;
+        *at = sOwn.home_at;
+    }
+    return !saved_since(*at);
+}
+
 void leave_tick(ppu_context* ctx, uint32_t st, bool world)
 {
     const int lv = sLeave.load();
@@ -596,15 +614,23 @@ void leave_tick(ppu_context* ctx, uint32_t st, bool world)
             sLeave = kLeaveOut;
             std::fprintf(stderr, "[coop] leave: going home\n");
         } else if (st == 0 && !own_kept()) {   // not in a session: nothing to take home
-            // Its body form back if it took soul form for a join that never came (body_form_back); the leave
-            // waits for the save that asks for.
-            if (body_form_back(ctx)) {
+            // During a load (the game's own trip home after a session, say) it waits for the player in the world.
+            // Back from a session with no save since, it waits for that save, as its own trip home does. Its body
+            // form back if it took soul form for a join that never came (body_form_back), and it waits for the save
+            // that asks for. Else (the title screen, say) it's done.
+            std::filesystem::file_time_type home{};
+            const bool unsaved = home_unsaved(&home);
+            if (!world && (sGame.loading || unsaved)) {
+                // again next frame
+            } else if (world && body_form_back(ctx)) {
                 s.home_at = std::filesystem::file_time_type::clock::now();
                 sLeave = kLeaveHome;
                 std::fprintf(stderr, "[coop] leave: not in a session; body form again (the join never came), "
                                      "waiting for the game's save\n");
-            } else if (sJoinedInBody.load()) {
-                // owed but no player yet (a load): again next frame
+            } else if (unsaved) {
+                s.home_at = home;
+                sLeave = kLeaveHome;
+                std::fprintf(stderr, "[coop] leave: back home from the session; waiting for the game's save\n");
             } else {
                 sLeave = kLeaveDone;
                 std::fprintf(stderr, "[coop] leave: not in a session\n");
@@ -935,11 +961,18 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
     // form is a soul from then on, so its body form isn't given back.
     if (sJoinedInBody.load() && death_count(ctx) != sJoinedDeaths && sJoinedInBody.exchange(false))
         std::fprintf(stderr, "[coop] this player died after taking soul form for the join: no body form back\n");
+    if (world) g.loading = false;
+    else if (vm_read32(game_manager() + kGmNextArea) != kNoArea) g.loading = true;
     leave_tick(ctx, st, world);
-    if (st == 0 && sLeave.load() != kLeaveNone) return;   // leaving: no join again
+    // leaving: no join again; and once out of the session (LeaveSession), no follow, requeue or BACK either, while
+    // the session state still says client
+    const int lv = sLeave.load();
+    if (lv != kLeaveNone && (st == 0 || lv != kLeaveAsked)) return;
     if (st == 0) {
         g.arrived = false;
         g.in_load = false;
+        g.follow = 0;   // a follow or a respawn whose load never came: not the next session's
+        g.respawn = false;
         g.calm = world ? g.calm + 1 : 0;
         std::vector<uint8_t> data;
         uint32_t lead;
@@ -947,6 +980,9 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
             std::lock_guard<std::mutex> l(sMsgLock);
             data = sRoom;
             lead = sLeadTrip;
+            // The room server sends the host's FLAGs to every game connected to it, in its session or not: the ones
+            // that came out of a session aren't this player's progress (a boss killed while it was away)
+            sHostFlags.clear();
         }
         g.trip = lead;   // a session starts: only the host's later loads are followed
         bool host_known;
@@ -1025,11 +1061,11 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
     g.calm = 0;
     if (st != kStateClient) return;
     // the host's flags for the next reload, and its progress flags into this player's own world (they wait for the
-    // session: the join keeps the own world apart)
+    // join's load to keep the own world apart: keep_own_world, which also starts the session's helped_kill afresh)
     const uint32_t fb = flag_base();
     take_host_flags(fb);
     std::deque<HostFlag> flags;
-    {
+    if (own_kept()) {
         std::lock_guard<std::mutex> l(sMsgLock);
         flags.swap(sHostFlags);
     }
