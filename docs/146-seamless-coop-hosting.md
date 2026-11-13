@@ -87,6 +87,7 @@ once: after that, co-op has characters of its own.
   and can talk to them.
 - **The Nexus's cutscenes** (the one after a boss, the Monumental's story) play for each player who hasn't seen them
   in their own world yet, even when the host has.
+- **Skipping a cutscene** (START, then Cross) works for everyone and skips only your own: the others' go on.
 - **The Monumental's question:** whoever talks to the Monumental answers it. Once the other Archstones open, they open
   in every player's world. His story plays only for the one who hears it: when a friend hears it first, the host then
   gets his later lines and his question, not the story.
@@ -276,6 +277,12 @@ their first instruction):
   - The host's death doesn't send the phantoms home; the host's respawn takes them along.
   - `proxy:ClearBossGauge(` also clears `SeamlessBossFight`.
   - No room lock at a kill (`BlockClear2`'s `LockSession`; see below).
+  - The cutscenes keep their solo mode in a session. Every `RequestRemo(scene, REMO_FLAG, event, 1)` passes the
+    global `REMO_FLAG` as the cutscene's mode. It is 0 when a map's scripts start, `OnEvent_4034` (the session
+    connected) makes it 2, and `OnEvent_4035` (the session's end) makes it 0 again. A cutscene asked for in mode 2 (a
+    boss's at its fog, any asked for after the session connected) can't be skipped on a friend's game, and the host's
+    skip ends only the host's. Ones asked for before 4034, such as an area's opening, were already mode 0 in a session
+    and each player skips its own. `OnEvent_4034` now sets 0, so every cutscene works that way.
 - Each area's script: the boss rooms' party walls drop as in solo play; a guest doesn't play the warp-out pose at a
   boss's death; the host may use the Archstones in a session, and the Nexus's stones (which had no session check)
   give a guest the levels' "You can't return during multiplayer." (10010720); a blue phantom may take a boss's soul.

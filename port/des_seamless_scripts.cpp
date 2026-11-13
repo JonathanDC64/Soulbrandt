@@ -10,7 +10,8 @@
 //     multiplayer walls drop as at a session's end;
 //   - no rating screen after a kill: a short timer goes on to the next step instead;
 //   - a blue phantom's death keeps it in the session: it comes back where the host last arrived, and in a boss fight
-//     it first watches until the fight ends (the boss dead, or the host dead: then it goes back with the host).
+//     it first watches until the fight ends (the boss dead, or the host dead: then it goes back with the host);
+//   - the cutscenes keep their solo mode in a session: each player skips its own.
 // Each area's script:
 //   - a boss fight is marked from the boss's health bar to its clearing (for the watch above);
 //   - the boss rooms' party walls drop as in solo play;
@@ -111,6 +112,13 @@ bool edit_global(std::string& t, const std::string& nl)
         return false;
     // MissionSuccessed: no recall ("Objective met. Resurrecting in your own world.")
     if (!replace_in(t, "MissionSuccessed", "proxy:RecallMenuEvent( 0, 8933 );", "--SEAMLESS proxy:RecallMenuEvent( 0, 8933 );"))
+        return false;
+    // OnEvent_4034 (the session connected): the cutscenes keep their solo mode. REMO_FLAG is the mode every
+    // RequestRemo passes. A map's scripts start with 0, 4034 makes it 2 (multiplayer: a guest can't skip one, and the
+    // host's skip ends only its own), and 4035 (the session's end, and BlockClear2_3Leave above) makes it 0 again. In
+    // 0, as the ones asked for before 4034 (an area's opening) already were in a session, each player skips its own.
+    if (!replace_in(t, "OnEvent_4034", "REMO_FLAG = 2;",
+                    "REMO_FLAG = 0; --SEAMLESS each player's cutscenes are its own"))
         return false;
     if (!replace_func(t, "BlockClear2_3",
                       "function BlockClear2_3(proxy,param)\n"
@@ -748,7 +756,7 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
     std::string ed = t;
     int edits = 0;
     if (global) {
-        if (edit_global(ed, nl)) edits = 13;
+        if (edit_global(ed, nl)) edits = 14;
         else ed = t;
     } else {
         static const char kNexus[] = "function Initialize_m01_00_00_00(";   // the Nexus: no Archstone edits
