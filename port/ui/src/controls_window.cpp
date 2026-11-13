@@ -119,6 +119,7 @@ constexpr Target kTargets[] = {
     {"circle", "Roll, backstep, dash (Circle)", "Actions"},
     {"l3", "Left stick press (L3)", nullptr},
     {"r1", "Attack (R1)", nullptr},
+    {"kick", "Kick (with Kick: Own key)", nullptr},  // the port's, not cellPad's (settings.cpp's keys_for_pad)
     {"r2", "Strong attack (R2)", nullptr},
     {"l1", "Left hand, guard (L1)", nullptr},
     {"l2", "Left hand, parry (L2)", nullptr},
