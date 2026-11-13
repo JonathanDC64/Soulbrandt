@@ -357,8 +357,11 @@ the newer generation, and saves as usual.
   If it closes the game window then and its game saved meanwhile, it starts again in soul form. Leave gives its body
   form back.
 - The final area's Demon's Soul is offered only outside a session (`ATTR_NOSESSION`; the game has no co-op there).
-- Watching a boss fight after dying is checked only as far as the scripts loading and an ordinary death still
-  respawning. A boss fight with a friend dying in it is a hand test.
+- Watching a boss fight after dying, scripted: host and friend were put in 1-1's boss arena, and the fight started
+  for both (the boss's health bar on both screens). The friend was then killed. It stayed down and watched for the
+  half minute until the host killed the boss, then came back at the area's start, and the host made its character
+  again. A death outside a boss fight comes back within seconds. Not yet: the host dying in the fight too, or any
+  of it by hand.
 - The Japanese and Asian discs (with their 1.04 update) play with the others ("Which discs" above). What is checked
   beside the runs:
   - Co-op's rows in `port/regions/BCJS30022.inc` and `BCAS20071.inc` come from `tools/region/region_table.py find`
