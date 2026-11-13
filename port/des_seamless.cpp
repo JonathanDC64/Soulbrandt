@@ -471,16 +471,9 @@ std::string stun_public_ipv4(std::string* who) {
     return ip;
 }
 
-// Off the game's thread: the router forwards the port, and its address makes the code. DES_SEAMLESS_UPNP=0 leaves
-// the router alone (the port forwarded by hand). A public address the player gave (DES_SEAMLESS_ADDRESS, or the
-// Co-op window's Public address) wins over the router's.
-void router_thread(int port) {
-    char ext[16] = {};
-    const char* upnp = std::getenv("DES_SEAMLESS_UPNP");
-    const bool use_upnp = !(upnp && !std::strcmp(upnp, "0"));
-    const int rc = use_upnp ? net_upnp_map((uint16_t)port, kUpnpName, 2000, ext) : NET_UPNP_ERR_NOT_BUILT;
-    std::string lan = use_upnp ? net_upnp_lan_ip() : "";
-    if (lan.empty()) lan = local_ip();
+// What the router's answer to net_upnp_map (rc, with ext its address) means for the code and the window's words. No
+// public address from the router: STUN's.
+RouterAnswer answer_of(int port, bool use_upnp, int rc, const char* ext) {
     RouterAnswer r;
     const std::string p = std::to_string(port);
     if (!use_upnp) {
@@ -534,7 +527,11 @@ void router_thread(int port) {
             r.text = from + "The router did not open port " + p + " (" + net_upnp_last_error() +
                      "): forward it to this PC in your router's settings.";
     }
-    if (r.opened) std::atexit(unmap_at_exit);
+    return r;
+}
+
+// The router's answer and this PC's local address make the codes (and the test run's code file).
+void publish(const RouterAnswer& r, const std::string& lan, const char* when) {
     std::string code, lan_code;
     bool given = false;
     {
@@ -548,9 +545,52 @@ void router_thread(int port) {
         given = sStatus.address_given;
     }
     // (no addresses in the log)
-    std::fprintf(stderr, "[coop] router: %s%s\n", r.ok ? "the port is open" : r.text.c_str(),
+    std::fprintf(stderr, "[coop] router%s: %s%s\n", when, r.ok ? "the port is open" : r.text.c_str(),
                  given ? "; the code uses the public address given" : "");
     write_code_file(code, lan_code);
+}
+
+// Off the game's thread: the router forwards the port, and its address makes the code. DES_SEAMLESS_UPNP=0 leaves
+// the router alone (the port forwarded by hand). A public address the player gave (DES_SEAMLESS_ADDRESS, or the
+// Co-op window's Public address) wins over the router's.
+//
+// A forward UPnP opened is a 1-hour lease (net_upnp_map), so this renews it every 30 minutes for as long as the game
+// hosts, until the process ends (Leave co-op restarts it): a forward a crash left behind ends by itself. The
+// window's close removes it at once (boot_main), as does a normal exit (atexit). A renewal that fails is tried again
+// every 5 minutes, the codes kept. One that answers differently (a new internet or local address, say) makes new
+// codes, as the first answer did.
+void router_thread(int port) {
+    char ext[16] = {};
+    const char* upnp = std::getenv("DES_SEAMLESS_UPNP");
+    const bool use_upnp = !(upnp && !std::strcmp(upnp, "0"));
+    int rc = use_upnp ? net_upnp_map((uint16_t)port, kUpnpName, 2000, ext) : NET_UPNP_ERR_NOT_BUILT;
+    std::string lan = use_upnp ? net_upnp_lan_ip() : "";
+    if (lan.empty()) lan = local_ip();
+    RouterAnswer r = answer_of(port, use_upnp, rc, ext);
+    if (r.opened) std::atexit(unmap_at_exit);
+    publish(r, lan, "");
+    if (!r.opened) return;
+
+    for (bool held = true;;) {
+        std::this_thread::sleep_for(std::chrono::minutes(held ? 30 : 5));
+        char now[16] = {};
+        const int rc2 = net_upnp_map((uint16_t)port, kUpnpName, 2000, now);
+        if (rc2 != NET_UPNP_OK && rc2 != NET_UPNP_ERR_PRIVATE_IP) {
+            if (held)
+                std::fprintf(stderr, "[coop] router: the forward wasn't renewed (%s); trying again every 5 minutes\n",
+                             net_upnp_last_error());
+            held = false;
+            continue;
+        }
+        if (!held) std::fprintf(stderr, "[coop] router: the forward is renewed again\n");
+        held = true;
+        const std::string lan2 = *net_upnp_lan_ip() ? net_upnp_lan_ip() : local_ip();
+        if (rc2 == rc && !std::strcmp(now, ext) && lan2 == lan) continue;   // the same answer: the same codes
+        rc = rc2;
+        std::memcpy(ext, now, sizeof ext);
+        lan = lan2;
+        publish(answer_of(port, true, rc, ext), lan, " (its answer changed: new codes)");
+    }
 }
 
 }  // namespace

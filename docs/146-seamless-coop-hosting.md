@@ -100,6 +100,10 @@ once: after that, co-op has characters of its own.
 The host's router has to let friends in on one port (36100, TCP and UDP).
 
 - The game asks the router to open it (UPnP). Co-op shows whether that worked.
+- **The router's forward lasts an hour** and the game renews it every 30 minutes while it hosts. Closing the game
+  removes it. A forward left behind by a crash ends by itself within the hour. A router that only takes permanent
+  forwards gets one, which closing the game removes. If the router's internet address changes during a session,
+  Co-op shows new codes.
 - **The address in the code.** It is the router's internet address when UPnP gives one. When it doesn't (no UPnP,
   or a router behind another one), the game asks Google's STUN server (`stun.l.google.com:19302`, one request, a
   few hundred bytes) what address its traffic comes from, and uses that. Google sees the host's IP address (it is
