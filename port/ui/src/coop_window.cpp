@@ -7,6 +7,7 @@
 #include "crash_report.hpp"
 #include "osk_window.hpp"
 #include "platform.hpp"
+#include "settings.hpp"
 #include "sound.hpp"
 #include "ui.hpp"
 
@@ -137,6 +138,70 @@ void open_join() {
                                     if (auto* sys = Rml::GetSystemInterface()) sys->GetClipboardText(text);
                                     join_with(text, "Nothing to paste: copy the code first.");
                                 }}},
+    }));
+}
+
+// The host's public address, for a router that can't say it: kept in settings.ini for the next time.
+void use_public_address(const std::string& text) {
+    std::string ip;
+    const std::string why = co::set_public_address(text, &ip);
+    if (!why.empty()) {
+        play_sound(kSoundItemDisable);
+        toast("warning", why);
+        return;
+    }
+    settings::set("DES_SEAMLESS_ADDRESS", ip);
+    play_sound(kSoundItemEnable);
+    toast("info", ip.empty() ? "The code uses your router's answer again."
+                             : "The invite code now uses that address. Copy it again for your friends.");
+}
+
+void open_public_address() {
+    const std::string now = settings::get("DES_SEAMLESS_ADDRESS");
+    std::vector<ModalAction> actions{ModalAction{.label = "Cancel", .onPressed = close_action}};
+    if (!now.empty())
+        actions.push_back({.label = "Use the router's",
+                           .onPressed = [](Modal& m) {
+                               use_public_address("");
+                               m.pop();
+                           }});
+    actions.push_back({.label = "Type address",
+                       .onPressed = [now](Modal& m) {
+                           std::u16string text(now.begin(), now.end());   // (before the pop: it closes this window)
+                           play_sound(kSoundItemChange);
+                           m.pop();
+                           push_document(std::make_unique<OskWindow>(OskWindow::Props{
+                               .prompt = "Your public address, like 203.0.113.7",
+                               .text = std::move(text),
+                               .limit = 15,
+                               .onDone =
+                                   [](bool ok, const std::u16string& typed) {
+                                       if (ok) use_public_address(utf16_to_utf8(typed));
+                                   },
+                           }));
+                       }});
+    actions.push_back({.label = "Paste",
+                       .onPressed = [](Modal& m) {
+                           Rml::String text;
+                           if (auto* sys = Rml::GetSystemInterface()) sys->GetClipboardText(text);
+                           if (text.empty()) {
+                               play_sound(kSoundItemDisable);
+                               toast("warning", "Nothing to paste: copy the address first.");
+                               return;
+                           }
+                           use_public_address(text);
+                           m.pop();
+                       }});
+    push_document(std::make_unique<Modal>(Modal::Props{
+        .title = "Public address",
+        .bodyRml = "When your router can't open the port by itself, forward port " +
+                   std::to_string(co::status().port) +
+                   " (TCP and UDP) to this PC in your router's settings, then give your public address: the one the "
+                   "internet sees. Your router's status page shows it, or a \"what is my IP\" website.<br/><br/>"
+                   "The invite code is then made from it. The game keeps it for the next time you host." +
+                   (now.empty() ? std::string() : "<br/><br/>Now: " + escape(now)),
+        .actions = std::move(actions),
+        .isVertical = true,
     }));
 }
 
@@ -275,6 +340,8 @@ std::unique_ptr<Modal> make_coop_window() {
                                    const co::Status now = co::status();
                                    return now.code.empty() && now.lan_code.empty();
                                }});
+        if (s.mode == co::Mode::Host)
+            actions.push_back({.label = "Public address", .onPressed = [](Modal&) { open_public_address(); }});
         actions.push_back({.label = "Leave co-op", .onPressed = [](Modal&) { open_leave(); }});
     }
     return std::make_unique<CoopWindow>(Modal::Props{

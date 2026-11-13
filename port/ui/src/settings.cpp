@@ -106,6 +106,7 @@ constexpr Def kDefs[] = {
     {"net_custom_here", "", Apply::UiOnly},    // custom_chosen_here's mark for that address on this PC
     {"DES_NET_NAME", "", Apply::Restart},      // the online name (PS3_NP_ONLINE_ID); "" = no NP identity
     {"DES_NET_P2P_PORT", "3658", Apply::Restart},  // PS3_NET_P2P_PORT, 1024-65535
+    {"DES_SEAMLESS_ADDRESS", "", Apply::Restart},  // seamless co-op host's public IPv4 (the Co-op window); "" = router's
     {"DES_NET_PASSWORD", "", Apply::Live},     // matchmaking password; a hash of it goes to the server; "" = everyone
     {"DES_NET_TENDENCY", "", Apply::Live},     // des_qwc_local: "" = the server's mixed in (the game's), "own" = yours only
     {"DES_NET_RATING_POLL", "", Apply::Live},  // des_net_grade_poll: seconds between rating checks; "" = the game's 300
@@ -308,10 +309,11 @@ const std::string& path() {
 std::string describe() {
     std::string out;
     for (const Def& d : kDefs) {
-        // (an issue report leaves out the online name, the custom server's address and its mark: only whether one is
-        // set)
+        // (an issue report leaves out the online name, the custom server's address and its mark, and the co-op
+        // host's public address: only whether one is set)
         const bool hide = std::strcmp(d.key, "DES_NET_NAME") == 0 || std::strcmp(d.key, "DES_NET_CUSTOM") == 0 ||
-                          std::strcmp(d.key, "DES_NET_PASSWORD") == 0 || std::strcmp(d.key, "net_custom_here") == 0;
+                          std::strcmp(d.key, "DES_NET_PASSWORD") == 0 || std::strcmp(d.key, "net_custom_here") == 0 ||
+                          std::strcmp(d.key, "DES_SEAMLESS_ADDRESS") == 0;
         const auto shown = [hide](const std::string& v) { return hide && !v.empty() ? std::string("(set)") : v; };
         const std::string value = get(d.key);
         out += std::string(d.key) + " = " + shown(value);

@@ -6,7 +6,8 @@
 //                             router's public address, the port and a new key.
 //   DES_SEAMLESS=join         this game joins the host named by DES_SEAMLESS_CODE.
 //   DES_SEAMLESS_UPNP=0       the host leaves the router alone (the port forwarded by hand).
-//   DES_SEAMLESS_ADDRESS=ip   the host's public IPv4 address, for the code, when the router doesn't give it.
+//   DES_SEAMLESS_ADDRESS=ip   the host's public IPv4 address, for the code, when the router doesn't give it (the Co-op
+//                             window's Public address keeps it in settings.ini).
 //   DES_SEAMLESS_CODE_FILE    tests: the host writes its codes there (public, then local), and a joining game with no
 //                             DES_SEAMLESS_CODE waits for the file and takes the code from it.
 //
@@ -40,10 +41,16 @@ struct Status {
     std::string router;      // host: the router's answer, in plain words
     bool router_done = false;
     bool router_ok = false;  // the port is open and the address public
+    bool address_given = false;  // host: the code is from the public address the player gave, not the router's
     int port = 0;            // host: the room server's port
     int players = 0;         // host: games connected to the room server, this one included
 };
 Status status();
+
+// Host: the public IPv4 address the player gave (the Co-op window's Public address), for a router that can't say it
+// (behind another router, no UPnP). The invite code is made from it at once; "" goes back to the router's answer.
+// "" when taken (the address, tidied, in *clean), else why not, in plain words.
+std::string set_public_address(const std::string& text, std::string* clean);
 
 // A code the player typed or pasted: "" if it reads as a code (normalised into *clean as XXXX-XXXX-XXXX-XXXX), else
 // why not, in plain words.

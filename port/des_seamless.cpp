@@ -54,6 +54,17 @@ constexpr const char* kUpnpName = "Demon's Souls co-op";
 
 std::mutex sLock;
 Status sStatus;               // under sLock
+// The host's code, under sLock: its key and port, the public address the player gave ("" = none), and the router's
+// own answer (its code, if it gave a public address).
+uint32_t sKey = 0;
+int sPort = 0;
+std::string sGiven;
+struct RouterAnswer {
+    std::string text, code;
+    bool ok = false;
+    bool opened = false;  // UPnP opened the port
+    bool behind = false;  // ...on a router behind another one (its own address private)
+} sRouter;
 psnr_host* sHost = nullptr;
 std::atomic<int> sActive{0};  // a Mode, once start() succeeded
 
@@ -385,9 +396,47 @@ std::string code_from_file() {
     return {};
 }
 
+// A public address as the player wrote it: 0 with it tidied into *out (no spaces, no leading zeros), 1 if it is
+// private (a home network's, the provider's, loopback...), -1 if it isn't a dotted IPv4 address.
+int tidy_public_ipv4(const std::string& text, std::string* out) {
+    std::string t;
+    for (const char c : text)
+        if (c != ' ' && c != '\t' && c != '\r' && c != '\n') t += c;
+    const int priv = net_upnp_is_private_ipv4(t.c_str());
+    if (priv != 0) return priv < 0 ? -1 : 1;
+    unsigned b[4];
+    if (std::sscanf(t.c_str(), "%u.%u.%u.%u", &b[0], &b[1], &b[2], &b[3]) != 4) return -1;
+    char buf[16];
+    std::snprintf(buf, sizeof buf, "%u.%u.%u.%u", b[0], b[1], b[2], b[3]);
+    *out = buf;
+    return 0;
+}
+
+// The invite code and the words beside it (sLock held): from the address the player gave, else the router's answer.
+void compose_locked() {
+    sStatus.address_given = !sGiven.empty();
+    if (sGiven.empty()) {
+        sStatus.code = sRouter.code;
+        sStatus.router_ok = sRouter.ok;
+        sStatus.router = sRouter.text;
+        return;
+    }
+    const std::string p = std::to_string(sPort);
+    sStatus.code = encode(sGiven.c_str(), sPort, sKey);
+    sStatus.router_ok = !sStatus.code.empty();
+    sStatus.router = sRouter.behind
+                         ? "The code uses the public address you gave. Your router opened port " + p +
+                               ", but it is behind another router: forward port " + p +
+                               " (TCP and UDP) on that one too, to your router."
+                     : sRouter.opened ? "The code uses the public address you gave. Your router opened port " + p +
+                                            " for co-op."
+                                      : "The code uses the public address you gave. Port " + p +
+                                            " (TCP and UDP) must be forwarded to this PC in your router's settings.";
+}
+
 // Off the game's thread: the router forwards the port, and its address makes the code. DES_SEAMLESS_UPNP=0 leaves
-// the router alone (the port forwarded by hand); DES_SEAMLESS_ADDRESS=<IPv4> is the public address then, or wins
-// over the router's.
+// the router alone (the port forwarded by hand). A public address the player gave (DES_SEAMLESS_ADDRESS, or the
+// Co-op window's Public address) wins over the router's.
 void router_thread(int port, uint32_t key) {
     char ext[16] = {};
     const char* upnp = std::getenv("DES_SEAMLESS_UPNP");
@@ -395,57 +444,55 @@ void router_thread(int port, uint32_t key) {
     const int rc = use_upnp ? net_upnp_map((uint16_t)port, kUpnpName, 2000, ext) : NET_UPNP_ERR_NOT_BUILT;
     std::string lan = use_upnp ? net_upnp_lan_ip() : "";
     if (lan.empty()) lan = local_ip();
-    const char* given = std::getenv("DES_SEAMLESS_ADDRESS");
-    std::string router, code;
-    bool ok = false;
+    RouterAnswer r;
     const std::string p = std::to_string(port);
-    if (given && *given && net_upnp_is_private_ipv4(given) == 0) {
-        code = encode(given, port, key);
-        ok = !code.empty();
-        router = use_upnp && rc == NET_UPNP_OK ? "Your router opened port " + p + " for co-op."
-                                               : "Using your public address as given. Port " + p +
-                                                     " (TCP and UDP) must be forwarded to this PC.";
-        if (use_upnp && (rc == NET_UPNP_OK || rc == NET_UPNP_ERR_PRIVATE_IP)) std::atexit(unmap_at_exit);
-    } else if (!use_upnp) {
+    if (!use_upnp) {
         // Only DES_SEAMLESS_UPNP=0 gets here: the game's own UPnP use is off, which says nothing of the router's.
-        router = "Co-op is set not to use UPnP (DES_SEAMLESS_UPNP=0), so your router wasn't asked. Forward port " + p +
-                 " (TCP and UDP) to this PC in your router's settings and give your public address. Players on your "
+        r.text = "Co-op is set not to use UPnP (DES_SEAMLESS_UPNP=0), so your router wasn't asked. Forward port " + p +
+                 " (TCP and UDP) to this PC in your router's settings, then choose Public address. Players on your "
                  "network can use the local code.";
     } else switch (rc) {
     case NET_UPNP_OK:
-        ok = true;
-        code = encode(ext, port, key);
-        router = "Your router opened port " + p + " for co-op.";
-        std::atexit(unmap_at_exit);
+        r.ok = r.opened = true;
+        r.code = encode(ext, port, key);
+        r.text = "Your router opened port " + p + " for co-op.";
         break;
     case NET_UPNP_ERR_PRIVATE_IP:
-        router = "Your router opened port " + p + ", but it is behind another router or your provider's network "
+        r.opened = r.behind = true;
+        r.text = "Your router opened port " + p + ", but it is behind another router or your provider's network "
                  "(its own address is private), so friends can't reach it. Players on your network can use the "
-                 "local code.";
-        std::atexit(unmap_at_exit);
+                 "local code. If you can forward port " + p + " on the other router too, choose Public address.";
         break;
     case NET_UPNP_ERR_NO_ROUTER:
     case NET_UPNP_ERR_NOT_ROUTER:
-        router = "No router answered for UPnP. Forward port " + p + " (TCP and UDP) to this PC in your router's "
-                 "settings. Players on your network can use the local code.";
+        r.text = "No router answered for UPnP. Forward port " + p + " (TCP and UDP) to this PC in your router's "
+                 "settings, then choose Public address. Players on your network can use the local code.";
         break;
     case NET_UPNP_ERR_TAKEN:
-        router = "Port " + p + " is already forwarded to another device. Pick another port (DES_SEAMLESS_PORT) or "
+        r.text = "Port " + p + " is already forwarded to another device. Pick another port (DES_SEAMLESS_PORT) or "
                  "remove that forward in your router's settings.";
         break;
     default:
-        router = std::string("The router did not open port ") + p + ": " + net_upnp_last_error();
+        r.text = std::string("The router did not open port ") + p + ": " + net_upnp_last_error();
         break;
     }
-    std::fprintf(stderr, "[coop] router: %s\n", ok ? "the port is open" : router.c_str());   // (no addresses)
+    if (r.opened) std::atexit(unmap_at_exit);
     const std::string lan_code = lan.empty() ? std::string() : encode(lan.c_str(), port, key);
+    std::string code, said;
+    bool given = false;
+    {
+        std::lock_guard<std::mutex> g(sLock);
+        sRouter = r;
+        compose_locked();
+        sStatus.router_done = true;
+        sStatus.lan_code = lan_code;
+        code = sStatus.code;
+        given = sStatus.address_given;
+    }
+    // (no addresses in the log)
+    std::fprintf(stderr, "[coop] router: %s%s\n", r.ok ? "the port is open" : r.text.c_str(),
+                 given ? "; the code uses the public address given" : "");
     write_code_file(code, lan_code);
-    std::lock_guard<std::mutex> g(sLock);
-    sStatus.router = router;
-    sStatus.router_ok = ok;
-    sStatus.router_done = true;
-    sStatus.code = code;
-    sStatus.lan_code = lan_code;
 }
 
 }  // namespace
@@ -504,6 +551,15 @@ bool start(const std::string& name, std::string* why) {
         sHost = psnr_host_start(&cfg, err, sizeof err);
         if (!sHost) return fail(std::string("the room server did not start: ") + err);
         port = psnr_host_port(sHost);
+        {
+            std::lock_guard<std::mutex> g(sLock);
+            sKey = key;
+            sPort = port;
+            sGiven.clear();
+            if (env_given("DES_SEAMLESS_ADDRESS") &&
+                tidy_public_ipv4(std::getenv("DES_SEAMLESS_ADDRESS"), &sGiven) != 0)
+                std::fprintf(stderr, "[coop] DES_SEAMLESS_ADDRESS is not a public IPv4 address: the router's is used\n");
+        }
         net_invite_key_hex(key, key_hex);
         server = "127.0.0.1:" + std::to_string(port);
         std::thread(router_thread, port, key).detach();
@@ -539,7 +595,9 @@ bool start(const std::string& name, std::string* why) {
     std::lock_guard<std::mutex> g(sLock);
     sStatus.started = true;
     sStatus.port = port;
-    if (m == Mode::Host) sStatus.router = "Asking your router to open port " + std::to_string(port) + "...";
+    // (unless the router's answer is in already: with DES_SEAMLESS_UPNP=0 it comes at once)
+    if (m == Mode::Host && !sStatus.router_done)
+        sStatus.router = "Asking your router to open port " + std::to_string(port) + "...";
     return true;
 }
 
@@ -550,6 +608,34 @@ Status status() {
     Status s = sStatus;
     if (sHost) s.players = psnr_host_players(sHost);
     return s;
+}
+
+std::string set_public_address(const std::string& text, std::string* clean) {
+    std::string ip;
+    bool blank = true;
+    for (const char c : text) blank = blank && (c == ' ' || c == '\t' || c == '\r' || c == '\n');
+    if (!blank) {
+        const int r = tidy_public_ipv4(text, &ip);
+        if (r < 0) return "That isn't an internet address: four numbers from 0 to 255 with dots, like 203.0.113.7.";
+        if (r > 0)
+            return "That address only works inside a home or provider network. Give the one the internet sees: your "
+                   "router's status page shows it, or a \"what is my IP\" website.";
+    }
+    std::string code, lan_code;
+    bool done = false;
+    {
+        std::lock_guard<std::mutex> g(sLock);
+        if (sStatus.mode != Mode::Host || !sStatus.started) return "Only while hosting.";
+        sGiven = ip;
+        done = sStatus.router_done;
+        if (done) compose_locked();   // (else the router's answer, when it comes, uses it)
+        code = sStatus.code;
+        lan_code = sStatus.lan_code;
+    }
+    std::fprintf(stderr, "[coop] public address %s\n", ip.empty() ? "cleared: the router's is used" : "given");
+    if (done) write_code_file(code, lan_code);
+    if (clean) *clean = ip;
+    return {};
 }
 
 }  // namespace des::seamless

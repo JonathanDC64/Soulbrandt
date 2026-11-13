@@ -80,7 +80,9 @@ The host's router has to let friends in on one port (36100, TCP and UDP).
 
 - The game asks the router to open it (UPnP). Co-op shows whether that worked.
 - **"No router answered"**, or UPnP is off on the router: forward port 36100 (TCP and UDP) to the host's PC in the
-  router's settings.
+  router's settings. Then choose **Public address** in Co-op and give the address the internet sees (the router's
+  status page shows it, or a "what is my IP" website). The invite code is made from it at once, and the game keeps it
+  for the next time.
 - **"Behind another router"**: the router that opened the port isn't the one facing the internet. This happens with a
   second router (often your own router plugged into the provider's box), or a provider that shares one address
   between many homes (carrier-grade NAT).
@@ -88,7 +90,7 @@ The host's router has to let friends in on one port (36100, TCP and UDP).
     own network.
   - Best: put one of the two in access point (bridge) mode, so only one router is left.
   - Or forward port 36100 (TCP and UDP) on the outer router to the first router's internet-side address. The game
-    can't learn the public address that way, so set `DES_SEAMLESS_ADDRESS` (below) to it.
+    can't learn the public address that way, so give it in Co-op's **Public address**.
   - With carrier-grade NAT, ask the provider for a public address.
 - **Players on the same network** can use the **local code** that Co-op shows below the invite code.
 
@@ -242,7 +244,7 @@ The edited copies are cached by the original's size and hash, so a script read a
 | `DES_SEAMLESS_CODE=<code>` | The code to join. |
 | `DES_SEAMLESS_PORT=n` | The host's port. Default 36100. |
 | `DES_SEAMLESS_UPNP=0` | The host leaves the router alone (the port forwarded by hand). |
-| `DES_SEAMLESS_ADDRESS=ip` | The host's public IPv4 address, for the code, when the router doesn't give it. |
+| `DES_SEAMLESS_ADDRESS=ip` | The host's public IPv4 address, for the code, when the router doesn't give it. Co-op's Public address keeps it in settings.ini; a report shows only whether it is set. |
 | `DES_SEAMLESS_CODE_FILE=path` | Tests: the host writes its codes there (public, then local); a joining game with no `DES_SEAMLESS_CODE` waits for the file and takes the code from it. |
 
 The runtime's knobs that co-op sets: `PS3_NET_ONLINE=1`, `PS3_NP_ONLINE_ID`, `PS3_NET_P2P_PORT`, `PSNR_SERVER`,
