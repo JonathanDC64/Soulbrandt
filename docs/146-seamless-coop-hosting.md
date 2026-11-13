@@ -341,7 +341,10 @@ the newer generation, and saves as usual.
 - Checked by hand so far: a boss kill with a friend, each taking the boss's soul, the friend's Leave, and its rejoin.
   Scripted: a progress flag that a friend from the Nexus set in the host's 1-1 through the game's own setter (flag 201,
   new to the friend) was in the friend's save, among its flags for the Boletarian Palace, after it went home, saved and started
-  again. Not yet: a real door or shortcut opened by a friend's hand.
+  again. Also scripted: a friend pulled 1-1's tower lever (event 10, the door beside the start) with the action
+  button at the lever's own pull point. The game's event set the lever's and the door's flags (10, 11) in both
+  games, the host's world sent flag 10 on as progress, and the friend kept it for its own world. (The test host had
+  pulled that lever before, so a test knob cleared both flags and reloaded the area first.) Not yet by hand.
 - What a friend's talk changes (a conversation heard, a choice made, an item given) stays in its copy of the host's
   world: it is neither kept in the friend's own world nor sent to the host. Only the Archstones' seal is shared.
 - The Archstones' seal from a friend is checked through its four flags, set on the friend through the game's own
