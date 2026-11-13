@@ -49,6 +49,9 @@ namespace des::seamless {
 namespace {
 
 constexpr int kDefaultPort = 36100;   // the room server's, TCP and UDP (psnr's usual port)
+// The players a host takes (DES_SEAMLESS_PLAYERS): the game's rooms hold 4 (the original plays 3 in co-op, the 4th
+// place an invader's; 4 played well in tests). More is a later study of the game's player slots.
+constexpr int kPartyMin = 2, kPartyMax = 4;
 constexpr const char* kUpnpName = "Demon's Souls co-op";
 // The STUN server a host asks for its internet address when its router gives none (DES_SEAMLESS_STUN).
 constexpr const char* kStunHost = "stun.l.google.com";
@@ -659,6 +662,7 @@ bool start(const std::string& name, std::string* why) {
         cfg.has_key = 1;
         net_invite_key_blob(key, cfg.key);
         cfg.own_key_local = 1;   // this game's own connection keeps its key (PSNR_KEY) after a new code
+        cfg.max_players = party_size();   // (a room's members: one more's join is refused, and the host answers FULL)
         // Each disc signs in with its own communication ID: the European disc's (NPWR01249_00) and the Japanese and
         // Asian discs' (NPWR00245_00) play in the US disc's rooms (NPWR00881_00), as on the game server (its
         // sameGames). Without this a European friend's join of a US host's room fails as "no such room", and the
@@ -706,8 +710,11 @@ bool start(const std::string& name, std::string* why) {
     // The seamless characters: their own save folder (beside the normal one), so co-op never writes those.
     if (!env_given("PS3_SAVEDATA_ROOT")) ps3_setenv("PS3_SAVEDATA_ROOT", coop_save_root());
 
-    std::fprintf(stderr, "[coop] seamless co-op: %s, room server port %d\n", m == Mode::Host ? "hosting" : "joining",
-                 port);
+    if (m == Mode::Host)
+        std::fprintf(stderr, "[coop] seamless co-op: hosting, room server port %d, up to %d players\n", port,
+                     party_size());
+    else
+        std::fprintf(stderr, "[coop] seamless co-op: joining, room server port %d\n", port);
     sActive = static_cast<int>(m);
     std::lock_guard<std::mutex> g(sLock);
     sStatus.started = true;
@@ -720,13 +727,43 @@ bool start(const std::string& name, std::string* why) {
 
 Mode active() { return static_cast<Mode>(sActive.load(std::memory_order_relaxed)); }
 
+int party_size() {
+    const char* v = std::getenv("DES_SEAMLESS_PLAYERS");
+    const int n = v ? std::atoi(v) : 0;
+    return n >= kPartyMin && n <= kPartyMax ? n : kPartyMax;
+}
+
+void party_size_changed() {
+    psnr_host* host = nullptr;
+    {
+        std::lock_guard<std::mutex> g(sLock);
+        if (sStatus.mode != Mode::Host || !sStatus.started || !sHost) return;
+        host = sHost;
+    }
+    const int n = party_size();
+    psnr_host_set_max_players(host, n);
+    std::fprintf(stderr, "[coop] the host takes up to %d players from now on (players already here stay)\n", n);
+}
+
+bool party_full() {
+    psnr_host* host = nullptr;
+    {
+        std::lock_guard<std::mutex> g(sLock);
+        host = sHost;
+    }
+    return host && psnr_host_members(host) >= party_size();
+}
+
 Status status() {
     std::lock_guard<std::mutex> g(sLock);
     Status s = sStatus;
     if (sHost) {
-        s.players = psnr_host_players(sHost);
+        const int connected = psnr_host_players(sHost), in = psnr_host_members(sHost);
+        s.players = in > 0 ? in : 1;
+        s.waiting = connected > s.players ? connected - s.players : 0;
         s.code_spent = psnr_host_key_spent(sHost) != 0;
     }
+    s.max_players = party_size();
     if (s.mode == Mode::Join) s.link = guest_link();
     return s;
 }

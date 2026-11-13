@@ -145,6 +145,7 @@ constexpr uint32_t kNoArea = 0xFFFFFFFFu;
 // Messages between the players' games (psnr_app_send): a 4-letter tag, then little-endian fields.
 constexpr char kMsgRoom[4] = {'R', 'O', 'O', 'M'};   // the host's room data
 constexpr char kMsgAsk[4] = {'R', 'O', 'M', '?'};    // a guest asks for it
+constexpr char kMsgFull[4] = {'F', 'U', 'L', 'L'};   // u32 most: the host's answer instead while its session is full
 constexpr char kMsgLead[4] = {'L', 'E', 'A', 'D'};   // u32 trip: the host's load started
 // u32 trip, u32 area, f32 x, y, z, yaw where it arrived, f32 x, y, z, yaw where it is, then its area's dead-character
 // record (76 bytes, or none): the host has arrived (after each load), every 2 s while it hosts, and when a guest asks
@@ -252,6 +253,7 @@ void send(const char tag[4], const std::vector<uint8_t>& body = {})
 // by the guest's load step, on another thread, while the main thread draws the loading screen.
 std::mutex sMsgLock;
 std::vector<uint8_t> sRoom;          // the host's room data (a guest)
+bool sFull = false;                  // the host's last answer was FULL: no join until its room data comes (a guest)
 bool sAsked = false;                 // a guest asked for the room data (the host)
 uint32_t sLeadTrip = 0;              // the host's latest load (a guest)
 struct Place { float x = 0, y = 0, z = 0, yaw = NAN; };   // yaw: the facing (player_transform), NaN if unknown
@@ -296,6 +298,10 @@ void on_message(uint32_t from, const uint8_t* d, uint32_t n)
     std::lock_guard<std::mutex> g(sMsgLock);
     if (!std::memcmp(d, kMsgRoom, 4) && n > 4 && n - 4 <= kRoomMax) {
         sRoom.assign(d + 4, d + n);
+        sFull = false;
+    } else if (!std::memcmp(d, kMsgFull, 4)) {   // (a guest in the session ignores it: guest_tick reads it only out)
+        sRoom.clear();
+        sFull = true;
     } else if (!std::memcmp(d, kMsgAsk, 4)) {
         sAsked = true;
     } else if (!std::memcmp(d, kMsgLead, 4) && n >= 8) {
@@ -343,6 +349,7 @@ struct Game {
     bool host_gone = false;   // a guest: that connection lost since; said once
     bool home_wait = false;   // a guest: its game is taking it home (flag 4047): no join until it's there; said once
     bool room_sent = false;   // the host: this room's data made and sent
+    bool told_full = false;   // the host: its last answer to a guest's ask was FULL (logged once in a row)
     int room_frames = 0;
     bool was_world = false;   // the host: in the world last frame
     Place arrival;            // the host: where it arrived after its latest load
@@ -975,12 +982,23 @@ void host_tick(ppu_context* ctx, uint32_t sm, uint32_t gm, uint32_t st, bool wor
         asked = !data.empty();
     }
     if (asked && g.room_sent) {
-        std::vector<uint8_t> data;
-        {
-            std::lock_guard<std::mutex> l(sMsgLock);
-            data = sRoom;
+        // The session has all the players the host takes (Settings' Players when you host): FULL instead, so a guest
+        // asking waits (its join would be refused, with the game's failure boxes) and asks again.
+        if (co::party_full()) {
+            std::vector<uint8_t> b;
+            put32(b, (uint32_t)co::party_size());
+            send(kMsgFull, b);
+            if (!g.told_full) std::fprintf(stderr, "[coop] a player asked to join: the game is full\n");
+            g.told_full = true;
+        } else {
+            std::vector<uint8_t> data;
+            {
+                std::lock_guard<std::mutex> l(sMsgLock);
+                data = sRoom;
+            }
+            send(kMsgRoom, data);
+            g.told_full = false;
         }
-        send(kMsgRoom, data);
     }
     // The host's own load (a warp, a death): its guests follow, and once it has arrived they are told where.
     if (!g.in_load && vm_read32(gm + kGmNextArea) != kNoArea) {
@@ -1107,6 +1125,10 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
         return;
     }
     g.calm = 0;
+    {
+        std::lock_guard<std::mutex> l(sMsgLock);
+        sFull = false;   // (in a session: the host's FULLs, sent for others asking, aren't for this one)
+    }
     if (st != kStateClient) return;
     // the host's flags for the next reload, and its progress flags into this player's own world (they wait for the
     // join's load to keep the own world apart: keep_own_world, which also starts the session's helped_kill afresh)
@@ -1279,8 +1301,16 @@ extern "C" void des_seamless_tick(ppu_context* ctx)
     const co::Mode m = co::active();
     if (m == co::Mode::Off) return;
     if (m == co::Mode::Join) {   // the Co-op window's line: connected, and once it was, lost (the host's game closed)
-        if (np_psnr_connected()) sLink = co::Status::Link::Connected;
-        else if (sLink.load() == co::Status::Link::Connected) sLink = co::Status::Link::Lost;
+        if (np_psnr_connected()) {
+            bool full;   // (the host said its game is full: this one waits, out of the session, for a place)
+            {
+                std::lock_guard<std::mutex> l(sMsgLock);
+                full = sFull;
+            }
+            sLink = full ? co::Status::Link::Full : co::Status::Link::Connected;
+        } else if (sLink.load() == co::Status::Link::Connected || sLink.load() == co::Status::Link::Full) {
+            sLink = co::Status::Link::Lost;
+        }
     }
     static bool once = false;
     if (!once) {

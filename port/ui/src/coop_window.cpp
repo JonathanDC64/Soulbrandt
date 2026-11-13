@@ -23,8 +23,6 @@ namespace {
 
 namespace co = des::seamless;
 
-constexpr int kMaxPlayers = 4;
-
 void toast(const char* type, const std::string& text) {
     push_toast({
         .type = type,
@@ -321,6 +319,9 @@ std::string body(const co::Status& s) {
     if (s.mode == co::Mode::Join) {
         if (s.link == co::Status::Link::Connecting) return "Reaching the host's game...";
         if (s.link == co::Status::Link::Connected) return "You're connected to the host's game.";
+        if (s.link == co::Status::Link::Full)
+            return "You're connected to the host's game, but it is full: it has all the players the host takes. You "
+                   "join as soon as a place frees up.";
         return "The connection to the host's game was lost (the host closed its game, or a network dropped). Your "
                "game takes you back to your own world and keeps trying to reach the host's.<br/><br/>If the host "
                "starts hosting again, its invite code is a new one: <b>Leave co-op</b>, then join with the new code.";
@@ -336,8 +337,9 @@ std::string body(const co::Status& s) {
     b += escape(s.router.empty() ? "Asking your router to open the port..." : s.router);
     if (!s.lan_code.empty() && (s.code.empty() || s.lan_code != s.code))
         b += "<br/><br/>On your own network: <b>" + escape(s.lan_code) + "</b>";
-    b += "<br/><br/>Players: " + std::to_string(s.players > 0 ? s.players : 1) + " of " + std::to_string(kMaxPlayers) +
-         ".";
+    b += "<br/><br/>Players: " + std::to_string(s.players > 0 ? s.players : 1) + " of " +
+         std::to_string(s.max_players) + " (Settings > Network).";
+    if (s.waiting > 0) b += " Waiting to join: " + std::to_string(s.waiting) + ".";
     return b;
 }
 

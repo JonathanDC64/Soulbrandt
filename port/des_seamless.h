@@ -8,6 +8,9 @@
 //   DES_SEAMLESS_UPNP=0       the host leaves the router alone (the port forwarded by hand).
 //   DES_SEAMLESS_ADDRESS=ip   the host's public IPv4 address, for the code, when the router doesn't give it (the Co-op
 //                             window's Public address keeps it in settings.ini).
+//   DES_SEAMLESS_PLAYERS=n    the host takes at most n players, itself included: 2 to 4, 4 by default (Settings >
+//                             Network). One more stays connected and waits (the host answers FULL), and joins when
+//                             a place frees.
 //   DES_SEAMLESS_CODE_FILE    tests: the host writes its codes there (public, then local), and a joining game with no
 //                             DES_SEAMLESS_CODE waits for the file and takes the code from it.
 //
@@ -47,12 +50,22 @@ struct Status {
     bool router_ok = false;  // the port is open and the address public
     bool address_given = false;  // host: the code is from the public address the player gave, not the router's
     int port = 0;            // host: the room server's port
-    int players = 0;         // host: games connected to the room server, this one included
+    int players = 0;         // host: players in its session, itself included
+    int waiting = 0;         // host: other games connected to it but not in the session (full, or between sessions)
+    int max_players = 4;     // host: the most it takes (DES_SEAMLESS_PLAYERS)
     bool code_spent = false; // host: too many wrong codes came, so the code lets no one else in (new_code())
-    enum class Link { Connecting, Connected, Lost };
-    Link link = Link::Connecting;  // join: the connection to the host's game (Lost: it was there, and is gone)
+    enum class Link { Connecting, Connected, Lost, Full };
+    Link link = Link::Connecting;  // join: the connection to the host's game (Lost: it was there, and is gone; Full:
+                                   // the host has all the players it takes, and this one waits for a place)
 };
 Status status();
+
+// The most players a host takes, itself included (DES_SEAMLESS_PLAYERS, 2 to 4; 4 when unset or out of range).
+int party_size();
+// Settings' row changed it: a host takes it at once (players already in stay).
+void party_size_changed();
+// Host: its session has party_size() players (the room server's room), so one more must wait.
+bool party_full();
 
 // The game side (des_seamless_game.cpp) keeps a guest's link up to date, every frame.
 Status::Link guest_link();

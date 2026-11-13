@@ -50,7 +50,9 @@ whether to bring one of your normal characters. Co-op gets a copy, and your norm
 from co-op comes back to it. Or choose **Start with none** and make a new character in co-op. The question comes only
 once: after that, co-op has characters of its own.
 
-**Up to 4 players** (the host and three friends).
+**Up to 4 players** (the host and three friends). The host can take fewer: Settings > Network > **Players when you
+host** (2, 3 or 4). A change counts at once, and players already in stay. A friend who comes when the game is full
+waits: Co-op says so, and the friend's game joins as soon as a place frees up.
 
 **In the game:**
 
@@ -362,6 +364,7 @@ The edited copies are cached by the original's size and hash, so a script read a
 | `DES_SEAMLESS_PORT=n` | The host's port. Default 36100. |
 | `DES_SEAMLESS_UPNP=0` | The host leaves the router alone (the port forwarded by hand). |
 | `DES_SEAMLESS_ADDRESS=ip` | The host's public IPv4 address, for the code, when the router doesn't give it. Co-op's Public address keeps it in settings.ini; a report shows only whether it is set. |
+| `DES_SEAMLESS_PLAYERS=n` | The most players a host takes, itself included: 2 to 4 (4 when unset). Settings > Network keeps it in settings.ini. One more connects but waits: the host answers its ask for the room with FULL, and it joins once the host answers with the room again (the room server also refuses a join past the limit, `max_players`). |
 | `DES_SEAMLESS_STUN` | Unset: a host whose router gives no public address asks Google's STUN server (`stun.l.google.com:19302`) for it. `0`: never. `host:port`: that server instead. |
 | `DES_SEAMLESS_CODE_FILE=path` | Tests: the host writes its codes there (public, then local); a joining game with no `DES_SEAMLESS_CODE` waits for the file and takes the code from it. |
 

@@ -27,6 +27,7 @@
 #include "version.hpp"
 #if DES_DEV
 #include "../../des_dev_marker.h"
+#include "../../des_seamless.h"
 #endif
 
 #include <algorithm>
@@ -1017,6 +1018,14 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
             {"Original (every 6th frame)", "Smoother (at least 15 a second)"},
             "How often your position goes to other players. Smoother makes you look less laggy on their screens."
             "<br/><br/>(DES_NET_SYNC)");
+
+        leftPane.add_section("Seamless co-op");
+        choice_row(leftPane, rightPane, "Players when you host", "DES_SEAMLESS_PLAYERS", {"2", "3", "4"},
+            {"2: you and a friend", "3: you and two friends", "4: you and three friends"},
+            "The most players in a co-op game you host (Co-op, in the menu), you included. One more waits, and "
+            "joins as soon as a place frees up. A change counts at once; players already here stay.<br/><br/>"
+            "The original game plays three at most in co-op.<br/><br/>(DES_SEAMLESS_PLAYERS)",
+            [] { des::seamless::party_size_changed(); });
 
         leftPane.add_section("In your world");
         bool_row(leftPane, rightPane, "Messages", "DES_NET_MESSAGES",
