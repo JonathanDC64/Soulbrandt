@@ -388,4 +388,6 @@ the newer generation, and saves as usual.
   - The fixed offsets co-op reads behind its TOC slots are the same: the session manager's `-0x7F08`, GameMan's
     `-0x7FFC`, the flags' `-0x8000`, the world's `-0x7FFC` and the sign code's `-0x7F98` and `-0x7F90`. (The code
     that loads each slot uses the same offsets from it on all three programs.)
+  - The save fields a Leave waits on are the same too: all 18 byte loads and stores of GameMan's `+0xA97` and
+    `+0xA98` in each program, and the save task's (`+0xAA4`) code, instruction for instruction.
   - The saves are the same files under another folder name, so one test character serves every disc.
