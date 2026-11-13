@@ -360,8 +360,9 @@ the newer generation, and saves as usual.
 - Watching a boss fight after dying, scripted: host and friend were put in 1-1's boss arena, and the fight started
   for both (the boss's health bar on both screens). The friend was then killed. It stayed down and watched for the
   half minute until the host killed the boss, then came back at the area's start, and the host made its character
-  again. A death outside a boss fight comes back within seconds. Not yet: the host dying in the fight too, or any
-  of it by hand.
+  again. A death outside a boss fight comes back within seconds. With the host killed too, half a minute after the
+  friend, the host's respawn took the friend along: both at the start, the friend standing with full health. Not
+  yet by hand.
 - The Japanese and Asian discs (with their 1.04 update) play with the others ("Which discs" above). What is checked
   beside the runs:
   - Co-op's rows in `port/regions/BCJS30022.inc` and `BCAS20071.inc` come from `tools/region/region_table.py find`
