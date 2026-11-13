@@ -17,7 +17,9 @@
 //   - a guest doesn't play the warp-out pose at a boss's death;
 //   - the Archstones: the host may use them in a session (the guests then follow it, des_seamless_game.cpp); a guest
 //     still gets "You can't return during multiplayer.", at the Nexus's stones too (they had no session check);
-//   - a boss's soul: a blue phantom may take its own, as the host takes its own.
+//   - a boss's soul: a blue phantom may take its own, as the host takes its own;
+//   - the wandering ghosts' sightings are each player's own (local_wander_loops);
+//   - a light wall one player walks through is gone in every player's game (walls_for_watchers).
 // And from each area's script, the flags that move forward in every player's world (progress_flags), the soul
 // pickups each player makes for itself (own_flags) and the Nexus's cutscenes each player sees for itself
 // (scene_flags), for des_seamless_game.cpp.
@@ -35,6 +37,7 @@
 #include <mutex>
 #include <regex>
 #include <set>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -265,6 +268,65 @@ int local_wander_loops(std::string& t)
     return (int)wrap.size();
 }
 
+// A line's code without its Lua comment (from "--" on; the scripts have no "--" inside strings).
+std::string code_of(const std::string& text)
+{
+    std::string out;
+    std::istringstream lines(text);
+    for (std::string line; std::getline(lines, line);) out += line.substr(0, line.find("--")) + "\n";
+    return out;
+}
+
+// The light walls a player passes by pressing Cross (a walk through, then the wall is gone). In the other players'
+// games the handler plays that walk on the walker's character and marks the wall passed
+// (Luafunc_PlaySynchroAnimation's true branch, then return). The areas made for sessions drop the wall for them
+// through the game's wall-delete sync (LuaCallStart). The tutorial's (m08_01's 14291) drops it with a direct call in
+// the walker's game alone, as the tutorial has no co-op: the others lost the fog, the prompt and the event, and kept
+// the wall itself, so they couldn't pass. Each watcher's game now makes the same call. Returns the number of edits.
+int walls_for_watchers(std::string& t)
+{
+    struct Span { size_t a, e; };
+    std::map<std::string, Span> fns;
+    const std::regex head("\nfunction ([A-Za-z_][A-Za-z0-9_]*)\\s*\\(");
+    for (auto it = std::sregex_iterator(t.begin(), t.end(), head); it != std::sregex_iterator(); ++it) {
+        const size_t a = (size_t)it->position(0) + 1;
+        const size_t next = t.find("\nfunction ", a + 5);
+        fns.emplace((*it)[1].str(), Span{a, next == std::string::npos ? t.size() : next + 1});
+    }
+    const auto code = [&](const std::string& f) { return code_of(t.substr(fns.at(f).a, fns.at(f).e - fns.at(f).a)); };
+    const std::regex sync("Luafunc_PlaySynchroAnimation\\(\\s*proxy\\s*,\\s*param\\s*,\\s*ANIMEID_WALK\\s*\\)\\s*==\\s*true\\s+then");
+    const std::regex call("(?:^|[^:.\\w])([A-Za-z_][A-Za-z0-9_]*)\\s*\\(\\s*proxy\\s*,\\s*param\\s*\\)");
+    const std::regex drop("SetColiEnable\\(\\s*\\d+\\s*,\\s*false\\s*\\)");
+    std::vector<std::pair<size_t, std::string>> adds;   // {after "then", the call}
+    for (const auto& [f, s] : fns) {
+        const std::string c = code(f);
+        std::smatch m;
+        if (!std::regex_search(c, m, sync) || c.find("LuaCallStart") != std::string::npos) continue;
+        std::string wall;   // the function the walker's game drops the wall with
+        for (auto it = std::sregex_iterator(c.begin(), c.end(), call); it != std::sregex_iterator(); ++it) {
+            const std::string g = (*it)[1].str();
+            if (g != f && g != "Luafunc_PlaySynchroAnimation" && fns.count(g) && std::regex_search(code(g), drop))
+                wall = g;
+        }
+        if (wall.empty() || c.find(wall + "(", (size_t)(m.position(0) + m.length(0))) == std::string::npos) continue;
+        // where the same text sits in t (comments kept there): the first sync check in f's span outside a comment
+        const std::string seg = t.substr(s.a, s.e - s.a);
+        for (auto it = std::sregex_iterator(seg.begin(), seg.end(), sync); it != std::sregex_iterator(); ++it) {
+            const size_t at = (size_t)it->position(0);
+            const size_t bol = seg.rfind('\n', at);
+            if (seg.substr(bol == std::string::npos ? 0 : bol + 1, at - (bol == std::string::npos ? 0 : bol + 1))
+                    .find("--") != std::string::npos)
+                continue;
+            adds.push_back({s.a + at + (size_t)it->length(0),
+                            " proxy:NotNetMessage_begin(); " + wall + "(proxy , param); proxy:NotNetMessage_end();"});
+            break;
+        }
+    }
+    std::sort(adds.begin(), adds.end());
+    for (auto a = adds.rbegin(); a != adds.rend(); ++a) t.insert(a->first, a->second);
+    return (int)adds.size();
+}
+
 // An area's script: the party walls, the warp-out pose and the Archstones. Returns the number of edits.
 int edit_area(std::string& t, bool nexus)
 {
@@ -311,6 +373,8 @@ int edit_area(std::string& t, bool nexus)
     sub(std::regex("proxy:ClearBossGauge\\s*\\("), "SeamlessBossFight = false; proxy:ClearBossGauge(");
     // The wandering ghosts' sightings: each player's own (local_wander_loops)
     n += local_wander_loops(t);
+    // The light walls: one a player walks through is gone in every player's game (walls_for_watchers)
+    n += walls_for_watchers(t);
     // The Archstones: the OnEvent_<id>[_k] handlers that show "Return to the Nexus?" (10010710) or "You can't
     // return during multiplayer." (10010720).
     std::set<std::string> ids;

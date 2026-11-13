@@ -66,6 +66,8 @@ once: after that, co-op has characters of its own.
 - **Items are each player's own.** A friend sees the items lying in the area and gets drops from dead enemies, as the
   host does. Each player has its own copy: one player's pickup leaves the others' where it was. An item a friend
   takes is also gone in its own world.
+- **Light walls** (the fog you press Cross at and walk through, outside boss rooms) are gone for everyone once
+  one player walks through.
 - **Boss kills keep everyone together:** no rating screen, nobody sent home, and the boss room's walls drop.
 - **A friend who dies** comes back where the host last arrived (the start of the area) and stays in the session.
   Once it is back, the others see it again, with its rolls, attacks and other moves.
@@ -282,6 +284,14 @@ their first instruction):
   timers they register and the functions they call, and the functions whose timers start them, and makes their
   `RepeatMessage` blocks, their `OnWanderFade` and the region events that start them local. Each player sees the
   ghost when it walks into the region itself.
+- The light walls a player walks through (press Cross, a walk, then the wall is gone) are gone in every player's game.
+  In the other games the wall's handler plays the walk on the walker's character and marks the wall passed
+  (`Luafunc_PlaySynchroAnimation`'s true branch, then a return). The areas made for sessions drop the wall for them
+  through the game's wall-delete sync (`LuaCallStart`). The tutorial's (`m08_01`'s 14291) drops it with a direct call
+  in the walker's game alone, as the tutorial has no co-op: the others lost the fog, the prompt and the event, but
+  kept the wall itself, so they couldn't pass. The edit makes the same call in the true branch, between
+  `NotNetMessage_begin` and `_end`, wherever a handler drops its wall by a direct call to a function with
+  `SetColiEnable(..., false)` and has no `LuaCallStart`; only 14291 matches.
 
 The edited copies are cached by the original's size and hash, so a script read again costs nothing.
 
