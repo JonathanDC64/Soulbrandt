@@ -281,6 +281,17 @@ resolves) and `PS3_SAVEDATA_ROOT` (the co-op save). A value set in the environme
 3. at home, the game saves by itself. The Co-op window waits for a file written in the co-op save after the arrival
    (2 minutes at most, or **Leave now**), then starts the game again.
 
+A Leave outside a session:
+- **During a load,** for example while the game is taking the friend home itself after the host's game closed, it
+  waits for the player in the world. A load counts from the moment the game manager's next area (`+0x08`) is set,
+  until the player stands in the world again. Quit Game to the title sets no next area.
+- **Back from a session with no save since,** it waits for that save, as its own trip home does.
+- **Otherwise** (the title screen, say) it is done at once.
+
+The room server passes the host's progress flags to every game connected to it, in its session or not. A friend
+takes only the ones that come while it is in the session, once the join has kept its own world apart. Flags from a
+host's boss kill while the friend was away don't count in the friend's world.
+
 **Going home** (a friend's leave, or the host gone):
 - **To where the friend stood.** The game's trip home reloads the area in play: a phantom of the game's own is always
   summoned into its own area. A friend here may have joined from anywhere, so at the end of `WarpNextStageKick` (out of
