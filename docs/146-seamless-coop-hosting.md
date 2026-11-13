@@ -330,12 +330,14 @@ the newer generation, and saves as usual.
 - The final area's Demon's Soul is offered only outside a session (`ATTR_NOSESSION`; the game has no co-op there).
 - Watching a boss fight after dying is checked only as far as the scripts loading and an ordinary death still
   respawning. A boss fight with a friend dying in it is a hand test.
-- The Japanese and Asian discs: allowed once a test with the others works. Co-op refuses them until then. Found so
-  far, from the programs' Lua native tables (name, then a pointer to the function's descriptor):
-  - `WarpNextStageKick` is Japanese 0x0045B630 and Asian 0x0045BCD8. The hook at its end (US 0x0044C780) is
-    0x0045B6C0 and 0x0045BD68 (the same instructions).
-  - The fixed offsets differ inside the same code: that function reads `-0x7F00(r30)` there, where the US one reads
-    `-0x7F0C(r30)`. So every fixed offset in `des_seamless_game.cpp` (the session and game managers' `-0x7F08`,
-    `-0x7FFC` and `-0x8000`, and the fields of each) needs checking on that build. So do the registers each hook
-    handler reads.
-  - A test pair needs a save on that disc with a character outside the Nexus.
+- The Japanese and Asian discs (with their 1.04 update): allowed once a test with the others works. Co-op refuses
+  them until then. What is checked:
+  - Co-op's rows in `port/regions/BCJS30022.inc` and `BCAS20071.inc` come from `tools/region/region_table.py find`
+    on the 1.04 programs (91-100% of the instructions). The earlier rows were of the discs' first programs, which
+    the port doesn't run (`WarpNextStageKick`, for one, is 0x0044A9E0 on the Japanese 1.04 program, not 0x0045B630).
+  - Each function co-op calls and each hook site matches the US one instruction for instruction, with the same
+    field offsets and the same registers. The one difference near them is a read the hooks don't use.
+  - The fixed offsets co-op reads behind its TOC slots are the same: the session manager's `-0x7F08`, GameMan's
+    `-0x7FFC`, the flags' `-0x8000`, the world's `-0x7FFC` and the sign code's `-0x7F98` and `-0x7F90`. (The code
+    that loads each slot uses the same offsets from it on all three programs.)
+  - The saves are the same files under another folder name, so one test character serves every disc.
