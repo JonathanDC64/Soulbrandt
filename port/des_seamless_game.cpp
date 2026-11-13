@@ -194,7 +194,7 @@ uint32_t call_at(ppu_context* ctx, void (*fn)(ppu_context*), uint32_t toc, uint3
 }
 
 // A game function by its address (the running disc's, DES_AT), through the runtime's indirect call. (Not
-// DES_GAME_CALLS: those must exist on every disc, and co-op refuses the Japanese and Asian ones.)
+// DES_GAME_CALLS: those must exist on every disc.)
 uint32_t call_addr(ppu_context* ctx, uint32_t code, std::initializer_list<int64_t> a)
 {
     return call_at(ctx, ps3_indirect_call, DES_AT(kToc), code, a);

@@ -146,7 +146,7 @@ const char* coop_save_root() { return kCoopRoot; }
 std::vector<Character> characters_to_bring() {
     std::vector<Character> out;
     // A given save root is co-op's too (start() leaves it), so there is nothing to bring; nor once co-op has its own.
-    if (given_root() || des_region_asian() || has_save(kCoopRoot)) return out;
+    if (given_root() || has_save(kCoopRoot)) return out;
     const fs::path dir = save_folder(kNormalRoot);
     std::vector<uint8_t> list;
     if (!read_list(dir, &list)) return out;

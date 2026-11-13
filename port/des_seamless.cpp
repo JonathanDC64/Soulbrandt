@@ -2,8 +2,6 @@
 // server answered inside the process (des_seamless.h).
 #include "des_seamless.h"
 
-#include "des_region.h"
-
 #include "ps3emu/net_invite.h"
 #include "ps3emu/net_stun.h"
 #include "ps3emu/net_upnp.h"
@@ -587,9 +585,8 @@ bool start(const std::string& name, std::string* why) {
         return false;
     };
     if (m == Mode::Off) return fail("not asked for");
-    // The US and European discs are the same program with the same game data (docs/146). The Japanese and Asian
-    // 1.04 program is another build, not yet tried with them.
-    if (des_region_asian()) return fail("the Japanese and Asian discs can't play co-op yet");
+    // Every disc plays with every other: the US and European discs are one program, and the Japanese and Asian 1.04
+    // program is the same code at other addresses (port/regions/), with the same game data (docs/146).
 
     std::string server;
     char key_hex[65] = {};
@@ -602,11 +599,14 @@ bool start(const std::string& name, std::string* why) {
         cfg.port = (uint16_t)port;
         cfg.has_key = 1;
         net_invite_key_blob(key, cfg.key);
-        // Each disc signs in with its own communication ID: the European disc's (NPWR01249_00) plays in the US
-        // disc's rooms (NPWR00881_00), as on the game server (its sameGames). Without this a European friend's join
-        // of a US host's room fails as "no such room", and the other way round.
+        // Each disc signs in with its own communication ID: the European disc's (NPWR01249_00) and the Japanese and
+        // Asian discs' (NPWR00245_00) play in the US disc's rooms (NPWR00881_00), as on the game server (its
+        // sameGames). Without this a European friend's join of a US host's room fails as "no such room", and the
+        // other way round.
         std::snprintf(cfg.same_game[0].other, sizeof cfg.same_game[0].other, "%s", "NPWR01249_00");
         std::snprintf(cfg.same_game[0].game, sizeof cfg.same_game[0].game, "%s", "NPWR00881_00");
+        std::snprintf(cfg.same_game[1].other, sizeof cfg.same_game[1].other, "%s", "NPWR00245_00");
+        std::snprintf(cfg.same_game[1].game, sizeof cfg.same_game[1].game, "%s", "NPWR00881_00");
         char err[160] = {};
         sHost = psnr_host_start(&cfg, err, sizeof err);
         if (!sHost) return fail(std::string("the room server did not start: ") + err);

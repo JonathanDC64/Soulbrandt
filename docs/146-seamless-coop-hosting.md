@@ -131,12 +131,16 @@ The host's router has to let friends in on one port (36100, TCP and UDP).
   follow the open-source dessego server's.
 - **Nothing else is reached,** apart from the STUN request above, from a host whose router gives no address. No name
   the game looks up (`c.demons-souls.com` and the rest) resolves, and no sign-in happens. A gameplay mod keeps co-op off, as it keeps online off (docs/143).
-- **Which discs:** the US and European discs play together (the same program and game data). Each signs in with
-  its own communication ID (US NPWR00881_00, European NPWR01249_00), so the host's room server keeps the European
-  disc's players in the US disc's rooms (`psnr_host_config.same_game`, as the game server's `sameGames`). Without
-  that, a European friend's join of a US host failed with "no such room". Tested: a US host and a European friend
-  on this PC (the European copy from setup's own lift of this branch). The Japanese and Asian discs can't host or
-  join yet: their 1.04 program is another build, not yet tried with the others.
+- **Which discs:** every disc plays with every other. The US and European discs are one program; the Japanese and
+  Asian discs' 1.04 program is the same code at other addresses (`port/regions/`), and all four have the same game
+  data. Each signs in with its own communication ID (US NPWR00881_00, European NPWR01249_00, Japanese and Asian
+  NPWR00245_00), so the host's room server keeps the others' players in the US disc's rooms
+  (`psnr_host_config.same_game`, as the game server's `sameGames`). Without that, a European friend's join of a US
+  host failed with "no such room". Tested on this PC, each copy from setup's own lift of this branch:
+  - a US host with a European friend;
+  - a US host with a Japanese friend, and a Japanese host with a US friend: the join, a follow through the host's
+    warp to the Nexus, and the Japanese friend's death and respawn;
+  - a US host with an Asian friend: the join.
 
 ### The invite code
 
@@ -330,8 +334,8 @@ the newer generation, and saves as usual.
 - The final area's Demon's Soul is offered only outside a session (`ATTR_NOSESSION`; the game has no co-op there).
 - Watching a boss fight after dying is checked only as far as the scripts loading and an ordinary death still
   respawning. A boss fight with a friend dying in it is a hand test.
-- The Japanese and Asian discs (with their 1.04 update): allowed once a test with the others works. Co-op refuses
-  them until then. What is checked:
+- The Japanese and Asian discs (with their 1.04 update) play with the others ("Which discs" above). What is checked
+  beside the runs:
   - Co-op's rows in `port/regions/BCJS30022.inc` and `BCAS20071.inc` come from `tools/region/region_table.py find`
     on the 1.04 programs (91-100% of the instructions). The earlier rows were of the discs' first programs, which
     the port doesn't run (`WarpNextStageKick`, for one, is 0x0044A9E0 on the Japanese 1.04 program, not 0x0045B630).
