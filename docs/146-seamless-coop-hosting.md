@@ -36,8 +36,9 @@ characters.
 **If the host's game closes,** a friend sees the game's own "The session has ended." about 13 s later and goes back
 to their own world. **Co-op** then says the connection was lost. The friend's game keeps trying to reach the host's:
 after a network drop, with the host still hosting, it connects again, goes home as the game ends the session, and
-joins again by itself from there. If the host starts hosting again, its invite code is a new one: **Leave
-co-op**, then join with the new code.
+joins again by itself from there. If the host starts hosting again, its invite code is a new one. The friend's
+game then says "The host's game did not accept this invite code. Ask the host for it again." and stops trying:
+**Leave co-op**, then join with the new code.
 
 **Co-op characters** are kept in their own save folder (`savedata-coop`, beside the normal one). Co-op never writes
 your normal characters.
