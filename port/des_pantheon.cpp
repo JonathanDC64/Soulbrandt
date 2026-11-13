@@ -7,12 +7,16 @@
  *
  * - Going up, the character's name and the one code address in the record are blanked. The game writes the player's
  *   online name over the name when it reads a record, and the address differs per disc.
- * - Coming down, and going up too, every field must pass the table below. The server has the same limits, and a
- *   record that fails here counts as a row with no record, so the worst a bad one can do is leave a statue empty.
+ * - Coming down, every field must pass the table below. The server has the same limits, and a record that fails
+ *   here counts as a row with no record, so the worst a bad one can do is leave a statue empty.
+ * - Going up, a record that fails the table is logged and sent all the same: the server refuses it and logs the
+ *   field, which is where a limit that real characters break is found.
  * - Equipment ids must also be rows of the game's own param tables: the statue and the dialog load by them.
  *
  * Limits on what a value means come from the game's code and from real records. Change one here and in the server's
- * table together.
+ * table together. v0.1.2's limits came from two records of one new character, and they refused 18 of 20 real ones
+ * (+0xAC, +0xAE..+0xCF, +0xD8, the colours, the lists' kinds, list B's last words and count): those rows now take
+ * what the game writes for the characters of a few saves (new ones, and one past Latria).
  *
  * The param tables are read from guest memory: the hook has no guest context to call the game's getters with. */
 
@@ -67,10 +71,11 @@ const Field kFields[] = {
     {"character name", kNameAt, kNameSize, kZero, 0, 0},
     {"body type", 0x0AA, 1, kU8, 0, 1},
     {"byte 0xAB", 0x0AB, 1, kZero, 0, 0},
-    {"value 0xAC", 0x0AC, 1, kU16, 100, 100},
-    {"padding 0xAE", 0x0AE, 0x22, kZero, 0, 0},
+    {"value 0xAC", 0x0AC, 1, kU16, 0, 100},           /* 100 on a new character, 0 later */
+    {"value 0xAE", 0x0AE, 1, kU16, 0, 9999},          /* 0 to 9 seen */
+    {"counters 0xB0", 0x0B0, 8, kI32, 0, 999999999},  /* counts: up to 119 seen */
     {"flags", 0x0D0, 1, kU32, 0xC0, 0xC0},
-    {"words 0xD4", 0x0D4, 3, kU32, 0xFFFF0000, 0xFFFF0000},
+    {"words 0xD4", 0x0D4, 3, kI32, -65536, 2147483647},   /* 0xFFFF0000 when unset; +0xD8 also 0x139Cxxxx */
     {"values 0xE0", 0x0E0, 3, kU16, 0, 1000},
     {"value 0xE6", 0x0E6, 2, kZero, 0, 0},
     {"padding 0xE8", 0x0E8, 0x38, kZero, 0, 0},
@@ -84,7 +89,7 @@ const Field kFields[] = {
     {"equip setting 0x16C", 0x16C, 1, kI32, 0, 3},
     {"equip settings 0x170", 0x170, 2, kI32, 0, 1},
     {"equipment ids", kEquipAt, 18, kI32, -1, 999999},
-    {"colours", 0x1C0, 4, kF32, 0, 1},
+    {"colours", 0x1C0, 4, kF32, 0, 4},                /* up to 1.875 seen; a NaN or an infinity fails */
     {"face shape", 0x1D0, 0x64, kAny, 0, 0},
     {"padding 0x234", 0x234, 0xC, kZero, 0, 0},
     {"pairs 0x240", 0x240, 38, kI32, -1, 999999},
@@ -140,8 +145,12 @@ bool field_ok(const Field& f, const uint8_t* r, char* why, size_t cap)
     return true;
 }
 
-/* Used entries {1, id, count, 0} first, then blank ones {0, -1, -1, 0}, and the count says how many are used. */
-bool list_ok(const char* name, const uint8_t* r, uint32_t at, uint32_t n, uint32_t count_at, char* why, size_t cap)
+/* Entries {kind 1-3, id, count, a last word} and blank ones {0, -1, -1, 0}. The game leaves whatever was on its stack
+ * in list B's last words, and list B's count can be lower than its entries (2 entries, a count of 1), so the last
+ * word isn't checked, and list B's order and count aren't either. List A: used entries first, then blank ones, and
+ * the count says how many are used. */
+bool list_ok(const char* name, const uint8_t* r, uint32_t at, uint32_t n, uint32_t count_at, bool counted, char* why,
+             size_t cap)
 {
     uint32_t used = 0;
     bool blanks = false;
@@ -152,13 +161,13 @@ bool list_ok(const char* name, const uint8_t* r, uint32_t at, uint32_t n, uint32
             blanks = true;
             continue;
         }
-        if (blanks || kind != 1 || id < 1 || id > 999999 || qty < 1 || qty > 9999 || last != 0) {
+        if ((counted && blanks) || kind < 1 || kind > 3 || id < 1 || id > 999999 || qty < 1 || qty > 9999) {
             snprintf(why, cap, "%s: entry %u is not a valid one", name, i);
             return false;
         }
         used++;
     }
-    if (be32(r + count_at) != used) {
+    if (counted && be32(r + count_at) != used) {
         snprintf(why, cap, "%s: the count is %u, and %u entries are used", name, be32(r + count_at), used);
         return false;
     }
@@ -248,7 +257,7 @@ bool record_ok(uint32_t board, const uint8_t* r, uint32_t size, char* why, size_
     }
     for (const Field& f : kFields)
         if (!field_ok(f, r, why, cap)) return false;
-    return list_ok("list A", r, 0x310, 128, 0x30C, why, cap) && list_ok("list B", r, 0xB10, 64, 0xF10, why, cap) &&
+    return list_ok("list A", r, 0x310, 128, 0x30C, true, why, cap) && list_ok("list B", r, 0xB10, 64, 0xF10, false, why, cap) &&
            time_ok(r, why, cap) && equipment_ok(r, why, cap);
 }
 
@@ -260,10 +269,17 @@ int record_hook(int upload, uint32_t board, uint8_t* r, uint32_t size)
     }
     char why[96];
     if (!record_ok(board, r, size, why, sizeof why)) {
-        static std::atomic<int> s_refused{0};
-        const int n = s_refused.fetch_add(1, std::memory_order_relaxed);
-        if (n < 8) fprintf(stderr, "[des] Pantheon: %s record refused: %s\n", upload ? "our" : "a received", why);
-        return 0;
+        static std::atomic<int> s_failed{0};
+        const int n = s_failed.fetch_add(1, std::memory_order_relaxed);
+        /* Our own record goes up even so: the server checks it with the same limits and logs the field it turns
+         * down, so a limit too tight for real characters shows in the server's log, not only in this player's.
+         * The server's refusal costs the game nothing: ps3recomp's sceNpScore finishes the upload with CELL_OK and
+         * the game goes on to its next board. A record from another player that fails is still refused. */
+        if (n < 8)
+            fprintf(stderr, upload ? "[des] Pantheon: our record fails a check, sent for the server to judge: %s\n"
+                                   : "[des] Pantheon: a received record refused: %s\n",
+                    why);
+        if (!upload) return 0;
     }
     if (!upload) {
         const uint32_t vt = DES_AT(kEquipVt);
