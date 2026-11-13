@@ -82,7 +82,8 @@ once: after that, co-op has characters of its own.
 - **The Nexus's cutscenes** (the one after a boss, the Monumental's story) play for each player who hasn't seen them
   in their own world yet, even when the host has.
 - **The Monumental's question:** whoever talks to the Monumental answers it. Once the other Archstones open, they open
-  in every player's world.
+  in every player's world. His story plays only for the one who hears it: when a friend hears it first, the host then
+  gets his later lines and his question, not the story.
 
 ### If your friends can't connect
 
@@ -364,8 +365,10 @@ the newer generation, and saves as usual.
   the change, is as before.
 - What a friend's talk changes (a conversation heard, a choice made, an item given) stays in its copy of the host's
   world: it is neither kept in the friend's own world nor sent to the host. Only the Archstones' seal is shared.
-- The Archstones' seal from a friend is checked through its four flags, set on the friend through the game's own
-  setter, not yet by a friend hearing the Monumental's tale.
+- The Archstones' seal from a friend: checked through its four flags (scripted), and by hand. Host and friend
+  killed Phalanx together, went back to the Nexus, and the friend talked to the Monumental first: his story played
+  on the friend's game only, and the host could use the other Archstones afterwards. The host's own talk with him
+  then gave his later lines and his question (the friend's answer stays in the friend's copy of the host's world).
 - A friend's talk is checked as far as the Crestfallen's prompt and first line. Scripted, with the Maiden in Black:
   - with a host who hadn't met the Monumental yet, her prompt and early lines ("The Monumental awaits thee, above.");
   - with a host past the first demon, her level up. The friend answered YES to "Seek Soul Power?", then chose Seek
