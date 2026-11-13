@@ -384,7 +384,13 @@ the newer generation, and saves as usual.
 - A friend in body form whose joins keep failing with the host's game still there stays in soul form while it tries.
   If it closes the game window then and its game saved meanwhile, it starts again in soul form. Leave gives its body
   form back.
-- The final area's Demon's Soul is offered only outside a session (`ATTR_NOSESSION`; the game has no co-op there).
+- The tutorial's demon (the Vanguard, `m08_01`) offered its soul only outside a session (`ATTR_NOSESSION`; the
+  game has no co-op there), so with a friend nobody got it. Its prompt is now offered with or without a session, to
+  each player, like the other bosses'. Checked on the script (both of its registrations change, and only those); not
+  yet in the game. (An earlier note here called it the final area's soul: `m08` is the tutorial.)
+- The final area under the Nexus (King Allant, `m01_00`) was made for sessions: its soul prompts are the host's, as
+  in the levels, so the soul edit above gives a friend its own. The solo clear bonus is skipped in a party, and only
+  the host's game sets the clear state and plays the ending. Not tested.
 - Watching a boss fight after dying, scripted: host and friend were put in 1-1's boss arena, and the fight started
   for both (the boss's health bar on both screens). The friend was then killed. It stayed down and watched for the
   half minute until the host killed the boss, then came back at the area's start, and the host made its character

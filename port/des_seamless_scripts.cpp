@@ -247,6 +247,11 @@ int edit_area(std::string& t, bool nexus)
     sub(std::regex("proxy:(OnDistanceActionAttribute\\(\\s*\\d+\\s*,[^\\n]*?,\\s*10010180\\s*,\\s*0\\s*,\\s*180\\s*,\\s*)"
                    "(ATTR_HOST \\+ ATTR_LIVE \\+ ATTR_GREY|possible_chr_type)(\\s*,\\s*once\\s*\\)\\s*;)"),
         "proxy:NotNetMessage_begin(); proxy:$1$2 + ATTR_WHITE$3 proxy:NotNetMessage_end();");
+    // The tutorial's demon (m08_01's 14301) offers its soul only with no session, as the original has no co-op there,
+    // so nobody in a seamless session got it: offered with or without one, to each player, in the same way.
+    sub(std::regex("proxy:(OnDistanceActionAttribute\\(\\s*\\d+\\s*,[^\\n]*?,\\s*10010180\\s*,\\s*0\\s*,\\s*180\\s*,\\s*)"
+                   "ATTR_NOSESSION(\\s*,\\s*once\\s*\\)\\s*;)"),
+        "proxy:NotNetMessage_begin(); proxy:$1ATTR_SESSION + ATTR_NOSESSION$2 proxy:NotNetMessage_end();");
     for (const std::string& id : ids) {
         // in this stone's handlers, the session check passes for the host
         const std::regex fn("\nfunction OnEvent_" + id + "(?:_\\d+)?\\s*\\(");
