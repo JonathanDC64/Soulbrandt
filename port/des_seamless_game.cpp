@@ -367,6 +367,20 @@ uint32_t death_count(ppu_context* ctx)
     return call_addr(ctx, DES_AT(0x0090BF60u), {});
 }
 
+// A friend that took soul form for a join that never came to a load (its Leave, or the host's game gone): its body
+// form back where it stands. ChangeGreyGhost changes the form only, and the load after it makes the soul form's own
+// changes, so it is given back as global_event.lua's OnDemonsSoulRevive gives it (EraseEventSpecialEffect(10000,
+// 101), RevivePlayer), with no animation. Its game may have saved it in soul form while it waited, so it saves
+// (SaveRequest_Profile). False if none is owed (no soul form taken, or a death since: guest_tick).
+bool body_form_back(ppu_context* ctx)
+{
+    if (!sJoinedInBody.exchange(false) || (int32_t)call_addr(ctx, DES_AT(0x0043E660u), {0}) == 0) return false;
+    call_addr(ctx, DES_AT(0x00446C68u), {0, 10000, 101});   // EraseEventSpecialEffect(10000, 101)
+    call_addr(ctx, DES_AT(0x0043EE10u), {0});               // RevivePlayer
+    call_addr(ctx, DES_AT(0x004418B8u), {0});               // SaveRequest_Profile
+    return true;
+}
+
 bool own_kept()
 {
     std::lock_guard<std::mutex> l(sOwn.lock);
@@ -579,15 +593,9 @@ void leave_tick(ppu_context* ctx, uint32_t st, bool world)
             sLeave = kLeaveOut;
             std::fprintf(stderr, "[coop] leave: going home\n");
         } else if (st == 0 && !own_kept()) {   // not in a session: nothing to take home
-            // It took soul form for a join that never came to a load (ChangeGreyGhost changes the form only; the
-            // load after it makes the soul form's own changes): its body form back in place, as global_event.lua's
-            // OnDemonsSoulRevive gives it (EraseEventSpecialEffect(10000, 101), RevivePlayer), with no animation.
-            // Its game may have saved it in soul form while it waited, so it saves (SaveRequest_Profile) and the
-            // leave waits for that save.
-            if (sJoinedInBody.exchange(false) && (int32_t)call_addr(ctx, DES_AT(0x0043E660u), {0}) != 0) {
-                call_addr(ctx, DES_AT(0x00446C68u), {0, 10000, 101});   // EraseEventSpecialEffect(10000, 101)
-                call_addr(ctx, DES_AT(0x0043EE10u), {0});               // RevivePlayer
-                call_addr(ctx, DES_AT(0x004418B8u), {0});               // SaveRequest_Profile
+            // Its body form back if it took soul form for a join that never came (body_form_back); the leave
+            // waits for the save that asks for.
+            if (body_form_back(ctx)) {
                 s.home_at = std::filesystem::file_time_type::clock::now();
                 sLeave = kLeaveHome;
                 std::fprintf(stderr, "[coop] leave: not in a session; body form again (the join never came), "
@@ -952,6 +960,10 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
                 sRoom.clear();
                 sReady = Ready();
                 std::fprintf(stderr, "[coop] the host's game is gone: no join until it is back\n");
+                // soul form taken for a join that didn't come: the body form back until the host is (the next
+                // join takes soul form again)
+                if (!own_kept() && body_form_back(ctx))
+                    std::fprintf(stderr, "[coop] body form again until the host's game is back\n");
             }
             g.calm = 0;
             return;
@@ -985,8 +997,8 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
         if (g.calm == 150 || (g.calm > 150 && (g.calm - 150) % 1200 == 0)) {
             // The game summons only players in soul form: one in body form fails its join (OnFailedJoinSession). It
             // takes soul form for the join, as the game's own ChangeGreyGhost does, and gets its body form back at
-            // home (going_home_form), or where it stands if it leaves before a join came (leave_tick), unless it dies
-            // first. The join is 10 frames on.
+            // home (going_home_form), or where it stands if it leaves or the host's game goes before a join came
+            // (body_form_back), unless it dies first. The join is 10 frames on.
             if ((int32_t)call_addr(ctx, DES_AT(0x0043E660u), {0}) == 0) {   // GetLocalPlayerChrType: 0 body form
                 call_addr(ctx, DES_AT(0x00445E48u), {0});                   // ChangeGreyGhost
                 sJoinedDeaths = death_count(ctx);
