@@ -556,7 +556,8 @@ void after_world_swap(uint32_t fb, bool in_session)
 // then OnLeave_Limit): it leaves the session (LeaveSession's native) and asks for its own flags back at the next load
 // (0x00508820: SetFlagInitState(2)); once out of the session it goes back to where it stood before the join
 // (SetSummonedPos, SetDefaultMapUid(-1)), in soul form (SetChrTypeDataGreyNext), with a load (WarpNextStageKick).
-// Its game saves once home: the leave is done when the save folder has a file written since the arrival.
+// Its game saves once home: the leave is done when the save folder has a file written since the arrival and the
+// game's save is over (save_idle).
 enum { kLeaveNone, kLeaveAsked, kLeaveOut, kLeaveGoing, kLeaveHome, kLeaveDone };
 std::atomic<int> sLeave{kLeaveNone};
 struct LeaveState {   // the game thread's only

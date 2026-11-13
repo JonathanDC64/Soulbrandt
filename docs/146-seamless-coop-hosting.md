@@ -279,7 +279,9 @@ resolves) and `PS3_SAVEDATA_ROOT` (the co-op save). A value set in the environme
 2. once out of the session: back to where the player stood before the join (`SetSummonedPos`,
    `SetDefaultMapUid(-1)`), in soul form (`SetChrTypeDataGreyNext`), with a load (`WarpNextStageKick`);
 3. at home, the game saves by itself. The Co-op window waits for a file written in the co-op save after the arrival
-   (2 minutes at most, or **Leave now**), then starts the game again.
+   and for the game's save to finish: no save asked for (GameMan `+0xA97`, `+0xA98`) and its save task idle
+   (`+0xAA4` back at 0). A save writes PARAM.SFO first and the data after, so a new file alone is too early. Then
+   (or after 2 minutes, or on **Leave now**) it starts the game again. Back or Esc doesn't close that window.
 
 A Leave outside a session:
 - **During a load,** for example while the game is taking the friend home itself after the host's game closed, it
