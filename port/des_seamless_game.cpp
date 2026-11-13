@@ -96,6 +96,9 @@ constexpr uint32_t kSmArea = 0x2A8;      // the area this game is in, FFFFFFFF w
 constexpr uint32_t kStateHost = 3, kStateClient = 6;
 // GameMan.
 constexpr uint32_t kGmNextArea = 0x08;                       // FFFFFFFF unless a load was asked for
+constexpr uint32_t kGmSaveAsked = 0xA97;   // u8: a save asked for (SaveRequest_Profile's 0x0020FBA8; SaveRequest too)
+constexpr uint32_t kGmSaveAsked2 = 0xA98;  // u8: SaveRequest's second request
+constexpr uint32_t kGmSaveTask = 0xAA4;    // u32: the save task, 0 idle (1 and 3 while it saves: 0x00211A50, 0x0020F738)
 constexpr uint32_t kGmNextPoint = 0x0C;                      // the next load's warp point (-1: a place)
 constexpr uint32_t kGmSummonedPlace = 0x1C;                  // a byte: the next load puts the player at +0x20
 constexpr uint32_t kGmPlace[4] = {0x20, 0xA40, 0xAE0, 0xB20}; // where a summoned reload puts the player (x, y, z)
@@ -576,6 +579,14 @@ bool saved_since(std::filesystem::file_time_type t)
     return false;
 }
 
+// The game's saving is over: no save asked for and its save task idle. A file written since a moment is only the start
+// of a save (PARAM.SFO goes first, the data after), and the restart after a leave ends the process at once.
+bool save_idle()
+{
+    const uint32_t gm = game_manager();
+    return guest_ok(gm) && !vm_read8(gm + kGmSaveAsked) && !vm_read8(gm + kGmSaveAsked2) && !vm_read32(gm + kGmSaveTask);
+}
+
 // The latest trip home after a session in this run (the game's own, or a leave's), at *at, if its game hasn't saved
 // since it arrived (it saves once home).
 bool home_unsaved(std::filesystem::file_time_type* at)
@@ -585,7 +596,7 @@ bool home_unsaved(std::filesystem::file_time_type* at)
         if (!sOwn.came_home) return false;
         *at = sOwn.home_at;
     }
-    return !saved_since(*at);
+    return !(saved_since(*at) && save_idle());
 }
 
 void leave_tick(ppu_context* ctx, uint32_t st, bool world)
@@ -651,7 +662,7 @@ void leave_tick(ppu_context* ctx, uint32_t st, bool world)
             std::fprintf(stderr, "[coop] leave: home; waiting for the game's save\n");
         }
     } else if (lv == kLeaveHome) {
-        if (saved_since(s.home_at)) {
+        if (saved_since(s.home_at) && save_idle()) {   // a save since the arrival, and finished
             sLeave = kLeaveDone;
             std::fprintf(stderr, "[coop] leave: saved at home; done\n");
         }
