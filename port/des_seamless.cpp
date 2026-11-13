@@ -294,7 +294,10 @@ void game_server_loop(sock_t listener) {
     int unknown = 0;
     for (;;) {
         sock_t c = accept(listener, nullptr, nullptr);
-        if (c == kNoSock) continue;
+        if (c == kNoSock) {   // (no sockets or buffers left, say): a pause, not a core spinning
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            continue;
+        }
         set_timeouts(c, 5000);
         std::string path, body, reply;
         if (read_request(c, &path, &body)) {
@@ -588,12 +591,18 @@ bool start(const std::string& name, std::string* why) {
     // Every disc plays with every other: the US and European discs are one program, and the Japanese and Asian 1.04
     // program is the same code at other addresses (port/regions/), with the same game data (docs/146).
 
+    // The game's own server first: if it fails, nothing else has started (no room server, no router mapping)
+    const int http = start_game_server();
+    if (!http) return fail("the game's server did not start");
+
     std::string server;
     char key_hex[65] = {};
     int port = kDefaultPort;
     if (m == Mode::Host) {
         if (const char* p = std::getenv("DES_SEAMLESS_PORT"); p && std::atoi(p) > 0 && std::atoi(p) < 65536)
             port = std::atoi(p);
+        // a test run's code file from an earlier run: gone until this run's codes are known (write_code_file)
+        if (const char* cf = std::getenv("DES_SEAMLESS_CODE_FILE"); cf && *cf) std::remove(cf);
         const uint32_t key = net_invite_new_key();
         psnr_host_config cfg{};
         cfg.port = (uint16_t)port;
@@ -634,9 +643,6 @@ bool start(const std::string& name, std::string* why) {
         server = std::string(ip) + ":" + std::to_string(inv.port);
         port = inv.port;
     }
-    const int http = start_game_server();
-    if (!http) return fail("the game's server did not start");
-
     knob("PS3_NET_ONLINE", "1");
     // With a host map, a name it doesn't list doesn't resolve, and an IPv4 address (PSNR_SERVER's) is used as it is
     // (ps3recomp's ps3_net_resolve). So no name the game looks up reaches another server.
