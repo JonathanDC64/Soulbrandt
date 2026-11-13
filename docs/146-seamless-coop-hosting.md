@@ -349,6 +349,9 @@ the newer generation, and saves as usual.
   button at the lever's own pull point. The game's event set the lever's and the door's flags (10, 11) in both
   games, the host's world sent flag 10 on as progress, and the friend kept it for its own world. (The test host had
   pulled that lever before, so a test knob cleared both flags and reloaded the area first.) Not yet by hand.
+  Also scripted: a host past the first demon took the Nexus's Boletaria Archstone (put at the stone's own touch
+  point, then its prompt and the "Move to Another World" menu, Boletarian Palace). The game's leave at the stone
+  was held back ("the host stays in its session"), and the friend followed into 1-1 and stood beside it.
 - What a friend's talk changes (a conversation heard, a choice made, an item given) stays in its copy of the host's
   world: it is neither kept in the friend's own world nor sent to the host. Only the Archstones' seal is shared.
 - The Archstones' seal from a friend is checked through its four flags, set on the friend through the game's own
