@@ -378,6 +378,15 @@ jobs:
           cmake --build build/host --target button_icons_check
           build/host/ui/button_icons_check.exe
 
+      # des_pantheon.cpp's checks on Pantheon records on their own (port/tests/pantheon_check.cpp): made-up records and
+      # param tables. Our own record goes up whatever the table says; another player's is refused unless it passes.
+      # Linux runs it below.
+      - name: Pantheon records
+        shell: bash
+        run: |
+          cmake --build build/host --target pantheon_check
+          build/host/pantheon_check.exe
+
       # Both routes: the runtime has the Vulkan backend, and des_host links the route switch, the core on D3D12
       # and on Vulkan, and the Vulkan start's fallback (the port finds PS3RECOMP_RSX_HAL itself, DES_RSX_HAL=AUTO).
       - name: Both routes in des_host
@@ -876,6 +885,12 @@ jobs:
         run: |
           cmake --build build/host --target button_icons_check
           build/host/ui/button_icons_check
+
+      # Pantheon records, as on Windows above.
+      - name: Pantheon records
+        run: |
+          cmake --build build/host --target pantheon_check
+          build/host/pantheon_check
 
       # The player's program has no decryptor and no keys: it opens the decrypted copies setup made.
       - name: No decryptor in des_host
