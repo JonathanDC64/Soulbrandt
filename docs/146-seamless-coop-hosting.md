@@ -359,8 +359,9 @@ the newer generation, and saves as usual.
   point, then its prompt and the "Move to Another World" menu, Boletarian Palace). The game's leave at the stone
   was held back ("the host stays in its session"), and the friend followed into 1-1 and stood beside it. A friend's
   own touch of a Nexus stone, scripted: it used to open the menu, and its warp took it out of the session to the
-  area alone, where its rejoin stalled. Now it shows "You can't return during multiplayer." and the friend stays.
-  The host's trip, run again with the change, is as before.
+  area alone (co-op brought it back once that area's opening cutscene had ended). Now it shows "You can't return
+  during multiplayer." and the friend stays, on the Japanese and Asian discs too. The host's trip, run again with
+  the change, is as before.
 - What a friend's talk changes (a conversation heard, a choice made, an item given) stays in its copy of the host's
   world: it is neither kept in the friend's own world nor sent to the host. Only the Archstones' seal is shared.
 - The Archstones' seal from a friend is checked through its four flags, set on the friend through the game's own
