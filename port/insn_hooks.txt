@@ -246,7 +246,7 @@
 # forward") beside each R1 press to pick the kick; the answer becomes "this R1
 # press was the Kick key's", for the player alone.
 0x00300BAC=des_kick   # lwz r0, -0x7F84(r30): function 212's answer in r10 (both paths); r29 = the controller
-0x00310AA8=des_kick   # stb r17, 0x84(r31): the pad manipulator's slot 0, r17 = R1 pressed this frame
+0x00310AA8=des_kick   # stb r17, 0x84(r31): the pad manipulator's slot 0, r17 = R1 down this frame
 
 # des_game_error (port/des_options.cpp): the game's error report goes to the log.
 # On a PS3 it stops the game; here the game goes on with the part that failed

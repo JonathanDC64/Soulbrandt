@@ -2559,15 +2559,18 @@ extern "C" void des_roll_tie(ppu_context* ctx, uint32_t)
  * at 0x00300B80 of 0x002FF5C0: +0x184 > 0), and only beside an R1 press, in
  * the transitions to the kick (one-handed, animation 3100) and to the
  * two-handed forward attack (4100); nothing else reads it. With DES_KICK=1
- * the press itself says whether it is a kick: at each R1 press (slot 0's
- * store at 0x00310AA8, r17 = pressed this frame, r31 = the manipulator) this
+ * the press itself says whether it is a kick: on each frame R1 is down (slot
+ * 0's store at 0x00310AA8, r17 bit 0 = down, set on every frame of a press:
+ * a 3-frame press gives 3; r31 = the manipulator) this
  * reads whether a Kick binding is held (DES_KICK_KEYS; settings.cpp adds them
  * to R1's keys as well), and function 212's answer (r10 at 0x00300BAC, r29 =
  * the controller) is that, for the player alone. So the Kick key does what a
  * fresh push forward with an attack did, after the script's earlier choices
  * as before (a backstab, a running, rolling or backstep attack), and the
  * attack button never kicks. Other characters, and the other players'
- * characters online, are left alone. Live. DES_KICKLOG=1 prints each press;
+ * characters online, are left alone. Live. DES_KICKLOG=1 prints a line for
+ * each frame the attack is down, and, in either mode, the game's own answer
+ * each time the script asks;
  * with PS3_NO_USER_INPUT (a scripted run) DES_KICK_TEST=1 stands for a held
  * Kick key. */
 namespace {
@@ -2654,20 +2657,22 @@ extern "C" void des_kick(ppu_context* ctx, uint32_t addr)
     PS3_KNOB(mode, ps3_env_int("DES_KICK", 0));
     PS3_KNOB(log, env_on("DES_KICKLOG"));
     PS3_KNOB(keys, kick_keys(std::getenv("DES_KICK_KEYS")));
-    if (mode != 1) {
-        kick = false;
-        return;
-    }
+    if (mode != 1) kick = false;
+    if (mode != 1 && !log) return;
     const uint32_t ctrl = player_controller();
     if (!ctrl) return;
-    if (addr == 0x00310AA8u) {   /* stb r17, 0x84(r31): slot 0, R1 pressed this frame */
-        if (!(ctx->gpr[17] & 1) || (uint32_t)ctx->gpr[31] != vm_read32(ctrl + 0x174)) return;
+    if (addr == 0x00310AA8u) {   /* stb r17, 0x84(r31): slot 0, R1 down this frame */
+        if (mode != 1 || !(ctx->gpr[17] & 1) || (uint32_t)ctx->gpr[31] != vm_read32(ctrl + 0x174)) return;
         kick = kick_held(keys);
-        if (log) fprintf(stderr, "[kicklog] attack pressed: %s\n", kick ? "Kick key held, a kick" : "no kick");
+        if (log) fprintf(stderr, "[kicklog] attack down: %s\n", kick ? "Kick key held, a kick" : "no kick");
         return;
     }
     /* 0x00300BAC (lwz r0, -0x7F84(r30)): function 212's answer is in r10, both paths */
-    if ((uint32_t)ctx->gpr[29] == ctrl) ctx->gpr[10] = kick ? 1 : 0;
+    if ((uint32_t)ctx->gpr[29] != ctrl) return;
+    if (log)
+        fprintf(stderr, "[kicklog] the script asks \"stick just pushed forward?\": the game says %s%s\n",
+                ctx->gpr[10] ? "yes" : "no", mode != 1 ? "" : kick ? ", the Kick key says yes" : ", the Kick key says no");
+    if (mode == 1) ctx->gpr[10] = kick ? 1 : 0;
 }
 
 /* The game's error report, 0x00A9DD58(file, line, message), from paths such as
