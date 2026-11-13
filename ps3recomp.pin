@@ -7,4 +7,4 @@
 # master, so the ps3recomp pull request merges first. Change it with tools/release/pin_ps3recomp.py.
 repo=https://github.com/JonathanDC64/ps3recomp
 tag=none
-commit=0644831887354be52bbe9ebecd9f27638b550ee3
+commit=e8e934c9d04facfd8e5e02c190a076031822a369
