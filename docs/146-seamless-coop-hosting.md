@@ -59,6 +59,8 @@ once: after that, co-op has characters of its own.
   loading screen, then they stand beside the host again.
 - **Archstones:** the host can use them during co-op, and the group travels with it. A friend still gets "You can't
   return during multiplayer.", at the Nexus's stones too.
+- **The White Eye Stone** takes a friend home as its own trip home does (in body form, its own world back); co-op
+  then joins the host again a few seconds later. Leave co-op is the way out of co-op.
 - **Boss kills keep everyone together:** no rating screen, nobody sent home, and the boss room's walls drop.
 - **A friend who dies** comes back where the host last arrived (the start of the area) and stays in the session.
   Once it is back, the others see it again, with its rolls, attacks and other moves.
