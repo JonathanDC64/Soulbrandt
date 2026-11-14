@@ -23,7 +23,7 @@
 //   - the wandering ghosts' sightings are each player's own (local_wander_loops);
 //   - a light wall one player walks through is gone in every player's game (walls_for_watchers);
 //   - the room is never locked (LockSession), here or at a kill in global_event.lua, so a friend can always join again;
-//   - the Nexus's timers and checks are each player's own (local_timers).
+//   - the Nexus's timers and checks are each player's own (local_timers), and so is the kneel at a level-up.
 // And from each area's script, the flags that move forward in every player's world (progress_flags), the soul
 // pickups each player makes for itself (own_flags) and the cutscenes each player sees for itself (the Nexus's,
 // scene_flags, and an area's opening, opening_flags), for des_seamless_game.cpp.
@@ -584,6 +584,23 @@ int edit_area(std::string& t, bool nexus)
             sub(std::regex("(\\nfunction OnEvent_" + id + "\\s*\\(\\s*proxy\\s*,\\s*param\\s*\\)[^\\n]*\\n)"),
                 ("$1" + guard).c_str());
         }
+        // The kneel before the Maiden at a level-up: OnEvent_90 turns the player to her, takes its control
+        // (EnableLogic(10000, false)) and kneels; OnEvent_91 stands it up and gives the control back. The talk system
+        // starts them (LuaCall(<id>, 0, ...)), and in a session that call reaches every game, where 10000 is that
+        // game's own player: a friend knelt and couldn't move while the host leveled up. A handler of that kind (a
+        // LuaCall's that takes or gives back the player's control) now ignores a call from another player's game.
+        const std::regex talk("proxy:LuaCall\\(\\s*\\d+\\s*,\\s*\\d+\\s*,\\s*\"(\\w+)\"\\s*,\\s*everytime\\s*\\)");
+        const std::regex control("EnableLogic\\(\\s*10000\\s*,");
+        std::set<std::string> own;
+        for (auto it = std::sregex_iterator(t.begin(), t.end(), talk); it != std::sregex_iterator(); ++it) {
+            size_t a, e;
+            if (!func_span(t, (*it)[1].str(), &a, &e)) continue;
+            const std::string c = code_of(t.substr(a, e - a));
+            if (std::regex_search(c, control) && c.find("IsNetMessage") == std::string::npos) own.insert((*it)[1].str());
+        }
+        for (const std::string& h : own)
+            sub(std::regex("(\\nfunction " + h + "\\s*\\(\\s*proxy\\s*,\\s*param\\s*\\)[^\\n]*\\n)"),
+                "$1\tif param:IsNetMessage() == true then return; end --SEAMLESS: another player's, not this one's\n");
         // Each game's timers and checks stay its own (local_timers)
         n += local_timers(t);
         return n;

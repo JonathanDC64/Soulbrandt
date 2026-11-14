@@ -468,6 +468,13 @@ their first instruction):
   the Maiden's revival, the clear items), so when two ran at once in a session each step multiplied: a friend got
   three Bindings after the tutorial's end. The edit registers all 29 between `NotNetMessage_begin` and `_end` (not
   the ones in a comment). The Nexus's other network events (the Archstones, the NPCs' events) stay as they are.
+- The kneel before the Maiden in Black at a level-up is the leveling player's own. The talk system starts two events
+  through `LuaCall`: `OnEvent_90` turns the player to her, takes its control (`EnableLogic(10000, false)`) and kneels,
+  and `OnEvent_91` stands it up and gives the control back. In a session that call reaches every game, where 10000 is
+  that game's own player, so a friend knelt and couldn't move while the host leveled up. The edit makes any `LuaCall`
+  handler in the Nexus that takes or gives back the player's control ignore a call from another game
+  (`param:IsNetMessage()`); only 90 and 91 match. Checked with two copies: the friend held the stick through the
+  host's level-up and moved the whole time (before: no movement for those 20 s).
 
 The edited copies are cached by the original's size and hash, so a script read again costs nothing.
 
