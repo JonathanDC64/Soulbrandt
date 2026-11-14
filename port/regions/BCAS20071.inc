@@ -185,6 +185,7 @@ DES_REGION_ADDR(0x0044A368, 0x004486D0)  /* call des_seamless_game (by address) 
 DES_REGION_ADDR(0x0044C6F0, 0x0044AA58)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x0044C780, 0x0044AAE8)  /* hook des_coop_hook: the end of WarpNextStageKick (a guest going home loads its own area) */
 DES_REGION_ADDR(0x00451430, 0x0044F798)  /* call */
+DES_REGION_ADDR(0x00467628, 0x00465990)  /* hook des_coop_hook: a script event's name */
 DES_REGION_ADDR(0x004C9638, 0x004C79A0)  /* hook des_coop_hook: the talk check after bl 0x0026F378 (a friend can talk to the NPCs) */
 DES_REGION_ADDR(0x004C9C5C, 0x004C7FC4)  /* hook des_coop_hook: the talk check after bl 0x0026F378 (a friend can talk to the NPCs) */
 DES_REGION_ADDR(0x005086F8, 0x00506A60)  /* hook des_coop_hook: the event flags' set (progress kept for every player) */

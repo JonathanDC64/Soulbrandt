@@ -1761,6 +1761,25 @@ bool left()
 
 }  // namespace des::seamless
 
+// A line for each change of the session's state, for the co-op log (report.cpp's coop.log). With it, what tells the
+// game's leaves apart: the members as the room library has them (+0x11C to +0x120, 0x30 bytes each) and as the game
+// counts them (its member list's count), and the room's timer (+0x2C4, seconds: 55 when a room opens, -1 once a
+// member is in, 10 after one left; the room is left when it runs out).
+static void state_line(uint32_t sm, uint32_t st)
+{
+    static uint32_t last = ~0u;
+    if (st == last) return;
+    if (last != ~0u) {
+        static const char* const kNames[] = {"none", "opening a room", "opening a room", "host", "joining", "joining",
+                                             "client", "leaving"};
+        const uint32_t a = vm_read32(sm + 0x11C), b = vm_read32(sm + 0x120);
+        std::fprintf(stderr, "[coop] session state %u -> %u (%s): %d in the room, %u in the game; room timer %.1f s\n",
+                     last, st, st < 8 ? kNames[st] : "?", b >= a ? (int)((b - a) / 0x30) : -1,
+                     vm_read32(sm + kSmMembers + 0x10), rdf(sm + 0x2C4));
+    }
+    last = st;
+}
+
 // From des_menu_tick, every frame, on the game's main thread.
 extern "C" void des_seamless_tick(ppu_context* ctx)
 {
@@ -1794,6 +1813,7 @@ extern "C" void des_seamless_tick(ppu_context* ctx)
     if (!sGame.record_buf) sGame.record_buf = guest_alloc(ctx, 0x100);
     if (!sGame.scratch) return;
     const uint32_t st = vm_read32(sm + kSmState);
+    state_line(sm, st);
     const bool world = in_world(sm, gm);
     {   // the Stone of Ephemeral Eyes' row for this frame: a session, and a friend's soul form
         const bool session = (m == co::Mode::Host && st == kStateHost) ||
@@ -1952,6 +1972,27 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
             ctx->gpr[9] = 0;
         }
         break;
+    case 0x00467628u: { // the start of 0x00467628 (cmpwi r4,0): r4 names a script event the game raises by name
+        // global_event.lua's handlers for the session's ends and joins (OnRoomTimeOut, OnRoomDisappeared,
+        // OnIrregularLeaveSession, OnLeave_Limit, the kicks, the failed joins) come this way. The co-op log names
+        // them, so that a report says how a session ended; the others (OnUpDate, OnTalk, ...) aren't logged.
+        const uint32_t p = (uint32_t)ctx->gpr[4];
+        if (!guest_ok(p) || vm_read8(p) != 'O' || vm_read8(p + 1) != 'n') break;
+        char name[48];
+        size_t n = 0;
+        while (n + 1 < sizeof name && (name[n] = (char)vm_read8(p + (uint32_t)n)) != 0) n++;
+        name[n] = 0;
+        static const char* const kSession[] = {"Session", "Kick", "Room", "Leave", "Lan", "SignOut", "ServerError",
+                                               "Summon", "Join", "ReturnTitle"};
+        for (const char* k : kSession)
+            if (std::strstr(name, k)) {
+                const uint32_t sm = session_manager();
+                std::fprintf(stderr, "[coop] the game's event %s (session state %u)\n", name,
+                             guest_ok(sm) ? vm_read32(sm + kSmState) : 0u);
+                break;
+            }
+        break;
+    }
     case 0x00A6B2F8u:   // the game's Lua reader, after lwz r11,8(r4): ud = {buf, size, pos}; pos 0 is the first read
     case 0x00CA15A8u: { // Lua's string reader (getS), after lwz r0,4(r4): ud = {s, size}; size 0 after the first read
         const uint32_t ud = (uint32_t)ctx->gpr[4];
