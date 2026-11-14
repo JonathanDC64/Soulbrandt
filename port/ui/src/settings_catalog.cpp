@@ -632,4 +632,37 @@ std::string help_with_key(const RowDesc& row) {
     return help;
 }
 
+namespace {
+
+std::string shown_value(const ChoiceRow& kind, const std::string& value) {
+    const std::string v = value.empty() && !kind.blank.empty() ? kind.blank : value;
+    for (const Choice& c : kind.live ? kind.live(value) : kind.choices)
+        if (c.value == v) return c.label;
+    return "Custom (" + value + ")";
+}
+std::string shown_value(const ToggleRow& kind, const std::string& value) {
+    return (value == "1") != kind.inverted ? "On" : "Off";
+}
+std::string shown_value(const NumberRow& kind, const std::string& value) {
+    if (!kind.get) return value;
+    const int n = kind.get();
+    return kind.format ? kind.format(n) : std::to_string(n) + kind.suffix;
+}
+std::string shown_value(const auto&, const std::string& value) {  // text, and the rest
+    return value;
+}
+
+}  // namespace
+
+std::optional<Shown> shown(std::string_view key) {
+    const RowDesc* found = nullptr;
+    for (const TabDesc& tab : tabs())
+        for (const SectionDesc& section : tab.sections)
+            for (const RowDesc& row : section.rows)
+                if (row.key == key && (!found || (found->when && !found->when()))) found = &row;
+    if (!found) return std::nullopt;
+    const std::string value = settings::get(key);
+    return Shown{found->label, std::visit([&](const auto& kind) { return shown_value(kind, value); }, found->kind)};
+}
+
 }  // namespace ui::catalog

@@ -11,6 +11,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -159,5 +160,14 @@ std::string choice_label(const Choice& c);
 
 // The help a row shows: its help, then "(KEY)" on a line of its own (unless kHideKey). RML.
 std::string help_with_key(const RowDesc& row);
+
+// A setting as Settings shows it: its row's label ("Renderer") and the stored value as the row shows it ("Vulkan";
+// "Custom (90)" for a value not in its list). For the restart question (menu_pages.cpp). None for a key with no row in
+// this build; of a key's rows (one a disc), the one shown here.
+struct Shown {
+    std::string label;
+    std::string value;
+};
+std::optional<Shown> shown(std::string_view key);
 
 }  // namespace ui::catalog

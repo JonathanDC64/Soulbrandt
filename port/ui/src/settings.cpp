@@ -8,6 +8,7 @@
 
 #include "../../des_seamless.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
@@ -19,6 +20,7 @@
 #include <random>
 #include <set>
 #include <string>
+#include <vector>
 
 #if DES_RSX_VULKAN && defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -155,6 +157,8 @@ constexpr Def kDefs[] = {
 std::map<std::string, std::string, std::less<>> sValues;
 std::set<std::string, std::less<>> sPinned;
 std::map<std::string, std::string, std::less<>> sPinnedValues;
+// The restart-only settings' values the game runs with: as load_and_apply_env left them, or as now_in_effect noted.
+std::map<std::string, std::string, std::less<>> sInEffect;
 std::string sPath;
 bool sPathResolved = false;
 
@@ -334,6 +338,10 @@ const Def* find(std::string_view key) {
         if (key == d.key) return &d;
     }
     return nullptr;
+}
+
+std::span<const Def> defs() {
+    return kDefs;
 }
 
 bool harness_run() {
@@ -773,6 +781,8 @@ void load_and_apply_env() {
     apply_renderer();
 #endif
     write_in_use();
+    for (const Def& d : kDefs)
+        if (d.apply == Apply::Restart) sInEffect[d.key] = get(d.key);
 }
 
 std::string get(std::string_view key) {
@@ -817,6 +827,21 @@ bool pinned(std::string_view key) {
 std::string pinned_value(std::string_view key) {
     const auto it = sPinnedValues.find(key);
     return it == sPinnedValues.end() ? std::string() : it->second;
+}
+
+std::vector<std::string> restart_pending() {
+    std::vector<std::string> keys;
+    for (const Def& d : kDefs) {
+        if (d.apply != Apply::Restart || pinned(d.key)) continue;
+        const auto it = sInEffect.find(d.key);
+        if (it == sInEffect.end() || it->second == get(d.key)) continue;
+        if (std::find(keys.begin(), keys.end(), d.key) == keys.end()) keys.push_back(d.key);  // (a key listed twice)
+    }
+    return keys;
+}
+
+void now_in_effect(std::string_view key) {
+    if (const auto it = sInEffect.find(key); it != sInEffect.end()) it->second = get(key);
 }
 
 const NetServer* net_server(std::string_view key) {

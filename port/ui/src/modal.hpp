@@ -1,4 +1,5 @@
-// From Dusklight (CC0), src/dusk/ui/modal.hpp, by way of FFCCEOT-Recomp. Adapted for Demon's Souls (unchanged here).
+// From Dusklight (CC0), src/dusk/ui/modal.hpp, by way of FFCCEOT-Recomp. Adapted for Demon's Souls: the button focused
+// first can be any of them (Props::focusAction).
 #pragma once
 
 #include "button.hpp"
@@ -28,6 +29,7 @@ public:
         Rml::String variant;
         Rml::String icon = "";
         bool isVertical = false;
+        int focusAction = 0;  // the action whose button has the focus first (a question's safe answer: question.hpp)
     };
 
     explicit Modal(Props props);

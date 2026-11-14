@@ -167,7 +167,7 @@ std::atomic<bool> sStartUp{false};
 // The window's close button (and Alt+F4) asks first, as Quit does; a test run's window closes at once.
 bool sCloseAsks = false;
 std::atomic<bool> sCloseRequested{false};  // set on the window thread, the question opened in frame
-std::atomic<bool> sQuitConfirmed{false};   // Quit Game was chosen: the next WM_CLOSE goes through  // the start screen is to show or showing (des_ui_start_screen_up, any thread)
+std::atomic<bool> sQuitConfirmed{false};   // Quit game was chosen: the next WM_CLOSE goes through  // the start screen is to show or showing (des_ui_start_screen_up, any thread)
 bool sDocumentsPushed = false;
 bool sActive = false;
 bool sPadIdle = false;  // awake with no document up: the pads are not fed to RmlUi (frame)
