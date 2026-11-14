@@ -26,7 +26,9 @@ public:
 }  // namespace
 
 bool ask(Question question) {
-    if (sAsked || question.answers.empty()) return false;
+    // (one closed with every document at once, ui::close_all_documents, is still in the stack until the next frame:
+    // it is asked no more)
+    if ((sAsked && !sAsked->closed()) || question.answers.empty()) return false;
     const int safe = std::clamp(question.safe, 0, static_cast<int>(question.answers.size()) - 1);
     // An answer closes the question first, then does its part: what it starts (a restart, Quit) finds it gone.
     const auto answer = [](Modal& modal, const std::function<void()>& chosen) {
