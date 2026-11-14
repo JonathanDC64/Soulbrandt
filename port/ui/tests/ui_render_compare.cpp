@@ -26,6 +26,7 @@
 // Exit code 0: every picture and count the same; 1: one differs; 2: it could not run.
 #include "host.hpp"
 #include "renderer.hpp"
+#include "settings.hpp"
 #include "settings_window.hpp"
 #include "setup_screens.hpp"
 #include "souls_model.hpp"
@@ -998,6 +999,9 @@ int main(int argc, char** argv) {
     _putenv_s("DES_SETUP_DATA", (scratch / "setup").string().c_str());
     _putenv_s("PS3_NO_USER_INPUT", "1");
     _putenv_s("DES_UI_NO_ANIM", "1");
+    // The settings as the game reads them at its start (des_ui_early_init): the test's settings.ini, with the options
+    // set in the environment pinned, so a run can draw the pages as a player with those settings sees them.
+    ui::settings::load_and_apply_env();
     const bool models = !env_path("PS3_VFS_ROOT").empty();
 
     Device d;
