@@ -1,6 +1,6 @@
 // Written for Demon's Souls. The F1 menu's content as data: its entries in order, each with its title and what choosing
-// it does, and the questions it asks (question.hpp). The menu bar (menu_bar.cpp) draws a tab for each entry; nothing
-// here knows how the menu is drawn.
+// it does, and the questions it asks (question.hpp). The menu (menu_shell.cpp) draws an entry for each; nothing here
+// knows how the menu is drawn.
 //
 // Adding an entry: one Entry in menu_pages.cpp's list, in its place.
 #pragma once
@@ -12,14 +12,14 @@
 #include <vector>
 
 namespace ui {
-class MenuBar;
+class MenuShell;
 }
 
 namespace ui::menu {
 
 struct Entry {
     std::string title;                     // its tab: "Settings"
-    std::function<void(MenuBar&)> choose;  // opens its page (MenuBar::open), or asks its question
+    std::function<void(MenuShell&)> choose;  // opens its page (MenuShell::open_settings, open), or asks its question
 };
 
 // The F1 menu's entries, in order.

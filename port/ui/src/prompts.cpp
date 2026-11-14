@@ -9,17 +9,17 @@ constexpr int kKeys = static_cast<int>(Key::Count);
 // A row per device (Device's order), a button per prompt (Key's order).
 constexpr Glyph kGlyphs[4][kKeys] = {
     // Keyboard
-    {{"↑ ↓", "arrows"}, {"← →", "arrows"}, {"Enter", "key"}, {"Esc", "key"}, {"P", "key"}, {"H", "key"},
+    {{"↑ ↓", "arrows up-down"}, {"← →", "arrows left-right"}, {"Enter", "key"}, {"Esc", "key"}, {"P", "key"}, {"H", "key"},
      {"C", "key"}, {"Shift", "key"}, {"Q", "key"}, {"E", "key"}},
     // PlayStation
-    {{"↑ ↓", "arrows"}, {"← →", "arrows"}, {"✕", "face ps-cross"}, {"○", "face ps-circle"},
+    {{"↑ ↓", "arrows up-down"}, {"← →", "arrows left-right"}, {"✕", "face ps-cross"}, {"○", "face ps-circle"},
      {"△", "face ps-triangle"}, {"SELECT", "system"}, {"□", "face ps-square"}, {"R3", "stick"},
      {"L1", "shoulder"}, {"R1", "shoulder"}},
     // Xbox
-    {{"↑ ↓", "arrows"}, {"← →", "arrows"}, {"A", "face xbox-a"}, {"B", "face xbox-b"}, {"Y", "face xbox-y"},
+    {{"↑ ↓", "arrows up-down"}, {"← →", "arrows left-right"}, {"A", "face xbox-a"}, {"B", "face xbox-b"}, {"Y", "face xbox-y"},
      {"View", "system"}, {"X", "face xbox-x"}, {"RS", "stick"}, {"LB", "shoulder"}, {"RB", "shoulder"}},
     // Nintendo
-    {{"↑ ↓", "arrows"}, {"← →", "arrows"}, {"A", "face"}, {"B", "face"}, {"Y", "face"}, {"−", "system"},
+    {{"↑ ↓", "arrows up-down"}, {"← →", "arrows left-right"}, {"A", "face"}, {"B", "face"}, {"Y", "face"}, {"−", "system"},
      {"X", "face"}, {"RS", "stick"}, {"L", "shoulder"}, {"R", "shoulder"}},
 };
 

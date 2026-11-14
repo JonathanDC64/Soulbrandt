@@ -11,7 +11,7 @@
 #include "host.hpp"
 #include "portable.hpp"
 #include "settings.hpp"
-#include "settings_window.hpp"
+#include "menu_shell.hpp"
 #include "setup_folder.hpp"
 #include "setup_options_window.hpp"
 #include "setup_rpcs3.hpp"
@@ -363,7 +363,7 @@ void SetupStartWindow::refresh() {
                 "See what is new in it. Updating keeps your saves, settings and game files.");
         more.push_back({"What's new", [this] { open_update(); }, Look::Plain});
     }
-    more.push_back({"Settings", [this] { push(std::make_unique<SettingsWindow>(true)); }, Look::Quiet});
+    more.push_back({"Settings", [this] { push(std::make_unique<MenuShell>(MenuShell::Standalone{})); }, Look::Quiet});
     more.push_back({"Quit", [this] { ask_quit(); }, Look::Quiet});
     set_buttons(mMain, row, std::move(main));
     set_buttons(mMore, footer_end(), std::move(more));

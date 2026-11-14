@@ -314,7 +314,7 @@ SetupChoicesWindow::SetupChoicesWindow(Props props)
                         {"2560:1080", "21:9 (2560x1080)"},
                         {"3440:1440", "21:9 (3440x1440)"},
                         {"3840:1600", "21:9 (3840x1600)"},
-                        {"32:9", "32:9"}};  // (the Aspect ratio row's, settings_window.cpp)
+                        {"32:9", "32:9"}};  // (the Aspect ratio row's, settings_catalog.cpp)
         std::string label = aspectNow;
         for (const auto& a : kAspects)
             if (aspectNow == a.value) label = a.label;

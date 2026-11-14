@@ -25,7 +25,7 @@
 #include "host.hpp"
 #include "input.hpp"
 #include "keys.hpp"
-#include "menu_bar.hpp"
+#include "menu_shell.hpp"
 #include "mods.hpp"
 #include "mouse.hpp"
 #include "net_notices.hpp"
@@ -40,7 +40,6 @@
 #include "privacy_window.hpp"
 #include "report.hpp"
 #include "settings.hpp"
-#include "settings_window.hpp"
 #include "setup_engine.hpp"
 #include "setup_screens.hpp"
 #include "setup_window.hpp"
@@ -573,8 +572,8 @@ std::string held_inputs() {
     return s.empty() ? "nothing now" : s;
 }
 
-ui::MenuBar* menu_bar() {
-    return static_cast<ui::MenuBar*>(ui::find_document(ui::DocumentScope::MenuBar));
+ui::MenuShell* menu_bar() {
+    return static_cast<ui::MenuShell*>(ui::find_document(ui::DocumentScope::MenuBar));
 }
 
 void open_menu_bar() {
@@ -647,7 +646,7 @@ void push_documents() {
         push_setup(std::getenv("DES_UI_OPEN"));
         return;
     }
-    ui::push_document(std::make_unique<ui::MenuBar>(), false);
+    ui::push_document(std::make_unique<ui::MenuShell>(), false);
     if (sStartScreen) ui::push_document(std::make_unique<ui::Prelaunch>());
 
     // DES_UI_OPEN=menu | settings | trophies | mods | players | coop | privacy | osk | setup | setup-run: open one at
@@ -657,7 +656,10 @@ void push_documents() {
     // DES_SETUP_GAME's folders to begin with; setup-run runs the setup engine at once, on those folders.
     if (const char* open = std::getenv("DES_UI_OPEN"); open && *open) {
         if (!std::strcmp(open, "menu")) open_menu_bar();
-        else if (!std::strcmp(open, "settings")) ui::push_document(std::make_unique<ui::SettingsWindow>());
+        else if (!std::strcmp(open, "settings")) {
+            open_menu_bar();
+            if (auto* bar = menu_bar()) bar->open_settings();
+        }
         else if (!std::strcmp(open, "trophies")) ui::push_document(std::make_unique<ui::TrophiesWindow>());
         else if (!std::strcmp(open, "mods")) ui::push_document(std::make_unique<ui::ModsWindow>());
         else if (!std::strcmp(open, "players")) ui::push_document(std::make_unique<ui::PlayersWindow>());

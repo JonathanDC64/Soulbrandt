@@ -1,10 +1,10 @@
 // Settings' tabs, sections and rows as data: what each row shows, which setting it changes and how, and its help.
-// The settings window builds its panes from it (settings_window.cpp); nothing here knows how a row is drawn, so any
+// The Settings page builds its rows from it (settings_page.cpp); nothing here knows how a row is drawn, so any
 // look can draw the same rows. No RmlUi: what the rows read or do outside settings.cpp goes through settings_hooks.hpp,
 // and tests/settings_catalog_check.cpp checks the whole table on its own.
 //
 // Adding a row: one RowDesc in settings_catalog.cpp, in its tab and section, with the key's Def in settings.cpp's
-// kDefs. Write its help without the "(KEY)" line (the window adds it; kHideKey for a row that shows none) and its
+// kDefs. Write its help without the "(KEY)" line (the page shows the key; kHideKey for a row that shows none) and its
 // choices without "(original)" (Choice::original marks the game's own). Then run settings_catalog_check.
 #pragma once
 
@@ -124,6 +124,7 @@ using RowKind = std::variant<ChoiceRow, ToggleRow, NumberRow, TextRow, InfoRow, 
 
 enum RowFlag : unsigned {
     kHideKey = 1u << 0,  // the help ends without "(KEY)": a setting of the UI's own, not a run option
+    kPreview = 1u << 1,  // changes the picture at once: Preview sets the menu aside so it shows on the game
 };
 
 struct RowDesc {

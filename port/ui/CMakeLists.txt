@@ -288,11 +288,11 @@ if(MSVC)
   target_compile_options(report_addresses_check PRIVATE /EHsc /W3)
 endif()
 
-# The F1 menu's rules on their own (tests/menu_logic_check.cpp): menu_model.cpp with no RmlUi and no settings, what
-# closing the menu does while settings wait for a restart. The same on every platform; CI runs it on both (host.yml).
-# Built on demand:
+# The F1 menu's rules on their own (tests/menu_logic_check.cpp): menu_model.cpp and settings_model.cpp with no RmlUi
+# and no settings: where Back goes, what closing the menu does while settings wait for a restart, and what Settings
+# has open and prompts. The same on every platform; CI runs it on both (host.yml). Built on demand:
 #   cmake --build <build> --target menu_logic_check, then menu_logic_check
-add_executable(menu_logic_check EXCLUDE_FROM_ALL tests/menu_logic_check.cpp src/menu_model.cpp)
+add_executable(menu_logic_check EXCLUDE_FROM_ALL tests/menu_logic_check.cpp src/menu_model.cpp src/settings_model.cpp)
 target_include_directories(menu_logic_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 if(MSVC)
   target_compile_options(menu_logic_check PRIVATE /EHsc /W3)
