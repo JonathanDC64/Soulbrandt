@@ -65,8 +65,13 @@ endforeach()
 # ---- Embedded styles and fonts (cmake/EmbedFiles.cmake) ----
 set(DES_UI_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 file(GLOB DES_UI_STYLES CONFIGURE_DEPENDS ${DES_UI_DIR}/res/rml/*.rcss)
+# Each look's sheet (looks.hpp) and the menus' own images (tools/ui/make_ui_art.py): a new one is picked up as it is.
+file(GLOB DES_UI_LOOKS CONFIGURE_DEPENDS ${DES_UI_DIR}/res/rml/looks/*.rcss)
+file(GLOB DES_UI_IMAGES CONFIGURE_DEPENDS ${DES_UI_DIR}/res/img/*.png)
 set(DES_UI_FILES
   ${DES_UI_STYLES}
+  ${DES_UI_LOOKS}
+  ${DES_UI_IMAGES}
   ${DES_UI_DIR}/res/fonts/Cinzel.ttf
   ${DES_UI_DIR}/res/fonts/AlegreyaSans-Regular.ttf
   ${DES_UI_DIR}/res/fonts/AlegreyaSans-Bold.ttf

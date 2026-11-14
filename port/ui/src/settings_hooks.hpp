@@ -34,6 +34,7 @@ struct Sword {
 };
 std::vector<Sword> swords();
 void apply_scale();
+void apply_look();  // Menu look: the menus take the chosen look at once
 
 // Network
 void party_size_changed();  // Players when you host: a host takes the new size at once
