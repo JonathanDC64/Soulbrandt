@@ -355,6 +355,14 @@ jobs:
           cmake --build build/host --target settings_catalog_check
           build/host/ui/settings_catalog_check.exe
 
+      # The menus' looks on their own (port/ui/tests/ui_style_check.cpp): each look's sheet, in RmlUi without a window.
+      # Linux runs it below.
+      - name: The menus' looks
+        shell: bash
+        run: |
+          cmake --build build/host --target ui_style_check
+          build/host/ui/ui_style_check.exe
+
       # mods.cpp on its own (port/ui/tests/mods_check.cpp): mod folders found and sorted into look and gameplay mods,
       # in made-up folders (docs/143). Linux runs it below.
       - name: Mods
@@ -875,6 +883,12 @@ jobs:
         run: |
           cmake --build build/host --target settings_catalog_check
           build/host/ui/settings_catalog_check
+
+      # The menus' looks, as on Windows above.
+      - name: The menus' looks
+        run: |
+          cmake --build build/host --target ui_style_check
+          build/host/ui/ui_style_check
 
       # Mods, as on Windows above: names as they are (a case-sensitive file system).
       - name: Mods

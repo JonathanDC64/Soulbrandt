@@ -191,6 +191,24 @@ if(WIN32)
 endif()
 add_dependencies(settings_catalog_check des_version)
 
+# The menus' looks on their own (tests/ui_style_check.cpp): RmlUi with the embedded files, no window or renderer. Every
+# look in looks.hpp has its sheet, each sheet's rules are inside its own @media (theme: ...), RmlUi reads it without a
+# warning, and a theme switched on and off changes a style and changes it back. The same on every platform; CI runs it
+# on both (host.yml). Built on demand:
+#   cmake --build <build> --target ui_style_check, then ui_style_check
+add_executable(ui_style_check EXCLUDE_FROM_ALL tests/ui_style_check.cpp ${DES_UI_ASSETS})
+target_include_directories(ui_style_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_definitions(ui_style_check PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
+if(DES_DEV)
+  target_compile_definitions(ui_style_check PRIVATE DES_DEV=1)
+else()
+  target_compile_definitions(ui_style_check PRIVATE DES_DEV=0)
+endif()
+if(MSVC)
+  target_compile_options(ui_style_check PRIVATE /EHsc /W3)
+endif()
+target_link_libraries(ui_style_check PRIVATE RmlUi::RmlUi)
+
 # setup_folder.cpp on its own (tests/setup_folder_check.cpp): where setup builds, the usual folder or the one chosen on
 # setup's screens (docs/88 section 3), in made-up folders under the system's temporary folder. The same on every
 # platform; CI runs it on both (host.yml). Built on demand:
