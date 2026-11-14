@@ -26,6 +26,7 @@
 // Exit code 0: every picture and count the same; 1: one differs; 2: it could not run.
 #include "host.hpp"
 #include "menu_bar.hpp"
+#include "menu_pages.hpp"
 #include "renderer.hpp"
 #include "settings.hpp"
 #include "settings_window.hpp"
@@ -52,7 +53,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <functional>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <string>
@@ -861,6 +864,25 @@ void open_menu(bool quit) {
     if (quit) ui::request_quit_confirm();
 }
 
+// The F1 menu with the question its closing asks while two settings wait for a restart. The question's text is made
+// as it is asked, so the settings go back at once, and the scratch settings.ini as it was (or none), for the next run.
+void open_menu_restart() {
+    open_menu(false);
+    const std::filesystem::path ini = std::filesystem::u8path(ui::settings::path());
+    std::ifstream in(ini, std::ios::binary);
+    const bool had = in.good();
+    const std::string before((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    in.close();
+    ui::settings::set("DES_MAXIMIZED", "0");
+    ui::settings::set("DES_NET_P2P_PORT", "4000");
+    ui::ask(ui::menu::restart_question({}));
+    ui::settings::set("DES_MAXIMIZED", "1");
+    ui::settings::set("DES_NET_P2P_PORT", "3658");
+    std::error_code ec;
+    if (had) std::ofstream(ini, std::ios::binary | std::ios::trunc) << before;
+    else std::filesystem::remove(ini, ec);
+}
+
 void close_pages() {
     ui::close_all_documents();
     for (Rml::ElementDocument* d : gDocuments) d->Close();
@@ -1121,6 +1143,7 @@ int main(int argc, char** argv) {
     pages.push_back({"settings-prelaunch", 1280, 720, false, 1.f, false, [] { open_settings(0, true); }, {}});
     pages.push_back({"menu", 1280, 720, false, 1.f, false, [] { open_menu(false); }, {}});
     pages.push_back({"menu-quit", 1280, 720, false, 1.f, false, [] { open_menu(true); }, {}});
+    pages.push_back({"menu-restart", 1280, 720, false, 1.f, false, open_menu_restart, {}});
     pages.push_back({"setup-start", 1280, 720, false, 1.f, false, [] {
         ui::push_document(std::make_unique<ui::SetupStartWindow>(ui::SetupStartWindow::Props{}));
     }, {}});
