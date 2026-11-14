@@ -25,9 +25,9 @@
 #include "updates.hpp"
 #include "update_window.hpp"
 #include "version.hpp"
+#include "../../des_seamless.h"
 #if DES_DEV
 #include "../../des_dev_marker.h"
-#include "../../des_seamless.h"
 #endif
 
 #include <algorithm>
