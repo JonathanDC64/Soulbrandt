@@ -903,6 +903,18 @@ void open_settings(const std::string& tab, bool prelaunch) {
     else if (!tab.empty() && !page->show_tab(tab)) std::fprintf(stderr, "ui_render_compare: no tab %s\n", tab.c_str());
 }
 
+// Settings in the F1 menu on that tab with the focus on that row, and a key pressed there: Enter (its list, or typing),
+// Preview, Compare held.
+void open_settings_row(const std::string& tab, const std::string& row, ui::menu::Command command) {
+    open_settings(tab, false);
+    ui::SettingsPage* page = menu_shell().settings_page();
+    if (!page || !page->focus_row(row)) {
+        std::fprintf(stderr, "ui_render_compare: no row %s\n", row.c_str());
+        return;
+    }
+    page->command(command, true);
+}
+
 void close_pages() {
     ui::close_all_documents();
     for (Rml::ElementDocument* d : gDocuments) d->Close();
@@ -1191,6 +1203,15 @@ int main(int argc, char** argv) {
         pages.push_back({name, 1280, 720, false, 1.f, false, [title = t.title] { open_settings(title, false); }, {}});
     }
     pages.push_back({"settings-prelaunch", 1280, 720, false, 1.f, false, [] { open_settings("", true); }, {}});
+    using ui::menu::Command;
+    pages.push_back({"settings-list", 1280, 720, false, 1.f, false,
+                     [] { open_settings_row("Display", "Aspect ratio", Command::Confirm); }, {}});
+    pages.push_back({"settings-preview", 1280, 720, false, 1.f, false,
+                     [] { open_settings_row("Picture", "Render resolution", Command::Preview); }, {}});
+    pages.push_back({"settings-compare", 1280, 720, false, 1.f, false,
+                     [] { open_settings_row("Picture", "Render resolution", Command::Compare); }, {}});
+    pages.push_back({"settings-typing", 1280, 720, false, 1.f, false,
+                     [] { open_settings_row("Network", "Online name", Command::Confirm); }, {}});
     pages.push_back({"setup-start", 1280, 720, false, 1.f, false, [] {
         ui::push_document(std::make_unique<ui::SetupStartWindow>(ui::SetupStartWindow::Props{}));
     }, {}});
