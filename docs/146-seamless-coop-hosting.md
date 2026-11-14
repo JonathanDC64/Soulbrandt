@@ -175,8 +175,9 @@ The host's router has to let friends in on one port (36100, TCP and UDP).
 - **World tendency:** each player's own, as offline. Online, the game mixes the server's tendency into the player's
   at a load into the Nexus (half each). With only the neutral answer above, that pulled every area halfway to neutral
   on each such trip (0.8 to 0.4 in a test). In co-op the game now skips the server's values (`des_qwc_local`, the
-  Network tab's "Yours only", docs/69). Each game still plays the shared area with its own player's tendency: the
-  game's own message that gives a phantom the host's tendency (0x17) doesn't come in seamless co-op (docs/69).
+  Network tab's "Yours only", docs/69). The game's own message that gives a phantom the host's tendency (0x17)
+  doesn't come in seamless co-op, so the game alone would leave each player in its own tendency in the shared area
+  (docs/69).
 - **Nothing else is reached,** apart from the STUN request above, from a host whose router gives no address. No name
   the game looks up (`c.demons-souls.com` and the rest) resolves, and no sign-in happens. A gameplay mod keeps co-op off, as it keeps online off (docs/143).
 - **Which discs:** every disc plays with every other. The US and European discs are one program; the Japanese and

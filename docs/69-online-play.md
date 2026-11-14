@@ -251,7 +251,7 @@ the player's own at +0x48, a third copy at +0x80, each 7 areas of two floats):
   the in-use values to the own 0.8 and left the own values alone.
 - **The P2P path (0x005256F0, message 0x17)** copies 14 values into the same object's in-use values. In seamless
   co-op it never ran: the host's in-use values (0.6, set before the join) never reached the friend's game, at the join
-  or at two follows. Each game plays the shared area with its own player's tendency.
+  or at two follows, so the game alone would leave each player in its own tendency in the shared area.
 
 ### Message ratings
 
