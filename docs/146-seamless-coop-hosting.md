@@ -80,6 +80,10 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
   host's room stays open, during a boss fight and after it, so a friend can always join again.
 - **A friend who dies** comes back where the host last arrived (the start of the area) and stays in the session.
   Once it is back, the others see it again, with its rolls, attacks and other moves.
+- **Bloodstains.** A player who dies drops its souls in a bloodstain where it died, a friend too. Only that player
+  sees and touches its own stain. A friend can take its souls back in the host's world, or, if it goes home first,
+  at the same spot in its own world. Dying again before that loses them, as in the game. A stain a friend left in its
+  own world shows in the host's world too when it is in the same area.
 - **In a boss fight,** a friend who dies first watches until the fight ends. Once the boss is dead, it comes back at
   the area's start. If the host dies too, it goes back with everyone.
 - **Bosses get more health with friends,** as in the original game: half as much again with one friend, double with
@@ -296,6 +300,14 @@ character for it, as after a load.
   a friend's blue phantom (type 1) into an alive player of its own world (type 0), which the rest of co-op doesn't
   count as a friend: the next frame sets type 1 again (`SetChrType`'s native, US 0x00445F30) and body form, as a
   boss kill revives it.
+- **Bloodstains.** The game keeps one per character, in its save: the record at the game data's `+0x1C` (its souls
+  at `+0x1C`, -1 once taken back), and a "shown" byte at the game data's `+0x18`. A friend's death runs
+  `UpDateBloodMark` (in the replaced `PartyGhostDeath_1`), as `SoloPlayDeath_2` does for the host, and the touch
+  event (`g_Initialize`'s `OnSelfBloodMark`) is registered for blue phantoms too (`+ ATTR_WHITE`). Each load's
+  `InGameStart` runs `ParamInitialize` (US 0x0044A660), which shows the stain only for a player of type 0. It hides it
+  (`InvalidMyBloodMarkInfo`) for a phantom, and for a soul-form player with others in its world, so in a session it
+  would stay hidden after every load. `stain_tick` shows it again as `ParamInitialize` does for type 0
+  (`0x00419670(manager, player, 0)`) whenever the byte is cleared and the stain still holds souls.
 - **Items.** A phantom's game makes no items: the area's items (lying on corpses, made at each load, US 0x0025CAE8)
   and a dead enemy's drop (rolled by each game when the enemy dies, 0x002B2900) are made only when the player type
   the area was loaded for is body form (0) or soul form (8), and a friend is a blue phantom (1). Both reads of that

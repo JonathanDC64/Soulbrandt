@@ -485,6 +485,30 @@ void stone_tick(ppu_context* ctx, bool session, bool friend_soul)
     if (vm_read8(row + 0x1C) != multi) vm_write8(row + 0x1C, multi);
 }
 
+// The player's own bloodstain in a session. At each load the global script's ParamInitialize (0x0044A660) shows it
+// only for a player in body form of its own world (type 0); a soul-form player with others in its world, and any
+// phantom, has it hidden (InvalidMyBloodMarkInfo: the game data's "shown" byte, +0x18, cleared). In a session that
+// hides souls the player can still take back: a friend's, dropped in the host's world, and the host's after a death
+// with friends in. So it is shown again as ParamInitialize shows it for type 0: 0x00419670(bloodstain manager, the
+// player, 0) sets the byte and shows the stain if it lies in this area. A stain already touched holds no souls (-1)
+// and stays hidden. Only its owner sees a stain, so the others' games are unchanged.
+constexpr uint32_t kLuaSystemA = 0x01B42A80u;   // *this: the bloodstain manager (+0x10 the own stain's object)
+constexpr uint32_t kPgdRoot = 0x01B4EF9Cu;      // *this: the game data (+0x18 own stain shown, +0x1C its record)
+constexpr uint32_t kStainShown = 0x18, kStainRecord = 0x1C, kStainSouls = 0x1C;
+void stain_tick(ppu_context* ctx, bool session)
+{
+    if (!session) return;
+    const uint32_t gd = rd(DES_AT(kPgdRoot));
+    if (!guest_ok(gd) || vm_read8(gd + kStainShown) != 0) return;
+    const uint32_t rec = rd(gd + kStainRecord);
+    if (!guest_ok(rec)) return;
+    const int32_t souls = (int32_t)vm_read32(rec + kStainSouls);
+    const uint32_t mgr = rd(DES_AT(kLuaSystemA)), pc = player_chr();
+    if (souls < 0 || !guest_ok(mgr) || !guest_ok(pc)) return;
+    call_addr(ctx, DES_AT(0x00419670u), {mgr, pc, 0});
+    std::fprintf(stderr, "[coop] own bloodstain: shown again after the load hid it (%d souls in it)\n", souls);
+}
+
 // Each frame of a friend's session in the host's world (arrived: the first frame after a load's arrival):
 // - in body form, soul form's effect is taken off whenever a load gave it (body form's full health);
 // - a death in body form makes it a soul (its HP at 0);
@@ -1409,6 +1433,7 @@ extern "C" void des_seamless_tick(ppu_context* ctx)
         const bool session = (m == co::Mode::Host && st == kStateHost) ||
                              (m == co::Mode::Join && st == kStateClient && own_kept());
         stone_tick(ctx, session, m == co::Mode::Join && session && !body_form());
+        stain_tick(ctx, session && world);
     }
     std::deque<uint32_t> back;
     {

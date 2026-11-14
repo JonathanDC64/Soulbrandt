@@ -148,9 +148,17 @@ bool edit_global(std::string& t, const std::string& nl)
     if (!replace_in(t, "PartyGhostDeath", "proxy:SetFlagInitState(2);", "--SEAMLESS proxy:SetFlagInitState(2);"))
         return false;
     // (with the boss already dead too: the phantom isn't sent home after a kill either)
+    // Its souls stay where it died, in a bloodstain of its own, as a host's do (SoloPlayDeath_2's UpDateBloodMark):
+    // the stain is this player's (its save's), so in the host's world only it sees and touches it, and if it goes home
+    // first the stain is at the same place in its own world; a death before it gets back there takes its place. The
+    // touch (g_Initialize's OnSelfBloodMark) is for blue phantoms too.
+    if (!replace_in(t, "g_Initialize", "proxy:OnSelfBloodMark( 4032, \"SelfBloodMark\", ATTR_LIVE + ATTR_GREY, everytime );",
+                    "proxy:OnSelfBloodMark( 4032, \"SelfBloodMark\", ATTR_LIVE + ATTR_GREY + ATTR_WHITE, everytime ); --SEAMLESS"))
+        return false;
     if (!replace_func(t, "PartyGhostDeath_1",
                       "function PartyGhostDeath_1(proxy,param)\n"
                       "\t--SEAMLESS: no recall menu and no trip home; PartyGhostDeath_2 brings the phantom back\n"
+                      "\tproxy:UpDateBloodMark();\n"
                       "\tproxy:NotNetMessage_begin();\n"
                       "\t\tproxy:OnKeyTime2(4000,\"PartyGhostDeath_2\",1.0,0,6,once);\n"
                       "\tproxy:NotNetMessage_end();\n"
