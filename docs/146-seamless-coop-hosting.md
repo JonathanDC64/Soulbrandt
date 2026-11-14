@@ -68,7 +68,8 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
 - **Friends follow the host.** When the host travels (an Archstone, the Nexus, a death), its friends go too: one
   loading screen, then they stand beside the host again.
 - **Archstones:** the host can use them during co-op, and the group travels with it. A friend still gets "You can't
-  return during multiplayer.", at the Nexus's stones too.
+  return during multiplayer.", at the Nexus's stones too. No multiplayer wall closes the way back to an Archstone
+  (in 1-2, the Phalanx room's wall to 1-2), so the host is never shut in with the Archstone after a death.
 - **The White Eye Stone** takes a friend home as its own trip home does (in body form, its own world back); co-op
   then joins the host again a few seconds later. Leave co-op is the way out of co-op.
 - **Items are each player's own.** A friend sees the items lying in the area and gets drops from dead enemies, as the
@@ -428,6 +429,16 @@ their first instruction):
     boss's at its fog, any asked for after the session connected) can't be skipped on a friend's game, and the host's
     skip ends only the host's. Ones asked for before 4034, such as an area's opening, were already mode 0 in a session
     and each player skips its own. `OnEvent_4034` now sets 0, so every cutscene works that way.
+  - No multiplayer wall. When a session connects past an area's first part, `OnEvent_4034` has the host's game close
+    the way back to that part's Archstone (`Lua_MultiWall`). The Archstone stands in the last boss's room, and the
+    wall is that room's exit, 1996 minus the block (1-2 is block 1: 1995, the Phalanx room's way to 1-2). Only
+    `OnEvent_4035` (the session's end) opens it. A session stays across a load, so after a death, or a trip to that
+    Archstone, it connected again with the host at the Archstone, and the wall shut the host in the boss room
+    (playtest 11-14, after a death at the Tower Knight; reproduced with two copies). A friend's game raised none: its
+    wall comes from its own flags 3001-3003, which it doesn't set. `Lua_MultiWall` is now empty, as the host may use
+    the Archstones in a session anyway. Checked with two copies: the Phalanx dead, the host to 1-2 and killed there,
+    then the respawn at the 1-2 Archstone. The host's way to 1-2 is open, as the friend's is (before: the wall, on the
+    host's game only).
 - Each area's script: the boss rooms' party walls drop as in solo play; a guest doesn't play the warp-out pose at a
   boss's death; the host may use the Archstones in a session, and the Nexus's stones (which had no session check)
   give a guest the levels' "You can't return during multiplayer." (10010720); a blue phantom may take a boss's soul.

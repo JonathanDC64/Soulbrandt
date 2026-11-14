@@ -12,6 +12,7 @@
 //   - a blue phantom's death keeps it in the session: it comes back where the host last arrived, and in a boss fight
 //     it first watches until the fight ends (the boss dead, or the host dead: then it goes back with the host);
 //   - the cutscenes keep their solo mode in a session: each player skips its own;
+//   - no multiplayer wall closes the way back to an Archstone (the host may use them in a session);
 //   - a boss's extra health counts a third blue phantom (a party of four) as two: x2, the game's most.
 // Each area's script:
 //   - a boss fight is marked from the boss's health bar to its clearing (for the watch above);
@@ -121,6 +122,18 @@ bool edit_global(std::string& t, const std::string& nl)
     // 0, as the ones asked for before 4034 (an area's opening) already were in a session, each player skips its own.
     if (!replace_in(t, "OnEvent_4034", "REMO_FLAG = 2;",
                     "REMO_FLAG = 0; --SEAMLESS each player's cutscenes are its own"))
+        return false;
+    // Lua_MultiWall (OnEvent_4034's too): no multiplayer wall. When a session connects past an area's first part, the
+    // host's game closes the way back to that part's Archstone, which stands in the last boss's room, with that room's
+    // exit wall (1996 minus the block: 1-2 is block 1, wall 1995, the Phalanx room's way to 1-2), and only the
+    // session's end (4035) opens it. But the host may use the Archstones in a session (edit_area), and the session
+    // stays across a load: after a death, or a trip to that Archstone, it connected again with the host at the
+    // Archstone, and the wall shut the host in the boss room. A guest's wall comes from its own flags 3001-3003, which
+    // a guest's world doesn't set in seamless co-op.
+    if (!replace_func(t, "Lua_MultiWall",
+                      "function Lua_MultiWall(proxy,id)\n"
+                      "\t--SEAMLESS: no multiplayer wall; the host may go back to the Archstone, and the group follows it\n"
+                      "end\n", nl))
         return false;
     if (!replace_func(t, "BlockClear2_3",
                       "function BlockClear2_3(proxy,param)\n"
@@ -974,7 +987,7 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
     std::string ed = t;
     int edits = 0;
     if (global) {
-        if (edit_global(ed, nl)) edits = 16;
+        if (edit_global(ed, nl)) edits = 19;
         else ed = t;
     } else {
         static const char kNexus[] = "function Initialize_m01_00_00_00(";   // the Nexus: no Archstone edits
