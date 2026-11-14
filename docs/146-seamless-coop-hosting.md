@@ -241,9 +241,14 @@ game's own join does.
 
 **A player back after a death.** A dead phantom leaves the game's sessions, so the game never brings its character
 back: on the other games that character stays in its death animation, faded out, and plays none of its moves after.
-So a friend back in the world after its respawn says so (`BACK`). Each other game then takes that character out, as
-the game does when a member leaves, and puts the player back on its list of players to place. The game makes a new
-character for it, as after a load.
+So a player back in the world after a death says so (`BACK`): a friend after its respawn or after a load it followed
+while dead, and the host after its death's load. Each other game then takes that character out, as the game does when
+a member leaves, and puts the player back on its list of players to place. The game makes a new character for it, as
+after a load. A dead character outlives a load on the others' games (the placement makes none while one with that
+player's id is there), so a `BACK` waits until the game that gets it is in the world after its own load. Only a
+character that game saw dead (its game data's HP at 0) is made again; one made since is left alone. Before, only a
+friend's own respawn sent it: when the friend and the host died within seconds, each game kept the other's dead
+character (the friend unseen on the host's screen, the host stuck in its death animation on the friend's).
 
 **Messages between the games** go through the room server (`psnr_app_send`, ps3recomp):
 
@@ -254,7 +259,7 @@ character for it, as after a load.
 | `LEAD` | host | its load count | the host's load started: follow |
 | `REDY` | host | load count, area, where it arrived and where it stands (each with its facing), its area's dead characters | after each load, every 2 s, and when asked |
 | `HER?` | friend | none | send a `REDY` now (a friend's respawn) |
-| `BACK` | friend | its player id | back in the world after its respawn: make its character again |
+| `BACK` | any | its player id | back in the world after a death: make its character again |
 | `FLGS` | host | area, offset, up to 1,000 bytes of its event flags | the host's flags, in three parts, before each `REDY` |
 | `FLAG` | host | flag, area | a progress flag was set in the host's world |
 | `FLAG` | friend | flag, area | the Archstones' seal was opened by this friend: the host's world takes it |
@@ -341,8 +346,10 @@ character for it, as after a load.
   NpcParam row's `+0x3C`, through `0x002D6C40` and the character's soul gain `0x002D8978`, which applies the player's
   own soul rate, SpEffect `+0xDC`). `0x002D6C40` halves them when `0x0052A610` says this game is a guest (session
   state 6). The hook after that call (0x00272A88) gives "not a guest" on a friend in seamless co-op, so it gets the
-  full souls, as the host does. Online co-op without seamless mode keeps the game's half. A boss gives no souls for
-  its kill (its rows have none); its Demon's Soul is the reward, and every player gets it (above).
+  full souls, as the host does. Online co-op without seamless mode keeps the game's half. A boss's own row has no
+  souls, but what dies with it pays the same way (Phalanx's 38 blobs, 35 each, killed by `PhalanxDead`). A killing
+  blow of at least 1.5 times the enemy's most HP (`0x00280DC8` sets a bit at `+0x318`) adds a fifth on the game that
+  dealt it; the result is rounded up.
 - **Items.** A phantom's game makes no items: the area's items (lying on corpses, made at each load, US 0x0025CAE8)
   and a dead enemy's drop (rolled by each game when the enemy dies, 0x002B2900) are made only when the player type
   the area was loaded for is body form (0) or soul form (8), and a friend is a blue phantom (1). Both reads of that

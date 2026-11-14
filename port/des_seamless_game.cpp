@@ -70,6 +70,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <set>
 #include <filesystem>
 #include <initializer_list>
 #include <mutex>
@@ -283,6 +284,8 @@ bool sAskedWhere = false;            // a guest asked for a READY now (the host)
 struct HostFlag { uint32_t flag, area; };
 std::deque<HostFlag> sHostFlags;     // FLAGs not yet taken: a guest's from the host, the host's from its guests
 std::deque<uint32_t> sBack;          // BACKs not yet taken: the player ids
+std::atomic<bool> sDied{false};      // this game's player died in the session since its last BACK
+std::set<uint32_t> sDeadCopies;      // the others' characters seen dead (their game data's HP at 0), tick thread only
 struct HostFlags {
     uint32_t area = kNoArea;
     std::vector<uint8_t> bytes = std::vector<uint8_t>(kFlagBytes);
@@ -1186,7 +1189,14 @@ void make_again(ppu_context* ctx, uint32_t sm, uint32_t id)
         const uint32_t p = rd(q);
         if (guest_ok(p) && p != me && vm_read32(p + 0x498) == id) chr = p;
     }
-    if (!chr) return;   // none here: the placement makes one
+    if (!chr) {   // none here: the placement makes one
+        std::fprintf(stderr, "[coop] player %u is back after its death: no character for it here, the placement makes one\n", id);
+        return;
+    }
+    if (!sDeadCopies.erase(chr)) {   // not one seen dead: a new character since (a load's placement made it)
+        std::fprintf(stderr, "[coop] player %u is back: its character is a new one already\n", id);
+        return;
+    }
     const uint32_t key = sGame.scratch + 0xB00;
     call_addr(ctx, DES_AT(0x002D0EB0u), {key, chr});
     const uint32_t msent = rd(sm + kSmMembers + 0xC);
@@ -1194,15 +1204,53 @@ void make_again(ppu_context* ctx, uint32_t sm, uint32_t id)
     int n = 0;
     for (uint32_t m = guest_ok(msent) ? rd(msent) : msent; m != msent && guest_ok(m) && n < 8; m = rd(m), n++)
         if ((int32_t)vm_read32(m + 0x38) != -1 && (call_addr(ctx, DES_AT(0x00E2A098u), {m + 8, key}) & 0xFFu)) member = m;
+    // a load's requeue may have put that member on the waiting list already: the placement makes the new one then
+    bool waits = false;
+    const uint32_t wsent = rd(sm + kSmWaiting + 0xC);
+    n = 0;
+    for (uint32_t w = guest_ok(wsent) ? rd(wsent) : wsent; w != wsent && guest_ok(w) && n < 8; w = rd(w), n++)
+        if (call_addr(ctx, DES_AT(0x00E2A098u), {w + 8, key}) & 0xFFu) waits = true;
     call_addr(ctx, DES_AT(0x00E2A9D8u), {key});
-    if (!member || !guest_ok(rd(sm + kSmWaiting + 0xC)) || !guest_ok(rd(sm + kSmWaiting))) {
+    if (!member || !guest_ok(wsent) || !guest_ok(rd(sm + kSmWaiting))) {
         std::fprintf(stderr, "[coop] player %u is back, but its member isn't here: its character stays\n", id);
         return;
     }
     call_addr(ctx, DES_AT(0x0029EC08u), {man, chr});
-    const bool queued = wait_again(ctx, sm, member);
-    std::fprintf(stderr, "[coop] player %u is back after its respawn: its character made again%s\n", id,
+    const bool queued = waits || wait_again(ctx, sm, member);
+    std::fprintf(stderr, "[coop] player %u is back after its death: its character made again%s\n", id,
                  queued ? "" : " (not placed: no node for the waiting list)");
+}
+
+// The others' characters seen dead, each world frame of a session: their game data's (+0x49C) HP (+0xC) at 0. Only
+// those are made again on a BACK; one a load's placement made since is left alone.
+void dead_copies_tick()
+{
+    const uint32_t man = rd(DES_AT(kChrMan));
+    if (!guest_ok(man)) return;
+    const uint32_t me = rd(man + 0x1BC), pb = rd(man + 0x1A0), pe = rd(man + 0x1A4);
+    if (!guest_ok(pb) || pe < pb || pe - pb > 0x40) return;
+    std::set<uint32_t> here;
+    for (uint32_t q = pb; q < pe; q += 4) {
+        const uint32_t p = rd(q);
+        if (!guest_ok(p) || p == me) continue;
+        here.insert(p);
+        const uint32_t gd = rd(p + 0x49C);
+        if (guest_ok(gd) && (int32_t)vm_read32(gd + 0xC) <= 0) sDeadCopies.insert(p);
+    }
+    for (auto it = sDeadCopies.begin(); it != sDeadCopies.end();) it = here.count(*it) ? std::next(it) : sDeadCopies.erase(it);
+    // and this game's own player: a death in the session, for its BACK at the next arrival
+    if (guest_ok(me) && (int32_t)vm_read32(me + kChrHp) <= 0) sDied = true;
+}
+
+// This game's player died since its last BACK: the others make its character again (at an arrival after a load).
+void send_back_if_died()
+{
+    const uint32_t me = player_chr();
+    if (!sDied.exchange(false) || !guest_ok(me)) return;
+    std::vector<uint8_t> b;
+    put32(b, vm_read32(me + 0x498));
+    send(kMsgBack, b);
+    std::fprintf(stderr, "[coop] back after a death: the others make this player's character again\n");
 }
 
 // The player's transform: *(*(character + 0x20) + 0x10), the rotation (the yaw at +4) then the position (+0x10), as
@@ -1346,6 +1394,7 @@ void host_tick(ppu_context* ctx, uint32_t sm, uint32_t gm, uint32_t st, bool wor
         g.ready_frames = 0;
         send_ready(ctx, sm, g.trip, g.arrival);
         std::fprintf(stderr, "[coop] load %u done: area %08X\n", g.trip, vm_read32(sm + kSmArea));
+        send_back_if_died();
     } else if (!g.in_load && world && (where || ++g.ready_frames >= 60)) {
         g.ready_frames = 0;
         send_ready(ctx, sm, g.trip, g.arrival);
@@ -1474,12 +1523,9 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
         sKillShown = false;
         requeue(ctx, sm);
         const uint32_t man = rd(DES_AT(kChrMan));
-        if (g.respawn.exchange(false) && guest_ok(man) && guest_ok(rd(man + 0x1BC))) {   // and they make this one again
-            std::vector<uint8_t> b;
-            put32(b, vm_read32(rd(man + 0x1BC) + 0x498));
-            send(kMsgBack, b);
-            std::fprintf(stderr, "[coop] back after the respawn: the others make this player's character again\n");
-        }
+        // and, after its death (its own respawn, or a load it followed while dead), the others make it again
+        if (g.respawn.exchange(false)) sDied = true;
+        if (guest_ok(man)) send_back_if_died();
     }
     if (world && !g.in_load) forms_tick(ctx, just_arrived);
     uint32_t lead;
@@ -1660,16 +1706,23 @@ extern "C" void des_seamless_tick(ppu_context* ctx)
         stain_tick(ctx, session && world);
         glow_tick(ctx, session);
     }
+    const bool session = st == kStateHost || st == kStateClient;
+    if (world && session) dead_copies_tick();
+    if (!session) sDied = false;
+    if (m == co::Mode::Host) host_tick(ctx, sm, gm, st, world);
+    else guest_tick(ctx, sm, st, world);
+    // BACKs: once this game is in the world after its own load (the others' dead characters survive a load, and a
+    // BACK can come while this game follows the same load); dropped out of a session
     std::deque<uint32_t> back;
     {
         std::lock_guard<std::mutex> l(sMsgLock);
-        back.swap(sBack);
+        if (!session && !sBack.empty()) {
+            std::fprintf(stderr, "[coop] out of the session: %zu BACK(s) dropped\n", sBack.size());
+            sBack.clear();
+        }
+        else if (world && !sGame.in_load) back.swap(sBack);
     }
-    // not in the world or the session: this game's next placement (after its load, or the join's) makes them anyway
-    if (world && (st == kStateHost || st == kStateClient))
-        for (const uint32_t id : back) make_again(ctx, sm, id);
-    if (m == co::Mode::Host) host_tick(ctx, sm, gm, st, world);
-    else guest_tick(ctx, sm, st, world);
+    for (const uint32_t id : back) make_again(ctx, sm, id);
 }
 
 // Whether this guest's own world has flag (world: the one it is in play for). Under sOwn.lock.
