@@ -914,7 +914,9 @@ if(_des_hal AND WIN32 AND TARGET des_ui)
         ui/tests/ui_render_compare_hooks.c
         ui/tests/ui_render_compare_stubs.cpp
         "${PS3RECOMP_DIR}/runtime/host/host_stubs.c")   # (what the runtime's modules take from the PPU loader)
-    target_include_directories(ui_render_compare PRIVATE ui/src ui/include "${PS3RECOMP_DIR}/libs/video/gpu")
+    target_include_directories(ui_render_compare PRIVATE ui/src ui/include "${PS3RECOMP_DIR}/libs/video/gpu"
+        "${DES_VERSION_DIR}")   # (settings.hpp's version.hpp)
+    add_dependencies(ui_render_compare des_version)
     target_compile_definitions(ui_render_compare PRIVATE PS3RECOMP_RSX_HAL=1 NOMINMAX _CRT_SECURE_NO_WARNINGS)
     set(_urc_vk "")
     if(EXISTS "${PS3RECOMP_BUILD_DIR}/CMakeCache.txt")
