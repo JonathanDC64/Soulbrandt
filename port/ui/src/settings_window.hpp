@@ -1,5 +1,5 @@
 // Adapted from Dusklight (CC0), src/dusk/ui/settings.cpp, by way of FFCCEOT-Recomp. Adapted for Demon's Souls: the
-// port's run options (settings.hpp), in tabs Display, Game, Controls, Interface and About.
+// port's run options (settings.hpp), in the tabs and rows of settings_catalog.hpp.
 #pragma once
 
 #include "window.hpp"

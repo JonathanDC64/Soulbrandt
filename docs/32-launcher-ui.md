@@ -89,6 +89,27 @@ PS3_KNOB). Controls is information only (the menu keys, the keyboard pad
 map); rebinding is not done. About has the version (git short hash at
 configure time), the licence, the settings file's path and the credits.
 
+The rows are data. `port/ui/src/settings_catalog.cpp` lists every tab,
+section and row: its key, its kind (a choice, on/off, a number, text, a value
+to read, or a button that opens something), its choices and its help.
+`settings_window.cpp` builds the window from that list. To add a row:
+
+1. Add the key's `Def` to `kDefs` in `settings.cpp`.
+2. Add a `RowDesc` to the catalogue, in its tab and section.
+   - Write its help without the "(KEY)" line. The window adds that line.
+   - Write its choices without "(original)". Mark the game's own choice
+     `Choice::original` instead.
+3. Run `settings_catalog_check`. CI runs it too (`host.yml`, on Windows and
+   Linux). It checks that:
+   - every key is in `kDefs`;
+   - every default is one of its row's choices;
+   - every number row's range is sound;
+   - the help is written as above.
+
+What a row reads or does outside `settings.cpp`, such as the gamepads, the
+game's swords or updates, goes through `settings_hooks.hpp`. The check has
+its own stand-ins for those hooks.
+
 `play.sh` sets `AUDIO_MUTE=0` for every session, so under play.sh the Sound
 row shows as set from outside. Launching the exe directly, it is a normal
 setting.
@@ -422,6 +443,9 @@ Files:
 - `crash_report.cpp`: the startup hook, the filter and abort handler, the
   report and minidump, the dialog process. `crash_dialog.cpp`: its window,
   D3D12 swap chain and modal.
+- `settings_catalog.cpp`: the settings rows as data (above), with
+  `settings_values.cpp` (the rows' values) and `settings_hooks.cpp` (what they
+  take from the rest of the UI).
 - `settings_window.cpp`, `prelaunch.cpp`, `menu_bar.cpp`, `overlay.cpp`,
   `prework_modal.cpp`: the documents. `input.cpp`: pad state to UI keys with repeat. The rest is
   Dusklight's framework (document stack, windows, panes, buttons, modals,

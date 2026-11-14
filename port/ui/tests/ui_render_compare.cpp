@@ -26,6 +26,7 @@
 // Exit code 0: every picture and count the same; 1: one differs; 2: it could not run.
 #include "host.hpp"
 #include "renderer.hpp"
+#include "settings.hpp"
 #include "settings_window.hpp"
 #include "setup_screens.hpp"
 #include "souls_model.hpp"
@@ -887,6 +888,67 @@ void draw_models(Tee& tee) {
     tee.draw_model("moonlight", w);
 }
 
+// --rml: every element of the context's documents as a line of text, indented by depth: its tag, its attributes in
+// name order, the pseudo-classes set on it, its border box, and the text of text elements. Two builds' dumps of a page
+// compared show whether a change moved anything in the DOM or the layout, where the pictures show only what is drawn.
+void dump_element(std::string& out, Rml::Element* e, int depth) {
+    out.append(size_t(depth) * 2, ' ');
+    if (auto* t = rmlui_dynamic_cast<Rml::ElementText*>(e)) {
+        out += '"';
+        for (char c : t->GetText()) out += c == '\n' ? std::string("\\n") : std::string(1, c);
+        out += "\"\n";
+        return;
+    }
+    out += '<' + e->GetTagName();
+    std::vector<std::pair<std::string, std::string>> attributes;
+    for (const auto& [name, value] : e->GetAttributes()) attributes.emplace_back(name, value.Get<Rml::String>());
+    std::sort(attributes.begin(), attributes.end());
+    for (const auto& [name, value] : attributes) out += ' ' + name + "=\"" + value + '"';
+    out += '>';
+    Rml::StringList pseudo = e->GetActivePseudoClasses();
+    std::sort(pseudo.begin(), pseudo.end());
+    for (const Rml::String& p : pseudo) out += " :" + p;
+    const Rml::Vector2f at = e->GetAbsoluteOffset(Rml::BoxArea::Border), size = e->GetBox().GetSize(Rml::BoxArea::Border);
+    char box[96];
+    std::snprintf(box, sizeof box, " @%.2f,%.2f %.2fx%.2f%s\n", at.x, at.y, size.x, size.y, e->IsVisible() ? "" : " hidden");
+    out += box;
+    for (int i = 0; i < e->GetNumChildren(); i++) dump_element(out, e->GetChild(i), depth + 1);
+}
+
+void dump_documents(std::string& out) {
+    Rml::Context* c = ui::host::context();
+    for (int i = 0; i < c->GetNumDocuments(); i++) {
+        Rml::ElementDocument* d = c->GetDocument(i);
+        out += "document " + d->GetSourceURL() + '\n';
+        dump_element(out, d, 1);
+    }
+}
+
+// The page as it is, then each row of its first pane focused in turn, as the arrows focus them, and the documents
+// again: what a row shows beside it (its help, its choices) is built only when it has the focus.
+bool write_rml(const std::filesystem::path& path) {
+    std::string out;
+    dump_documents(out);
+    Rml::Context* c = ui::host::context();
+    Rml::ElementList panes;
+    for (int i = c->GetNumDocuments() - 1; i >= 0 && panes.empty(); i--) c->GetDocument(i)->GetElementsByTagName(panes, "pane");
+    if (!panes.empty()) {
+        Rml::Element* rows = panes.front();
+        for (int i = 0; i < rows->GetNumChildren(); i++) {
+            Rml::Element* row = rows->GetChild(i);
+            if (row->GetTagName() == "section-heading" || !row->Focus(true)) continue;
+            ui::update();
+            c->Update();
+            out += "\nrow " + std::to_string(i) + '\n';
+            dump_documents(out);
+        }
+    }
+    FILE* f = std::fopen(path.string().c_str(), "wb");
+    if (!f) return false;
+    const bool ok = std::fwrite(out.data(), 1, out.size(), f) == out.size();
+    return std::fclose(f) == 0 && ok;
+}
+
 std::filesystem::path env_path(const char* name) {
     const char* v = std::getenv(name);
     return v && *v ? std::filesystem::path(v) : std::filesystem::path();
@@ -898,7 +960,7 @@ int main(int argc, char** argv) {
     std::setvbuf(stdout, nullptr, _IONBF, 0);  // (lines kept should the run end abruptly)
     bool warp = false, verbose = false, vk_on = true;
     int frames = 24, probe_x = -1, probe_y = -1;
-    std::filesystem::path bmp, scratch, vk_dir;
+    std::filesystem::path bmp, rml, scratch, vk_dir;
     std::string only;
     for (int i = 1; i < argc; i++) {
         const std::string a = argv[i];
@@ -906,6 +968,7 @@ int main(int argc, char** argv) {
         else if (a == "--verbose") verbose = true;
         else if (a == "--frames" && i + 1 < argc) frames = std::max(2, std::atoi(argv[++i]));
         else if (a == "--bmp" && i + 1 < argc) bmp = argv[++i];
+        else if (a == "--rml" && i + 1 < argc) rml = argv[++i];
         else if (a == "--scratch" && i + 1 < argc) scratch = argv[++i];
         else if (a == "--page" && i + 1 < argc) only = argv[++i];
         else if (a == "--vk" && i + 1 < argc) vk_dir = argv[++i];
@@ -915,7 +978,7 @@ int main(int argc, char** argv) {
             probe_y = std::atoi(argv[++i]);
         }
         else {
-            std::fprintf(stderr, "usage: ui_render_compare [--warp] [--frames N] [--bmp DIR] [--scratch DIR] [--page NAME] "
+            std::fprintf(stderr, "usage: ui_render_compare [--warp] [--frames N] [--bmp DIR] [--rml DIR] [--scratch DIR] [--page NAME] "
                                  "[--probe X Y] [--verbose] [--vk DIR | --no-vk]\n");
             return 2;
         }
@@ -926,6 +989,7 @@ int main(int argc, char** argv) {
     std::filesystem::create_directories(scratch / "data", ec);
     std::filesystem::create_directories(scratch / "setup", ec);
     if (!bmp.empty()) std::filesystem::create_directories(bmp, ec);
+    if (!rml.empty()) std::filesystem::create_directories(rml, ec);
     if (!vk_dir.empty()) {
         std::filesystem::create_directories(vk_dir / "d3d12", ec);
         std::filesystem::create_directories(vk_dir / "vk", ec);
@@ -935,6 +999,9 @@ int main(int argc, char** argv) {
     _putenv_s("DES_SETUP_DATA", (scratch / "setup").string().c_str());
     _putenv_s("PS3_NO_USER_INPUT", "1");
     _putenv_s("DES_UI_NO_ANIM", "1");
+    // The settings as the game reads them at its start (des_ui_early_init): the test's settings.ini, with the options
+    // set in the environment pinned, so a run can draw the pages as a player with those settings sees them.
+    ui::settings::load_and_apply_env();
     const bool models = !env_path("PS3_VFS_ROOT").empty();
 
     Device d;
@@ -1212,6 +1279,8 @@ int main(int argc, char** argv) {
                     for (int i = 1; i < kRenderers; i++)
                         if (diff[i]) write_bmp(bmp / (p.name + "-" + kRendererName[i] + ".bmp"), rb[i], p.w, p.h);
                 }
+                if (!rml.empty() && !write_rml(rml / (p.name + ".txt")))
+                    std::fprintf(stderr, "ui_render_compare: %s's elements were not written\n", p.name.c_str());
             }
         }
         close_pages();

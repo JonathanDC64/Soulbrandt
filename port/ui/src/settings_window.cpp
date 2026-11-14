@@ -1,51 +1,35 @@
 // Adapted from Dusklight (CC0), src/dusk/ui/settings.cpp, by way of FFCCEOT-Recomp's settings_window.cpp: the same
 // window, tabs, rows and help panes. Adapted for Demon's Souls: the rows are the port's run options (README, "Running"),
-// stored in settings.ini under their environment variable names (settings.hpp). A row's value is shown on the left,
-// its choices or its help on the right. A row whose option was set in the environment when the game started is
-// disabled (the environment wins) and says so.
+// stored in settings.ini under their environment variable names (settings.hpp), and listed in settings_catalog.hpp. A
+// row's value is shown on the left, its choices or its help on the right. A row whose option was set in the environment
+// when the game started is disabled (the environment wins) and says so.
 #include "settings_window.hpp"
 
-#include "app.hpp"
 #include "bool_button.hpp"
 #include "controls_window.hpp"
 #include "hud_editor.hpp"
-#include "input.hpp"
 #include "modal.hpp"
 #include "number_button.hpp"
 #include "pane.hpp"
 #include "players_window.hpp"
 #include "privacy_window.hpp"
-#include "report.hpp"
 #include "settings.hpp"
+#include "settings_catalog.hpp"
+#include "settings_values.hpp"
 #include "slider.hpp"
-#include "souls_model.hpp"
 #include "stick_preview.hpp"
 #include "string_button.hpp"
 #include "ui.hpp"
-#include "updates.hpp"
-#include "update_window.hpp"
-#include "version.hpp"
-#include "../../des_seamless.h"
-#if DES_DEV
-#include "../../des_dev_marker.h"
-#endif
 
 #include <algorithm>
 #include <chrono>
-#include <cmath>
-#include <cstdint>
-#include <cstdlib>
-#include <cstring>
-#include <format>
 #include <string>
 #include <vector>
 
 namespace ui {
 namespace {
 
-void open_url(const char* url) {
-    report::open_url(url);
-}
+using catalog::RowDesc;
 
 // What heads a row's help: the option is set from outside, or it takes effect at the next start.
 Rml::String with_note(const Rml::String& key, Rml::String help) {
@@ -61,334 +45,41 @@ Rml::String with_note(const Rml::String& key, Rml::String help) {
     return help;
 }
 
-// An on/off row for a "0"/"1" option. `inverted`: On means "0" (AUDIO_MUTE shown as Sound).
-SelectButton& bool_row(Pane& leftPane, Pane& rightPane, const Rml::String& label, const Rml::String& key,
-    Rml::String helpText, bool inverted = false) {
-    helpText = with_note(key, std::move(helpText));
-    const auto value_of = [key, inverted] {
-        const std::string v = settings::pinned(key) ? settings::pinned_value(key) : settings::get(key);
-        const bool on = !v.empty() && v != "0";
-        return inverted ? !on : on;
-    };
-    auto& button = leftPane.add_child<BoolButton>(BoolButton::Props{
-        .key = label,
-        .getValue = value_of,
-        .setValue =
-            [key, inverted, value_of](bool value) {
-                if (settings::pinned(key) || value == value_of()) {
-                    return;
-                }
-                settings::set(key, (value != inverted) ? "1" : "0");
-            },
-        .isModified = [key] { return !settings::is_default(key); },
-    });
-    leftPane.register_control(button, rightPane, [helpText = std::move(helpText)](Pane& pane) {
-        pane.clear();
-        pane.add_rml(helpText);
-    });
-    return button;
+Rml::String badge(const catalog::Note& note) {
+    return Rml::String("<status-badge class=\"") + (note.kind == catalog::Note::Kind::Warning ? "warning" : "info") +
+           "\">" + note.text + "</status-badge>";
 }
 
-// A row with a list of choices on the right, the current one marked. `values` and `labels` line up; a value from
-// settings.ini that is not in the list shows as itself. `extra` adds to the list, below the choices (Frame rate's
-// Custom).
-SelectButton& choice_row(Pane& leftPane, Pane& rightPane, const Rml::String& label, const Rml::String& key,
-    std::vector<Rml::String> values, std::vector<Rml::String> labels, Rml::String helpText,
-    std::function<void()> onChange = {}, std::function<void(Pane&)> extra = {}) {
-    helpText = with_note(key, std::move(helpText));
-    const auto current = [key] { return settings::pinned(key) ? settings::pinned_value(key) : settings::get(key); };
-    const auto index_of = [values, current] {
-        const auto it = std::find(values.begin(), values.end(), current());
-        return it == values.end() ? -1 : int(it - values.begin());
-    };
-    auto& button = leftPane.add_select_button({
-        .key = label,
-        .getValue =
-            [labels, index_of, current] {
-                const int i = index_of();
-                return i >= 0 ? labels[i] : "Custom (" + current() + ")";
-            },
-        .isModified = [key] { return !settings::is_default(key); },
-    });
-    leftPane.register_control(button, rightPane,
-        [key, values = std::move(values), labels = std::move(labels), index_of, onChange, extra = std::move(extra),
-            helpText = std::move(helpText)](Pane& pane) {
-            for (int i = 0; i < int(labels.size()); ++i) {
-                pane.add_button({
-                                    .text = labels[i],
-                                    .isSelected = [index_of, i] { return index_of() == i; },
-                                    .isDisabled = [key] { return settings::pinned(key); },
-                                })
-                    .on_pressed([key, value = values[i], onChange] {
-                        play_sound(kSoundItemChange);
-                        settings::set(key, value);
-                        if (onChange) onChange();
-                    });
-            }
-            if (extra) {
-                extra(pane);
-            }
-            if (!helpText.empty()) {
-                pane.add_rml("<br/>" + helpText);
-            }
-        });
-    return button;
+// A row's help as its pane shows it: the row's own notes, the pinned or restart note, the help and its "(KEY)".
+Rml::String full_help(const RowDesc& row) {
+    Rml::String notes;
+    if (row.notes)
+        for (const catalog::Note& n : row.notes()) notes += badge(n) + "<br/>";
+    const Rml::String help = catalog::help_with_key(row);
+    return notes + (row.key.empty() ? help : with_note(row.key, help));
 }
 
-// A row that only shows something (a value on the left, its explanation on the right).
-void info_row(Pane& leftPane, Pane& rightPane, const Rml::String& label, const Rml::String& value, Rml::String helpRml,
-    std::function<void(Pane&)> extra = {}) {
-    leftPane.register_control(
-        leftPane.add_select_button({
-            .key = label,
-            .getValue = [value] { return value; },
-        }),
-        rightPane, [helpRml = std::move(helpRml), extra = std::move(extra)](Pane& pane) {
-            pane.add_rml(helpRml);
-            if (extra) extra(pane);
-        });
-}
-
-// cellPad.h (declared here: des_ui does not take ps3recomp's include paths): the i-th controller connected now, its
-// PAD_CONTROLLER name ("controller1", "playstation2") and what it is ("DualSense (USB)"); 0 past the last.
-extern "C" int cellPad_host_controller(int i, char* id, int idn, char* name, int namen);
-
-struct PadChoice {
-    Rml::String value, label;
-};
-
-// "controller2" -> "Controller 2", "playstation1" -> "PlayStation 1": a pad that can't be named.
-Rml::String pad_number_label(const Rml::String& id) {
-    for (const char* kind : {"controller", "playstation"}) {
-        const size_t n = std::strlen(kind);
-        if (id.size() == n + 1 && id.compare(0, n, kind) == 0)
-            return Rml::String(kind[0] == 'c' ? "Controller " : "PlayStation ") + id.back();
+void play_button_sound(catalog::Sound sound) {
+    switch (sound) {
+    case catalog::Sound::Click: play_sound(kSoundClick); break;
+    case catalog::Sound::Open: play_sound(kSoundWindowOpen); break;
+    case catalog::Sound::None: break;
     }
-    return id;
 }
 
-// The Controller row's choices: Automatic, the pads connected now by what they are (a second pad of the same kind
-// gets a number), and the saved choice while its pad isn't connected. Read again at most twice a second: the row's
-// value is drawn every frame, and naming an XInput pad asks its driver.
-const std::vector<PadChoice>& pad_choices(const Rml::String& current) {
-    static std::vector<PadChoice> sChoices;
-    static Rml::String sFor = "\n";
-    static std::chrono::steady_clock::time_point sAt{};
-    const auto now = std::chrono::steady_clock::now();
-    if (current == sFor && now - sAt < std::chrono::milliseconds(500)) return sChoices;
-    sFor = current;
-    sAt = now;
-    sChoices = {{"auto", "Automatic"}};
-    char id[16], name[64];
-    for (int i = 0; cellPad_host_controller(i, id, int(sizeof id), name, int(sizeof name)); ++i) {
-        const Rml::String base = *name ? Rml::String(name) : pad_number_label(id);
-        Rml::String label = base;
-        for (int n = 2; std::any_of(sChoices.begin(), sChoices.end(), [&](const PadChoice& c) { return c.label == label; });)
-            label = base + " " + std::to_string(n++);
-        sChoices.push_back({id, label});
+// The buttons below a row's help.
+void add_buttons(Pane& pane, const RowDesc& row) {
+    if (!row.buttons) return;
+    for (catalog::Button& b : row.buttons()) {
+        auto press = [sound = b.sound, press = b.press] {
+            play_button_sound(sound);
+            if (press) press();
+        };
+        if (b.disabled)
+            pane.add_button({.text = b.text, .isDisabled = b.disabled}).on_pressed(std::move(press));
+        else
+            pane.add_button(b.text).on_pressed(std::move(press));
     }
-    if (!current.empty() && current != "auto" &&
-        std::none_of(sChoices.begin(), sChoices.end(), [&](const PadChoice& c) { return c.value == current; }))
-        sChoices.push_back({current, pad_number_label(current) + " (not connected)"});
-    return sChoices;
-}
-
-// Settings > Controls > Controller (PAD_CONTROLLER): like choice_row, with the choices read when the row is drawn.
-void controller_row(Pane& leftPane, Pane& rightPane) {
-    const Rml::String key = "PAD_CONTROLLER";
-    const auto current = [key] { return settings::pinned(key) ? settings::pinned_value(key) : settings::get(key); };
-    const auto is_current = [current](const Rml::String& value) {
-        const Rml::String v = current();
-        return v == value || (value == "auto" && v.empty());
-    };
-    auto& button = leftPane.add_select_button({
-        .key = "Controller",
-        .getValue =
-            [current, is_current] {
-                for (const PadChoice& c : pad_choices(current()))
-                    if (is_current(c.value)) return c.label;
-                return Rml::String("Automatic");
-            },
-        .isModified = [key] { return !settings::is_default(key); },
-    });
-    leftPane.register_control(button, rightPane,
-        [key, current, is_current,
-            help = with_note(key, "The gamepad the game and these menus read, when more than one is connected. "
-                                  "Automatic: the game reads the first one found, the menus all of them."
-                                  "<br/><br/>(PAD_CONTROLLER)")](Pane& pane) {
-            for (const PadChoice& c : pad_choices(current())) {
-                pane.add_button({
-                                    .text = c.label,
-                                    .isSelected = [is_current, value = c.value] { return is_current(value); },
-                                    .isDisabled = [key] { return settings::pinned(key); },
-                                })
-                    .on_pressed([key, value = c.value] {
-                        play_sound(kSoundItemChange);
-                        settings::set(key, value);
-                    });
-            }
-            pane.add_rml("<br/>" + help);
-        });
-}
-
-// A stick's deadzone row (PAD_DEADZONE_LEFT, _RIGHT): how far it is tilted when it starts counting, 0 to 70 percent.
-// The Default position sits at the number that deadzone comes to with the connected controller, so stepping or dragging
-// from it starts where the stick already starts; it stores "" and leaves the runtime's own deadzone in place.
-void stick_zone_row(Pane& leftPane, Pane& rightPane, const Rml::String& label, const Rml::String& key, int stick,
-    Rml::String helpText) {
-    static constexpr int kZoneMax = 70;
-    const auto text = [key] { return settings::pinned(key) ? settings::pinned_value(key) : settings::get(key); };
-    const auto value = [text] {
-        const std::string v = text();
-        return v.empty() ? stick_default_zone() : std::clamp(std::atoi(v.c_str()), 0, kZoneMax);
-    };
-    const auto set_value = [key](int v) {
-        if (settings::pinned(key)) return;
-        settings::set(key, v == stick_default_zone() ? std::string() : std::to_string(v));
-    };
-    auto& row = leftPane.add_child<NumberButton>(NumberButton::Props{
-        .key = label,
-        .getValue = value,
-        .setValue = set_value,
-        .isDisabled = [key] { return settings::pinned(key); },
-        .isModified = [key] { return !settings::is_default(key); },
-        .min = 0,
-        .max = kZoneMax,
-        .step = 1,
-        .format = [text](int v) -> Rml::String {
-            return text().empty() ? std::format("Default ({}%)", v) : std::format("{}%", v);
-        },
-    });
-    leftPane.register_control(row, rightPane,
-        [key, stick, value, set_value, helpText = with_note(key, std::move(helpText))](Pane& pane) {
-            pane.clear();
-            pane.add_child<Slider>(Slider::Props{
-                .min = 0,
-                .max = kZoneMax,
-                .suffix = "%",
-                .getValue = value,
-                .setValue = set_value,
-                .isDisabled = [key] { return settings::pinned(key); },
-            });
-            pane.add_child<StickPreview>(StickPreview::Props{.stick = stick, .zone = value});
-            pane.add_rml(helpText);
-        });
-}
-
-// Frame rate's fixed choices. Any other DES_FPS (a number from 30 to 500, des_options.cpp's fps_parse) is its Custom
-// choice, whose number the Custom frame rate row sets; fps_custom keeps that number while a fixed choice is on.
-const std::vector<Rml::String> kFpsValues = {"", "30", "60", "120", "144", "165", "240", "unlocked"};
-constexpr int kFpsMin = 30;
-constexpr int kFpsMax = 500;
-
-std::string fps_setting() {
-    return settings::pinned("DES_FPS") ? settings::pinned_value("DES_FPS") : settings::get("DES_FPS");
-}
-
-bool fps_is_custom() {
-    return std::find(kFpsValues.begin(), kFpsValues.end(), fps_setting()) == kFpsValues.end();
-}
-
-// The Custom frame rate: DES_FPS while it is custom, else the last one set.
-int fps_custom() {
-    const std::string v = fps_is_custom() ? fps_setting() : settings::get("fps_custom");
-    return std::clamp(std::atoi(v.c_str()), kFpsMin, kFpsMax);
-}
-
-// Your glow colour's named choices (DES_SEAMLESS_GLOW_COLOR, "RRGGBB"; "" the game's blue). Any other colour is its
-// Custom choice, which the Custom glow colour row sets from a hue; glow_hue_custom keeps that hue.
-const std::vector<Rml::String> kGlowColours = {"", "F0F0FF", "FFC040", "FF7010", "FF2010", "FF60C0", "A040FF",
-    "30FF50", "20E0D0"};
-
-bool glow_is_custom() {
-    const std::string v = settings::pinned("DES_SEAMLESS_GLOW_COLOR") ? settings::pinned_value("DES_SEAMLESS_GLOW_COLOR")
-                                                                      : settings::get("DES_SEAMLESS_GLOW_COLOR");
-    return std::find(kGlowColours.begin(), kGlowColours.end(), v) == kGlowColours.end();
-}
-
-int glow_hue() {
-    return std::clamp(std::atoi(settings::get("glow_hue_custom").c_str()) / 10 * 10, 0, 350);
-}
-
-// The hue h (degrees) at full saturation and brightness, as "RRGGBB".
-std::string hue_hex(int h) {
-    const float x = float(h % 60) / 60.0f;
-    float r = 0, g = 0, b = 0;
-    switch (h / 60 % 6) {
-    case 0: r = 1; g = x; break;
-    case 1: r = 1 - x; g = 1; break;
-    case 2: g = 1; b = x; break;
-    case 3: g = 1 - x; b = 1; break;
-    case 4: r = x; b = 1; break;
-    default: r = 1; b = 1 - x; break;
-    }
-    char s[8];
-    std::snprintf(s, sizeof s, "%02X%02X%02X", int(r * 255 + 0.5f), int(g * 255 + 0.5f), int(b * 255 + 0.5f));
-    return s;
-}
-
-// Mouse sensitivity, shown as a percentage of its default (DES_MOUSE_SENS, degrees per count; des_mouse_look in
-// des_options.cpp).
-constexpr int kMouseSensMin = 5;
-constexpr int kMouseSensMax = 500;
-
-double mouse_sens_default() {
-    const settings::Def* d = settings::find("DES_MOUSE_SENS");
-    return d ? std::atof(d->def) : 0.09;
-}
-
-int mouse_sens_percent() {
-    const std::string v =
-        settings::pinned("DES_MOUSE_SENS") ? settings::pinned_value("DES_MOUSE_SENS") : settings::get("DES_MOUSE_SENS");
-    const double sens = std::atof(v.c_str());
-    if (!(sens > 0.0) || !(mouse_sens_default() > 0.0)) return 100;  // (des_mouse_look uses the default then)
-    return std::clamp(int(std::lround(sens / mouse_sens_default() * 100.0)), kMouseSensMin, kMouseSensMax);
-}
-
-// HUD size in percent (DES_HUD_SIZE; des_hud.cpp takes 25 to 200, this row offers 50 to 150).
-constexpr int kHudSizeMin = 50;
-constexpr int kHudSizeMax = 150;
-
-int hud_size_percent() {
-    const std::string v =
-        settings::pinned("DES_HUD_SIZE") ? settings::pinned_value("DES_HUD_SIZE") : settings::get("DES_HUD_SIZE");
-    const int pct = v.empty() ? 100 : std::atoi(v.c_str());
-    return std::clamp(pct > 0 ? pct : 100, kHudSizeMin, kHudSizeMax);
-}
-
-// The Network tab's rows (settings.hpp, "Online play"). A value in use: the environment's when set there.
-std::string net_value(const char* key) {
-    return settings::pinned(key) ? settings::pinned_value(key) : settings::get(key);
-}
-
-// A developer build's cheat session (des_dev_boot set a cheat at start and cleared the network knobs; docs/55 section
-// 6). Release builds never set DES_DEV_SESSION.
-bool net_cheat_session() {
-    const char* s = std::getenv("DES_DEV_SESSION");
-    return s && std::strcmp(s, "cheats") == 0;
-}
-
-std::string trim_spaces(const std::string& s) {
-    const size_t a = s.find_first_not_of(" \t");
-    if (a == std::string::npos) return {};
-    return s.substr(a, s.find_last_not_of(" \t") - a + 1);
-}
-
-#if DES_DEV  // (Custom is in developer builds only for now: settings.hpp's kNetServers)
-// Custom's address, chosen on this PC (settings::choose_custom_here): says so, since the row looks the same as before.
-void choose_custom_here() {
-    if (!settings::choose_custom_here()) return;
-    push_toast({
-        .content = "Custom server chosen. Restart the game to play on " + trim_spaces(net_value("DES_NET_CUSTOM")) + ".",
-        .duration = std::chrono::seconds(8),
-    });
-}
-
-// Custom is picked, but its address came in a copied settings file (settings::custom_chosen_here), so the game is
-// offline: the Server and Custom server rows say how to use it.
-bool custom_held() {
-    return net_value("DES_NET_SERVER") == settings::kNetCustomKey &&
-           settings::net_address_ok(trim_spaces(net_value("DES_NET_CUSTOM"))) && !settings::custom_chosen_here();
 }
 
 // RML in a pane that shows only while `visible` holds, checked at each update: a note that goes away as soon as what
@@ -408,61 +99,10 @@ public:
 private:
     std::function<bool()> mVisible;
 };
-#endif
-
-// The Online name row never stores an empty or invalid name: online play needs one, and a player who cleared it would
-// stay offline without knowing why. It keeps the last good name (with none, a suggested one) and says so here.
-std::string sNameNote;
-
-void set_net_name(const std::string& typed) {
-    const std::string name = trim_spaces(typed);
-    if (settings::net_name_ok(name)) {
-        sNameNote.clear();
-        settings::set("DES_NET_NAME", name);
-        return;
-    }
-    const std::string old = settings::get("DES_NET_NAME");
-    const std::string kept = settings::net_name_ok(old) ? old : settings::suggest_net_name();
-    sNameNote = std::string(name.empty() ? "Online play needs a name" : "Names are 3 to 16 letters, digits, - or _") +
-                (kept == old ? ", so " + kept + " was kept." : ", so it is " + kept + " for now.");
-    settings::set("DES_NET_NAME", kept);
-}
-
-int net_p2p_port() {
-    const int port = std::atoi(net_value("DES_NET_P2P_PORT").c_str());
-    return port < settings::kNetP2pPortMin || port > settings::kNetP2pPortMax ? settings::kNetP2pPortDefault : port;
-}
-
-// The software this program is made of (mirrors port/ui/NOTICE.md).
-struct Credit {
-    const char* name;
-    const char* use;
-    const char* licence;
-    const char* url;  // empty: no page to open
-};
-constexpr Credit kCredits[] = {
-    {"ps3recomp", "The recompiler and runtime the port is built on, by Ned Heller (sp00nznet) and its contributors.", "MIT",
-     "https://github.com/sp00nznet/ps3recomp"},
-    {"RmlUi", "The menus.", "MIT", "https://github.com/mikke89/RmlUi"},
-    {"FreeType", "Text in the menus. Portions of this software are copyright © 2025 The FreeType Project "
-                  "(www.freetype.org). All rights reserved.",
-     "FreeType Licence (FTL)", "https://freetype.org"},
-    {"Dusklight", "The start screen, menu bar and settings windows are adapted from its interface code.", "CC0",
-     "https://github.com/TwilitRealm/dusklight"},
-    {"Cinzel and Alegreya Sans", "The fonts of the menus.", "SIL Open Font Licence 1.1", "https://fonts.google.com"},
-    {"Material Symbols", "The icons of the menus.", "Apache-2.0", "https://fonts.google.com/icons"},
-    {"Mbed TLS", "The secure connection to the online server.", "Apache-2.0",
-     "https://www.trustedfirmware.org/projects/mbed-tls/"},
-    {"SMAA", "The SMAA anti-aliasing setting. By Jorge Jimenez, Jose I. Echevarria, Belen Masia, Fernando Navarro "
-             "and Diego Gutierrez.",
-     "MIT", "https://www.iryoku.com/smaa/"},
-    {"RPCS3", "A behavioural reference for the PS3 system libraries. No RPCS3 code is copied.", "", ""},
-};
 
 // ps3emu/ps3_net_signin.h (declared here: des_ui does not take ps3recomp's include paths). Its outcome comes back
 // through ps3_net_erase_result, which net_notices.cpp shows.
 extern "C" int ps3_net_player_erase(void);
-extern "C" uint8_t g_des_region;  // des_region.h: 0 = US, 1 = the European disc, 2 = Japanese, 3 = Asian
 
 // Delete my data (the server's docs/social.md), asked first.
 void ask_erase() {
@@ -500,840 +140,241 @@ void ask_erase() {
     }));
 }
 
-// Go back to the version the last update kept (updates.hpp), asked first. Over the game, the program starts again with
-// setup's screens alone for it: a running game cannot replace its own files.
-void ask_go_back(const std::string& kept) {
-    push_document(std::make_unique<Modal>(Modal::Props{
-        .title = "Go back to " + kept + "?",
-        .bodyText = "The game starts again as version " + kept + ", with the game build it had. Your saves and settings "
-                    "stay. Version " + updates::this_version() + " is kept, so you can update to it again.",
-        .actions =
-            {
-                ModalAction{.label = "Cancel",
-                    .onPressed =
-                        [](Modal& modal) {
-                            play_sound(kSoundWindowClose);
-                            modal.pop();
-                        }},
-                ModalAction{.label = "Go back",
-                    .onPressed =
-                        [](Modal& modal) {
-                            play_sound(kSoundClick);
-                            modal.pop();
-                            if (updates::over_game()) {
-                                updates::restart_into("update-back", "");
-                            } else {
-                                push_document(std::make_unique<UpdateWindow>(
-                                    UpdateWindow::Props{.open = UpdateWindow::Open::Back}));
-                            }
-                        }},
-            },
-        .onDismiss = [](Modal& modal) { modal.pop(); },
-        .icon = "question-mark",
-    }));
-}
+// One row of a tab, on the left, and what it shows on the right when it has the focus.
+class RowBuilder {
+public:
+    RowBuilder(Window& window, Pane& left, Pane& right) : mWindow(window), mLeft(left), mRight(right) {}
+
+    void build(const RowDesc& row) {
+        std::visit([&](const auto& kind) { add(row, kind); }, row.kind);
+    }
+
+private:
+    // On or off: "1" or "0". inverted: On means "0" (AUDIO_MUTE shown as Sound).
+    void add(const RowDesc& row, const catalog::ToggleRow& kind) {
+        const Rml::String key = row.key;
+        const bool inverted = kind.inverted;
+        const auto value_of = [key, inverted] {
+            const std::string v = settings::in_use(key);
+            const bool on = !v.empty() && v != "0";
+            return inverted ? !on : on;
+        };
+        const auto& locked = row.locked;
+        BoolButton::Props props{
+            .key = row.label,
+            .getValue = value_of,
+            .setValue =
+                [key, inverted, value_of, locked](bool value) {
+                    if (settings::pinned(key) || (locked && locked()) || value == value_of()) return;
+                    settings::set(key, (value != inverted) ? "1" : "0");
+                },
+            .isModified = [key] { return !settings::is_default(key); },
+        };
+        if (locked) {  // (a row locked by more than the environment: its value says why)
+            props.isDisabled = [key, locked] { return settings::pinned(key) || locked(); };
+            props.valueOverride = [locked, text = row.lockedValue] { return locked() ? text() : Rml::String(); };
+        }
+        auto& button = mLeft.add_child<BoolButton>(std::move(props));
+        mLeft.register_control(button, mRight, [&row](Pane& pane) {
+            pane.add_rml(full_help(row));
+            add_buttons(pane, row);
+        });
+    }
+
+    // The row's choices as they are now, to f: its fixed list as it stands, or the live one made now.
+    template <class F>
+    static auto with_choices(const catalog::ChoiceRow& kind, const Rml::String& key, F&& f) {
+        return kind.live ? f(kind.live(settings::in_use(key))) : f(kind.choices);
+    }
+
+    static const catalog::Choice* find_choice(const std::vector<catalog::Choice>& list, const std::string& value) {
+        const auto it = std::find_if(list.begin(), list.end(), [&](const catalog::Choice& c) { return c.value == value; });
+        return it == list.end() ? nullptr : &*it;
+    }
+
+    // A list of choices on the right, the current one marked. A value from settings.ini that is not in the list shows
+    // as itself; the row's Custom choice, when it has one, is marked for it.
+    void add(const RowDesc& row, const catalog::ChoiceRow& kind) {
+        const Rml::String key = row.key;
+        const auto current = [key, blank = kind.blank] {
+            const std::string v = settings::in_use(key);
+            return v.empty() && !blank.empty() ? blank : v;
+        };
+        const auto listed = [&kind, key, current] {
+            return with_choices(kind, key, [&](const auto& list) { return find_choice(list, current()) != nullptr; });
+        };
+        auto& button = mLeft.add_select_button({
+            .key = row.label,
+            .getValue =
+                [&kind, current, key] {
+                    return with_choices(kind, key, [&](const auto& list) {
+                        const catalog::Choice* c = find_choice(list, current());
+                        return c ? catalog::choice_label(*c) : "Custom (" + settings::in_use(key) + ")";
+                    });
+                },
+            .isModified = [key] { return !settings::is_default(key); },
+        });
+        mLeft.register_control(button, mRight, [&row, &kind, key, current, listed](Pane& pane) {
+            const std::vector<catalog::Choice> choices = kind.live ? kind.live(settings::in_use(key)) : kind.choices;
+            for (const catalog::Choice& c : choices) {
+                pane.add_button({
+                                    .text = catalog::choice_label(c),
+                                    .isSelected = [current, value = c.value] { return current() == value; },
+                                    .isDisabled = [key] { return settings::pinned(key); },
+                                })
+                    .on_pressed([key, value = c.value, &kind] {
+                        play_sound(kSoundItemChange);
+                        settings::set(key, value);
+                        if (kind.changed) kind.changed();
+                    });
+            }
+            if (kind.custom) {
+                pane.add_button({
+                                    .text = kind.custom->label,
+                                    .isSelected = [listed] { return !listed(); },
+                                    .isDisabled = [key] { return settings::pinned(key); },
+                                })
+                    .on_pressed([key, &kind] {
+                        play_sound(kSoundItemChange);
+                        settings::set(key, kind.custom->value());
+                    });
+            }
+            if (kind.liveNote) pane.add_child<LiveNote>("<br/>" + badge(kind.liveNote->note), kind.liveNote->visible);
+            if (const Rml::String help = full_help(row); !help.empty()) pane.add_rml("<br/>" + help);
+            add_buttons(pane, row);
+        });
+    }
+
+    // A number, stepped on the left; a stick's deadzone also gets a slider and the stick drawn on the right.
+    void add(const RowDesc& row, const catalog::NumberRow& kind) {
+        const Rml::String key = row.key;
+        const auto set_value = [key, set = kind.set](int v) {
+            if (settings::pinned(key)) return;
+            set(v);
+        };
+        auto& button = mLeft.add_child<NumberButton>(NumberButton::Props{
+            .key = row.label,
+            .getValue = kind.get,
+            .setValue = set_value,
+            .isDisabled = [key] { return settings::pinned(key); },
+            .isModified = kind.modified ? kind.modified : std::function<bool()>([key] { return !settings::is_default(key); }),
+            .min = kind.min,
+            .max = kind.max,
+            .step = kind.step,
+            .suffix = kind.suffix,
+            .format = kind.format,
+        });
+        mLeft.register_control(button, mRight, [&row, &kind, key, set_value](Pane& pane) {
+            if (kind.stick >= 0) {
+                pane.add_child<Slider>(Slider::Props{
+                    .min = kind.min,
+                    .max = kind.max,
+                    .suffix = kind.suffix,
+                    .getValue = kind.get,
+                    .setValue = set_value,
+                    .isDisabled = [key] { return settings::pinned(key); },
+                });
+                pane.add_child<StickPreview>(StickPreview::Props{.stick = kind.stick, .zone = kind.get});
+            }
+            pane.add_rml(full_help(row));
+            add_buttons(pane, row);
+        });
+    }
+
+    // Typed text.
+    void add(const RowDesc& row, const catalog::TextRow& kind) {
+        const Rml::String key = row.key;
+        auto& button = mLeft.add_child<StringButton>(StringButton::Props{
+            .key = row.label,
+            .getValue = [key] { return Rml::String(settings::in_use(key)); },
+            .setValue =
+                [key, set = kind.set](Rml::String value) {
+                    if (settings::pinned(key)) return;
+                    if (set)
+                        set(value);
+                    else
+                        settings::set(key, value);
+                },
+            .isDisabled = [key] { return settings::pinned(key); },
+            .isModified = [key] { return !settings::is_default(key); },
+            .maxLength = kind.maxLength,
+        });
+        mLeft.register_control(button, mRight, [&row](Pane& pane) {
+            pane.add_rml(full_help(row));
+            add_buttons(pane, row);
+        });
+    }
+
+    // A value, and what it is.
+    void add(const RowDesc& row, const catalog::InfoRow& kind) {
+        std::function<Rml::String()> value;
+        if (kind.everyFrame)
+            value = [&kind] { return kind.value(); };
+        else
+            value = [v = kind.value()] { return v; };
+        mLeft.register_control(mLeft.add_select_button({.key = row.label, .getValue = std::move(value)}), mRight,
+            [&row](Pane& pane) {
+                pane.add_rml(full_help(row));
+                if (const Rml::String note = row.footnote(); !note.empty()) pane.add_rml("<br/>" + note);
+                add_buttons(pane, row);
+            });
+    }
+
+    // A button that opens another page, or asks.
+    void add(const RowDesc& row, const catalog::ActionRow& kind) {
+        using Opens = catalog::ActionRow::Opens;
+        Window& window = mWindow;
+        mLeft.register_control(
+            mLeft.add_group_button({.text = row.label}).on_pressed([&window, opens = kind.opens] {
+                switch (opens) {
+                case Opens::HudEditor:
+                    play_sound(kSoundClick);
+                    window.push(std::make_unique<HudEditor>());
+                    break;
+                case Opens::Controls:
+                    play_sound(kSoundClick);
+                    window.push(std::make_unique<ControlsWindow>());
+                    break;
+                case Opens::Players:
+                    play_sound(kSoundClick);
+                    window.push(std::make_unique<PlayersWindow>());
+                    break;
+                case Opens::Privacy:
+                    play_sound(kSoundWindowOpen);
+                    window.push(std::make_unique<PrivacyWindow>(PrivacyWindow::Mode::Read));
+                    break;
+                case Opens::DeleteData:
+                    play_sound(kSoundWindowOpen);
+                    ask_erase();
+                    break;
+                }
+            }),
+            mRight, [&row](Pane& pane) {
+                pane.add_rml(full_help(row));
+                add_buttons(pane, row);
+            });
+    }
+
+    Window& mWindow;
+    Pane& mLeft;
+    Pane& mRight;
+};
 
 }  // namespace
 
 SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
-    add_tab("Display", [this](Rml::Element* content) {
-        auto& leftPane = add_child<Pane>(content, Pane::Type::Controlled);
-        auto& rightPane = add_child<Pane>(content, Pane::Type::Uncontrolled);
-
-#ifdef _WIN32
-        choice_row(leftPane, rightPane, "Display mode", "DES_FULLSCREEN", {"0", "1", "2"},
-            {"Window", "Borderless fullscreen", "Exclusive fullscreen"},
-            "Borderless fills the display the window is on. Exclusive gives the game the display to itself, which can "
-            "make switching to other programs slower. Alt+Enter also switches to and from a window."
-            "<br/><br/>(DES_FULLSCREEN)");
-#else
-        choice_row(leftPane, rightPane, "Display mode", "DES_FULLSCREEN", {"0", "1"}, {"Window", "Borderless fullscreen"},
-            "Borderless fills the display the window is on. Alt+Enter also switches between the two."
-            "<br/><br/>(DES_FULLSCREEN)");
-#endif
-        bool_row(leftPane, rightPane, "Start maximized", "DES_MAXIMIZED",
-            "The window opens maximized, and comes back maximized from Fullscreen.<br/><br/>(DES_MAXIMIZED)");
-#if DES_RSX_VULKAN  // (with a runtime that has the Vulkan renderer: port/CMakeLists.txt)
-        choice_row(leftPane, rightPane, "Renderer", "RSX_BACKEND", {"d3d12", "vulkan"}, {"D3D12", "Vulkan"},
-            "Vulkan or D3D12. On GeForce GTX 10 series and older cards, Vulkan is the default. Restart to apply."
-            "<br/><br/>(RSX_BACKEND)");
-#endif
-        choice_row(leftPane, rightPane, "Aspect ratio", "DES_ASPECT",
-            {"", "16:10", "2560:1080", "3440:1440", "3840:1600", "32:9", "auto"},
-            {"16:9 (original)", "16:10 (Steam Deck)", "21:9 (2560x1080)", "21:9 (3440x1440)", "21:9 (3840x1600)", "32:9",
-             "Match the display"},
-            "The shape of the picture. Wider shows more at the sides, 16:10 more above and below. Raise Render "
-            "resolution to keep a wide picture sharp.<br/><br/>(DES_ASPECT)");
-        choice_row(leftPane, rightPane, "Render resolution", "RSX_SCALE", {"100", "150", "200", "300"},
-            {"100% (original)", "150%", "200%", "300%"},
-            "Draws the game sharper: 150% is 1080p, 200% 1440p, 300% 4K. Higher costs more GPU time."
-            "<br/><br/>(RSX_SCALE)");
-        choice_row(leftPane, rightPane, "Scaling filter", "RSX_OUTFILTER", {"0", "1"}, {"Bilinear", "Sharp"},
-            "How the picture is fitted to the window. Sharp is cleaner, most of all with a high Render resolution."
-            "<br/><br/>(RSX_OUTFILTER)");
-        choice_row(leftPane, rightPane, "HDR", "RSX_HDR", {"0", "1"}, {"Off (original)", "On"},
-            "Brighter lights and sky on an HDR display. Turn on HDR in Windows first. Turn off RTX HDR and Auto HDR "
-            "for the game when this is on.<br/><br/>(RSX_HDR)");
-        choice_row(leftPane, rightPane, "HDR brightness", "RSX_HDR_WHITE",
-            {"0", "100", "150", "200", "250", "300", "400"},
-            {"Windows' setting", "100 nits", "150 nits", "200 nits", "250 nits", "300 nits", "400 nits"},
-            "How bright white is with HDR on. Lower leaves more room for the highlights.<br/><br/>(RSX_HDR_WHITE)");
-        choice_row(leftPane, rightPane, "HDR peak", "RSX_HDR_PEAK", {"0", "400", "600", "1000", "1500"},
-            {"The display's", "400 nits", "600 nits", "1000 nits", "1500 nits"},
-            "The brightest the highlights get with HDR on. The display's own figure suits most.<br/><br/>(RSX_HDR_PEAK)");
-        choice_row(leftPane, rightPane, "HDR shadows", "RSX_HDR_GAMMA", {"0", "1"},
-            {"Gamma 2.2 (darker)", "sRGB (lighter)"},
-            "How dark areas look with HDR on. Gamma 2.2 matches a TV.<br/><br/>(RSX_HDR_GAMMA)");
-        choice_row(leftPane, rightPane, "Texture filtering", "RSX_TEXFILTER", {"0", "1", "2", "3"},
-            {"Original", "Nearest", "Bilinear", "Trilinear"},
-            "How textures are smoothed. Original uses the game's choice. Nearest looks pixelated; Trilinear is the "
-            "smoothest.<br/><br/>(RSX_TEXFILTER)");
-        choice_row(leftPane, rightPane, "Anisotropic filtering", "RSX_ANISO", {"0", "1", "2", "4", "8", "16"},
-            {"Original (4x)", "Off", "2x", "4x", "8x", "16x"},
-            "Keeps floors and walls sharp into the distance. Original is the game's own, 4x on most surfaces."
-            "<br/><br/>(RSX_ANISO)");
-        choice_row(leftPane, rightPane, "Mipmaps", "RSX_TEX_MIPS", {"1", "0"}, {"On (original)", "Off"},
-            "Smaller copies of each texture for distant surfaces, as on the PS3. Off draws them at full size, "
-            "so they shimmer.<br/><br/>(RSX_TEX_MIPS)");
-        choice_row(leftPane, rightPane, "Anti-aliasing", "RSX_AA", {"0", "1", "2"},
-            {"Off (original)", "FXAA", "SMAA"},
-            "Smooths jagged edges and keeps the HUD sharp. FXAA softens textures a little; SMAA keeps them sharper "
-            "and costs a little more.<br/><br/>(RSX_AA)");
-        bool_row(leftPane, rightPane, "Depth of field", "DES_DOF",
-            "The game's blur on distant scenery. Off keeps it sharp.<br/><br/>(DES_DOF)");
-        choice_row(leftPane, rightPane, "Frame rate", "DES_FPS", kFpsValues,
-            {"30 fps (original)", "30 fps, real frame time", "60 fps", "120 fps", "144 fps", "165 fps", "240 fps",
-                "Unlocked"},
-            "The game's frame rate. 30 fps (original) is the PS3's. \"Real frame time\" is also 30 but copes "
-            "better when a frame runs late. Unlocked has no cap. Above 60 fps is less tested.<br/><br/>(DES_FPS)",
-            {}, [](Pane& pane) {
-                pane.add_button({
-                                    .text = "Custom",
-                                    .isSelected = [] { return fps_is_custom(); },
-                                    .isDisabled = [] { return settings::pinned("DES_FPS"); },
-                                })
-                    .on_pressed([] {
-                        play_sound(kSoundItemChange);
-                        settings::set("DES_FPS", std::to_string(fps_custom()));
-                    });
-            });
-        auto& customFps = leftPane.add_child<NumberButton>(NumberButton::Props{
-            .key = "Custom frame rate",
-            .getValue = fps_custom,
-            .setValue =
-                [](int value) {
-                    if (settings::pinned("DES_FPS")) {
-                        return;
-                    }
-                    settings::set("fps_custom", std::to_string(value));
-                    settings::set("DES_FPS", std::to_string(value));
-                },
-            .isDisabled = [] { return settings::pinned("DES_FPS"); },
-            .isModified = fps_is_custom,
-            .min = kFpsMin,
-            .max = kFpsMax,
-            .suffix = " fps",
-        });
-        leftPane.register_control(customFps, rightPane,
-            [helpText = with_note("DES_FPS",
-                 "Your own frame rate, 30 to 500. Setting it picks Custom in Frame rate.<br/><br/>(DES_FPS)")](Pane& pane) {
-                pane.clear();
-                pane.add_rml(helpText);
-            });
-        choice_row(leftPane, rightPane, "Cutscene frame rate", "DES_CUTFPS", {"0", "1"},
-            {"30 fps (original)", "Same as Frame rate"},
-            "Cutscenes judder above 30 fps, so by default they play at 30. Same as Frame rate keeps your frame "
-            "rate and smooths their camera.<br/><br/>(DES_CUTFPS)");
-        choice_row(leftPane, rightPane, "V-sync", "DES_VSYNC", {"1", "even", "vrr", "0"},
-            {"On", "Even frames", "G-Sync / FreeSync", "Off"},
-            "On waits for the display's refresh. Even frames keeps every frame on screen equally long, for smooth "
-            "motion, and moves the frame rate to one your display fits (60 becomes 72 at 144 Hz). G-Sync / FreeSync "
-            "needs a display with it, turned on in your graphics driver too. Off can tear, but shows more fps than "
-            "the refresh rate.<br/><br/>(DES_VSYNC)");
-        bool_row(leftPane, rightPane, "Motion blur", "DES_MOTION_BLUR",
-            "The game's blur when the camera moves.<br/><br/>(DES_MOTION_BLUR)");
-    });
-
-    add_tab("Game", [this](Rml::Element* content) {
-        auto& leftPane = add_child<Pane>(content, Pane::Type::Controlled);
-        auto& rightPane = add_child<Pane>(content, Pane::Type::Uncontrolled);
-
-        leftPane.add_section("Start");
-        choice_row(leftPane, rightPane, "Boot logos", "DES_SKIP_INTRO", {"0", "1", "2"},
-            {"Show (original)", "Skip", "Last logo only"},
-            "The company logos at start. Skip goes straight to the title screen.<br/><br/>(DES_SKIP_INTRO)");
-        bool_row(leftPane, rightPane, "Skip opening movie", "DES_SKIP_INTRO_MOVIE",
-            "Skips the movie after the logos. Other movies still play.<br/><br/>(DES_SKIP_INTRO_MOVIE)");
-        bool_row(leftPane, rightPane, "Continue automatically", "DES_AUTO_CONTINUE",
-            "After Play, goes straight into your last save.<br/><br/>(DES_AUTO_CONTINUE)");
-
-        if (g_des_region != 2) leftPane.add_section("Language");  // the Japanese disc has only Japanese
-        if (g_des_region == 3) {
-            choice_row(leftPane, rightPane, "Language", "DES_LANGUAGE", {"", "en", "zh-tw", "ko"},
-                {"PC's language", "English", "Chinese (Traditional)", "Korean"},
-                "The game's text. PC's language uses your PC's when the disc has it, else English. Restart to "
-                "apply.<br/><br/>(DES_LANGUAGE)");
-        } else if (g_des_region == 0) {  // the US disc has English and Japanese
-            choice_row(leftPane, rightPane, "Language", "DES_LANGUAGE", {"", "en", "ja"},
-                {"PC's language", "English", "Japanese"},
-                "The game's text. Trophy names stay English. PC's language uses your PC's when the disc has it, "
-                "else English. Restart to apply.<br/><br/>(DES_LANGUAGE)");
-        } else if (g_des_region == 1) {
-            choice_row(leftPane, rightPane, "Language", "DES_LANGUAGE",
-                {"", "en", "fr", "de", "es", "it", "ja", "zh-tw", "ko"},
-                {"PC's language", "English", "Fran\u00e7ais", "Deutsch", "Espa\u00f1ol", "Italiano",
-                    "Japanese", "Chinese (Traditional)", "Korean"},
-                "The game's text and trophy names. Japanese, Chinese and Korean change the text only. PC's language uses "
-                "your PC's when the disc has it, else English. Restart to apply.<br/><br/>(DES_LANGUAGE)");
-        }
-
-        leftPane.add_section("Sound");
-        bool_row(leftPane, rightPane, "Sound", "AUDIO_MUTE",
-            "The game's sound and music.<br/><br/>(AUDIO_MUTE)",
-            true);
-
-        leftPane.add_section("Items");
-        bool_row(leftPane, rightPane, "Use several souls at once", "DES_SOULS_AT_ONCE",
-            "Use on a soul item, such as an Unknown Soldier's Soul, asks how many to use, like Drop does. Boss "
-            "souls are not affected.<br/><br/>(DES_SOULS_AT_ONCE)");
-        bool_row(leftPane, rightPane, "Stat respec in the Nexus", "DES_RESPEC",
-            "Pick Respecialization in the Maiden in Black's menu, or press Cross facing the statue in front of "
-            "where you wake in the Nexus (no prompt shows there). It can put your stats back to your class's and "
-            "give back the souls your levels cost, to spend again. Spells must be remembered again."
-            "<br/><br/>(DES_RESPEC)");
-        bool_row(leftPane, rightPane, "Change appearance in the Nexus", "DES_APPEARANCE",
-            "Press Cross facing the statue in front of where you wake in the Nexus (no prompt shows there) and pick "
-            "Change Appearance for the character creation screen. Keeping the changes reloads the Nexus."
-            "<br/><br/>(DES_APPEARANCE)");
-
-        leftPane.add_section("HUD");
-        leftPane.register_control(
-            leftPane.add_group_button({.text = "Edit HUD"}).on_pressed([this] {
-                play_sound(kSoundClick);
-                push(std::make_unique<HudEditor>());
-            }),
-            rightPane, [](Pane& pane) {
-                pane.clear();
-                pane.add_text("Move, resize, hide or show each part of the HUD on the game screen.");
-            });
-        auto& hudSize = leftPane.add_child<NumberButton>(NumberButton::Props{
-            .key = "HUD size",
-            .getValue = hud_size_percent,
-            .setValue =
-                [](int value) {
-                    if (settings::pinned("DES_HUD_SIZE")) {
-                        return;
-                    }
-                    settings::set("DES_HUD_SIZE", std::to_string(value));
-                },
-            .isDisabled = [] { return settings::pinned("DES_HUD_SIZE"); },
-            .isModified = [] { return !settings::is_default("DES_HUD_SIZE"); },
-            .min = kHudSizeMin,
-            .max = kHudSizeMax,
-            .step = 5,
-            .suffix = "%",
-        });
-        leftPane.register_control(hudSize, rightPane,
-            [helpText = with_note("DES_HUD_SIZE",
-                 "The size of the bars, area name, equipment and souls. Each grows or shrinks from its corner of "
-                 "the screen.<br/><br/>(DES_HUD_SIZE)")](Pane& pane) {
-                pane.clear();
-                pane.add_rml(helpText);
-            });
-        choice_row(leftPane, rightPane, "HUD on wide screens", "DES_HUD", {"", "centre", "stretch"},
-            {"Corners", "Centred 16:9", "Stretched"},
-            "Where the HUD goes when Aspect ratio is wider than 16:9. Corners puts each part in its corner of the "
-            "screen. Centred keeps the HUD in a 16:9 area in the middle. Stretched spreads it across.<br/><br/>"
-            "(DES_HUD)");
-        choice_row(leftPane, rightPane, "Button icons", "DES_GLYPHS",
-            {"auto", "playstation", "xbox", "nintendo", "keyboard"},
-            {"Automatic", "PlayStation", "Xbox", "Nintendo", "Keyboard and mouse"},
-            "The buttons in the game's prompts. Automatic shows the controller or keyboard you used last and "
-            "changes when you switch. Keyboard and mouse shows the keys you set in Controls. PlayStation is the "
-            "game's own.<br/><br/>(DES_GLYPHS)");
-        bool_row(leftPane, rightPane, "Health, magic, stamina", "DES_HUD_BARS",
-            "The bars at the top left.<br/><br/>(DES_HUD_BARS)");
-        bool_row(leftPane, rightPane, "Area name", "DES_HUD_AREA",
-            "The name of the area at the top right.<br/><br/>(DES_HUD_AREA)");
-        bool_row(leftPane, rightPane, "Equipment", "DES_HUD_EQUIP",
-            "Your weapons, item and spell at the bottom left.<br/><br/>(DES_HUD_EQUIP)");
-        bool_row(leftPane, rightPane, "Souls", "DES_HUD_SOULS",
-            "Your souls at the bottom right.<br/><br/>(DES_HUD_SOULS)");
-    });
-
-    add_tab("Controls", [this](Rml::Element* content) {
-        auto& leftPane = add_child<Pane>(content, Pane::Type::Controlled);
-        auto& rightPane = add_child<Pane>(content, Pane::Type::Uncontrolled);
-
-        const Rml::String chord = input::chord_label(settings::get_int("pad_menu_chord"));
-        leftPane.add_section("This menu");
-        info_row(leftPane, rightPane, "Open the menu", "F1 / " + chord,
-            "F1, or " + escape(chord) + " on a gamepad (change it in Interface). Esc is the game's own menu.");
-        info_row(leftPane, rightPane, "In the menus", "Arrows, Enter, Esc",
-            "Keyboard: arrows, Enter, Esc; Page Up and Page Down change tabs. The mouse works too.<br/><br/>"
-            "Gamepad: D-pad, Cross, Circle; L1 and R1 change tabs.");
-
-        leftPane.add_section("The game");
-        leftPane.register_control(
-            leftPane.add_group_button({.text = "Change Buttons"}).on_pressed([this] {
-                play_sound(kSoundClick);
-                push(std::make_unique<ControlsWindow>());
-            }),
-            rightPane, [](Pane& pane) {
-                pane.clear();
-                pane.add_text("Change which buttons and keys do what.");
-            });
-        const input::PadSupport pads = input::pad_support();
-        info_row(leftPane, rightPane, "Gamepads", pads.value, pads.help);
-        controller_row(leftPane, rightPane);
-        bool_row(leftPane, rightPane, "Vibration", "PAD_RUMBLE",
-            "Lets the game make your gamepad vibrate.<br/><br/>(PAD_RUMBLE)");
-        stick_zone_row(leftPane, rightPane, "Left stick deadzone", "PAD_DEADZONE_LEFT", 0,
-            "How far you tilt the left stick before it counts, the same on every controller. Default is how the game "
-            "has always played with this controller. Very low values can let a worn stick drift.<br/><br/>"
-            "(PAD_DEADZONE_LEFT)");
-        stick_zone_row(leftPane, rightPane, "Right stick deadzone", "PAD_DEADZONE_RIGHT", 1,
-            "How far you tilt the right stick before it counts, the same on every controller. Default is how the game "
-            "has always played with this controller. Very low values can let a worn stick drift.<br/><br/>"
-            "(PAD_DEADZONE_RIGHT)");
-        bool_row(leftPane, rightPane, "Roll toward the stick", "DES_ROLLDIR",
-            "Locked on, a roll goes where the stick points. Off, it goes only forward, back, left or right, as in "
-            "the original.<br/><br/>(DES_ROLLDIR)");
-        choice_row(leftPane, rightPane, "Forward attack", "DES_KICK", {"0", "1"},
-            {"Forward + attack (original)", "Own key"},
-            "The forward attack is the kick, or with a weapon held in both hands that weapon's forward attack."
-            "<br/><br/>Forward + attack: push the left stick forward as you attack, as in the original.<br/><br/>"
-            "Own key: attacking never does it. "
-            "The Forward attack key in Change Buttons, Keyboard and mouse, does it instead; with no key set, "
-            "there's no forward attack. A gamepad has no such button yet.<br/><br/>Only your own moves change; "
-            "other players see them as usual.<br/><br/>(DES_KICK)");
-        info_row(leftPane, rightPane, "Keyboard and mouse", "WASD, mouse, Space",
-            "As in the Souls games on PC:<br/>"
-            "<b>W A S D</b> move &nbsp; <b>Left Alt</b> (held) walk &nbsp; <b>Mouse</b> camera (Mouse look, "
-            "below)<br/>"
-            "<b>Left button</b> attack (R1) &nbsp; <b>Shift + left button</b> strong attack (R2)<br/>"
-            "<b>Right button</b> guard (L1) &nbsp; <b>Left Ctrl</b> or <b>Shift + right button</b> parry (L2)<br/>"
-            "<b>Space</b> roll, backstep, dash (Circle) &nbsp; <b>C</b> left stick press (L3)<br/>"
-            "<b>Q</b> or <b>middle button</b> lock on (R3)<br/>"
-            "<b>E</b> action (Cross) &nbsp; <b>R</b> use item (Square) &nbsp; <b>F</b> two-hand (Triangle)<br/>"
-            "<b>Arrows</b> D-pad &nbsp; <b>Wheel up / down</b> spell / item &nbsp; <b>Shift + wheel up / down</b> "
-            "right / left hand<br/>"
-            "<b>Esc</b> menu (Start) &nbsp; <b>G</b> or <b>Tab</b> Select<br/><br/>"
-            "The mouse buttons and wheel need Mouse look on. Change Buttons changes any of these.");
-        leftPane.add_section("Mouse");
-        bool_row(leftPane, rightPane, "Mouse look", "DES_MOUSE_LOOK",
-            "Turn the camera with the mouse, and use the mouse buttons and wheel in the game. Smoothest at 60 fps "
-            "or more.<br/><br/>(DES_MOUSE_LOOK)");
-        bool_row(leftPane, rightPane, "Mouse in game menus (experimental)", "DES_MENU_MOUSE",
-            "Point and click in the game's own menus: left click picks, right click goes back, the wheel scrolls. "
-            "A key or gamepad button hides the pointer. Experimental: some screens may not take the mouse.<br/><br/>"
-            "(DES_MENU_MOUSE)");
-        auto& mouseSens = leftPane.add_child<NumberButton>(NumberButton::Props{
-            .key = "Mouse sensitivity",
-            .getValue = mouse_sens_percent,
-            .setValue =
-                [](int value) {
-                    if (settings::pinned("DES_MOUSE_SENS")) {
-                        return;
-                    }
-                    settings::set("DES_MOUSE_SENS", std::format("{:g}", mouse_sens_default() * value / 100.0));
-                },
-            .isDisabled = [] { return settings::pinned("DES_MOUSE_SENS"); },
-            .isModified = [] { return !settings::is_default("DES_MOUSE_SENS"); },
-            .min = kMouseSensMin,
-            .max = kMouseSensMax,
-            .step = 5,
-            .suffix = "%",
-        });
-        leftPane.register_control(mouseSens, rightPane,
-            [helpText = with_note("DES_MOUSE_SENS",
-                 "How far the camera turns when you move the mouse.<br/><br/>(DES_MOUSE_SENS)")](Pane& pane) {
-                pane.clear();
-                pane.add_rml(helpText);
-            });
-        bool_row(leftPane, rightPane, "Invert vertical", "DES_MOUSE_INVERT_Y",
-            "On: moving the mouse forward looks down.<br/><br/>(DES_MOUSE_INVERT_Y)");
-        bool_row(leftPane, rightPane, "Invert horizontal", "DES_MOUSE_INVERT_X",
-            "On: moving the mouse right turns the camera left.<br/><br/>(DES_MOUSE_INVERT_X)");
-        choice_row(leftPane, rightPane, "Switch targets", "DES_MOUSE_FLICK", {"0", "8", "15", "30"},
-            {"Off", "Short move", "Medium move", "Long move"},
-            "While locked on, moving the mouse sideways switches targets. This sets how far you have to move it."
-            "<br/><br/>(DES_MOUSE_FLICK)");
-    });
-
-    // Online play (docs/46 A5; settings.cpp's apply_network turns the rows into the runtime's knobs at start).
-    add_tab("Network", [this](Rml::Element* content) {
-        auto& leftPane = add_child<Pane>(content, Pane::Type::Controlled);
-        auto& rightPane = add_child<Pane>(content, Pane::Type::Uncontrolled);
-
-        leftPane.add_section("Online play");
-        auto& online = leftPane.add_child<BoolButton>(BoolButton::Props{
-            .key = "Online",
-            .getValue =
-                [] {
-                    const std::string v = net_value("DES_ONLINE");
-                    return !v.empty() && v != "0";
-                },
-            .setValue =
-                [](bool value) {
-                    if (settings::pinned("DES_ONLINE") || net_cheat_session()) {
-                        return;
-                    }
-                    settings::set("DES_ONLINE", value ? "1" : "0");
-                },
-            .isDisabled = [] { return settings::pinned("DES_ONLINE") || net_cheat_session(); },
-            .isModified = [] { return !settings::is_default("DES_ONLINE"); },
-            .valueOverride = [] { return net_cheat_session() ? Rml::String("Off: cheats used") : Rml::String(); },
-        });
-        leftPane.register_control(online, rightPane, [](Pane& pane) {
-            pane.clear();
-            Rml::String help;
-            if (net_cheat_session()) {
-                help = "<status-badge class=\"warning\">Off this session: a developer cheat is on.</status-badge><br/>";
-            } else if (settings::net_mods_held()) {
-                help = "<status-badge class=\"warning\">Off this session: gameplay mods are on (see Mods, beside "
-                       "Settings in the menu).</status-badge><br/>";
+    for (const catalog::TabDesc& tab : catalog::tabs()) {
+        add_tab(tab.title, [this, &tab](Rml::Element* content) {
+            auto& leftPane = add_child<Pane>(content, Pane::Type::Controlled);
+            auto& rightPane = add_child<Pane>(content, Pane::Type::Uncontrolled);
+            RowBuilder rows(*this, leftPane, rightPane);
+            for (const catalog::SectionDesc& section : tab.sections) {
+                if (!section.title.empty() && (!section.when || section.when())) leftPane.add_section(section.title);
+                for (const RowDesc& row : section.rows)
+                    if (!row.when || row.when()) rows.build(row);
             }
-            pane.add_rml(help + with_note("DES_ONLINE",
-                "Plays online on the server below: messages, bloodstains, ghosts, co-op and invasions. Off plays "
-                "offline.<br/><br/>(DES_ONLINE)"));
         });
-
-        std::vector<Rml::String> serverValues, serverLabels;
-        Rml::String serverHelp = "The game server to connect to. ";
-        for (const settings::NetServer& s : settings::kNetServers) {
-            serverValues.push_back(s.key);
-            serverLabels.push_back(s.name);
-        }
-        serverHelp += "<br/>";
-        for (const settings::NetServer& s : settings::kNetServers) {
-            const bool custom = s.key == std::string_view(settings::kNetCustomKey);
-            serverHelp += "<br/><b>" + escape(s.name) + "</b>" +
-                          (*s.address ? " (" + escape(s.address) + ")" : custom ? "" : " (not available yet)") + ": " +
-                          escape(s.note);
-        }
-#if DES_DEV
-        choice_row(leftPane, rightPane, "Server", "DES_NET_SERVER", std::move(serverValues), std::move(serverLabels),
-            serverHelp + "<br/><br/>(DES_NET_SERVER)",
-            [] {
-                // (pressing Custom, even when it is already picked, chooses its address on this PC)
-                if (settings::get("DES_NET_SERVER") == settings::kNetCustomKey) choose_custom_here();
-            },
-            [](Pane& pane) {
-                pane.add_child<LiveNote>("<br/><status-badge class=\"warning\">Custom's address came in a copied "
-                                         "settings file, so you stay offline. Press Custom above to play on "
-                                         "it.</status-badge>",
-                    custom_held);
-            });
-
-        // (Custom and its address: developer builds only for now, settings.hpp's kNetServers)
-        auto& customServer = leftPane.add_child<StringButton>(StringButton::Props{
-            .key = "Custom server",
-            .getValue = [] { return Rml::String(net_value("DES_NET_CUSTOM")); },
-            .setValue =
-                [](Rml::String value) {
-                    if (settings::pinned("DES_NET_CUSTOM")) {
-                        return;
-                    }
-                    value = trim_spaces(value);
-                    settings::set("DES_NET_CUSTOM", value);
-                    // (as Custom frame rate picks Frame rate's Custom: an address typed here picks Custom)
-                    if (!value.empty() && !settings::pinned("DES_NET_SERVER")) {
-                        settings::set("DES_NET_SERVER", settings::kNetCustomKey);
-                    }
-                    choose_custom_here();
-                },
-            .isDisabled = [] { return settings::pinned("DES_NET_CUSTOM"); },
-            .isModified = [] { return !settings::is_default("DES_NET_CUSTOM"); },
-            .maxLength = 253,
-        });
-        leftPane.register_control(customServer, rightPane, [](Pane& pane) {
-            pane.clear();
-            Rml::String help;
-            const std::string v = trim_spaces(net_value("DES_NET_CUSTOM"));
-            if (net_value("DES_NET_SERVER") == settings::kNetCustomKey && !settings::net_address_ok(v)) {
-                help = "<status-badge class=\"warning\">" +
-                       Rml::String(v.empty() ? "No address yet" : "Not a valid address") +
-                       ", so you stay offline.</status-badge><br/>";
-            } else if (custom_held()) {
-                help = "<status-badge class=\"warning\">This address came in a copied settings file, so you stay "
-                       "offline. To play on it, press Custom in Server again.</status-badge><br/>";
-            }
-            pane.add_rml(help + with_note("DES_NET_CUSTOM",
-                "A server not in the list: an IP address or a host name. Typing one picks Custom.<br/><br/>"
-                "(DES_NET_CUSTOM)"));
-        });
-#else
-        choice_row(leftPane, rightPane, "Server", "DES_NET_SERVER", std::move(serverValues), std::move(serverLabels),
-            serverHelp + "<br/><br/>(DES_NET_SERVER)");
-#endif
-
-        auto& name = leftPane.add_child<StringButton>(StringButton::Props{
-            .key = "Online name",
-            .getValue = [] { return Rml::String(net_value("DES_NET_NAME")); },
-            .setValue =
-                [](Rml::String value) {
-                    if (settings::pinned("DES_NET_NAME")) {
-                        return;
-                    }
-                    set_net_name(value);
-                },
-            .isDisabled = [] { return settings::pinned("DES_NET_NAME"); },
-            .isModified = [] { return !settings::is_default("DES_NET_NAME"); },
-            .maxLength = 16,
-        });
-        leftPane.register_control(name, rightPane, [](Pane& pane) {
-            pane.clear();
-            Rml::String help;
-            const std::string v = net_value("DES_NET_NAME");
-            if (!sNameNote.empty() && !settings::pinned("DES_NET_NAME")) {
-                help = "<status-badge class=\"info\">" + Rml::String(sNameNote) + "</status-badge><br/>";
-            } else if (v.empty()) {
-                help = "<status-badge class=\"info\">No name yet, so you stay offline.</status-badge><br/>";
-            } else if (!settings::net_name_ok(v)) {
-                help = "<status-badge class=\"warning\">Not valid, so you stay offline.</status-badge><br/>";
-            }
-            pane.add_rml(help + with_note("DES_NET_NAME",
-                "Your name online: 3 to 16 letters, digits, - or _. Pick one nobody else uses. A new name makes you "
-                "a new player to the server: your old messages stay, but their ratings no longer reach you."
-                "<br/><br/>(DES_NET_NAME)"));
-        });
-
-        auto& password = leftPane.add_child<StringButton>(StringButton::Props{
-            .key = "Matchmaking password",
-            .getValue = [] { return Rml::String(net_value("DES_NET_PASSWORD")); },
-            .setValue =
-                [](Rml::String value) {
-                    if (settings::pinned("DES_NET_PASSWORD")) {
-                        return;
-                    }
-                    settings::set("DES_NET_PASSWORD", trim_spaces(value));
-                },
-            .isDisabled = [] { return settings::pinned("DES_NET_PASSWORD"); },
-            .isModified = [] { return !settings::is_default("DES_NET_PASSWORD"); },
-            .maxLength = 32,
-        });
-        leftPane.register_control(password, rightPane,
-            [helpText = with_note("DES_NET_PASSWORD",
-                 "Summon signs and invasions only between players with the same password. Messages, bloodstains "
-                 "and ghosts stay shared. Empty plays with everyone.<br/><br/>(DES_NET_PASSWORD)")](Pane& pane) {
-                pane.clear();
-                pane.add_rml(helpText);
-            });
-
-        choice_row(leftPane, rightPane, "World tendency", "DES_NET_TENDENCY", {"", "own"},
-            {"With the server's", "Yours only"},
-            "Online, the game mixes other players' world tendency into yours. Yours only changes it by what you "
-            "do alone. Applies from the next load.<br/><br/>(DES_NET_TENDENCY)");
-
-        choice_row(leftPane, rightPane, "Message ratings", "DES_NET_RATING_POLL", {"", "30"},
-            {"Every 5 minutes", "Every 30 seconds"},
-            "How often the game checks whether someone rated your messages. The PS3 checked every 5 minutes."
-            "<br/><br/>(DES_NET_RATING_POLL)");
-
-        auto& port = leftPane.add_child<NumberButton>(NumberButton::Props{
-            .key = "P2P port",
-            .getValue = net_p2p_port,
-            .setValue =
-                [](int value) {
-                    if (settings::pinned("DES_NET_P2P_PORT")) {
-                        return;
-                    }
-                    settings::set("DES_NET_P2P_PORT", std::to_string(value));
-                },
-            .isDisabled = [] { return settings::pinned("DES_NET_P2P_PORT"); },
-            .isModified = [] { return !settings::is_default("DES_NET_P2P_PORT"); },
-            .min = settings::kNetP2pPortMin,
-            .max = settings::kNetP2pPortMax,
-        });
-        leftPane.register_control(port, rightPane,
-            [helpText = with_note("DES_NET_P2P_PORT",
-                 "The port for co-op and invasions. Change it only if your router needs another one.<br/><br/>"
-                 "(DES_NET_P2P_PORT)")](Pane& pane) {
-                pane.clear();
-                pane.add_rml(helpText);
-            });
-
-        choice_row(leftPane, rightPane, "Your movement updates", "DES_NET_SYNC", {"", "15"},
-            {"Original (every 6th frame)", "Smoother (at least 15 a second)"},
-            "How often your position goes to other players. Smoother makes you look less laggy on their screens."
-            "<br/><br/>(DES_NET_SYNC)");
-
-        leftPane.add_section("Seamless co-op");
-        choice_row(leftPane, rightPane, "Players when you host", "DES_SEAMLESS_PLAYERS", {"2", "3", "4"},
-            {"2: you and a friend", "3: you and two friends", "4: you and three friends"},
-            "The most players in a co-op game you host (Co-op, in the menu), you included. One more waits, and "
-            "joins as soon as a place frees up. A change counts at once; players already here stay.<br/><br/>"
-            "The original game plays three at most in co-op.<br/><br/>(DES_SEAMLESS_PLAYERS)",
-            [] { des::seamless::party_size_changed(); });
-        bool_row(leftPane, rightPane, "Your glow", "DES_SEAMLESS_GLOW",
-            "Whether the other players see your blue phantom glow while you are in a host's world. Off: they see "
-            "you as you look in your own world. A change counts at once.<br/><br/>(DES_SEAMLESS_GLOW)");
-        choice_row(leftPane, rightPane, "Your glow colour", "DES_SEAMLESS_GLOW_COLOR", kGlowColours,
-            {"Blue (original)", "White", "Gold", "Orange", "Red", "Pink", "Purple", "Green", "Teal"},
-            "The colour of your phantom glow while you are in a host's world. The other players see it, and so do "
-            "you. Each player picks its own. A change counts at once.<br/><br/>(DES_SEAMLESS_GLOW_COLOR)",
-            {}, [](Pane& pane) {
-                pane.add_button({
-                                    .text = "Custom",
-                                    .isSelected = [] { return glow_is_custom(); },
-                                    .isDisabled = [] { return settings::pinned("DES_SEAMLESS_GLOW_COLOR"); },
-                                })
-                    .on_pressed([] {
-                        play_sound(kSoundItemChange);
-                        settings::set("DES_SEAMLESS_GLOW_COLOR", hue_hex(glow_hue()));
-                    });
-            });
-        auto& customGlow = leftPane.add_child<NumberButton>(NumberButton::Props{
-            .key = "Custom glow colour",
-            .getValue = glow_hue,
-            .setValue =
-                [](int value) {
-                    if (settings::pinned("DES_SEAMLESS_GLOW_COLOR")) {
-                        return;
-                    }
-                    settings::set("glow_hue_custom", std::to_string(value));
-                    settings::set("DES_SEAMLESS_GLOW_COLOR", hue_hex(value));
-                },
-            .isDisabled = [] { return settings::pinned("DES_SEAMLESS_GLOW_COLOR"); },
-            .isModified = glow_is_custom,
-            .min = 0,
-            .max = 350,
-            .step = 10,
-            .format = [](int value) { return "Hue " + std::to_string(value); },
-        });
-        leftPane.register_control(customGlow, rightPane,
-            [helpText = with_note("DES_SEAMLESS_GLOW_COLOR",
-                 "Your own glow colour, by hue: 0 red, 60 yellow, 120 green, 180 cyan, 240 blue, 300 magenta. "
-                 "Setting it picks Custom in Your glow colour.<br/><br/>(DES_SEAMLESS_GLOW_COLOR)")](Pane& pane) {
-                pane.clear();
-                pane.add_rml(helpText);
-            });
-
-        leftPane.add_section("In your world");
-        bool_row(leftPane, rightPane, "Messages", "DES_NET_MESSAGES",
-            "Messages from other players. Off hides all of them, yours too.<br/><br/>(DES_NET_MESSAGES)");
-        bool_row(leftPane, rightPane, "Bloodstains", "DES_NET_BLOODSTAINS",
-            "Other players' bloodstains. Your own bloodstain with your souls always shows.<br/><br/>"
-            "(DES_NET_BLOODSTAINS)");
-        bool_row(leftPane, rightPane, "Ghosts", "DES_NET_GHOSTS",
-            "Other players' ghosts walking through your world.<br/><br/>(DES_NET_GHOSTS)");
-
-        leftPane.add_section("Discord");
-        bool_row(leftPane, rightPane, "Discord status", "DES_DISCORD",
-            "Shows on your Discord profile that you are playing, the area you are in and whether you are online, "
-            "with a link to this project's page. Needs the Discord app open on this PC.<br/><br/>(DES_DISCORD)");
-
-        leftPane.add_section("Players");
-        leftPane.register_control(
-            leftPane.add_group_button({.text = "Players you met"}).on_pressed([this] {
-                play_sound(kSoundClick);
-                push(std::make_unique<PlayersWindow>());
-            }),
-            rightPane, [](Pane& pane) {
-                pane.clear();
-                pane.add_text("The players you met online lately: who helped you, who you helped, and who invaded. "
-                              "Block one so you never meet again, or report one to the server's admins.");
-            });
-
-        leftPane.add_section("Your data");
-        leftPane.register_control(
-            leftPane.add_group_button({.text = "Privacy note"}).on_pressed([this] {
-                play_sound(kSoundWindowOpen);
-                push(std::make_unique<PrivacyWindow>(PrivacyWindow::Mode::Read));
-            }),
-            rightPane, [](Pane& pane) {
-                pane.clear();
-                pane.add_text("What this project's online server keeps about you, and for how long. The game asks "
-                              "you to accept it before it first goes online with that server.");
-            });
-        leftPane.register_control(
-            leftPane.add_group_button({.text = "Delete my data"}).on_pressed([] {
-                play_sound(kSoundWindowOpen);
-                ask_erase();
-            }),
-            rightPane, [](Pane& pane) {
-                pane.clear();
-                pane.add_text("Deletes your name and what this project's online server keeps about you, at once. "
-                              "Online play then turns off. Works while you are signed in to that server.");
-            });
-
-        leftPane.add_section("This session");
-        info_row(leftPane, rightPane, "Network", net_cheat_session() ? Rml::String("Off: cheats used") : settings::net_status(),
-            net_cheat_session()
-                ? Rml::String("A developer cheat is on, so this session is offline.")
-                : "This session: " + escape(settings::net_status()) + ".");
-        info_row(leftPane, rightPane, "About online play", "Read first",
-            "Online play is new and less tested than offline.<br/><br/>"
-            "You play with everyone on the same server. Players on other servers, on RPCS3 or on a PS3 are not in "
-            "your world.<br/><br/>"
-            "Co-op and invasions connect you directly to the other player, so they can see your IP address, as on a "
-            "PS3.");
-    });
-
-    add_tab("Interface", [this](Rml::Element* content) {
-        auto& leftPane = add_child<Pane>(content, Pane::Type::Controlled);
-        auto& rightPane = add_child<Pane>(content, Pane::Type::Uncontrolled);
-
-        choice_row(leftPane, rightPane, "UI scale", "ui_scale", {"0", "75", "100", "125", "150"},
-            {"Auto", "75%", "100%", "125%", "150%"},
-            "The size of these menus. Auto follows the display's scale, and shrinks to fit a small window.",
-            [] { apply_scale(); });
-        bool_row(leftPane, rightPane, "Start screen", "show_start_screen",
-            "Shows Play, Settings and Quit when the game starts. Off goes straight to the game.");
-        bool_row(leftPane, rightPane, "Menu hint", "menu_hint",
-            "After Play, a note says how to open this menu.");
-        bool_row(leftPane, rightPane, "Trophy pop-ups", "trophy_popups",
-            "Shows a note when you earn a trophy. Off only hides the note.");
-        bool_row(leftPane, rightPane, "Trophy sound", "trophy_sound",
-            "Plays a short tune from the game when you earn a trophy.");
-        bool_row(leftPane, rightPane, "Sword cursor", "DES_CURSOR3D",
-            "The cursor in these menus is a sword from the game. Off uses the usual arrow.");
-        {
-            std::vector<Rml::String> names, labels;
-            for (const auto& sword : models::swords()) {
-                names.push_back(sword.name);
-                labels.push_back(sword.label);
-            }
-            choice_row(leftPane, rightPane, "Cursor sword", "DES_CURSOR_SWORD", std::move(names), std::move(labels),
-                "Which of the game's swords the cursor is.");
-        }
-        choice_row(leftPane, rightPane, "Cursor size", "DES_CURSOR_SIZE", {"48", "64", "96", "128", "192"},
-            {"Small", "Normal", "Large", "Very large", "Huge"},
-            "How long the sword is.");
-        bool_row(leftPane, rightPane, "Crystal lizard", "DES_UI_LIZARD",
-            "A crystal lizard dances in the corner of these menus.");
-        choice_row(leftPane, rightPane, "Gamepad menu buttons", "pad_menu_chord", {"0", "1"},
-            {"L3 + R3", "Select + Start"},
-            "The gamepad buttons that open this menu, pressed together. Select + Start also opens the game's menu.");
-    });
-
-#if DES_DEV
-    // Developer builds only (cmake -DDES_DEV=ON; docs/55, des_dev.cpp). The rows are live and never saved.
-    add_tab("Developer", [this](Rml::Element* content) {
-        auto& leftPane = add_child<Pane>(content, Pane::Type::Controlled);
-        auto& rightPane = add_child<Pane>(content, Pane::Type::Uncontrolled);
-
-        // des_dev_boot sets the session at start (cheats, online or offline); des_dev.cpp makes it online for good
-        // when PS3_NET_ONLINE or PSNR_SERVER is set later. The tab is built again each time it is shown.
-        const char* session = std::getenv("DES_DEV_SESSION");
-        if (session && std::strcmp(session, "online") == 0) {
-            info_row(leftPane, rightPane, "Cheats", "Off: online session",
-                "Cheats are off because this session is online. Turn Online off and restart to use them.");
-            return;
-        }
-        info_row(leftPane, rightPane, "Developer build", "Cheats compiled in",
-            "Cheats for testing (" DES_DEV_MARKER "). Any cheat keeps the session offline. They reset each start.");
-        bool_row(leftPane, rightPane, "God mode", "DES_GOD",
-            "Your HP, MP and stamina never drop. Instant deaths still kill.<br/><br/>(DES_GOD)");
-        choice_row(leftPane, rightPane, "Attack power", "DES_ATK", {"1", "2", "5", "10", "100", "0"},
-            {"Normal", "2x", "5x", "10x", "100x", "No damage"},
-            "Multiplies your damage.<br/><br/>(DES_ATK)");
-        choice_row(leftPane, rightPane, "Movement speed", "DES_SPEED", {"1", "1.5", "2", "3", "0.5"},
-            {"Normal", "1.5x", "2x", "3x", "Half"},
-            "Multiplies how fast you move. High values can pass through thin walls.<br/><br/>(DES_SPEED)");
-        info_row(leftPane, rightPane, "Warp (scripts)", "DES_WARP=x,y,z",
-            "For scripts: DES_WARP=x,y,z moves you there, and DES_WARP_CLEAR=m moves enemies within m metres away. "
-            "Counts as a cheat.");
-        info_row(leftPane, rightPane, "Test switches (scripts)", "DES_KILLSELF, DES_KILLALL, DES_AREA",
-            "For scripts. DES_KILLSELF=1 kills you. DES_KILLALL=all kills every enemy in the area, or a number kills "
-            "those within that many metres. DES_AREA=2,1 loads m02_01. Each new value acts once. Cheats.<br/><br/>"
-            "DES_FLAGWATCH=a,b logs those event flags when they change. Not a cheat.");
-    });
-#endif
-
-    add_tab("About", [this](Rml::Element* content) {
-        auto& leftPane = add_child<Pane>(content, Pane::Type::Controlled);
-        auto& rightPane = add_child<Pane>(content, Pane::Type::Uncontrolled);
-
-        leftPane.add_section("This program");
-#if DES_DEV
-        info_row(leftPane, rightPane, "Developer build", "Cheats compiled in",
-            "This build has cheats (the Developer tab). Never share it as a release.");
-#endif
-        info_row(leftPane, rightPane, "Version", kVersion,
-            Rml::String(kProductName) + ": Demon's Souls on PC, a recompilation of the PS3 game.<br/><br/>Version " +
-                escape(kVersion) + ".",
-            [](Pane& pane) {
-                pane.add_button("Open the project page").on_pressed([] {
-                    play_sound(kSoundClick);
-                    open_url("https://github.com/JonathanDC64/Soulbrandt");
-                });
-            });
-        bool_row(leftPane, rightPane, "Check for updates", "update_check",
-            "Looks for a newer version each time the game starts. It asks before it changes anything.");
-        leftPane.register_control(
-            leftPane.add_select_button({
-                .key = "Updates",
-                .getValue = [] { return Rml::String(updates::status_line()); },
-            }),
-            rightPane, [](Pane& pane) {
-                pane.add_rml(escape(updates::status_line()) +
-                             "<br/><br/>An update keeps your saves and settings. The version before it is kept, so "
-                             "you can go back to it.");
-                pane.add_button({.text = "Check now",
-                                    .isDisabled = [] {
-                                        return !updates::possible() || updates::state() == updates::State::Checking;
-                                    }})
-                    .on_pressed([] {
-                        play_sound(kSoundClick);
-                        updates::start_check();
-                    });
-                if (updates::state() == updates::State::Found) {
-                    pane.add_button("What's new in " + updates::found().version).on_pressed([] {
-                        play_sound(kSoundWindowOpen);
-                        push_document(std::make_unique<UpdateWindow>(UpdateWindow::Props{
-                            .open = UpdateWindow::Open::Notes,
-                            .release = updates::found(),
-                            .overGame = updates::over_game()}));
-                    });
-                }
-                if (const std::string kept = updates::kept_version(); !kept.empty())
-                    pane.add_button("Go back to " + kept).on_pressed([kept] { ask_go_back(kept); });
-            });
-        info_row(leftPane, rightPane, "ps3recomp", kPs3recompVersion,
-            "The recompiler this build uses.<br/><br/>" + escape(kPs3recompVersion) + ".");
-        {
-            const Rml::String sha = kDumpSha256;
-            Rml::String grouped;  // (in fours of 16, so the help pane can wrap it)
-            for (size_t i = 0; i < sha.size(); i += 16) grouped += (i ? " " : "") + sha.substr(i, 16);
-            info_row(leftPane, rightPane, "Game dump", sha.empty() ? Rml::String("unknown") : sha.substr(0, 12),
-                "The SHA-256 of the game file this build was made from (EBOOT.BIN, decrypted).<br/><br/>" +
-                    (sha.empty() ? Rml::String("Not known: the build did not find work/game/EBOOT.ELF.") : grouped));
-        }
-        info_row(leftPane, rightPane, "Licence", "MIT",
-            "The port's code is MIT. You need your own copy of Demon's Souls.<br/><br/>Demon's Souls is a trademark "
-            "of Sony Interactive "
-            "Entertainment. This project is not affiliated with or endorsed by Sony Interactive Entertainment, "
-            "FromSoftware or Atlus.");
-        info_row(leftPane, rightPane, "Settings file", settings::path().empty() ? "(not kept)" : "settings.ini",
-            settings::path().empty()
-                ? Rml::String("This run does not keep its settings (a test script started it).")
-                : "Your settings are saved in<br/>" + escape(settings::path()) +
-                      (report::data_dir().empty()
-                           ? Rml::String()
-                           : "<br/><br/>Logs, crash reports and issue reports are in the same folder. Your saves are "
-                             "elsewhere."));
-
-        leftPane.add_section("Made with");
-        for (const Credit& credit : kCredits) {
-            leftPane.register_control(
-                leftPane.add_select_button({
-                    .key = credit.name,
-                    .getValue = [] { return Rml::String(); },
-                }),
-                rightPane, [&credit](Pane& pane) {
-                    pane.add_text(credit.use);
-                    if (credit.licence[0]) pane.add_rml(std::string("<br/>Licence: ") + escape(credit.licence));
-                    if (credit.url[0]) {
-                        pane.add_button("Open the website").on_pressed([url = credit.url] {
-                            play_sound(kSoundClick);
-                            open_url(url);
-                        });
-                    }
-                });
-        }
-    });
+    }
 }
 
 void SettingsWindow::update() {
