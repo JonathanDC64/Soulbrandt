@@ -452,6 +452,39 @@ void body_health(ppu_context* ctx)
     call_addr(ctx, DES_AT(0x00439358u), {0});                   // RequestFullRecover
 }
 
+// The Stone of Ephemeral Eyes (goods 1021) in a session. Its row (EQUIP_PARAM_GOODS_ST, the param table 3:
+// 0x005A5920(3, 0) -> +0x20 the param's data, rows {id, offset, name} from +0x30) allows it in soul form only
+// (enable_gray, +0x19) and never in multiplayer (enable_multi, +0x1C: 0). In a session every player in soul form may
+// use it: multiplayer is allowed, and a friend in soul form (a blue phantom, enable_white +0x1A) may too. Out of a
+// session the row is as the disc has it. The game reads the row when the item is used, so it is set each frame.
+constexpr uint32_t kStone = 1021;
+void stone_tick(ppu_context* ctx, bool session, bool friend_soul)
+{
+    static uint32_t row = 0;
+    static uint8_t disc_white = 0, disc_multi = 0;
+    if (!row) {
+        const uint32_t p = call_addr(ctx, DES_AT(0x005A5920u), {3, 0});
+        const uint32_t data = guest_ok(p) ? rd(p + 0x20) : 0;
+        static const char kName[] = "EQUIP_PARAM_GOODS_ST";
+        bool named = guest_ok(data);
+        for (int k = 0; named && kName[k]; ++k) named = vm_read8(data + 0xC + k) == (uint8_t)kName[k];
+        if (!named) return;
+        const uint32_t count = vm_read16(data + 0xA);
+        for (uint32_t r = 0; r < count && r < 4096; ++r)
+            if (rd(data + 0x30 + 12 * r) == kStone) row = data + rd(data + 0x30 + 12 * r + 4);
+        if (!guest_ok(row)) {
+            row = 1;   // not on this disc: never looked for again
+            return;
+        }
+        disc_white = vm_read8(row + 0x1A);
+        disc_multi = vm_read8(row + 0x1C);
+    }
+    if (row == 1) return;
+    const uint8_t white = friend_soul ? 1 : disc_white, multi = session ? 1 : disc_multi;
+    if (vm_read8(row + 0x1A) != white) vm_write8(row + 0x1A, white);
+    if (vm_read8(row + 0x1C) != multi) vm_write8(row + 0x1C, multi);
+}
+
 // Each frame of a friend's session in the host's world (arrived: the first frame after a load's arrival):
 // - in body form, soul form's effect is taken off whenever a load gave it (body form's full health);
 // - a death in body form makes it a soul (its HP at 0);
@@ -486,6 +519,21 @@ void forms_tick(ppu_context* ctx, bool arrived)
         }
     }
     if (arrived) text_seen = false;
+    // The Stone of Ephemeral Eyes used in soul form (stone_tick allows it): the game's revival (SpEffect 3024, its
+    // stateInfo 17) makes a blue phantom an alive player of its own world (type 0; 8 kept in case). Nothing else turns
+    // a friend's blue phantom (type 1) into that during a stay in the host's world, so that change is the stone: a
+    // blue phantom again (SetChrType(10000, 1), the type's own setter), then in body form as a boss kill revives it.
+    static int32_t last_type = -1;
+    if (arrived) last_type = -1;
+    const int32_t type = (int32_t)vm_read32(pc + 0x68);
+    if (!dead && last_type == 1 && (type == 0 || type == 8)) {
+        call_addr(ctx, DES_AT(0x00445F30u), {0, 10000, 1});   // SetChrType(10000, 1)
+        set_form(true);
+        body_health(ctx);
+        std::fprintf(stderr, "[coop] the Stone of Ephemeral Eyes: body form, a blue phantom still (type %d -> %d)\n", type,
+                     (int32_t)vm_read32(pc + 0x68));
+    }
+    last_type = (int32_t)vm_read32(pc + 0x68);
     if (!dead && body_form() && has_effect(pc, kSoulEffect)) {
         body_health(ctx);
         std::fprintf(stderr, "[coop] in body form: soul form's effect taken off, full HP\n");
@@ -1357,6 +1405,11 @@ extern "C" void des_seamless_tick(ppu_context* ctx)
     if (!sGame.scratch) return;
     const uint32_t st = vm_read32(sm + kSmState);
     const bool world = in_world(sm, gm);
+    {   // the Stone of Ephemeral Eyes' row for this frame: a session, and a friend's soul form
+        const bool session = (m == co::Mode::Host && st == kStateHost) ||
+                             (m == co::Mode::Join && st == kStateClient && own_kept());
+        stone_tick(ctx, session, m == co::Mode::Join && session && !body_form());
+    }
     std::deque<uint32_t> back;
     {
         std::lock_guard<std::mutex> l(sMsgLock);

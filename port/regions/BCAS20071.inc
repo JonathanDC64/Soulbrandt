@@ -167,6 +167,7 @@ DES_REGION_ADDR(0x0043EDE0, 0x0043D148)  /* call des_seamless_game (by address) 
 DES_REGION_ADDR(0x004418B8, 0x0043FC20)  /* call */
 DES_REGION_ADDR(0x00441AB8, 0x0043FE20)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00443838, 0x00441BA0)  /* call */
+DES_REGION_ADDR(0x00445F30, 0x00444298)  /* call des_seamless_game (by address): SetChrType */
 DES_REGION_ADDR(0x00446C68, 0x00444FD0)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00447258, 0x004455C0)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00447EA0, 0x00446208)  /* call des_seamless_game (by address) */

@@ -63,6 +63,8 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
   with its form's health: full in body form, half in soul form (as the game gives a summoned soul). A friend in body
   form who dies is a soul from then on. A boss kill revives every friend in soul form, as it revives the host: at
   once if it stands, or when it comes back if it is dead. Each friend goes home in the form it has then.
+- **The Stone of Ephemeral Eyes** works during co-op for any player in soul form, the host too: it brings the player
+  back in body form, as it does alone. A friend stays a blue phantom. In body form it can't be used, as in the game.
 - **Friends follow the host.** When the host travels (an Archstone, the Nexus, a death), its friends go too: one
   loading screen, then they stand beside the host again.
 - **Archstones:** the host can use them during co-op, and the group travels with it. A friend still gets "You can't
