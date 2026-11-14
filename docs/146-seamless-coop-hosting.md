@@ -87,7 +87,12 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
 - **When the host dies,** everyone goes back to the start together.
 - **Progress is everyone's.** A boss killed, or a door, lever, elevator, shortcut, bridge or fog wall opened while
   friends are in the host's world counts in each friend's own world too.
-- **Each player takes their own Demon's Soul** from a boss, where the host takes theirs.
+- **A boss's Demon's Soul is everyone's.** When one player takes it at the boss's Archstone, every other player in
+  the session gets it too, unless it already took that soul in its own world. A friend can take it itself as well.
+- **So are keys and the items only the host could take:** 3-1's prison keys, and the items pulled from the ground or
+  a corpse at a prompt (1-1's sword, the glowing corpse in 5-2 and the others like them). Whoever takes one, the
+  others get it too. A player who joins later and doesn't have it yet still finds it there, in the host's world and
+  in its own.
 - **Your own world stays yours.** In a friend's world you see it as it is there. Your own world's doors, items and
   people stay as they were, and what the group did is added when you go back.
 - **Going back:** when the host leaves, its friends go back to their own worlds, where they stood when they joined,
@@ -263,8 +268,34 @@ character for it, as after a load.
 - **Demon's Souls.** A boss's soul is offered to the host and to players in their own world; the scripts' edit offers
   it to a blue phantom too. The prompt is a network event, so one player's pickup would also fire the others'
   (they see the pickup animation) and use up their once-only prompt. The edit registers it between
-  `NotNetMessage_begin` and `_end`, so each player's prompt is its own. A friend who takes it keeps the taken flag in its own world, so its own world doesn't
-  offer it again; one who doesn't can still take it at the same place in its own world.
+  `NotNetMessage_begin` and `_end`, so each player's prompt is its own. A friend who takes it keeps the taken flag
+  in its own world, so its own world doesn't offer it again.
+- **The others get it too** (`pickups_for_all`). The prompt's handler (`OnEvent_<id>`) has a branch for "another
+  player did it" (`Luafunc_PlaySynchroAnimation`); after it the taker now sends `LuaCallStart(<id>, 77)`, a network
+  event, as the boss rooms' notices are sent. Every game registers `LuaCall(<id>, 77, "SEAMLESS_Grant_<id>")` as the
+  area starts. On a message from another player (`param:IsNetMessage()`) with its own flag clear, it removes its
+  prompt (`DeleteEvent`) and runs the handler without that branch (`SEAMLESS_Give_<id>`): the same items, flag and
+  steps after, with no pickup animation. A player whose flag is set (it took the soul in its own world) gets
+  nothing.
+- **Whose flag.** On a friend the flags in play are the host's, so as an area's script is read (before the area
+  starts) each of these pickup flags is made the friend's own world's (`des_seamless_area_read`). A friend that hasn't
+  taken a soul sees the prompt even where the host has; one that has sees none, and gets no second one.
+- **Keys.** 3-1's prison keys (`OnDistanceActionPlusAttribute(<id>, ..., ATTR_LIVE + ATTR_GREY, once)` with a
+  pickup branch and an item in the handler) were for the host and players in their own world. They get the same
+  treatment: each player's own prompt (`NotNetMessage`, `+ ATTR_WHITE`), the grant, and the flag mirror.
+- **The host's item prompts** (`gifts_for_all`): the items a prompt offers the host alone (`possible_chr_type`, at
+  `ItemBoxDist_A`), with their own pickup steps that end in `OnEvent_<id>_1`, which gives the items and sets flag
+  `<id>`: 1-1's sword, 2-3's, 4-1's, 5-3's and the Nexus's, and 5-2's glowing corpse. The prompt is offered to a
+  friend too (`+ ATTR_WHITE`). `OnEvent_<id>_1` first sends `LuaCallStart(<id>, 78)` (before the pickup's own
+  messages, one of which removes the others' prompt), and each game's `SEAMLESS_Gift_<id>` gives the same items and
+  sets the flag unless its flag is set. The flag is mirrored as the souls' are.
+- **The Stone of Ephemeral Eyes** (goods 1021). Its row (`EQUIP_PARAM_GOODS_ST`, param table 3) allows it only in
+  soul form in one's own world: `enable_gray` (`+0x19`) 1, `enable_white` (`+0x1A`) and `enable_multi` (`+0x1C`) 0.
+  Each frame of a session the row gets `enable_multi` 1 (the host), and `enable_white` 1 while this player is a friend
+  in soul form; outside a session it is the disc's again. The revival it gives (behaviour 3021, SpEffect 3024) turns
+  a friend's blue phantom (type 1) into an alive player of its own world (type 0), which the rest of co-op doesn't
+  count as a friend: the next frame sets type 1 again (`SetChrType`'s native, US 0x00445F30) and body form, as a
+  boss kill revives it.
 - **Items.** A phantom's game makes no items: the area's items (lying on corpses, made at each load, US 0x0025CAE8)
   and a dead enemy's drop (rolled by each game when the enemy dies, 0x002B2900) are made only when the player type
   the area was loaded for is body form (0) or soul form (8), and a friend is a blue phantom (1). Both reads of that

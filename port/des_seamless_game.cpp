@@ -81,7 +81,7 @@ extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
 #endif
 extern "C" void ds_malloc(ppu_context* ctx);                     // des_heap.cpp: the guest heap
 bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t* out, uint32_t* out_size);  // _scripts.cpp
-int des_seamless_flag_kind(uint32_t world, uint32_t flag);       // _scripts.cpp: 1 progress, 3 a boss kill's, 2 a soul pickup, 4 a cutscene seen, 5 the Archstones' seal
+int des_seamless_flag_kind(uint32_t world, uint32_t flag);       // _scripts.cpp: 1 progress, 3 a boss kill's, 2 a soul, key or item pickup, 4 a cutscene seen, 5 the Archstones' seal
 extern "C" void ps3_indirect_call(ppu_context* ctx);             // ppu_loader.cpp: a call to the guest address in CTR
 extern "C" int des_player_xyz(float* x, float* y, float* z);     // des_options.cpp: 0 with no player
 extern "C" int np_psnr_connected(void);                         // ps3recomp's np_psnr.c: connected to the room server
@@ -1422,13 +1422,26 @@ extern "C" void des_seamless_tick(ppu_context* ctx)
     else guest_tick(ctx, sm, st, world);
 }
 
-// An area script was just read (des_seamless_scripts.cpp), before the area starts. On a guest in a session, each
-// Nexus cutscene, or area opening, the host has seen and this player hasn't plays here too: its flag in play becomes
-// the host's and this player's own. Once it has played, the flag goes into this player's own world (des_coop_hook's
-// flag set, kind 4).
-void des_seamless_area_read(uint32_t world, const std::vector<uint32_t>& scenes)
+// Whether this guest's own world has flag (world: the one it is in play for). Under sOwn.lock.
+bool own_has(uint32_t world, uint32_t flag)
 {
-    if (scenes.empty() || co::active() != co::Mode::Join) return;
+    const uint8_t bit = (uint8_t)(1u << (flag & 7));
+    if (!world_flag(flag) || world == sOwn.home) return (sOwn.flags[flag >> 3] & bit) != 0;
+    const long b = own_bank_at(world, flag);
+    return b >= 0 && (sOwn.banks[b] & bit) != 0;
+}
+
+// An area script was just read (des_seamless_scripts.cpp), before the area starts. On a guest in a session:
+// - each Nexus cutscene, or area opening, the host has seen and this player hasn't plays here too: its flag in play
+//   becomes the host's and this player's own. Once it has played, the flag goes into this player's own world
+//   (des_coop_hook's flag set, kind 4);
+// - each boss's soul, key and item of the host's item prompts (own: the soul prompts, 3-1's keys, a sword pulled out)
+//   is as this player's own world has it, whoever took it in the host's world: its prompt is here if this player
+//   hasn't taken it (and it gets it when another player takes it, the scripts' pickups_for_all and gifts_for_all), and
+//   not if it has (no second one).
+void des_seamless_area_read(uint32_t world, const std::vector<uint32_t>& scenes, const std::vector<uint32_t>& own)
+{
+    if ((scenes.empty() && own.empty()) || co::active() != co::Mode::Join) return;
     const uint32_t sm = session_manager(), fb = flag_base();
     if (!guest_ok(sm) || !guest_ok(fb) || vm_read32(sm + kSmState) != kStateClient) return;
     std::lock_guard<std::mutex> l(sOwn.lock);
@@ -1436,20 +1449,25 @@ void des_seamless_area_read(uint32_t world, const std::vector<uint32_t>& scenes)
     for (const uint32_t flag : scenes) {
         if (flag >= kFlagCount) continue;
         const uint8_t bit = (uint8_t)(1u << (flag & 7));
-        bool own;
-        if (!world_flag(flag) || world == sOwn.home) {
-            own = (sOwn.flags[flag >> 3] & bit) != 0;
-        } else {
-            const long b = own_bank_at(world, flag);
-            own = b >= 0 && (sOwn.banks[b] & bit) != 0;
-        }
         const uint32_t a = fb + (flag >> 3);
         const uint8_t v = vm_read8(a);
-        if ((v & bit) && !own) {
+        if ((v & bit) && !own_has(world, flag)) {
             vm_write8(a, (uint8_t)(v & ~bit));
             std::fprintf(stderr, "[coop] cutscene %u: seen in the host's world, not yet by this player; it plays here\n",
                          flag);
         }
+    }
+    for (const uint32_t flag : own) {
+        if (flag >= kFlagCount) continue;
+        const uint8_t bit = (uint8_t)(1u << (flag & 7));
+        const uint32_t a = fb + (flag >> 3);
+        const uint8_t v = vm_read8(a);
+        const bool mine = own_has(world, flag);
+        if (((v & bit) != 0) == mine) continue;
+        vm_write8(a, (uint8_t)(mine ? (v | bit) : (v & ~bit)));
+        std::fprintf(stderr, "[coop] a boss's soul, a key or an item (flag %u): %s\n", flag,
+                     mine ? "this player took it in its own world, so there's none here"
+                          : "taken in the host's world, not by this player: its own is here");
     }
 }
 
@@ -1560,7 +1578,7 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
                     sOwn.taken.push_back(flag);
                 }
                 std::fprintf(stderr, "[coop] %s: flag %u set here; kept for this player's world\n",
-                             kind == 2 ? "a boss's soul taken" : kind == 4 ? "a cutscene seen" : "progress", flag);
+                             kind == 2 ? "a soul, key or item taken" : kind == 4 ? "a cutscene seen" : "progress", flag);
             }
         }
         break;

@@ -46,9 +46,9 @@
 #include <vector>
 
 extern "C" void ds_malloc(ppu_context* ctx);   // des_heap.cpp: the guest heap
-// des_seamless_game.cpp: an area script of world was just read (its cutscenes each player sees, if any), before the
-// area starts
-void des_seamless_area_read(uint32_t world, const std::vector<uint32_t>& scenes);
+// des_seamless_game.cpp: an area script of world was just read (its cutscenes each player sees, and its soul, key
+// and item pickups), before the area starts
+void des_seamless_area_read(uint32_t world, const std::vector<uint32_t>& scenes, const std::vector<uint32_t>& own);
 
 namespace {
 
@@ -379,6 +379,158 @@ int walls_for_watchers(std::string& t)
     return (int)adds.size();
 }
 
+// A pickup's "another player did it" branch in its handler: Luafunc_PlaySynchroAnimation(proxy, param, ANIMEID_PICK).
+const std::regex& synchro_branch()
+{
+    static const std::regex re("\\n([ \\t]*)if\\s+Luafunc_PlaySynchroAnimation\\(\\s*proxy\\s*,\\s*param\\s*,\\s*ANIMEID_PICK\\s*\\)"
+                               "\\s*==\\s*true\\s+then[^\\n]*\\n(?:[^\\n]*\\n)*?\\1end[^\\n]*\\n");
+    return re;
+}
+
+// The keys the players pick up at a prompt (3-1's prison keys): OnDistanceActionPlusAttribute(<id>, ...,
+// "OnEvent_<id>", ..., ATTR_LIVE + ATTR_GREY, once), whose handler has the pickup's branch and gives an item
+// (GetRateItem). The event's ID is the flag its handler sets once the key is taken. Their doors are other events.
+std::set<std::string> key_pickups(const std::string& t)
+{
+    std::set<std::string> ids;
+    const std::regex prompt("OnDistanceActionPlusAttribute\\(\\s*(\\d+)\\s*,[^\\n]*?\"OnEvent_(\\d+)\"[^\\n]*?,\\s*"
+                            "ATTR_LIVE\\s*\\+\\s*ATTR_GREY\\s*,\\s*once\\s*\\)");
+    for (auto it = std::sregex_iterator(t.begin(), t.end(), prompt); it != std::sregex_iterator(); ++it) {
+        if ((*it)[1].str() != (*it)[2].str()) continue;
+        size_t a, e;
+        if (!func_span(t, "OnEvent_" + (*it)[1].str(), &a, &e)) continue;
+        const std::string body = t.substr(a, e - a);
+        if (body.find("GetRateItem(") != std::string::npos && std::regex_search(body, synchro_branch()))
+            ids.insert((*it)[1].str());
+    }
+    return ids;
+}
+
+// A boss's soul, and a key, for every player in the session. Each player's prompt is its own (edit_area for the
+// souls, here for the keys); when one player takes the soul or key, every other player there gets it too, as if it
+// had taken it, unless its own world has it already (des_seamless_game.cpp makes a friend's flag in play its own
+// world's as the area starts). The prompt's handler (OnEvent_<id>) plays the pickup and gives the item (in its own
+// lines, or a moment later in OnEvent_<id>_1); after its "another player did it" branch
+// (Luafunc_PlaySynchroAnimation) it now tells the others: LuaCallStart(<id>, 77), a network event, as the boss rooms'
+// notices are sent (4045). Each game's SEAMLESS_Grant_<id> (LuaCall(<id>, 77), registered as the area starts) takes
+// it from another player (param:IsNetMessage()) when its flag is clear: the prompt goes (DeleteEvent) and the
+// handler's own path runs without the pickup (SEAMLESS_Give_<id>, the handler without that branch): the same items,
+// flag and steps after. Returns the number of edits.
+int pickups_for_all(std::string& t)
+{
+    const std::string nl = t.find("\r\n") != std::string::npos ? "\r\n" : "\n";
+    std::set<std::string> ids;
+    const std::regex prompt("OnDistanceActionAttribute\\(\\s*(\\d+)\\s*,[^\\n]*?\"OnEvent_(\\d+)\"[^\\n]*?,\\s*10010180\\s*,");
+    for (auto it = std::sregex_iterator(t.begin(), t.end(), prompt); it != std::sregex_iterator(); ++it)
+        if ((*it)[1].str() == (*it)[2].str()) ids.insert((*it)[1].str());
+    const std::regex& synchro = synchro_branch();
+    const std::regex init("(\\nfunction Initialize_m\\d\\d_\\d\\d_\\d\\d_\\d\\d\\s*\\([^)]*\\)[^\\n]*\\n)");
+    if (!std::regex_search(t, init)) return 0;
+    int n = 0;
+    // a key's prompt: each player's own (local, not sent), and a friend's (white phantom) too
+    for (const std::string& id : key_pickups(t)) {
+        const std::regex reg("proxy:(OnDistanceActionPlusAttribute\\(\\s*" + id + "\\s*,[^\\n]*?,\\s*)ATTR_LIVE\\s*\\+\\s*ATTR_GREY"
+                             "(\\s*,\\s*once\\s*\\)\\s*;)");
+        const std::string was = t;
+        t = std::regex_replace(t, reg, "proxy:NotNetMessage_begin(); proxy:$1ATTR_LIVE + ATTR_GREY + ATTR_WHITE$2 proxy:NotNetMessage_end();");
+        if (t != was) { ids.insert(id); ++n; }
+    }
+    if (ids.empty()) return 0;
+    std::string tail, regs;
+    const int edits = n;
+    for (const std::string& id : ids) {
+        size_t a, e;
+        if (!func_span(t, "OnEvent_" + id, &a, &e)) continue;
+        const std::string body = t.substr(a, e - a);
+        std::smatch m;
+        if (!std::regex_search(body, m, synchro)) continue;
+        const size_t s = (size_t)m.position(0), s_end = s + (size_t)m.length(0);
+        // the others' copy: the handler without the pickup's branch
+        std::string give = body.substr(0, s + 1) + body.substr(s_end);
+        give.replace(give.find("OnEvent_" + id), ("OnEvent_" + id).size(), "SEAMLESS_Give_" + id);
+        // the taker tells the others, after that branch
+        const std::string tell = m[1].str() + "proxy:LuaCallStart( " + id + " , 77 ); --SEAMLESS: the others get it too" + nl;
+        t.replace(a, e - a, body.substr(0, s_end) + tell + body.substr(s_end));
+        tail += nl + "--SEAMLESS: " + id + "'s item for every player in the session (pickups_for_all)" + nl + give;
+        if (tail.size() < nl.size() || tail.compare(tail.size() - nl.size(), nl.size(), nl) != 0) tail += nl;
+        tail += "function SEAMLESS_Grant_" + id + "(proxy, param)" + nl +
+                "\tif param:IsNetMessage() == false or proxy:IsCompleteEvent( " + id + " ) == true then return; end" + nl +
+                "\tproxy:DeleteEvent( " + id + " );" + nl +
+                "\tSEAMLESS_Give_" + id + "(proxy, param);" + nl + "end" + nl;
+        regs += "\tproxy:LuaCall( " + id + " , 77 , \"SEAMLESS_Grant_" + id + "\" , everytime ); --SEAMLESS" + nl;
+        n += 3;
+    }
+    if (n == edits) return n;
+    std::smatch m;
+    std::regex_search(t, m, init);   // (found above; the handlers' edits come after it or don't touch it)
+    t.insert((size_t)m.position(0) + (size_t)m.length(0), regs);
+    t += tail;
+    return n;
+}
+
+// The items the host alone takes at an item prompt with its own pickup steps (a sword pulled out, a glowing corpse):
+// OnDistanceActionAttribute(<id>, LOCAL_PLAYER or 10000, <object>, "OnEvent_<id>", ItemBoxDist_A, ...,
+// possible_chr_type, ...), whose steps end in OnEvent_<id>_1, which gives the items (GetRateItem) and sets flag <id>.
+// The ID -> its lots, in order.
+std::map<std::string, std::vector<std::string>> gift_pickups(const std::string& t)
+{
+    std::map<std::string, std::vector<std::string>> out;
+    const std::regex prompt("\\n([^\\n]*?)OnDistanceActionAttribute\\(\\s*(\\d+)\\s*,\\s*(?:LOCAL_PLAYER|10000)\\s*,\\s*\\d+\\s*,\\s*"
+                            "\"OnEvent_(\\d+)\"\\s*,\\s*ItemBoxDist_A\\s*,[^\\n]*?,\\s*possible_chr_type\\s*,\\s*(?:once|everytime)\\s*\\)");
+    const std::regex lot("GetRateItem\\(\\s*(\\d+)\\s*\\)");
+    for (auto it = std::sregex_iterator(t.begin(), t.end(), prompt); it != std::sregex_iterator(); ++it) {
+        const std::string id = (*it)[2].str();
+        if (id != (*it)[3].str() || (*it)[1].str().find("--") != std::string::npos || out.count(id)) continue;
+        size_t a, e;
+        if (!func_span(t, "OnEvent_" + id + "_1", &a, &e)) continue;
+        const std::string body = t.substr(a, e - a);
+        if (!std::regex_search(body, std::regex("SetEventFlag\\(\\s*" + id + "\\s*,\\s*(?:true|1)\\s*\\)"))) continue;
+        std::vector<std::string> lots;
+        for (auto l = std::sregex_iterator(body.begin(), body.end(), lot); l != std::sregex_iterator(); ++l) lots.push_back((*l)[1].str());
+        if (!lots.empty()) out[id] = lots;
+    }
+    return out;
+}
+
+// Those items for every player in the session, the way pickups_for_all gives the souls and keys: a friend (white
+// phantom) may take one too (its prompt allows ATTR_WHITE), and when one player takes it, its OnEvent_<id>_1 first
+// tells the others (LuaCallStart(<id>, 78), before the pickup's own messages, as one of them takes the others'
+// prompt away); each game's SEAMLESS_Gift_<id> (LuaCall(<id>, 78)) then gives the same items and sets the flag,
+// unless its flag is set already (des_seamless_game.cpp makes a friend's flag in play its own world's). Returns the
+// number of edits.
+int gifts_for_all(std::string& t)
+{
+    const std::map<std::string, std::vector<std::string>> gifts = gift_pickups(t);
+    const std::regex init("(\\nfunction Initialize_m\\d\\d_\\d\\d_\\d\\d_\\d\\d\\s*\\([^)]*\\)[^\\n]*\\n)");
+    if (gifts.empty() || !std::regex_search(t, init)) return 0;
+    const std::string nl = t.find("\r\n") != std::string::npos ? "\r\n" : "\n";
+    std::string tail, regs;
+    int n = 0;
+    for (const auto& g : gifts) {
+        const std::string& id = g.first;
+        const std::regex reg("(OnDistanceActionAttribute\\(\\s*" + id + "\\s*,[^\\n]*?,\\s*)possible_chr_type(\\s*,\\s*(?:once|everytime)\\s*\\))");
+        t = std::regex_replace(t, reg, "$1possible_chr_type + ATTR_WHITE$2");
+        size_t a, e;
+        if (!func_span(t, "OnEvent_" + id + "_1", &a, &e)) continue;
+        const size_t line = t.find('\n', a + 1);
+        if (line == std::string::npos || line >= e) continue;
+        t.insert(line + 1, "\tproxy:LuaCallStart( " + id + " , 78 ); --SEAMLESS: the others get it too" + nl);
+        tail += nl + "--SEAMLESS: " + id + "'s item for every player in the session (gifts_for_all)" + nl +
+                "function SEAMLESS_Gift_" + id + "(proxy, param)" + nl +
+                "\tif param:IsNetMessage() == false or proxy:IsCompleteEvent( " + id + " ) == true then return; end" + nl;
+        for (const std::string& l : g.second) tail += "\tproxy:GetRateItem( " + l + " );" + nl;
+        tail += "\tproxy:SetEventFlag( " + id + " , true );" + nl + "end" + nl;
+        regs += "\tproxy:LuaCall( " + id + " , 78 , \"SEAMLESS_Gift_" + id + "\" , everytime ); --SEAMLESS" + nl;
+        n += 4;
+    }
+    if (!n) return 0;
+    std::smatch m;
+    std::regex_search(t, m, init);
+    t.insert((size_t)m.position(0) + (size_t)m.length(0), regs);
+    t += tail;
+    return n;
+}
+
 // An area's script: the party walls, the warp-out pose and the Archstones. Returns the number of edits.
 int edit_area(std::string& t, bool nexus)
 {
@@ -459,6 +611,10 @@ int edit_area(std::string& t, bool nexus)
     sub(std::regex("proxy:(OnDistanceActionAttribute\\(\\s*\\d+\\s*,[^\\n]*?,\\s*10010180\\s*,\\s*0\\s*,\\s*180\\s*,\\s*)"
                    "ATTR_NOSESSION(\\s*,\\s*once\\s*\\)\\s*;)"),
         "proxy:NotNetMessage_begin(); proxy:$1ATTR_SESSION + ATTR_NOSESSION$2 proxy:NotNetMessage_end();");
+    // ... and when one player takes it, the others get it too; the same for the keys (pickups_for_all)
+    n += pickups_for_all(t);
+    // ... and the items the host alone took at an item prompt
+    n += gifts_for_all(t);
     for (const std::string& id : ids) {
         // in this stone's handlers, the session check passes for the host
         const std::regex fn("\nfunction OnEvent_" + id + "(?:_\\d+)?\\s*\\(");
@@ -650,10 +806,17 @@ std::vector<uint32_t> progress_flags(const std::string& t, std::vector<uint32_t>
     return std::vector<uint32_t>(out.begin(), out.end());
 }
 
-// The soul pickups (the prompt 10010180): the event's ID is the flag its handler sets once the soul is taken.
+// The soul pickups (the prompt 10010180), the keys (key_pickups) and the host's item prompts (gift_pickups): the
+// event's ID is the flag its handler sets once the item is taken.
 std::vector<uint32_t> own_flags(const std::string& t)
 {
     std::set<uint32_t> out;
+    std::set<std::string> ids = key_pickups(t);
+    for (const auto& g : gift_pickups(t)) ids.insert(g.first);
+    for (const std::string& id : ids) {
+        const unsigned long v = std::stoul(id);
+        if (v < kProgressMax) out.insert((uint32_t)v);
+    }
     const std::regex re("OnDistanceActionAttribute\\(\\s*(\\d+)\\s*,[^\\n]*?,\\s*10010180\\s*,");
     for (auto it = std::sregex_iterator(t.begin(), t.end(), re); it != std::sregex_iterator(); ++it) {
         const unsigned long id = std::stoul((*it)[1].str());
@@ -709,7 +872,7 @@ struct Copy {
     uint32_t world = 0xFFFFFFFFu;     // an area script's world (its area's top byte - 1)
     std::vector<uint32_t> progress;   // an area script's progress flags
     std::vector<uint32_t> boss;       // the ones a boss kill sets
-    std::vector<uint32_t> own;        // its soul pickups
+    std::vector<uint32_t> own;        // its soul and key pickups
     std::vector<uint32_t> scenes;     // the cutscenes each player sees: the Nexus's, an area's opening
     std::vector<uint32_t> seal;       // and the Archstones' seal (the Nexus)
 };
@@ -775,7 +938,7 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
             learn(it->second);
             const Copy c = it->second;
             g.unlock();
-            if (!global) des_seamless_area_read(c.world, c.scenes);
+            if (!global) des_seamless_area_read(c.world, c.scenes, c.own);
             if (!c.addr) return false;
             *out = c.addr;
             *out_size = c.size;
@@ -815,14 +978,14 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
                  addr ? (std::to_string(edits) + " edits for co-op").c_str() : global ? "left as it is (an edit didn't fit)"
                                                                                       : "nothing to edit",
                  global ? "" : ("; " + std::to_string(c.progress.size()) + " progress flags, " +
-                                std::to_string(c.own.size()) + " soul pickups, " + std::to_string(c.scenes.size()) +
+                                std::to_string(c.own.size()) + " soul and key pickups, " + std::to_string(c.scenes.size()) +
                                 " cutscenes, " + std::to_string(c.seal.size()) + " for the Archstones' seal").c_str());
     {
         std::lock_guard<std::mutex> g(sLock);
         learn(c);
         sCopies[key] = c;
     }
-    if (!global) des_seamless_area_read(c.world, c.scenes);
+    if (!global) des_seamless_area_read(c.world, c.scenes, c.own);
     if (!addr) return false;
     *out = addr;
     *out_size = n;
@@ -830,9 +993,9 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
 }
 
 // What flag is in world (an area's top byte - 1), from that world's area scripts: 1 a progress flag (every player's
-// world keeps it), 3 one a boss kill sets (a progress flag too), 2 a soul pickup (the player who took it keeps it),
-// 4 a cutscene played (the Nexus's or an area's opening: the player who saw it keeps it), 5 the Archstones' seal
-// opened (progress that a guest's own game makes too: the host's world takes it), 0 none of these.
+// world keeps it), 3 one a boss kill sets (a progress flag too), 2 a soul, key or item pickup (the player who took
+// it keeps it), 4 a cutscene played (the Nexus's or an area's opening: the player who saw it keeps it), 5 the
+// Archstones' seal opened (progress that a guest's own game makes too: the host's world takes it), 0 none of these.
 int des_seamless_flag_kind(uint32_t world, uint32_t flag)
 {
     std::lock_guard<std::mutex> g(sLock);
