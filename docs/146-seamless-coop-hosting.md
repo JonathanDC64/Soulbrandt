@@ -107,6 +107,8 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
   in its own.
 - **Your own world stays yours.** In a friend's world you see it as it is there. Your own world's doors, items and
   people stay as they were, and what the group did is added when you go back.
+- **World tendency.** In the host's world a friend plays in the host's world tendency, as a summoned phantom does in
+  the original game. The friend's own tendency doesn't change, and it is in play again when the friend goes back.
 - **Going back:** when the host leaves, its friends go back to their own worlds, where they stood when they joined,
   and their games save there, each in the form it has then (above).
 - **The Nexus is shared.** Friends stand in the host's Nexus and see its people as the host does, not as phantoms,
@@ -355,6 +357,21 @@ character (the friend unseen on the host's screen, the host stuck in its death a
   souls, but what dies with it pays the same way (Phalanx's 38 blobs, 35 each, killed by `PhalanxDead`). A killing
   blow of at least 1.5 times the enemy's most HP (`0x00280DC8` sets a bit at `+0x318`) adds a fifth on the game that
   dealt it; the result is rounded up.
+- **World tendency.** The game's QWC object (`*(*0x01B4EF9C + 0x24)`) holds the tendency in play at `+0x10`, two
+  floats (white/black, left/right) for each of worlds 1-7, and the player's own at `+0x48`, which the save keeps
+  (docs/69). In online co-op the host's game sends a phantom its values in play (P2P message 0x17, read at US
+  0x00525750), and the phantom's game copies them to `+0x10`. That message never comes in seamless co-op, so each
+  game would play the shared area in its own player's tendency, and the area scripts that read it on every game
+  (`IsSuccessQWC`, in the 1-1 script's events 35, 61 and 62 for one) could differ between players. So the host's
+  game sends its values in play before each READY (QWC, 14 words), and a friend's game writes them to `+0x10`:
+  - before each summoned load's area scripts run;
+  - when a new QWC comes in while it is in the host's world;
+  - after the Nexus script's blend (the hook after `bl 0x009204A0` at US 0x004117E4, in `RecvGlobalQwc`'s
+    0x004117C0), which sets `+0x10` from the player's own.
+
+  When the session ends, the friend's own values are put back in play: each one that matched its own saved value at
+  the first write follows that value as it is then, and any other is put back as it was. The own values at `+0x48`
+  are never written.
 - **Items.** A phantom's game makes no items: the area's items (lying on corpses, made at each load, US 0x0025CAE8)
   and a dead enemy's drop (rolled by each game when the enemy dies, 0x002B2900) are made only when the player type
   the area was loaded for is body form (0) or soul form (8), and a friend is a blue phantom (1). Both reads of that
