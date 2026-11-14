@@ -18,7 +18,8 @@ class MenuShell;
 namespace ui::menu {
 
 struct Entry {
-    std::string title;                     // its tab: "Settings"
+    std::string title;                       // its tab: "Settings"
+    std::string brief;                       // what it is, in a line (a look's strip under the band)
     std::function<void(MenuShell&)> choose;  // opens its page (MenuShell::open_settings, open), or asks its question
 };
 

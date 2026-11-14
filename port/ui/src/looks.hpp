@@ -10,14 +10,16 @@
 
 namespace ui::looks {
 
+// What a look does that its sheet can't say. A trait is only for that: whatever RCSS can do stays in the sheet.
 struct Look {
     std::string_view id;     // the ui_look setting's value, the RmlUi theme's name, and res/rml/looks/<id>.rcss
     std::string_view label;  // its choice in the Menu look row
     bool released;           // false: offered in developer builds only
+    bool helpPane;           // Settings shows the help beside the rows; else a line under the band, and Help opens it
 };
 
 inline constexpr Look kLooks[] = {
-    {"today", "Today", true},
+    {"today", "Today", true, true},
 };
 
 inline constexpr std::string_view kDefault = "today";

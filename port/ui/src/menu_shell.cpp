@@ -28,6 +28,7 @@ const Rml::String kDocumentSource = R"RML(
     <menu-entries id="entries" />
     <menu-frame id="frame">
         <menu-slot id="slot" />
+        <menu-strip id="strip" />
         <menu-page id="page" />
         <menu-prompts id="prompts" />
     </menu-frame>
@@ -75,6 +76,7 @@ MenuShell::MenuShell(bool standalone, DocumentScope scope)
     mBody = mDocument;
     mEntries = mDocument->GetElementById("entries");
     mSlot = mDocument->GetElementById("slot");
+    mStrip = mDocument->GetElementById("strip");
     mPageHost = mDocument->GetElementById("page");
     mPrompts = mDocument->GetElementById("prompts");
     mBadge = mDocument->GetElementById("badge");
@@ -210,6 +212,13 @@ void MenuShell::draw() {
         if (mEntryElems[i]->IsClassSet("on") != on) mEntryElems[i]->SetClass("on", on);
         if (mSlotElems[i]->IsClassSet("on") != on) mSlotElems[i]->SetClass("on", on);
     }
+
+    std::string strip;
+    if (level == Level::Entries && mEntry >= 0 && mEntry < static_cast<int>(menu::entries().size()))
+        strip = menu::entries()[mEntry].brief;
+    else if (level == Level::Page && mPage)
+        strip = mPage->strip();
+    set_text_content(mStrip, strip);
 
     // The prompts for what the keys do now, drawn again only when they change.
     std::vector<prompts::Prompt> list;

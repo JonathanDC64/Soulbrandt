@@ -143,6 +143,11 @@ body.standalone menu-slot {
     display: none;
 }
 
+/* The line under a look's band (Today has the help beside the rows instead). */
+menu-strip {
+    display: none;
+}
+
 menu-page {
     display: flex;
     flex-flow: column;

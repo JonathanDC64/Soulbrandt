@@ -10,7 +10,8 @@
 //                  menu-value > menu-arrow.left(.end), icon.lock, menu-text, menu-tag, menu-arrow.right(.end)
 //                  menu-list > menu-item(.cursor .now .disabled) > menu-text, menu-tag
 //       menu-row's kind: .choice .toggle .number .text .info .action
-//   menu-body > menu-help > h3, menu-notes, menu-helptext, menu-footnote, menu-buttons, menu-facts
+//   menu-body > menu-help > h3, menu-notes, menu-helptext, menu-footnote, menu-buttons, menu-facts (beside the rows, or
+//               a box over them while Help has it open: body.helping)
 //   menu-peek > menu-peek-prev(.none), menu-peek-row > menu-name, menu-value (a row's), menu-peek-next(.none),
 //               menu-peek-line
 // The state of the model (settings_model.hpp) sets the classes; the rows' values come from settings_rows.hpp.
@@ -44,6 +45,7 @@ public:
     void release() override;
     void hidden() override;
     std::vector<prompts::Prompt> prompts(const std::string& backLabel) const override;
+    std::string strip() const override;
     std::string classes() const override;
     void closing() override;
 

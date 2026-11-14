@@ -9,6 +9,7 @@
 #include "event.hpp"
 #include "hud_editor.hpp"
 #include "input.hpp"
+#include "looks.hpp"
 #include "menu_shell.hpp"
 #include "modal.hpp"
 #include "players_window.hpp"
@@ -297,6 +298,7 @@ const RowDesc* SettingsPage::focused_row() const {
 }
 
 void SettingsPage::update() {
+    mModel.set_help_key(!looks::current().helpPane);
     if (mModel.tab() != mBuiltTab) build_tab();
     else {
         // A row can come or go while the page shows (a disc's Language row): the tab is built again.
@@ -703,6 +705,7 @@ bool SettingsPage::command(menu::Command c, bool down) {
     }
     const SettingsModel::Mode mode = mModel.mode();
     if (mode == SettingsModel::Mode::Edit) return false;  // (the field takes the keys; Enter and Esc end it)
+    if (mode == SettingsModel::Mode::Help && c != Command::Help) return true;  // (only Help or Back close it)
     switch (c) {
     case Command::Up:
     case Command::Down: {
@@ -741,6 +744,9 @@ bool SettingsPage::command(menu::Command c, bool down) {
     case Command::Compare:
         compare(true);
         return true;
+    case Command::Help:
+        if (mModel.help(mFacts)) play_sound(mode == SettingsModel::Mode::Help ? kSoundWindowClose : kSoundWindowOpen);
+        return true;
     default:
         return false;
     }
@@ -776,10 +782,32 @@ std::string SettingsPage::classes() const {
     case SettingsModel::Mode::List: out = "listing"; break;
     case SettingsModel::Mode::Edit: out = "typing"; break;
     case SettingsModel::Mode::Preview: out = "preview"; break;
+    case SettingsModel::Mode::Help: out = "helping"; break;
     case SettingsModel::Mode::Rows: break;
     }
     if (!mComparing.empty()) out += out.empty() ? "comparing" : " comparing";
     return out;
+}
+
+std::string SettingsPage::strip() const {
+    const RowDesc* row = focused_row();
+    if (!row) return "";
+    switch (mModel.mode()) {
+    case SettingsModel::Mode::List: return "Choose a value for " + row->label + ".";
+    case SettingsModel::Mode::Edit: return "Type a value for " + row->label + ".";
+    default: break;
+    }
+    // Its brief, then why it is as it is now (the help's notes, in short).
+    std::string line = brief(*row);
+    std::string note;
+    if (rows::locked(*row)) note = "Set when the game started, so it can't change here.";
+    else if (rows::waits(*row)) note = "Takes effect after a restart.";
+    else if (rows::applies(*row) == "After a restart") note = "Applies after a restart.";
+    else if (const auto it = mOpened.find(row->key);
+             mComparing.empty() && rows::comparable(*row) && it != mOpened.end() && it->second != settings::get(row->key))
+        note = "Hold " + std::string(prompts::glyph(input::menu_device(), prompts::Key::Compare).text) +
+               " to see how it was.";
+    return note.empty() ? line : line + " " + note;
 }
 
 void SettingsPage::closing() {
