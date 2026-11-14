@@ -6,6 +6,7 @@
 #include "host.hpp"
 #include "mods.hpp"
 #include "portable.hpp"
+#include "report_addresses.hpp"
 #include "settings.hpp"
 #include "setup_engine.hpp"  // (setup::disc_summary: what setup found of the disc copy)
 #include "setup_pc.hpp"  // (setup::hdr_on, for the displays' lines)
@@ -897,7 +898,8 @@ std::string redact(std::string text) {
     replace_all(text, online_name(), "<online name>", true);
     replace_all(text, user_name(), "<user>", true);
     replace_all(text, pc_name(), "<pc>", true);
-    return text;
+    // Other players' internet addresses (signaling lines), and the server or co-op host reached: report_addresses.hpp
+    return hide_addresses(std::move(text));
 }
 
 std::string redact_log(std::string text) {

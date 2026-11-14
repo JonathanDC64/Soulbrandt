@@ -1227,6 +1227,10 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
         info_row(leftPane, rightPane, "Warp (scripts)", "DES_WARP=x,y,z",
             "For scripts: DES_WARP=x,y,z moves you there, and DES_WARP_CLEAR=m moves enemies within m metres away. "
             "Counts as a cheat.");
+        info_row(leftPane, rightPane, "Test switches (scripts)", "DES_KILLSELF, DES_KILLALL, DES_AREA",
+            "For scripts. DES_KILLSELF=1 kills you. DES_KILLALL=all kills every enemy in the area, or a number kills "
+            "those within that many metres. DES_AREA=2,1 loads m02_01. Each new value acts once. Cheats.<br/><br/>"
+            "DES_FLAGWATCH=a,b logs those event flags when they change. Not a cheat.");
     });
 #endif
 

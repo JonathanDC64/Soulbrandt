@@ -892,6 +892,16 @@ if(_des_hal)
     endif()
 endif()
 
+# pantheon_check (port/tests): des_pantheon.cpp's checks on Pantheon records, on made-up records and param tables in a
+# memory of the test's own (tests/pantheon_stub stands in for ps3recomp's ppu_lift.h), in a program that runs no game.
+# Built only when asked for: cmake --build <build> --target pantheon_check, then pantheon_check.
+add_executable(pantheon_check EXCLUDE_FROM_ALL tests/pantheon_check.cpp)
+target_include_directories(pantheon_check BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/tests/pantheon_stub")
+if(MSVC)
+    target_compile_options(pantheon_check PRIVATE /EHsc /Zc:__cplusplus)
+    target_compile_definitions(pantheon_check PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()
+
 message(STATUS "des_boot: renderer calls through the route switch (DES_RSX_HAL=${DES_RSX_HAL}): ${_des_hal}")
 
 # ui_render_compare (port/ui/tests): render_gpu.cpp's proof, the menus drawn by it and by render_d3d12.cpp on one

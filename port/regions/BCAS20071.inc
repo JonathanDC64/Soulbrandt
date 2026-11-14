@@ -94,6 +94,7 @@ DES_REGION_ADDR(0x0026FB20, 0x0026DBF8)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x0026FC48, 0x0026DD20)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x0026FC98, 0x0026DD70)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x00272A88, 0x00270B60)  /* hook des_coop_hook: an enemy's souls, the guest test (a friend's full souls) */
+DES_REGION_ADDR(0x00272C28, 0x00270D00)  /* call des_dev (by address): the scripts' kill */
 DES_REGION_ADDR(0x00273620, 0x002716F8)  /* call */
 DES_REGION_ADDR(0x002737A0, 0x00271878)  /* call */
 DES_REGION_ADDR(0x00273BE0, 0x00271CB8)  /* call */

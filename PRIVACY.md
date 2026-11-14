@@ -43,7 +43,8 @@ are kept for 14 days, on the server and on the maintainer's PC.
 - In their Players list, your name and a short code made from your install's key, so a look-alike name shows a
   different code.
 - Co-op and invasions connect your PC straight to the other player's, as on a PS3, so **the other player can see your
-  IP address**.
+  IP address**. When the two PCs can't reach each other directly (some providers, phone data and work networks block
+  it), that session's game traffic goes through the server instead. The server passes it on and keeps none of it.
 
 ## Restrictions
 

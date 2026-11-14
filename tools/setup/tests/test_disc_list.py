@@ -109,6 +109,19 @@ class DiscListTest(unittest.TestCase):
         self.assertIn("s[magic circle].mtd\t7", lines)
         self.assertEqual(sum(1 for line in lines if "\t" in line), 64)
 
+    def test_the_dotted_name_is_left_out_in_each_spelling(self):
+        """Issue #499: a list made from a copy's folder had the name as the copy's unpacker wrote it
+        (m99_99_98_06mcp_), so a copy whose unpacker wrote m99_99_98_06mcp was one file short. No spelling is listed;
+        other names are, a final "_" and the file the game opens included."""
+        folder = "PS3_GAME/USRDIR/map/m99_99_98_06/"
+        files = [(folder + n, 56) for n in ("m99_99_98_06mcp.", "m99_99_98_06mcp_", "m99_99_98_06mcp",
+                                             "m99_99_98_06.mcp")] + \
+            [("PS3_GAME/USRDIR/other/m99_99_98_06mcp_", 1), ("PS3_GAME/USRDIR/name_", 2)]
+        text = disc_list.disc_list("TEST00000", "A test disc", "01.00", files).decode("utf-8")
+        self.assertEqual([line for line in text.splitlines() if not line.startswith("#")],
+                         ["PS3_GAME/USRDIR/map/m99_99_98_06/", "m99_99_98_06.mcp\t56", "PS3_GAME/USRDIR/", "name_\t2",
+                          "PS3_GAME/USRDIR/other/", "m99_99_98_06mcp_\t1"])
+
     def test_main_writes_the_same_bytes_each_time(self):
         with tempfile.TemporaryDirectory() as d:
             src = Path(d) / "in.ird"

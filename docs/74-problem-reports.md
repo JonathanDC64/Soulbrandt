@@ -169,6 +169,11 @@ Reports are posted on a public GitHub issue, so:
   folder or word is left to find (seen 2026-11-04, a name glued to
   "Documents"). An issue's own text keeps whole words only, since there
   the user name can be part of the project's link.
+  Public IPv4 addresses become `<address>` (`report_addresses.cpp`): an online
+  log names the other players' addresses (`signaling: member 2 (...) at ...`)
+  and the server or co-op host it reached, and reports are often posted in
+  public. Home-network, loopback and similar addresses stay, and so do version
+  numbers (a part over 255, a fifth part, or a letter just before).
 - The online name, matchmaking password and custom server address (and its
   mark, `net_custom_here`) appear only as `(set)`, in `settings.ini` (both
   report kinds) and in
