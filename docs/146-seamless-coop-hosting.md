@@ -95,6 +95,8 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
 - **Bosses get more health with friends,** as in the original game: half as much again with one friend, double with
   two. Three friends get double too (the original has nothing for three, so a boss had its solo health).
 - **When the host dies,** everyone goes back to the start together.
+- **Souls from enemies.** Every player gets an enemy's full souls when it dies, whoever killed it. (The original game
+  gives a summoned phantom half.)
 - **Progress is everyone's.** A boss killed, or a door, lever, elevator, shortcut, bridge or fog wall opened while
   friends are in the host's world counts in each friend's own world too.
 - **A boss's Demon's Soul is everyone's.** When one player takes it at the boss's Archstone, every other player in
@@ -335,6 +337,12 @@ character for it, as after a load.
   the hook at 0x000E9650 (after the draw's `bl 0x0006C908`, `r31` the drawn object, `r26` its owner) writes that
   model's own edge and body colours into the constant block (`+0x11F0`: `+0x8C0`, `+0x8D0`, dirty bits 0x800000
   and 0x400000) and the manager's cache (`+0xC0`, `+0xD0`) first. With no colours chosen, nothing is written.
+- **Souls from enemies.** Each game gives its own player an enemy's souls when the enemy dies (US 0x00272938: the
+  NpcParam row's `+0x3C`, through `0x002D6C40` and the character's soul gain `0x002D8978`, which applies the player's
+  own soul rate, SpEffect `+0xDC`). `0x002D6C40` halves them when `0x0052A610` says this game is a guest (session
+  state 6). The hook after that call (0x00272A88) gives "not a guest" on a friend in seamless co-op, so it gets the
+  full souls, as the host does. Online co-op without seamless mode keeps the game's half. A boss gives no souls for
+  its kill (its rows have none); its Demon's Soul is the reward, and every player gets it (above).
 - **Items.** A phantom's game makes no items: the area's items (lying on corpses, made at each load, US 0x0025CAE8)
   and a dead enemy's drop (rolled by each game when the enemy dies, 0x002B2900) are made only when the player type
   the area was loaded for is body form (0) or soul form (8), and a friend is a blue phantom (1). Both reads of that

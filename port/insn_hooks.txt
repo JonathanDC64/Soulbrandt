@@ -275,3 +275,4 @@
 0x00080E88=des_coop_hook   # cmpwi r5,0, the ghost colour upload 0x00080E88 starting (r3 the ghost manager, r5/r7 the material kinds, r31 the drawn object): a player's own glow colour
 0x0006C860=des_coop_hook   # bl 0x00080E88 in 0x0006C850 returned: kind 2's material back in the ghost manager's table
 0x000E9650=des_coop_hook   # bl 0x0006C908 in the ghost model draw 0x000E8C48 returned (r26 the ghost owner, r31 the drawn object): its own colours before 0x0006DA20 records its constants
+0x00272A88=des_coop_hook   # bl 0x0052A610 in an enemy's souls for this game's player (0x00272938; r3 1 for a guest, which halves them): a friend gets the full souls

@@ -1780,6 +1780,12 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
     case 0x0017A4A8u:   // the summoned reload's load step, after addi r9,r26,0x34
         if (m == co::Mode::Join) guest_load_step(ctx);
         break;
+    case 0x00272A88u:   // an enemy's souls for this game's player (0x00272938), after bl 0x0052A610: r3 1 for a guest
+        // Each game gives its own player an enemy's souls when it dies (its NpcParam souls, through 0x002D6C40), halved
+        // when the session state is 6 (a guest, 0x0052A610). A friend in seamless co-op gets the full souls, as the
+        // host does.
+        if (m == co::Mode::Join) ctx->gpr[3] = 0;
+        break;
     case 0x0053B31Cu:   // the session's leave (0x0053B300), after lwz r9,0x9C(r3): 0 takes its "no session" return
         if (m == co::Mode::Host && (uint32_t)ctx->gpr[9] == kStateHost) {
             static uint32_t last = 0;
