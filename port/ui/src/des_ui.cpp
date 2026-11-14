@@ -60,6 +60,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -212,12 +213,14 @@ std::mutex sShotNowLock;
 std::string sShotNow;
 
 // DES_UI_KEYS=frame:KEY[,frame:KEY...]: press a key at a presented frame (a test drives the menus with it). The key
-// OSK opens the keyboard as the game would, and a digit types it (a number field).
+// OSK opens the keyboard as the game would, and a digit types it (a number field). KEY+ holds the key down and KEY-
+// lets it go (Compare and Hide act while a key is held: 300:C+,360:C-).
 constexpr int kScriptOsk = -1;
 constexpr int kScriptChar = 0x10000;  // + the character
 struct ScriptKey {
     unsigned long long frame;
     int vk;
+    char hold = 0;  // '+' down only, '-' up only, 0 down and up
 };
 std::vector<ScriptKey> sScriptKeys;
 int vk_from_name(const std::string& name);
@@ -779,8 +782,8 @@ void script_keys_for_frame(unsigned long long frame) {
             push_event({InputEvent::Char, k.vk - kScriptChar});
             continue;
         }
-        push_event({InputEvent::KeyDown, k.vk, 0, 0});
-        push_event({InputEvent::KeyUp, k.vk, 0, 0});
+        if (k.hold != '-') push_event({InputEvent::KeyDown, k.vk, 0, 0});
+        if (k.hold != '+') push_event({InputEvent::KeyUp, k.vk, 0, 0});
     }
 }
 
@@ -1250,10 +1253,13 @@ int vk_from_name(const std::string& name) {
         int vk;
     } kNames[] = {{"F1", VK_F1},       {"ESC", VK_ESCAPE}, {"UP", VK_UP},         {"DOWN", VK_DOWN},
                   {"LEFT", VK_LEFT},   {"RIGHT", VK_RIGHT}, {"ENTER", VK_RETURN}, {"PGUP", VK_PRIOR},
-                  {"PGDN", VK_NEXT},   {"TAB", VK_TAB},    {"SPACE", VK_SPACE}, {"OSK", kScriptOsk}};
+                  {"PGDN", VK_NEXT},   {"TAB", VK_TAB},    {"SPACE", VK_SPACE}, {"SHIFT", VK_SHIFT},
+                  {"OSK", kScriptOsk}};
     for (const auto& n : kNames)
         if (ui::same_name(n.name, name.c_str())) return n.vk;
     if (name.size() == 1 && ((name[0] >= '0' && name[0] <= '9') || name[0] == '.')) return kScriptChar + name[0];
+    if (name.size() == 1 && std::isalpha(static_cast<unsigned char>(name[0])))  // a letter: its key (P: Preview)
+        return std::toupper(static_cast<unsigned char>(name[0]));
     return 0;
 }
 
@@ -1285,9 +1291,15 @@ void parse_debug_knobs() {
         for (const std::string& item : split(v, ',')) {
             const size_t colon = item.find(':');
             if (colon == std::string::npos) continue;
-            const int vk = vk_from_name(item.substr(colon + 1));
+            std::string name = item.substr(colon + 1);
+            char hold = 0;
+            if (name.size() > 1 && (name.back() == '+' || name.back() == '-')) {
+                hold = name.back();
+                name.pop_back();
+            }
+            const int vk = vk_from_name(name);
             const unsigned long long f = std::strtoull(item.c_str(), nullptr, 10);
-            if (vk && f) sScriptKeys.push_back({f, vk});
+            if (vk && f && (vk < kScriptChar || hold == 0)) sScriptKeys.push_back({f, vk, hold});
         }
     }
 }
