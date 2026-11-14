@@ -65,8 +65,13 @@ endforeach()
 # ---- Embedded styles and fonts (cmake/EmbedFiles.cmake) ----
 set(DES_UI_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 file(GLOB DES_UI_STYLES CONFIGURE_DEPENDS ${DES_UI_DIR}/res/rml/*.rcss)
+# Each look's sheet (looks.hpp) and the menus' own images (tools/ui/make_ui_art.py): a new one is picked up as it is.
+file(GLOB DES_UI_LOOKS CONFIGURE_DEPENDS ${DES_UI_DIR}/res/rml/looks/*.rcss)
+file(GLOB DES_UI_IMAGES CONFIGURE_DEPENDS ${DES_UI_DIR}/res/img/*.png)
 set(DES_UI_FILES
   ${DES_UI_STYLES}
+  ${DES_UI_LOOKS}
+  ${DES_UI_IMAGES}
   ${DES_UI_DIR}/res/fonts/Cinzel.ttf
   ${DES_UI_DIR}/res/fonts/AlegreyaSans-Regular.ttf
   ${DES_UI_DIR}/res/fonts/AlegreyaSans-Bold.ttf
@@ -186,6 +191,24 @@ if(WIN32)
 endif()
 add_dependencies(settings_catalog_check des_version)
 
+# The menus' looks on their own (tests/ui_style_check.cpp): RmlUi with the embedded files, no window or renderer. Every
+# look in looks.hpp has its sheet, each sheet's rules are inside its own @media (theme: ...), RmlUi reads it without a
+# warning, and a theme switched on and off changes a style and changes it back. The same on every platform; CI runs it
+# on both (host.yml). Built on demand:
+#   cmake --build <build> --target ui_style_check, then ui_style_check
+add_executable(ui_style_check EXCLUDE_FROM_ALL tests/ui_style_check.cpp ${DES_UI_ASSETS})
+target_include_directories(ui_style_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_definitions(ui_style_check PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
+if(DES_DEV)
+  target_compile_definitions(ui_style_check PRIVATE DES_DEV=1)
+else()
+  target_compile_definitions(ui_style_check PRIVATE DES_DEV=0)
+endif()
+if(MSVC)
+  target_compile_options(ui_style_check PRIVATE /EHsc /W3)
+endif()
+target_link_libraries(ui_style_check PRIVATE RmlUi::RmlUi)
+
 # setup_folder.cpp on its own (tests/setup_folder_check.cpp): where setup builds, the usual folder or the one chosen on
 # setup's screens (docs/88 section 3), in made-up folders under the system's temporary folder. The same on every
 # platform; CI runs it on both (host.yml). Built on demand:
@@ -195,6 +218,18 @@ target_include_directories(setup_folder_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR
 target_compile_definitions(setup_folder_check PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
 if(MSVC)
   target_compile_options(setup_folder_check PRIVATE /EHsc /W3 /wd4100)
+endif()
+
+# The menus' keys on their own (tests/input_map_check.cpp): a pad's buttons as keys with the menu chord's rule, each
+# key's command in the F1 menu, what is held, and the prompts' buttons for each device. RmlUi's key names only (a
+# header). The same on every platform; CI runs it on both (host.yml). Built on demand:
+#   cmake --build <build> --target input_map_check, then input_map_check
+add_executable(input_map_check EXCLUDE_FROM_ALL tests/input_map_check.cpp src/menu_pad.cpp src/menu_input.cpp
+  src/prompts.cpp)
+target_include_directories(input_map_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${rmlui_SOURCE_DIR}/Include)
+target_compile_definitions(input_map_check PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
+if(MSVC)
+  target_compile_options(input_map_check PRIVATE /EHsc /W3 /wd4100)
 endif()
 
 # mods.cpp on its own (tests/mods_check.cpp): mod folders found, read and sorted into look and gameplay mods, and

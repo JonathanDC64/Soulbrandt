@@ -29,6 +29,7 @@
 #include "menu_pages.hpp"
 #include "renderer.hpp"
 #include "settings.hpp"
+#include "settings_catalog.hpp"
 #include "settings_window.hpp"
 #include "setup_screens.hpp"
 #include "souls_model.hpp"
@@ -47,6 +48,7 @@
 #include <dxgi1_6.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -651,6 +653,33 @@ const char* const kModelPage = R"(<rml><head><style>
      height: 300px;"></div></div>
 </body></rml>)";
 
+// What a look's sheet draws with (looks.hpp): the UI's own images (res/img, tools/ui/make_ui_art.py), the grain tiled
+// and the value box as a nine-patch with corners in dp; a focus bar that breathes; a page that slides in, as the game's
+// menus move (linear, 400 px in 0.17 s).
+const char* const kLookPage = R"(<rml><head><style>
+@spritesheet ui-art { src: /res/img/valuebox.png; resolution: 2x;
+    valuebox: 0px 0px 24px 24px; valuebox-inner: 10px 10px 4px 4px; }
+@keyframes breathe { from { opacity: 1; } to { opacity: 0.8; } }
+@keyframes slide-in { from { transform: translateX(-400px); opacity: 0; } to { transform: none; opacity: 1; } }
+.band { position: absolute; left: 0px; top: 56px; width: 1280px; height: 120px; background-color: #2c2b2b;
+    decorator: image(/res/img/grain.png repeat left top); border-top: 1px #45433d; border-bottom: 1px #45433d; }
+.page { position: absolute; left: 96px; top: 220px; width: 720px; height: 400px;
+    animation: 0.17s linear-in-out slide-in; }
+.row { display: block; height: 40px; margin-bottom: 8px; }
+.label { display: inline-block; width: 340px; height: 32px; padding: 4px 16px; background-color: #333331;
+    decorator: image(/res/img/grain.png repeat left top); color: #c8aa8c; }
+.focus .label { background-color: #752a29; animation: 0.5s linear-in-out infinite alternate breathe; }
+.value { display: inline-block; width: 300px; height: 32px; margin-left: 16px; padding: 4px 14px; color: #c8aa8c;
+    decorator: ninepatch(valuebox, valuebox-inner, 5dp); }
+</style></head><body>
+<div class="band"/>
+<div class="page">
+  <div class="row focus"><span class="label">Render resolution</span><span class="value">150% (1920 x 1080)</span></div>
+  <div class="row"><span class="label">Anti-aliasing</span><span class="value">SMAA</span></div>
+  <div class="row"><span class="label">Frame rate</span><span class="value" style="width: 120px;">60 fps</span></div>
+</div>
+</body></rml>)";
+
 // A 64x64 TGA (stb_image reads it, as the UI's PNGs): a gradient and a disc, half transparent at the edge.
 std::vector<unsigned char> test_image() {
     const int n = 64;
@@ -851,9 +880,16 @@ void open_rml(const char* rml) {
     }
 }
 
-void open_settings(int tab, bool prelaunch) {
+// Settings on the tab of that title (settings_catalog.hpp's), or as it opens ("").
+void open_settings(const std::string& tab, bool prelaunch) {
     auto& w = static_cast<ui::SettingsWindow&>(ui::push_document(std::make_unique<ui::SettingsWindow>(prelaunch)));
-    if (tab > 0 && !w.set_active_tab(tab)) std::fprintf(stderr, "ui_render_compare: no tab %d\n", tab);  // (0: open)
+    const std::vector<ui::catalog::TabDesc>& tabs = ui::catalog::tabs();
+    for (size_t i = 0; i < tabs.size(); i++)
+        if (tabs[i].title == tab) {
+            if (i > 0) w.set_active_tab(static_cast<int>(i));
+            return;
+        }
+    if (!tab.empty()) std::fprintf(stderr, "ui_render_compare: no tab %s\n", tab.c_str());
 }
 
 void close_pages() {
@@ -1138,9 +1174,14 @@ int main(int argc, char** argv) {
     ui::host::add_png("compare:image", image.data(), image.size());
 
     std::vector<Page> pages;
-    const char* const kTabs[] = {"display", "game", "controls", "network", "interface", "about"};
-    for (int t = 0; t < 6; t++) pages.push_back({std::string("settings-") + kTabs[t], 1280, 720, false, 1.f, false, [t] { open_settings(t, false); }, {}});
-    pages.push_back({"settings-prelaunch", 1280, 720, false, 1.f, false, [] { open_settings(0, true); }, {}});
+    // A page for each of Settings' tabs: settings-display, settings-game...
+    for (const ui::catalog::TabDesc& t : ui::catalog::tabs()) {
+        std::string name = "settings-";
+        for (const char c : t.title)
+            name += c == ' ' ? '-' : static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        pages.push_back({name, 1280, 720, false, 1.f, false, [title = t.title] { open_settings(title, false); }, {}});
+    }
+    pages.push_back({"settings-prelaunch", 1280, 720, false, 1.f, false, [] { open_settings("", true); }, {}});
     pages.push_back({"setup-start", 1280, 720, false, 1.f, false, [] {
         ui::push_document(std::make_unique<ui::SetupStartWindow>(ui::SetupStartWindow::Props{}));
     }, {}});
@@ -1164,9 +1205,10 @@ int main(int argc, char** argv) {
     pages.push_back({"menu-quit", 1280, 720, false, 1.f, false, [] { open_menu(true); }, {}});
     pages.push_back({"menu-restart", 1280, 720, false, 1.f, false, open_menu_restart, {}});
     pages.push_back({"clip", 1280, 720, false, 1.f, false, [] { open_rml(kClipPage); }, {}, true});
+    pages.push_back({"look-primitives", 1280, 720, false, 1.f, false, [] { open_rml(kLookPage); }, {}});
     pages.push_back({"filters", 1280, 720, false, 1.f, false, [] { open_rml(kFilterPage); }, {}, true});
     pages.push_back({"filters-odd-size", 1001, 563, false, 1.f, false, [] { open_rml(kFilterPage); }, {}, true});
-    pages.push_back({"hdr-settings", 1280, 720, true, 2.5f, true, [] { open_settings(4, false); }, {}});
+    pages.push_back({"hdr-settings", 1280, 720, true, 2.5f, true, [] { open_settings("Interface", false); }, {}});
     pages.push_back({"hdr-filters", 1280, 720, true, 1.8f, false, [] { open_rml(kFilterPage); }, {}, true});
     pages.push_back({"hdr-clip", 1280, 720, true, 3.0f, true, [] { open_rml(kClipPage); }, {}, true});
     if (models) {

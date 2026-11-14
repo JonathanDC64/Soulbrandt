@@ -146,7 +146,16 @@ public:
     RowBuilder(Window& window, Pane& left, Pane& right) : mWindow(window), mLeft(left), mRight(right) {}
 
     void build(const RowDesc& row) {
+        Rml::Element* pane = mLeft.root();
+        const int before = pane->GetNumChildren();
         std::visit([&](const auto& kind) { add(row, kind); }, row.kind);
+        // A setting set from outside (pinned, for the whole session) shows it: a lock before the value and the row
+        // dimmed (controls.rcss), as well as its help's note.
+        if (!row.key.empty() && settings::pinned(row.key))
+            for (int i = before; i < pane->GetNumChildren(); i++) {
+                Rml::Element* e = pane->GetChild(i);
+                if (e->GetTagName() == "select-button") e->SetClass("locked", true);
+            }
     }
 
 private:

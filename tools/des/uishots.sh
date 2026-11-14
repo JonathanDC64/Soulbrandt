@@ -9,7 +9,7 @@
 #            players, setup
 #   UISHOTS_SCALES    the UI scale setting (ui_scale) per run, in percent
 #                     (default "100 150"; the settings row offers 75 to 150)
-#   UISHOTS_TABS      settings tabs to shoot (default 7)
+#   UISHOTS_TABS      settings tabs to shoot (default 8: a developer build's, Developer included)
 #   UISHOTS_SECS      the most a run may take (default 150)
 #   DES_EXE           the build (default port/build/des_boot.exe), as desrun.sh
 # Shots go to $DES_SCRATCH/uishots/<tag>/<screen>_<scale>[_tabN].png (BMP when
@@ -28,7 +28,7 @@ cd "$DES_ROOT" || exit 1
 TAG="${1:?usage: uishots.sh <tag> [screen ...]}"; shift
 SCREENS=("$@"); [ ${#SCREENS[@]} -gt 0 ] || SCREENS=(settings)
 SCALES="${UISHOTS_SCALES:-100 150}"
-TABS="${UISHOTS_TABS:-7}"
+TABS="${UISHOTS_TABS:-8}"
 SECS="${UISHOTS_SECS:-150}"
 OUT="$DES_SCRATCH/uishots/$TAG"
 mkdir -p "$OUT"

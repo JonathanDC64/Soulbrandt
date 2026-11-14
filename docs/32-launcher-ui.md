@@ -31,10 +31,14 @@ licences in `port/ui/NOTICE.md`.
   game window. The window's close button and Alt+F4 ask the same question
   (the UI consumes their WM_CLOSE). The window closes at once only in a run
   nobody plays: a tools/des test run, `PAD_FILE` or `EXIT_AFTER_MS`.
-- **Settings**: tabs Display, Game, Controls, Interface, About, the left
-  pane showing the value, the right pane showing the choices and help. Rows
-  that only apply at the next start say so. A row whose option was set in
-  the environment shows that value, can't be changed, and its help says why.
+- **Settings**: tabs Display, Picture, Game, Controls, Network, Interface
+  and About (and Developer in a developer build), the left pane showing the
+  value, the right pane showing the choices and help. Display has the
+  window, HDR and the frame rate; Picture the render resolution ("150%
+  (1920 × 1080)"), the filtering and the effects. Rows that only apply at
+  the next start say so. A row whose option was set in the environment
+  shows that value with a lock before it, dimmed, can't be changed, and its
+  help says why.
 - **Trophies** (`trophies_window.cpp`, docs/44 section 5.4): the trophy set's
   summary (unlocked n of 38, the percentage, the count per grade) over a list
   of every trophy: its icon (dimmed while locked), name, description, grade,
@@ -432,6 +436,14 @@ Files:
 - `des_ui.cpp`: `des_ui_early_init()` (called first in
   `ps3_title_options_init`, des_options.cpp), the overlay hooks, the input
   queue, gamepad reads, the input hold, the debug knobs.
+- `menu_pad.cpp`: a pad's buttons as the menus' keys. Triangle, Square,
+  Select and R3 press P, C, H and Shift; a button of the menu chord does its
+  own thing only alone (R3 stops hiding once L3 joins it; with Select + Start
+  as the chord, Select's Help is a tap, given as it comes up). `menu_input.cpp`:
+  each key's command in the F1 menu and its pages (Preview, Help, Compare and
+  Hide among them, the last two held), and `prompts.cpp` the buttons the
+  prompts show for each device, following the Button icons row. All three
+  are checked alone by `input_map_check`.
 - `host.cpp`: RmlUi's system and file interfaces (the embedded files),
   fonts, scale, the images given to `add_png`, the BMP screenshot, and the
   renderer (`renderer.hpp`): `render_d3d12.cpp`, or on Windows
@@ -582,6 +594,44 @@ the other translucent panels flickered over the game, so panels are plain
 translucent fills. `prelaunch.rcss` is rewritten (no picture, no
 golds): menu buttons in bone that light up white with a soul-white left
 edge and a fading band.
+
+### Menu looks
+
+The menus can have more than one look. Every look draws the same
+documents. Only the style sheets differ.
+
+- **The list.** `looks.hpp` lists the looks. Each look's `id` is three
+  things: its `ui_look` value, its RmlUi theme name, and its sheet's name,
+  `res/rml/looks/<id>.rcss`.
+- **The sheets.** A look's sheet holds only what it changes. All of it sits
+  inside `@media (theme: <id>)`.
+- **How a look is chosen.** Every document gets every look's sheet, after its
+  own sheets (`document.cpp`). Only the chosen look's theme is on in RmlUi
+  (`looks::apply`). So switching looks needs no reload, and the chosen look
+  wins over the documents' own rules.
+- **Today** is the documents' own sheets as they are. Its sheet is empty.
+- **Images.** The looks draw with images of the menus' own in `res/img`,
+  made by `tools/ui/make_ui_art.py` from numbers, never from the game:
+  - `grain.png`, a worn-stone noise that tiles;
+  - `valuebox.png`, a box with cut corners, drawn as a nine-patch.
+
+  CI checks that the files in the tree are what the script makes.
+  `ui_render_compare`'s `look-primitives` page draws them on every renderer.
+
+To add a look:
+
+1. Add a line to `kLooks`. Set `released = false` until it is finished, so
+   only developer builds offer it.
+2. Write its sheet.
+3. Run `ui_style_check`. CI runs it too (`host.yml`, on Windows and Linux).
+   It checks that:
+   - every look has its sheet;
+   - every sheet belongs to a look;
+   - each sheet's rules are all inside its own theme;
+   - RmlUi reads each sheet without a warning.
+
+The Interface tab shows a Menu look row once a build offers more than one
+look.
 
 ## Not done
 
