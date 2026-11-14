@@ -856,6 +856,12 @@ void open_settings(int tab, bool prelaunch) {
     if (tab > 0 && !w.set_active_tab(tab)) std::fprintf(stderr, "ui_render_compare: no tab %d\n", tab);  // (0: open)
 }
 
+void close_pages() {
+    ui::close_all_documents();
+    for (Rml::ElementDocument* d : gDocuments) d->Close();
+    gDocuments.clear();
+}
+
 // The F1 menu as F1 opens it (des_ui.cpp's open_menu_bar), and with its Quit question over it. One bar for every page,
 // as in the game: it stays when the pages close (it is permanent), hidden.
 void open_menu(bool quit) {
@@ -881,12 +887,6 @@ void open_menu_restart() {
     std::error_code ec;
     if (had) std::ofstream(ini, std::ios::binary | std::ios::trunc) << before;
     else std::filesystem::remove(ini, ec);
-}
-
-void close_pages() {
-    ui::close_all_documents();
-    for (Rml::ElementDocument* d : gDocuments) d->Close();
-    gDocuments.clear();
 }
 
 // The models, drawn as host.cpp draws the sword cursor and the lizard, at fixed times.
@@ -1141,9 +1141,6 @@ int main(int argc, char** argv) {
     const char* const kTabs[] = {"display", "game", "controls", "network", "interface", "about"};
     for (int t = 0; t < 6; t++) pages.push_back({std::string("settings-") + kTabs[t], 1280, 720, false, 1.f, false, [t] { open_settings(t, false); }, {}});
     pages.push_back({"settings-prelaunch", 1280, 720, false, 1.f, false, [] { open_settings(0, true); }, {}});
-    pages.push_back({"menu", 1280, 720, false, 1.f, false, [] { open_menu(false); }, {}});
-    pages.push_back({"menu-quit", 1280, 720, false, 1.f, false, [] { open_menu(true); }, {}});
-    pages.push_back({"menu-restart", 1280, 720, false, 1.f, false, open_menu_restart, {}});
     pages.push_back({"setup-start", 1280, 720, false, 1.f, false, [] {
         ui::push_document(std::make_unique<ui::SetupStartWindow>(ui::SetupStartWindow::Props{}));
     }, {}});
@@ -1163,6 +1160,9 @@ int main(int argc, char** argv) {
         p.onStart = [](ui::setup::Request) {};
         ui::push_document(std::make_unique<ui::SetupBeforeWindow>(std::move(p)));
     }, {}});
+    pages.push_back({"menu", 1280, 720, false, 1.f, false, [] { open_menu(false); }, {}});
+    pages.push_back({"menu-quit", 1280, 720, false, 1.f, false, [] { open_menu(true); }, {}});
+    pages.push_back({"menu-restart", 1280, 720, false, 1.f, false, open_menu_restart, {}});
     pages.push_back({"clip", 1280, 720, false, 1.f, false, [] { open_rml(kClipPage); }, {}, true});
     pages.push_back({"filters", 1280, 720, false, 1.f, false, [] { open_rml(kFilterPage); }, {}, true});
     pages.push_back({"filters-odd-size", 1001, 563, false, 1.f, false, [] { open_rml(kFilterPage); }, {}, true});
