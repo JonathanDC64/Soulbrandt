@@ -139,6 +139,7 @@
 #include "ps3emu/ps3_knob.h"   /* ps3_setenv: through the runtime's getenv cache */
 #include "ui/include/des_ui.h"  /* the wrapper UI: settings.ini and the overlay (docs/32) */
 #include "des_rsx_route.h"      /* the renderer calls below: through rsx_out in a PS3RECOMP_RSX_HAL build */
+#include "des_seamless.h"       /* seamless co-op's mode: its world tendency is always the player's own */
 #include <algorithm>
 #include <atomic>
 #include <cctype>
@@ -2086,13 +2087,17 @@ extern "C" void des_net_sync(ppu_context* ctx, uint32_t addr)
  * is tested: it writes the own values to out and clears r4, so the reader
  * skips the reply, both functions see server = own, and the result is the
  * offline one. The player's own values still go to the server (addQWCData).
- * Blends saved before stay. Live: from the next load. Main thread. */
+ * Blends saved before stay. Live: from the next load. Main thread.
+ * Always in seamless co-op (DES_SEAMLESS host or join): there is no server
+ * there, only the game's own in-game answers (des_seamless.cpp), which give a
+ * neutral tendency, so the mix only pulled each player's tendency toward
+ * neutral (every area halved at a load into the Nexus: 0.8 to 0.4). */
 extern "C" void des_qwc_local(ppu_context* ctx, uint32_t)
 {
     static int own = 0;
     PS3_KNOB(own, [] {
         const char* e = std::getenv("DES_NET_TENDENCY");
-        return e && std::strcmp(e, "own") == 0 ? 1 : 0;
+        return (e && std::strcmp(e, "own") == 0) || des::seamless::mode() != des::seamless::Mode::Off ? 1 : 0;
     }());
     if (!own) return;
     const uint32_t out = (uint32_t)ctx->gpr[4], area = (uint32_t)ctx->gpr[5];

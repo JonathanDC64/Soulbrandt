@@ -239,6 +239,20 @@ Addresses are from the EBOOT (static analysis, 2026-10-20):
 Not settled statically: when the event script calls the once-per-load blend. Whether 0x00920FC8 can run after a save
 has loaded is also open.
 
+Measured in seamless co-op (2026-11-14, two copies, a scratch log of the QWC object; its in-use values are at +0x10,
+the player's own at +0x48, a third copy at +0x80, each 7 areas of two floats):
+- **The blend runs at a load into the Nexus.** It set the in-use values, the own values and the third copy of every
+  area to half the own value (0.8 to 0.4). A death load in the same area and a load from the Nexus into 1-1 changed
+  nothing.
+- **The login comes before the save loads,** so 0x00920FC8's "after the login" never touched a loaded save in these
+  runs.
+- **Seamless co-op always skips the server's values** (`des_qwc_local`, whatever this row says): its in-game server
+  answers a neutral tendency, so the blend only pulled each player toward neutral. With the skip, the Nexus load set
+  the in-use values to the own 0.8 and left the own values alone.
+- **The P2P path (0x005256F0, message 0x17)** copies 14 values into the same object's in-use values. In seamless
+  co-op it never ran: the host's in-use values (0.6, set before the join) never reached the friend's game, at the join
+  or at two follows. Each game plays the shared area with its own player's tendency.
+
 ### Message ratings
 
 A rating reaches its message's author late, by design of the client (read: EBOOT disassembly, 2026-10-20):
