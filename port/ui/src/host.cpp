@@ -334,20 +334,28 @@ void draw_lizard(int width, int height) {
 }
 
 void load_fonts() {
+    using Rml::Style::FontStyle;
+    using Rml::Style::FontWeight;
     struct Font {
         const char* file;
         const char* family;
-        Rml::Style::FontWeight weight;
+        FontWeight weight;
         bool fallback;
+        FontStyle style = FontStyle::Normal;
     };
-    for (const Font& f : {Font{"res/fonts/AlegreyaSans-Regular.ttf", "Alegreya Sans", Rml::Style::FontWeight::Normal, true},
-                          Font{"res/fonts/AlegreyaSans-Bold.ttf", "Alegreya Sans", Rml::Style::FontWeight::Bold, false},
-                          Font{"res/fonts/Cinzel.ttf", "Cinzel", Rml::Style::FontWeight::Auto, false},
+    for (const Font& f : {Font{"res/fonts/AlegreyaSans-Regular.ttf", "Alegreya Sans", FontWeight::Normal, true},
+                          Font{"res/fonts/AlegreyaSans-Bold.ttf", "Alegreya Sans", FontWeight::Bold, false},
+                          Font{"res/fonts/Cinzel.ttf", "Cinzel", FontWeight::Auto, false},
+                          // (the Pause band look's text: looks.hpp)
+                          Font{"res/fonts/OldStandard-Regular.ttf", "Old Standard TT", FontWeight::Normal, false},
+                          Font{"res/fonts/OldStandard-Bold.ttf", "Old Standard TT", FontWeight::Bold, false},
+                          Font{"res/fonts/OldStandard-Italic.ttf", "Old Standard TT", FontWeight::Normal, false,
+                               FontStyle::Italic},
                           Font{"res/fonts/MaterialSymbolsRounded-Regular.ttf", "Material Symbols Rounded",
-                               Rml::Style::FontWeight::Auto, false}}) {
+                               FontWeight::Auto, false}}) {
         const Asset* a = find_asset(f.file);
-        if (!a || !Rml::LoadFontFace({reinterpret_cast<const Rml::byte*>(a->data), a->size}, f.family,
-                                     Rml::Style::FontStyle::Normal, f.weight, f.fallback))
+        if (!a || !Rml::LoadFontFace({reinterpret_cast<const Rml::byte*>(a->data), a->size}, f.family, f.style,
+                                     f.weight, f.fallback))
             std::fprintf(stderr, "[ui] cannot load font %s\n", f.file);
     }
 }

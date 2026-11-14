@@ -620,7 +620,7 @@ Route A' adds about 0.2 GB to the install, and about 1.4 GB after setup if objec
 | Port code | host | MIT (read, LICENSE) | keep the notice |
 | RmlUi 6.3 | host, static | MIT (read) | keep the notice |
 | FreeType 2.14.3 | host, static | FreeType License, taken instead of GPLv2 (read, `docs/FTL.TXT`) | credit in the docs and About: "Portions of this software are copyright © <year> The FreeType Project (www.freetype.org). All rights reserved." (read) |
-| Alegreya Sans, Cinzel | UI fonts | SIL OFL 1.1 (read, `port/ui/res/fonts`) | ship the OFL texts (already beside the fonts) |
+| Alegreya Sans, Cinzel, Old Standard TT | UI fonts | SIL OFL 1.1 (read, `port/ui/res/fonts`) | ship the OFL texts (already beside the fonts) |
 | Material Symbols Rounded | UI font | Apache-2.0 (read) | ship the licence (already beside the font) |
 | stb headers (in ps3recomp libs) | host | public domain or MIT (inferred, stb's usual dual licence) | none needed |
 | MSVC static CRT and STL | inside the host (Route B) | Visual Studio licence; static linking is a documented deployment (read) | nothing to ship |
