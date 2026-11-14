@@ -85,6 +85,7 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
 int des_seamless_flag_kind(uint32_t world, uint32_t flag);       // _scripts.cpp: 1 progress, 3 a boss kill's, 2 a soul, key or item pickup, 4 a cutscene seen, 5 the Archstones' seal
 extern "C" void ps3_indirect_call(ppu_context* ctx);             // ppu_loader.cpp: a call to the guest address in CTR
 extern "C" int des_player_xyz(float* x, float* y, float* z);     // des_options.cpp: 0 with no player
+extern "C" int des_cutscene_playing(void);                       // des_options.cpp: 1 while a cutscene plays
 extern "C" int np_psnr_connected(void);                         // ps3recomp's np_psnr.c: connected to the room server
 
 namespace co = des::seamless;
@@ -570,9 +571,16 @@ void stain_tick(ppu_context* ctx, bool session)
 // colour gets its own copy of that material with its colours in it, and for the length of that upload, only for its
 // own draws, its copy takes kind 2's place in the table (the hooks at 0x00080E88 and 0x0006C860). A draw is a
 // player's when the drawn object's handle (+0x8) is its character's draw object's (*(chr + 0x6A4) + 0x4).
+//
+// A cutscene draws its own copies of the players (the tutorial's opening shows the player walking in, for one). The
+// cutscene sets each copy up once, when a cut first shows it (0x006087B8): its draw object at +0x70, the character it
+// copies at +0xBC, and the phantom material from that character's type, as the character's own draw update does. So a
+// copy is drawn as its player is: with the player's colour (its handle is in sCopy), and without the glow when its
+// player turned it off (the hook at 0x00609338).
 std::atomic<bool> sOwnGlow{true};
-std::atomic<uint32_t> sOwnChr{0};
-constexpr int kTints = 4;                    // the players on one screen, this one included
+constexpr int kCopies = 8;                   // the cutscene's copies of players, at most
+std::atomic<uint64_t> sCopy[kCopies];        // a copy's handle << 32 | the character it copies; 0 = none
+constexpr int kTints = 8;                    // the players on one screen, this one included, and their cutscene copies
 constexpr uint32_t kTintSize = 0x400;        // a material copy: all of the material, and its colours at +0x2A8/+0x2B8
 std::atomic<uint64_t> sTint[kTints];         // handle << 32 | its material copy; 0 = none
 std::atomic<uint32_t> sWhiteMat{0};          // kind 2's own material, as the upload last read it
@@ -620,7 +628,6 @@ void glow_tick(ppu_context* ctx, bool session)
     const uint32_t colour = glow_colour(std::getenv("DES_SEAMLESS_GLOW_COLOR"));
     const uint32_t pc = player_chr();
     sOwnGlow.store(on);
-    sOwnChr.store(pc);
     static bool was = false;   // in a session last frame: the others' choices are forgotten when it ends
     if (!session) {
         for (auto& t : sTint) t.store(0);
@@ -633,24 +640,40 @@ void glow_tick(ppu_context* ctx, bool session)
         return;
     }
     was = true;
-    // The players on this screen with a colour of their own, each with its copy of the material in that colour.
+    // The players on this screen with a colour of their own, and their copies in the cutscene playing, each with its
+    // copy of the material in that colour.
     {
-        struct Want { uint32_t handle, colour; };
-        std::vector<Want> want;
-        auto handle_of = [](uint32_t chr) { return rd(rd(chr + 0x6A4) + 0x4); };
-        if (colour && guest_ok(pc) && handle_of(pc)) want.push_back({handle_of(pc), colour});
+        struct Player { uint32_t chr, colour; };
+        std::vector<Player> players;
+        if (colour && guest_ok(pc)) players.push_back({pc, colour});
         const uint32_t man = rd(DES_AT(kChrMan));
         const uint32_t pb = rd(man + 0x1A0), pe = rd(man + 0x1A4);
         if (guest_ok(pb) && pe > pb && pe - pb <= 0x40) {
             std::lock_guard<std::mutex> l(sMsgLock);
-            for (uint32_t q = pb; q < pe && want.size() < (size_t)kTints; q += 4) {
+            for (uint32_t q = pb; q < pe; q += 4) {
                 const uint32_t c = rd(q);
                 if (!guest_ok(c) || c == pc) continue;
                 const uint32_t id = vm_read32(c + 0x498);
                 for (const Glow& gl : sGlow)
-                    if (gl.id == id && gl.colour && handle_of(c)) want.push_back({handle_of(c), gl.colour});
+                    if (gl.id == id && gl.colour) players.push_back({c, gl.colour});
             }
         }
+        struct Want { uint32_t handle, colour; };
+        std::vector<Want> want;
+        for (const Player& p : players)
+            if (const uint32_t h = rd(rd(p.chr + 0x6A4) + 0x4)) want.push_back({h, p.colour});
+        const bool cut = des_cutscene_playing() != 0;   // a cutscene's copies last as long as it does
+        for (auto& cp : sCopy) {
+            const uint64_t e = cp.load();
+            if (!e) continue;
+            if (!cut) {
+                cp.store(0);
+                continue;
+            }
+            for (const Player& p : players)
+                if (p.chr == (uint32_t)e) want.push_back({(uint32_t)(e >> 32), p.colour});
+        }
+        if (want.size() > (size_t)kTints) want.resize(kTints);
         const uint32_t mat = sWhiteMat.load();
         if (!want.empty() && !sTintBuf && guest_ok(mat)) sTintBuf = guest_alloc(ctx, kTints * kTintSize);
         static uint32_t painted[kTints][2];   // each copy's material and colour, as last painted
@@ -747,12 +770,37 @@ void tint_begin(ppu_context* ctx)
 // Whether the character chr (a blue phantom) is drawn with its glow: its player's own choice.
 bool glow_shown(uint32_t chr)
 {
-    if (chr == sOwnChr.load()) return sOwnGlow.load();
+    if (chr == player_chr()) return sOwnGlow.load();   // this game's own: the character in use now (also in a load's first frame)
     const uint32_t id = vm_read32(chr + 0x498);
     std::lock_guard<std::mutex> l(sMsgLock);
     for (const Glow& gl : sGlow)
         if (gl.id == id) return gl.on;
     return true;
+}
+
+// A cutscene's copy of a character set up (0x006087B8, after its bl 0x0026F378 at 0x00609338): r3 the
+// character's type (for the copy's phantom material, on or off), r31 the copy (+0x70 its draw object, +0xBC the
+// character). The copy is kept in sCopy for its player's colour (glow_tick), and a blue phantom whose player turned its
+// glow off is copied without it, as its character is drawn (the hook at 0x002DDAA8).
+void copy_seen(ppu_context* ctx)
+{
+    const uint32_t cp = (uint32_t)ctx->gpr[31];
+    const uint32_t chr = rd(cp + 0xBC), handle = rd(rd(cp + 0x70) + 0x4);
+    if (!guest_ok(chr)) return;
+    if ((uint32_t)ctx->gpr[3] == 1 && !glow_shown(chr)) ctx->gpr[3] = 0;
+    if (!handle) return;
+    const uint64_t e = (uint64_t)handle << 32 | chr;
+    for (auto& c : sCopy)   // a copy set up again
+        if ((uint32_t)(c.load() >> 32) == handle) {
+            c.store(e);
+            return;
+        }
+    for (auto& c : sCopy) {
+        uint64_t none = 0;
+        if (c.compare_exchange_strong(none, e)) return;
+    }
+    static int next = 0;   // all taken: one goes, each in turn
+    sCopy[next++ % kCopies].store(e);
 }
 
 // Each frame of a friend's session in the host's world (arrived: the first frame after a load's arrival):
@@ -1949,6 +1997,9 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
         // The type picks the draw object's (+0x6A4) phantom material, on or off (0x000D7C58: on for types 1-4, 8, 10,
         // 11). A blue phantom whose player turned its glow off is drawn as an alive player (glow_tick).
         if ((uint32_t)ctx->gpr[3] == 1 && !glow_shown((uint32_t)ctx->gpr[31])) ctx->gpr[3] = 0;
+        break;
+    case 0x00609338u:   // a cutscene's copy of a character set up (0x006087B8), after bl 0x0026F378: r3 its type, r31 the copy
+        copy_seen(ctx);
         break;
     case 0x0017A4A8u:   // the summoned reload's load step, after addi r9,r26,0x34
         if (m == co::Mode::Join) guest_load_step(ctx);
