@@ -18,6 +18,7 @@
 
 #include "app.hpp"
 #include "button_icons.hpp"
+#include "coop_window.hpp"
 #include "crash_report.hpp"
 #include "discord_presence.hpp"
 #include "game_menu.hpp"
@@ -637,7 +638,8 @@ void push_documents() {
     ui::push_document(std::make_unique<ui::MenuBar>(), false);
     if (sStartScreen) ui::push_document(std::make_unique<ui::Prelaunch>());
 
-    // DES_UI_OPEN=menu | settings | trophies | mods | players | privacy | osk | setup | setup-run: open one at startup
+    // DES_UI_OPEN=menu | settings | trophies | mods | players | coop | privacy | osk | setup | setup-run: open one at
+    // startup
     // (for screenshots and tests; privacy is the note as Settings > Network shows it).
     // setup is setup's start screen over the game (docs/88: its own window comes with the split host), with
     // DES_SETUP_GAME's folders to begin with; setup-run runs the setup engine at once, on those folders.
@@ -647,6 +649,7 @@ void push_documents() {
         else if (!std::strcmp(open, "trophies")) ui::push_document(std::make_unique<ui::TrophiesWindow>());
         else if (!std::strcmp(open, "mods")) ui::push_document(std::make_unique<ui::ModsWindow>());
         else if (!std::strcmp(open, "players")) ui::push_document(std::make_unique<ui::PlayersWindow>());
+        else if (!std::strcmp(open, "coop")) ui::push_document(ui::make_coop_window());
         else if (!std::strcmp(open, "privacy"))
             ui::push_document(std::make_unique<ui::PrivacyWindow>(ui::PrivacyWindow::Mode::Read));
         else if (!std::strcmp(open, "osk")) open_test_osk();
@@ -932,7 +935,9 @@ void watch_thread() {
         if (const char* v = std::getenv("DES_UI_PRESS"); v && *v) {
             const int vk = vk_from_name(v);
             ps3_setenv("DES_UI_PRESS", "");
-            if (vk > 0) {
+            if (vk >= kScriptChar) {
+                push_event({InputEvent::Char, vk - kScriptChar});   // a digit or '.': typed, as DES_UI_KEYS types it
+            } else if (vk > 0) {
                 push_event({InputEvent::KeyDown, vk});
                 push_event({InputEvent::KeyUp, vk});
                 if (is_menu_key(WPARAM(vk)) && !sCapturing.load()) wake_overlay();
@@ -1236,7 +1241,7 @@ int vk_from_name(const std::string& name) {
                   {"PGDN", VK_NEXT},   {"TAB", VK_TAB},    {"SPACE", VK_SPACE}, {"OSK", kScriptOsk}};
     for (const auto& n : kNames)
         if (ui::same_name(n.name, name.c_str())) return n.vk;
-    if (name.size() == 1 && name[0] >= '0' && name[0] <= '9') return kScriptChar + name[0];
+    if (name.size() == 1 && ((name[0] >= '0' && name[0] <= '9') || name[0] == '.')) return kScriptChar + name[0];
     return 0;
 }
 

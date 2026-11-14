@@ -283,10 +283,11 @@ std::string top_of_stack(const std::string& txt, int n, const char* heading = "s
     return out;
 }
 
-// settings.ini with the online name, the matchmaking password, the custom server's address and its mark only as set
-// (as settings::describe() shows them; this process has not read the settings).
+// settings.ini with the online name, the matchmaking password, the custom server's address and its mark, and co-op's
+// public address only as set (as settings::describe() shows them; this process has not read the settings).
 std::string hide_private(const std::string& ini) {
-    static const char* kHidden[] = {"DES_NET_NAME", "DES_NET_PASSWORD", "DES_NET_CUSTOM", "net_custom_here"};
+    static const char* kHidden[] = {"DES_NET_NAME", "DES_NET_PASSWORD", "DES_NET_CUSTOM", "net_custom_here",
+                                    "DES_SEAMLESS_ADDRESS"};
     std::string out;
     size_t at = 0;
     while (at < ini.size()) {

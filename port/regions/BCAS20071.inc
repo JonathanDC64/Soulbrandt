@@ -3,6 +3,7 @@
  * (only code that runs on the other discs uses it).
  * tools/region/region_table.py checks that every address in the port is here (CI). */
 DES_REGION_ADDR(0x000112E8, 0x000112E8)  /* hook des_body_sample */
+DES_REGION_ADDR(0x00011720, 0x00011720)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00011768, 0x00011768)  /* hook des_kf_target */
 DES_REGION_ADDR(0x00013874, 0xFFFFFFFF)  /* data kOnlineTagCases */
 DES_REGION_ADDR(0x00023750, 0x000219C0)  /* call */
@@ -30,9 +31,12 @@ DES_REGION_ADDR(0x0003D2E8, 0x0003AEA8)  /* hook + call des_luaheap: Lua's small
 DES_REGION_ADDR(0x0003D478, 0x0003B038)  /* hook + call des_luaheap: Lua's small heap, alloc */
 DES_REGION_ADDR(0x0003D548, 0x0003B108)  /* hook + call des_luaheap: Lua's small heap, alloc */
 DES_REGION_ADDR(0x0003D618, 0x0003B1D8)  /* hook + call des_luaheap: Lua's small heap, realloc */
+DES_REGION_ADDR(0x0006C860, 0x0006A1F8)  /* hook des_coop_hook: the ghost colour upload returned (the material put back) */
+DES_REGION_ADDR(0x00080E88, 0x0007E820)  /* hook des_coop_hook: the ghost colour upload starting (a player's own glow colour) */
 DES_REGION_ADDR(0x000B14C8, 0x000AEE60)  /* call kSpacingPlay */
 DES_REGION_ADDR(0x000B15C8, 0x000AEF60)  /* call kFontPlay */
 DES_REGION_ADDR(0x000D5B24, 0x000D34BC)  /* hook des_cam_own */
+DES_REGION_ADDR(0x000E9650, 0x000E6FE8)  /* hook des_coop_hook: the ghost model draw (a player's own glow colour) */
 DES_REGION_ADDR(0x00110608, 0x0010DFA0)  /* hook des_mouse_look */
 DES_REGION_ADDR(0x001107C0, 0x0010E158)  /* hook des_cam_step */
 DES_REGION_ADDR(0x00119670, 0x00117748)  /* hook des_mouse_look */
@@ -64,6 +68,7 @@ DES_REGION_ADDR(0x0012F19C, 0x0012D274)  /* hook des_frustum_tall */
 DES_REGION_ADDR(0x001381E8, 0x001362C0)  /* call */
 DES_REGION_ADDR(0x0015AE10, 0x00158EE8)  /* call kLoadSouls */
 DES_REGION_ADDR(0x00162D0C, 0x00160DE4)  /* data kGameParamCases */
+DES_REGION_ADDR(0x0017A4A8, 0x00178580)  /* hook des_coop_hook: the summoned reload's load step */
 DES_REGION_ADDR(0x0017B258, 0x00179330)  /* call */
 DES_REGION_ADDR(0x00196158, 0x00194230)  /* call */
 DES_REGION_ADDR(0x001D17A0, 0x001CF878)  /* call */
@@ -73,9 +78,14 @@ DES_REGION_ADDR(0x001DF83C, 0x001DD914)  /* hook des_phys_kf */
 DES_REGION_ADDR(0x001EF6D0, 0x001ED7A8)  /* hook des_phys_kf */
 DES_REGION_ADDR(0x001FEAF4, 0x001FCBCC)  /* hook des_slide_rate */
 DES_REGION_ADDR(0x001FED50, 0x001FCE28)  /* hook des_slide_rate */
+DES_REGION_ADDR(0x0020E788, 0x0020C860)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x002107B8, 0x0020E890)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00217E70, 0x00215F48)  /* hook des_motion_blur */
 DES_REGION_ADDR(0x002184DC, 0x002165B4)  /* hook des_dof */
 DES_REGION_ADDR(0x00226778, 0x00224850)  /* call */
+DES_REGION_ADDR(0x0025C5EC, 0x0025A6C4)  /* call des_coop_hook: the area items' remove, its taken flag's set (a friend keeps its pickups) */
+DES_REGION_ADDR(0x0025CB6C, 0x0025AC44)  /* hook des_coop_hook: the area items' add after lwz r9,0x8C(r9) (a friend gets the items too) */
+DES_REGION_ADDR(0x0025CC34, 0x0025AD0C)  /* hook des_coop_hook: the area items' add after bl 0x005087C8 (a friend's own taken flags) */
 DES_REGION_ADDR(0x0025EB88, 0x0025CC60)  /* hook des_fade_rate */
 DES_REGION_ADDR(0x0025EC14, 0x0025CCEC)  /* hook des_fade_rate */
 DES_REGION_ADDR(0x0026558C, 0x00263664)  /* hook des_fade_rate */
@@ -83,6 +93,7 @@ DES_REGION_ADDR(0x00265C88, 0x00263D60)  /* hook des_fade_rate */
 DES_REGION_ADDR(0x0026FB20, 0x0026DBF8)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x0026FC48, 0x0026DD20)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x0026FC98, 0x0026DD70)  /* hook des_dev_hook */
+DES_REGION_ADDR(0x00272A88, 0x00270B60)  /* hook des_coop_hook: an enemy's souls, the guest test (a friend's full souls) */
 DES_REGION_ADDR(0x00272C28, 0x00270D00)  /* call des_dev (by address): the scripts' kill */
 DES_REGION_ADDR(0x00273620, 0x002716F8)  /* call */
 DES_REGION_ADDR(0x002737A0, 0x00271878)  /* call */
@@ -98,7 +109,10 @@ DES_REGION_ADDR(0x00280F88, 0x0027F108)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x002818D0, 0x0027FA50)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x00286614, 0x002846C4)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x0028B224, 0x002892D4)  /* hook des_dev_hook */
+DES_REGION_ADDR(0x002977C0, 0x00295870)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x002986B8, 0x00296768)  /* call */
+DES_REGION_ADDR(0x00299B74, 0x00297C24)  /* hook des_coop_hook: an NPC's setup after lbz r0,0xE8(r9) (a friend sees the NPCs as the host does) */
+DES_REGION_ADDR(0x0029EC08, 0x0029CCB8)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x002A6AA8, 0x002A4B58)  /* wrapped kChrInsThread */
 DES_REGION_ADDR(0x002A6AF4, 0x002A4BA4)  /* return address in 0x002A6AA8 */
 DES_REGION_ADDR(0x002A6B14, 0x002A4BC4)  /* return address in 0x002A6AA8 */
@@ -118,8 +132,13 @@ DES_REGION_ADDR(0x002A6C58, 0x002A4D08)  /* return address in 0x002A6AA8 */
 DES_REGION_ADDR(0x002A6C60, 0x002A4D10)  /* return address in 0x002A6AA8 */
 DES_REGION_ADDR(0x002A6C70, 0x002A4D20)  /* return address in 0x002A6AA8 */
 DES_REGION_ADDR(0x002A6CA8, 0x002A4D58)  /* return address in 0x002A6AA8 */
+DES_REGION_ADDR(0x002B2984, 0x002B0A34)  /* hook des_coop_hook: a corpse's drop add after lwz r9,0x8C(r9) (a friend gets drops too) */
+DES_REGION_ADDR(0x002C2830, 0x002C08E0)  /* hook des_coop_hook: an NPC controller's setup after lbz r0,0xE8(r11) (a friend sees the NPCs as the host does) */
+DES_REGION_ADDR(0x002C32C0, 0x002C1370)  /* hook des_coop_hook: an NPC controller's setup after lbz r0,0xE8(r11) (a friend sees the NPCs as the host does) */
+DES_REGION_ADDR(0x002D0EB0, 0x002CF350)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x002D8978, 0x002D71B8)  /* call */
 DES_REGION_ADDR(0x002DD368, 0x002DC0D0)  /* call kUseGoods */
+DES_REGION_ADDR(0x002DDAA8, 0x002DC810)  /* hook des_coop_hook: a character's draw update (a friend's own phantom glow) */
 DES_REGION_ADDR(0x002EC2B8, 0x002EA328)  /* call */
 DES_REGION_ADDR(0x002EDEB0, 0x002EBF20)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x002F5B14, 0x002F3B84)  /* hook des_ik_rate */
@@ -147,9 +166,32 @@ DES_REGION_ADDR(0x003DBBB0, 0x003D9F18)  /* call */
 DES_REGION_ADDR(0x003E2DF0, 0x003E1158)  /* hook des_sun_gate */
 DES_REGION_ADDR(0x003E6330, 0x003E4698)  /* hook des_sun_gate */
 DES_REGION_ADDR(0x003E6518, 0x003E4880)  /* hook des_sun_gate */
+DES_REGION_ADDR(0x00419670, 0x004179D8)  /* call des_seamless_game (by address): the own bloodstain shown (ParamInitialize's type 0 path) */
+DES_REGION_ADDR(0x00419DCC, 0x00418134)  /* hook des_coop_hook: after a load's world swap of the flags (a guest's own world kept) */
+DES_REGION_ADDR(0x00439358, 0x004376C0)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x0043E4E0, 0x0043C848)  /* hook + call des_coop_hook, des_seamless_game: SetTextEffect (a friend's revival after its "The Demon Was Destroyed") */
+DES_REGION_ADDR(0x0043EDE0, 0x0043D148)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x004418B8, 0x0043FC20)  /* call */
+DES_REGION_ADDR(0x00441AB8, 0x0043FE20)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00443838, 0x00441BA0)  /* call */
+DES_REGION_ADDR(0x00445F30, 0x00444298)  /* call des_seamless_game (by address): SetChrType */
+DES_REGION_ADDR(0x00446C68, 0x00444FD0)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00447258, 0x004455C0)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00447EA0, 0x00446208)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x0044A368, 0x004486D0)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x0044C6F0, 0x0044AA58)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x0044C780, 0x0044AAE8)  /* hook des_coop_hook: the end of WarpNextStageKick (a guest going home loads its own area) */
 DES_REGION_ADDR(0x00451430, 0x0044F798)  /* call */
+DES_REGION_ADDR(0x004C9638, 0x004C79A0)  /* hook des_coop_hook: the talk check after bl 0x0026F378 (a friend can talk to the NPCs) */
+DES_REGION_ADDR(0x004C9C5C, 0x004C7FC4)  /* hook des_coop_hook: the talk check after bl 0x0026F378 (a friend can talk to the NPCs) */
+DES_REGION_ADDR(0x005086F8, 0x00506A60)  /* hook des_coop_hook: the event flags' set (progress kept for every player) */
+DES_REGION_ADDR(0x00508820, 0x00506B88)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00508C00, 0x00506F68)  /* hook des_coop_hook: a guest's join fills its flag copies (its own world's flags kept) */
+DES_REGION_ADDR(0x0052C2D8, 0x0052A670)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x0053B31C, 0x00539674)  /* hook des_coop_hook: the session's leave */
+DES_REGION_ADDR(0x0053CFE8, 0x0053B340)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x0053EA2C, 0x0053CD84)  /* hook des_coop_hook: the session's check of a joined guest (a friend joins in either form) */
+DES_REGION_ADDR(0x00540D90, 0x0053F0E8)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x0054E8C0, 0x00550870)  /* hook des_net_show */
 DES_REGION_ADDR(0x0054E8F8, 0x005508A8)  /* hook des_net_show */
 DES_REGION_ADDR(0x0054E934, 0x005508E4)  /* hook des_net_grade_poll */
@@ -212,7 +254,13 @@ DES_REGION_ADDR(0x008FD2A8, 0x008FE770)  /* call */
 DES_REGION_ADDR(0x0090FCD0, 0x00911198)  /* call */
 DES_REGION_ADDR(0x009E0148, 0x009E1610)  /* call */
 DES_REGION_ADDR(0x00A36220, 0x00A376E8)  /* call */
+DES_REGION_ADDR(0x00A6B2F8, 0x00A6C7C0)  /* hook des_coop_hook: the game's Lua reader (scripts edited for co-op) */
 DES_REGION_ADDR(0x00A7CC60, 0x00A7E128)  /* hook + call des_luaheap: a new Lua state */
+DES_REGION_ADDR(0x00A8B580, 0x00A8CA48)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00A8B770, 0x00A8CC38)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00A8B9D0, 0x00A8CE98)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00A8BCE0, 0x00A8D1A8)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00A8BEA8, 0x00A8D370)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00A8CA48, 0x00A8DF10)  /* call */
 DES_REGION_ADDR(0x00A8CBF0, 0x00A8E0B8)  /* call */
 DES_REGION_ADDR(0x00A941F8, 0x00A956C0)  /* call */
@@ -222,11 +270,21 @@ DES_REGION_ADDR(0x00B495B8, 0x00B4AA80)  /* call */
 DES_REGION_ADDR(0x00B5CFA0, 0x00B5E468)  /* call */
 DES_REGION_ADDR(0x00B5D2F8, 0x00B5E7C0)  /* call */
 DES_REGION_ADDR(0x00B5D548, 0x00B5EA10)  /* call */
+DES_REGION_ADDR(0x00CA15A8, 0x00CA2A70)  /* hook des_coop_hook: Lua's string reader (scripts edited for co-op) */
 DES_REGION_ADDR(0x00CBA408, 0x00CBB8D0)  /* code kLuaMemoryThrow */
 DES_REGION_ADDR(0x00CD4854, 0x00CD5D1C)  /* hook des_hud_ctx */
 DES_REGION_ADDR(0x00D229A4, 0x00D23E6C)  /* hook des_viewport_room */
 DES_REGION_ADDR(0x00D67F80, 0x00D69448)  /* call */
 DES_REGION_ADDR(0x00D68218, 0x00D696E0)  /* call */
+DES_REGION_ADDR(0x00DFE110, 0x00DFF5D8)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00DFE2F0, 0x00DFF7B8)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00DFE768, 0x00DFFC30)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00DFE9F8, 0x00DFFEC0)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00DFF0D0, 0x00E00598)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00E00D10, 0x00E021D8)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00E2A098, 0x00E2B560)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00E2A9D8, 0x00E2BEA0)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00E2B0B8, 0x00E2C580)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00F60BD0, 0x00F62008)  /* call kDialogDraw */
 DES_REGION_ADDR(0x00F62E68, 0x00F642A0)  /* call */
 DES_REGION_ADDR(0x00FF54D4, 0x00FF690C)  /* hook des_ik_rate */
@@ -270,6 +328,7 @@ DES_REGION_ADDR(0x0190433C, 0x0190430C)  /* data kContextAspect */
 DES_REGION_ADDR(0x019AD3B0, 0x019AD3C4)  /* data kSoulsConsts, a slot of the TOC */
 DES_REGION_ADDR(0x019AD4FC, 0x019AD510)  /* data kGameSlot, a slot of the TOC */
 DES_REGION_ADDR(0x019AD560, 0x019AD574)  /* data kChrInsConsts, a slot of the TOC */
+DES_REGION_ADDR(0x019AD694, 0x019AD6A8)  /* data kSignSlot, a slot of the TOC */
 DES_REGION_ADDR(0x019AD7B4, 0x019AD7C8)  /* data kWorldSlot, a slot of the TOC */
 DES_REGION_ADDR(0x019AD7BC, 0x019AD7D0)  /* data kDevConsts, a slot of the TOC */
 DES_REGION_ADDR(0x019ADD50, 0x019ADD64)  /* data kMenusConsts, a slot of the TOC */

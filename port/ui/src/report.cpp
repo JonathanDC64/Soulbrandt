@@ -1232,8 +1232,9 @@ std::string environment_info(const std::string& command_line) {
     std::string out = "Command line: " + (command_line.empty() ? command_line_text() : command_line) + "\n";
     static const char* kPrefixes[] = {"DES_", "PS3_", "RSX_", "SPU_", "SPURS_", "GCM_", "PAD_", "PPU_", "AUDIO_",
                                       "VBLANK", "FIFO_", "LIBSRE_", "SAIL_", "TROPHY_", "WATCHDOG_"};
+    // (co-op's invite code holds the host's address and key; its public address is the host's own)
     static const char* kHidden[] = {"DES_NET_NAME", "DES_NET_PASSWORD", "DES_NET_CUSTOM", "PS3_NP_ONLINE_ID",
-                                    "PS3_NET_PASSWORD"};
+                                    "PS3_NET_PASSWORD", "DES_SEAMLESS_CODE", "DES_SEAMLESS_ADDRESS"};
     std::vector<std::string> lines;
     for (const std::string& kv : environment_strings()) {
         const size_t eq = kv.find('=');

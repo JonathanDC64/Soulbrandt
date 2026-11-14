@@ -25,6 +25,7 @@
 #include "updates.hpp"
 #include "update_window.hpp"
 #include "version.hpp"
+#include "../../des_seamless.h"
 #if DES_DEV
 #include "../../des_dev_marker.h"
 #endif
@@ -292,6 +293,38 @@ bool fps_is_custom() {
 int fps_custom() {
     const std::string v = fps_is_custom() ? fps_setting() : settings::get("fps_custom");
     return std::clamp(std::atoi(v.c_str()), kFpsMin, kFpsMax);
+}
+
+// Your glow colour's named choices (DES_SEAMLESS_GLOW_COLOR, "RRGGBB"; "" the game's blue). Any other colour is its
+// Custom choice, which the Custom glow colour row sets from a hue; glow_hue_custom keeps that hue.
+const std::vector<Rml::String> kGlowColours = {"", "F0F0FF", "FFC040", "FF7010", "FF2010", "FF60C0", "A040FF",
+    "30FF50", "20E0D0"};
+
+bool glow_is_custom() {
+    const std::string v = settings::pinned("DES_SEAMLESS_GLOW_COLOR") ? settings::pinned_value("DES_SEAMLESS_GLOW_COLOR")
+                                                                      : settings::get("DES_SEAMLESS_GLOW_COLOR");
+    return std::find(kGlowColours.begin(), kGlowColours.end(), v) == kGlowColours.end();
+}
+
+int glow_hue() {
+    return std::clamp(std::atoi(settings::get("glow_hue_custom").c_str()) / 10 * 10, 0, 350);
+}
+
+// The hue h (degrees) at full saturation and brightness, as "RRGGBB".
+std::string hue_hex(int h) {
+    const float x = float(h % 60) / 60.0f;
+    float r = 0, g = 0, b = 0;
+    switch (h / 60 % 6) {
+    case 0: r = 1; g = x; break;
+    case 1: r = 1 - x; g = 1; break;
+    case 2: g = 1; b = x; break;
+    case 3: g = 1 - x; b = 1; break;
+    case 4: r = x; b = 1; break;
+    default: r = 1; b = 1 - x; break;
+    }
+    char s[8];
+    std::snprintf(s, sizeof s, "%02X%02X%02X", int(r * 255 + 0.5f), int(g * 255 + 0.5f), int(b * 255 + 0.5f));
+    return s;
 }
 
 // Mouse sensitivity, shown as a percentage of its default (DES_MOUSE_SENS, degrees per count; des_mouse_look in
@@ -1017,6 +1050,57 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
             {"Original (every 6th frame)", "Smoother (at least 15 a second)"},
             "How often your position goes to other players. Smoother makes you look less laggy on their screens."
             "<br/><br/>(DES_NET_SYNC)");
+
+        leftPane.add_section("Seamless co-op");
+        choice_row(leftPane, rightPane, "Players when you host", "DES_SEAMLESS_PLAYERS", {"2", "3", "4"},
+            {"2: you and a friend", "3: you and two friends", "4: you and three friends"},
+            "The most players in a co-op game you host (Co-op, in the menu), you included. One more waits, and "
+            "joins as soon as a place frees up. A change counts at once; players already here stay.<br/><br/>"
+            "The original game plays three at most in co-op.<br/><br/>(DES_SEAMLESS_PLAYERS)",
+            [] { des::seamless::party_size_changed(); });
+        bool_row(leftPane, rightPane, "Your glow", "DES_SEAMLESS_GLOW",
+            "Whether the other players see your blue phantom glow while you are in a host's world. Off: they see "
+            "you as you look in your own world. A change counts at once.<br/><br/>(DES_SEAMLESS_GLOW)");
+        choice_row(leftPane, rightPane, "Your glow colour", "DES_SEAMLESS_GLOW_COLOR", kGlowColours,
+            {"Blue (original)", "White", "Gold", "Orange", "Red", "Pink", "Purple", "Green", "Teal"},
+            "The colour of your phantom glow while you are in a host's world. The other players see it, and so do "
+            "you. Each player picks its own. A change counts at once.<br/><br/>(DES_SEAMLESS_GLOW_COLOR)",
+            {}, [](Pane& pane) {
+                pane.add_button({
+                                    .text = "Custom",
+                                    .isSelected = [] { return glow_is_custom(); },
+                                    .isDisabled = [] { return settings::pinned("DES_SEAMLESS_GLOW_COLOR"); },
+                                })
+                    .on_pressed([] {
+                        play_sound(kSoundItemChange);
+                        settings::set("DES_SEAMLESS_GLOW_COLOR", hue_hex(glow_hue()));
+                    });
+            });
+        auto& customGlow = leftPane.add_child<NumberButton>(NumberButton::Props{
+            .key = "Custom glow colour",
+            .getValue = glow_hue,
+            .setValue =
+                [](int value) {
+                    if (settings::pinned("DES_SEAMLESS_GLOW_COLOR")) {
+                        return;
+                    }
+                    settings::set("glow_hue_custom", std::to_string(value));
+                    settings::set("DES_SEAMLESS_GLOW_COLOR", hue_hex(value));
+                },
+            .isDisabled = [] { return settings::pinned("DES_SEAMLESS_GLOW_COLOR"); },
+            .isModified = glow_is_custom,
+            .min = 0,
+            .max = 350,
+            .step = 10,
+            .format = [](int value) { return "Hue " + std::to_string(value); },
+        });
+        leftPane.register_control(customGlow, rightPane,
+            [helpText = with_note("DES_SEAMLESS_GLOW_COLOR",
+                 "Your own glow colour, by hue: 0 red, 60 yellow, 120 green, 180 cyan, 240 blue, 300 magenta. "
+                 "Setting it picks Custom in Your glow colour.<br/><br/>(DES_SEAMLESS_GLOW_COLOR)")](Pane& pane) {
+                pane.clear();
+                pane.add_rml(helpText);
+            });
 
         leftPane.add_section("In your world");
         bool_row(leftPane, rightPane, "Messages", "DES_NET_MESSAGES",

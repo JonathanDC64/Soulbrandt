@@ -6,6 +6,8 @@
 #include "report.hpp"
 #include "version.hpp"
 
+#include "../../des_seamless.h"
+
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
@@ -104,6 +106,11 @@ constexpr Def kDefs[] = {
     {"net_custom_here", "", Apply::UiOnly},    // custom_chosen_here's mark for that address on this PC
     {"DES_NET_NAME", "", Apply::Restart},      // the online name (PS3_NP_ONLINE_ID); "" = no NP identity
     {"DES_NET_P2P_PORT", "3658", Apply::Restart},  // PS3_NET_P2P_PORT, 1024-65535
+    {"DES_SEAMLESS_ADDRESS", "", Apply::Restart},  // seamless co-op host's public IPv4 (the Co-op window); "" = router's
+    {"DES_SEAMLESS_PLAYERS", "4", Apply::Live},    // the most players a seamless co-op host takes, itself included: 2-4
+    {"DES_SEAMLESS_GLOW", "1", Apply::Live},       // seamless co-op: "0" = the other players see this one without its phantom glow
+    {"DES_SEAMLESS_GLOW_COLOR", "", Apply::Live},  // seamless co-op: this player's glow colour, "RRGGBB"; "" = the game's blue
+    {"glow_hue_custom", "30", Apply::UiOnly},      // Your glow colour's Custom hue (0-350), kept while a named colour is on
     {"DES_NET_PASSWORD", "", Apply::Live},     // matchmaking password; a hash of it goes to the server; "" = everyone
     {"DES_NET_TENDENCY", "", Apply::Live},     // des_qwc_local: "" = the server's mixed in (the game's), "own" = yours only
     {"DES_NET_RATING_POLL", "", Apply::Live},  // des_net_grade_poll: seconds between rating checks; "" = the game's 300
@@ -306,10 +313,11 @@ const std::string& path() {
 std::string describe() {
     std::string out;
     for (const Def& d : kDefs) {
-        // (an issue report leaves out the online name, the custom server's address and its mark: only whether one is
-        // set)
+        // (an issue report leaves out the online name, the custom server's address and its mark, and the co-op
+        // host's public address: only whether one is set)
         const bool hide = std::strcmp(d.key, "DES_NET_NAME") == 0 || std::strcmp(d.key, "DES_NET_CUSTOM") == 0 ||
-                          std::strcmp(d.key, "DES_NET_PASSWORD") == 0 || std::strcmp(d.key, "net_custom_here") == 0;
+                          std::strcmp(d.key, "DES_NET_PASSWORD") == 0 || std::strcmp(d.key, "net_custom_here") == 0 ||
+                          std::strcmp(d.key, "DES_SEAMLESS_ADDRESS") == 0;
         const auto shown = [hide](const std::string& v) { return hide && !v.empty() ? std::string("(set)") : v; };
         const std::string value = get(d.key);
         out += std::string(d.key) + " = " + shown(value);
@@ -467,7 +475,46 @@ std::string net_options_header() {
 // A developer build's cheat session wins over this: des_dev_boot runs after des_ui_early_init (which calls
 // load_and_apply_env) in ps3_title_options_init, and clears PS3_NET_ONLINE, PSNR_SERVER and PS3_NET_HOSTS when a cheat
 // is set at start (docs/55 section 6). So nothing here checks DES_DEV_SESSION; the Network tab reads it to say why.
+// Seamless co-op (DES_SEAMLESS, des_seamless.h) in place of the rows: no server of this project or anyone else's,
+// only the host's game. Gameplay mods keep it off too, as online (docs/143), and it needs an online name.
+static void apply_seamless() {
+    namespace co = des::seamless;
+    const bool host = co::mode() == co::Mode::Host;
+    if (mods::gameplay_in_use()) {
+        sNetModsHeld = true;
+        sNetStatus = "Off: gameplay mods are on";
+        std::fprintf(stderr, "[ui] seamless co-op: off, gameplay mods are on (%s; Settings > Mods)\n",
+                     mods::gameplay_names().c_str());
+        co::held("gameplay mods are on (Settings > Mods)");
+        return;
+    }
+    const std::string name = env_set("PS3_NP_ONLINE_ID") ? std::string(std::getenv("PS3_NP_ONLINE_ID"))
+                                                         : effective("DES_NET_NAME");
+    if (!net_name_ok(name)) {
+        sNetStatus = name.empty() ? "Off: no online name" : "Off: the online name is not valid";
+        std::fprintf(stderr, "[ui] seamless co-op: off, %s (Settings > Network)\n",
+                     name.empty() ? "no online name" : "the online name is not valid (3-16 letters, digits, - or _)");
+        co::held(name.empty() ? "there is no online name (Settings > Network)"
+                              : "the online name is not valid (Settings > Network)");
+        return;
+    }
+    int port = std::atoi(effective("DES_NET_P2P_PORT").c_str());
+    if (port < kNetP2pPortMin || port > kNetP2pPortMax) port = kNetP2pPortDefault;
+    set_net_knob("PS3_NET_P2P_PORT", std::to_string(port));
+    std::string why;
+    if (!co::start(name, &why)) {
+        sNetStatus = "Off: co-op did not start (" + why + ")";
+        return;
+    }
+    sNetOnline = true;
+    sNetStatus = host ? "Seamless co-op: hosting" : "Seamless co-op: joining a friend's game";
+}
+
 void apply_network() {
+    if (des::seamless::mode() != des::seamless::Mode::Off) {
+        apply_seamless();
+        return;
+    }
     const std::string online = effective("DES_ONLINE");
     if (online.empty() || online == "0") {
         sNetStatus = "Off: Online is off";

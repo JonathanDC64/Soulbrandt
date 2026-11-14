@@ -3,6 +3,7 @@
 #include "menu_bar.hpp"
 
 #include "app.hpp"
+#include "coop_window.hpp"
 #include "host.hpp"
 #include "modal.hpp"
 #include "mods_window.hpp"
@@ -108,6 +109,11 @@ void MenuBar::build_tabs() {
     mTabBar->add_tab("Trophies", [this] { push(std::make_unique<TrophiesWindow>()); });
 
     mTabBar->add_tab("Mods", [this] { push(std::make_unique<ModsWindow>()); });
+
+    mTabBar->add_tab("Co-op", [this] {
+        mTabBar->set_active_tab(-1);
+        push(make_coop_window());
+    });
 
     mTabBar->add_tab("Report an issue", [this] {
         mTabBar->set_active_tab(-1);
