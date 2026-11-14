@@ -10,7 +10,8 @@
 //     multiplayer walls drop as at a session's end;
 //   - no rating screen after a kill: a short timer goes on to the next step instead;
 //   - a blue phantom's death keeps it in the session: it comes back where the host last arrived, and in a boss fight
-//     it first watches until the fight ends (the boss dead, or the host dead: then it goes back with the host);
+//     it first watches until the fight ends (the boss dead, or the host dead: then it goes back with the host); out
+//     of the session meanwhile, it goes home;
 //   - the cutscenes keep their solo mode in a session: each player skips its own;
 //   - a boss's extra health counts a third blue phantom (a party of four) as two: x2, the game's most.
 // Each area's script:
@@ -169,9 +170,25 @@ bool edit_global(std::string& t, const std::string& nl)
     // edit_area) the phantom first watches until the fight ends: it looks again each second (two timer slots in turn,
     // so a handler never sets up its own slot) until the boss is dead, or the host has died: the host's respawn
     // then takes everyone back (des_seamless_game.cpp's follow), and this phantom goes with it at full health.
+    // The session can end meanwhile (the host's game gone or out of reach). The game's own handlers for that
+    // (OnRoomDisappeared, OnIrregularLeaveSession_1) start the trip home, but skip it while flag 4047 (a reload under
+    // way) is set, and the phantom holds it from its death until it is back. So the watch never ended (no boss fight
+    // to end, no host), no trip home came, and the phantom stayed a dead watcher out of the session, which
+    // des_seamless_game.cpp doesn't join again until 4047 is clear. Out of the session, it now goes home as
+    // OnRoomDisappeared would take it: the same message, and OnLeave_Limit's trip 5 s later.
     if (!replace_func(t, "PartyGhostDeath_2",
                       "function PartyGhostDeath_2(proxy,param)\n"
                       "\t--SEAMLESS: the phantom comes back in the host's world and stays in the session\n"
+                      "\tif proxy:IsSession() == false then\n"
+                      "\t\tproxy:InfomationMenu( INFOMENU_TYPE_LIST, -1, 0, -1, 1 );\n"
+                      "\t\tproxy:AddInfomationTosBuffer( 20001000 );\n"
+                      "\t\tproxy:NotNetMessage_begin();\n"
+                      "\t\t\tproxy:OnKeyTime2( 4046, \"OnLeave_Limit\", 5.0, 0, 1, once );\n"
+                      "\t\t\tproxy:SetLoadWait();\n"
+                      "\t\t\tproxy:SetFlagInitState(2);\n"
+                      "\t\tproxy:NotNetMessage_end();\n"
+                      "\t\treturn;\n"
+                      "\tend\n"
                       "\tif SeamlessHostDown == true then\n"
                       "\t\tproxy:RequestFullRecover();\n"
                       "\t\tproxy:SetEventFlag(4047, false);\n"

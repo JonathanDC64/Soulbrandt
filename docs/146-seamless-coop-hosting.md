@@ -91,7 +91,8 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
   one of eight named colours, or Custom, set by hue in the row below it. The others see that colour on you, and so
   do you. Each player picks its own, so in a party of four each friend can have its own. Soul form stays the game's.
 - **In a boss fight,** a friend who dies first watches until the fight ends. Once the boss is dead, it comes back at
-  the area's start. If the host dies too, it goes back with everyone.
+  the area's start. If the host dies too, it goes back with everyone. If the connection to the host is lost while it
+  watches, it goes home (with the game's own message for a lost session) and joins again from there.
 - **Bosses get more health with friends,** as in the original game: half as much again with one friend, double with
   two. Three friends get double too (the original has nothing for three, so a boss had its solo health).
 - **When the host dies,** everyone goes back to the start together.
@@ -415,6 +416,12 @@ their first instruction):
     `ClearBoss` isn't. Two timer slots take turns, so a handler never sets up its own slot. Once the host has died
     (`HostDead` sets `SeamlessHostDown`), it asks for full health and leaves the load to the host's respawn, which
     takes everyone back.
+  - Out of the session (`proxy:IsSession() == false`: the host's game gone or out of reach), `PartyGhostDeath_2`
+    starts the trip home as `OnRoomDisappeared` does: its message (20001000), then `OnLeave_Limit` 5 s later. The
+    game's own handlers for a lost session (`OnRoomDisappeared`, `OnIrregularLeaveSession_1`) skip it while flag 4047
+    (a reload under way) is set, and the phantom holds 4047 from its death until it is back. Before, a session lost
+    during the watch left the phantom dead out of the session for good, and co-op doesn't join again until 4047 is
+    clear ("on its way home: no join until it is there"; playtest 11-14, the second Tower Knight fight).
   - The host's death doesn't send the phantoms home; the host's respawn takes them along.
   - `proxy:ClearBossGauge(` also clears `SeamlessBossFight`.
   - A boss's extra health: `Lua_MultiDoping` (and `Lua_MultiDopingm04_02`, for 4-2), at the boss room's first entry,
