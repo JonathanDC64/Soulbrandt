@@ -27,6 +27,7 @@
 #include "host.hpp"
 #include "renderer.hpp"
 #include "settings.hpp"
+#include "settings_catalog.hpp"
 #include "settings_window.hpp"
 #include "setup_screens.hpp"
 #include "souls_model.hpp"
@@ -45,6 +46,7 @@
 #include <dxgi1_6.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -847,9 +849,16 @@ void open_rml(const char* rml) {
     }
 }
 
-void open_settings(int tab, bool prelaunch) {
+// Settings on the tab of that title (settings_catalog.hpp's), or as it opens ("").
+void open_settings(const std::string& tab, bool prelaunch) {
     auto& w = static_cast<ui::SettingsWindow&>(ui::push_document(std::make_unique<ui::SettingsWindow>(prelaunch)));
-    if (tab > 0 && !w.set_active_tab(tab)) std::fprintf(stderr, "ui_render_compare: no tab %d\n", tab);  // (0: open)
+    const std::vector<ui::catalog::TabDesc>& tabs = ui::catalog::tabs();
+    for (size_t i = 0; i < tabs.size(); i++)
+        if (tabs[i].title == tab) {
+            if (i > 0) w.set_active_tab(static_cast<int>(i));
+            return;
+        }
+    if (!tab.empty()) std::fprintf(stderr, "ui_render_compare: no tab %s\n", tab.c_str());
 }
 
 void close_pages() {
@@ -1107,9 +1116,14 @@ int main(int argc, char** argv) {
     ui::host::add_png("compare:image", image.data(), image.size());
 
     std::vector<Page> pages;
-    const char* const kTabs[] = {"display", "game", "controls", "network", "interface", "about"};
-    for (int t = 0; t < 6; t++) pages.push_back({std::string("settings-") + kTabs[t], 1280, 720, false, 1.f, false, [t] { open_settings(t, false); }, {}});
-    pages.push_back({"settings-prelaunch", 1280, 720, false, 1.f, false, [] { open_settings(0, true); }, {}});
+    // A page for each of Settings' tabs: settings-display, settings-game...
+    for (const ui::catalog::TabDesc& t : ui::catalog::tabs()) {
+        std::string name = "settings-";
+        for (const char c : t.title)
+            name += c == ' ' ? '-' : static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        pages.push_back({name, 1280, 720, false, 1.f, false, [title = t.title] { open_settings(title, false); }, {}});
+    }
+    pages.push_back({"settings-prelaunch", 1280, 720, false, 1.f, false, [] { open_settings("", true); }, {}});
     pages.push_back({"setup-start", 1280, 720, false, 1.f, false, [] {
         ui::push_document(std::make_unique<ui::SetupStartWindow>(ui::SetupStartWindow::Props{}));
     }, {}});
@@ -1132,7 +1146,7 @@ int main(int argc, char** argv) {
     pages.push_back({"clip", 1280, 720, false, 1.f, false, [] { open_rml(kClipPage); }, {}, true});
     pages.push_back({"filters", 1280, 720, false, 1.f, false, [] { open_rml(kFilterPage); }, {}, true});
     pages.push_back({"filters-odd-size", 1001, 563, false, 1.f, false, [] { open_rml(kFilterPage); }, {}, true});
-    pages.push_back({"hdr-settings", 1280, 720, true, 2.5f, true, [] { open_settings(4, false); }, {}});
+    pages.push_back({"hdr-settings", 1280, 720, true, 2.5f, true, [] { open_settings("Interface", false); }, {}});
     pages.push_back({"hdr-filters", 1280, 720, true, 1.8f, false, [] { open_rml(kFilterPage); }, {}, true});
     pages.push_back({"hdr-clip", 1280, 720, true, 3.0f, true, [] { open_rml(kClipPage); }, {}, true});
     if (models) {
