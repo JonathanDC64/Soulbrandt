@@ -161,6 +161,9 @@ constexpr char kMsgFlags[4] = {'F', 'L', 'G', 'S'};
 constexpr char kMsgBack[4] = {'B', 'A', 'C', 'K'};   // u32 player id: a guest back in the world after its respawn
 // u32 player id, u32 1 or 0: whether that player shows its phantom glow, u32 its colour (0x01RRGGBB; 0 the game's)
 constexpr char kMsgGlow[4] = {'G', 'L', 'O', 'W'};
+// 14 x u32: the host's world tendency in use, two floats for each of worlds 1-7 (before each READY), as the game's own
+// message to a phantom (P2P 0x17) gives them
+constexpr char kMsgQwc[4] = {'Q', 'W', 'C', ' '};
 constexpr uint32_t kRoomMax = 0x200;
 
 bool guest_ok(uint32_t a) { return a >= 0x00010000u && a < 0xF0000000u; }
@@ -295,6 +298,12 @@ struct HostFlags {
 HostFlags sHostFlagSet;              // the host's flags (a guest)
 struct Glow { uint32_t id; bool on; uint32_t colour; };
 std::vector<Glow> sGlow;             // each other player's own glow and its colour (GLOW), by player id
+constexpr uint32_t kQwcInUse = 0x10, kQwcWords = 14;   // the QWC object's tendency in use: worlds 1-7, two floats each
+constexpr uint32_t kQwcOwn = 0x48;                      // and the player's own (the save keeps them), the same layout
+struct Qwc { bool have = false; uint32_t w[kQwcWords] = {}; };
+Qwc sHostQwc;                        // the host's tendency in use (QWC, a guest)
+Qwc sOwnQwc;                         // this guest's own in use, kept while the host's is in place
+uint32_t sOwnSaved[kQwcWords];       // and its own values (+0x48) at that time
 
 float getf(const uint8_t* p)
 {
@@ -363,6 +372,16 @@ void on_message(uint32_t from, const uint8_t* d, uint32_t n)
             if (!on) std::fprintf(stderr, "[coop] player %u: its glow off\n", id);
             if (colour) say_colour();
         }
+    } else if (!std::memcmp(d, kMsgQwc, 4) && n >= 4 + 4 * kQwcWords) {
+        Qwc q;
+        q.have = true;
+        for (uint32_t i = 0; i < kQwcWords; i++) {
+            q.w[i] = get32(d + 4 + 4 * i);
+            float f;
+            std::memcpy(&f, &q.w[i], 4);
+            if (!std::isfinite(f)) return;   // not a tendency
+        }
+        sHostQwc = q;
     } else if (!std::memcmp(d, kMsgFlags, 4) && n > 12) {
         HostFlags& f = sHostFlagSet;
         const uint32_t area = get32(d + 4), off = get32(d + 8), len = n - 12;
@@ -1037,6 +1056,81 @@ void leave_tick(ppu_context* ctx, uint32_t st, bool world)
     }
 }
 
+// World tendency (docs/69): the QWC object, *(game data + 0x24), keeps the tendency in use for worlds 1-7 at +0x10, two
+// floats each (IsSuccessQWC's 0x009214D0 reads +0x08 + 8 * world), and the player's own at +0x48 (the ones the save
+// keeps). A phantom's game takes the host's in-use values from the host's (P2P 0x17, received at 0x005256F0), so the area
+// scripts' IsSuccessQWC see the host's world. That message never comes in seamless co-op, so the host sends its own (QWC)
+// and each friend puts them in place: at its load step, after the Nexus's blend (0x004117E4), and when they change. The
+// friend's own values are never touched, and its own in-use values come back when the session ends.
+uint32_t qwc_object()
+{
+    return rd(rd(DES_AT(kPgdRoot)) + 0x24);
+}
+
+void log_qwc(const char* whose, const char* why, const Qwc& t)
+{
+    std::string s;
+    for (uint32_t i = 0; i < kQwcWords; i += 2) {
+        float f;
+        std::memcpy(&f, &t.w[i], 4);
+        char x[24];
+        std::snprintf(x, sizeof x, " %u:%.2f", i / 2 + 1, f);
+        s += x;
+    }
+    std::fprintf(stderr, "[coop] world tendency in use: %s (%s; white/black by world%s)\n", whose, why, s.c_str());
+}
+
+// The host's tendency in use to its guests (before each READY).
+void send_qwc()
+{
+    const uint32_t q = qwc_object();
+    if (!guest_ok(q)) return;
+    std::vector<uint8_t> b;
+    for (uint32_t i = 0; i < kQwcWords; i++) put32(b, vm_read32(q + kQwcInUse + 4 * i));
+    send(kMsgQwc, b);
+}
+
+// The host's tendency in use (QWC) in place on this guest's game, its own kept the first time; why for the log.
+void take_host_qwc(const char* why)
+{
+    const uint32_t q = qwc_object();
+    if (!guest_ok(q)) return;
+    std::lock_guard<std::mutex> l(sMsgLock);
+    if (!sHostQwc.have) return;
+    if (!sOwnQwc.have) {
+        sOwnQwc.have = true;
+        for (uint32_t i = 0; i < kQwcWords; i++) {
+            sOwnQwc.w[i] = vm_read32(q + kQwcInUse + 4 * i);
+            sOwnSaved[i] = vm_read32(q + kQwcOwn + 4 * i);
+        }
+    }
+    bool changed = false;
+    for (uint32_t i = 0; i < kQwcWords; i++)
+        if (vm_read32(q + kQwcInUse + 4 * i) != sHostQwc.w[i]) {
+            vm_write32(q + kQwcInUse + 4 * i, sHostQwc.w[i]);
+            changed = true;
+        }
+    if (changed) log_qwc("the host's", why, sHostQwc);
+}
+
+// Out of the session: this guest's own tendency in use again. A value that was its own (saved) one at the join follows
+// that own value, so a change to it during the session (a Nexus's blend, say) is in play at once; any other is put back
+// as it was at the join.
+void own_qwc_back()
+{
+    std::lock_guard<std::mutex> l(sMsgLock);
+    sHostQwc.have = false;
+    if (!sOwnQwc.have) return;
+    sOwnQwc.have = false;
+    const uint32_t q = qwc_object();
+    if (!guest_ok(q)) return;
+    for (uint32_t i = 0; i < kQwcWords; i++) {
+        if (sOwnQwc.w[i] == sOwnSaved[i]) sOwnQwc.w[i] = vm_read32(q + kQwcOwn + 4 * i);
+        vm_write32(q + kQwcInUse + 4 * i, sOwnQwc.w[i]);
+    }
+    log_qwc("this player's own again", "out of the session", sOwnQwc);
+}
+
 // The host's latest flags (FLGS) into the copy each summoned reload puts in place, if a full set came since.
 void take_host_flags(uint32_t fb)
 {
@@ -1301,6 +1395,7 @@ void send_ready(ppu_context* ctx, uint32_t sm, uint32_t trip, const Place& arriv
     const std::vector<uint8_t> rec = dead_record(ctx);
     b.insert(b.end(), rec.begin(), rec.end());
     send_flags(sm);
+    send_qwc();
     send(kMsgReady, b);
 }
 
@@ -1597,6 +1692,7 @@ void guest_load_step(ppu_context* ctx)
     }
     const Place at = trip || !joined ? r.now : r.arrived;
     take_host_flags(flag_base());   // the host's flags where it is now (sent just before that READY), for this load
+    take_host_qwc(why);             // and its tendency in use, before this load's area scripts read it
     char want[16];
     std::snprintf(want, sizeof want, "m%02u_%02u_%02u_%02u", r.area >> 24, (r.area >> 16) & 0xFFu, (r.area >> 8) & 0xFFu,
                   r.area & 0xFFu);
@@ -1709,6 +1805,10 @@ extern "C" void des_seamless_tick(ppu_context* ctx)
     const bool session = st == kStateHost || st == kStateClient;
     if (world && session) dead_copies_tick();
     if (!session) sDied = false;
+    if (m == co::Mode::Join) {   // the host's tendency in use while in its world (a change: a new QWC); own again after
+        if (!session) own_qwc_back();
+        else if (world && !sGame.in_load) take_host_qwc("the host's changed");
+    }
     if (m == co::Mode::Host) host_tick(ctx, sm, gm, st, world);
     else guest_tick(ctx, sm, st, world);
     // BACKs: once this game is in the world after its own load (the others' dead characters survive a load, and a
@@ -1832,6 +1932,10 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
         break;
     case 0x0017A4A8u:   // the summoned reload's load step, after addi r9,r26,0x34
         if (m == co::Mode::Join) guest_load_step(ctx);
+        break;
+    case 0x004117E4u:   // the Nexus script's RecvGlobalQwc (0x004117C0), after bl 0x009204A0: the online blend set the
+        // tendency in use from this player's own; a friend in the session plays in the host's
+        if (m == co::Mode::Join) take_host_qwc("after the Nexus's blend");
         break;
     case 0x00272A88u:   // an enemy's souls for this game's player (0x00272938), after bl 0x0052A610: r3 1 for a guest
         // Each game gives its own player an enemy's souls when it dies (its NpcParam souls, through 0x002D6C40), halved

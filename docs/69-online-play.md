@@ -235,6 +235,8 @@ Addresses are from the EBOOT (static analysis, 2026-10-20):
   skipped. With server = own, both functions give the offline result.
 - **Unchanged:** the player's own values still go to the server (`addQWCData`). As a phantom, the host's world comes
   over P2P (0x00525750) and is untouched. A mix saved earlier stays.
+- **Seamless co-op** has no phantom's message: the host's game sends its values in play itself, and a friend plays in
+  them while in the host's world (docs/146, "World tendency").
 
 Not settled statically: when the event script calls the once-per-load blend. Whether 0x00920FC8 can run after a save
 has loaded is also open.
