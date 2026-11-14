@@ -43,7 +43,8 @@ import tarfile
 import zipfile
 
 MARKER = b"DES-DEV-BUILD"  # the start of DES_DEV_MARKER (port/des_dev_marker.h)
-KNOBS = [b"DES_GOD", b"DES_ATK", b"DES_SPEED", b"DES_WARP"]
+KNOBS = [b"DES_GOD", b"DES_ATK", b"DES_SPEED", b"DES_WARP", b"DES_KILLSELF", b"DES_KILLALL", b"DES_AREA",
+         b"DES_FLAGWATCH"]
 NEEDLES = [MARKER] + KNOBS
 TEXT_SKIP = (".md", ".txt", ".html")  # docs may name the knobs; binaries may not
 MAX_DEPTH = 8  # archives nested deeper than this are not opened, and fail the check

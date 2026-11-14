@@ -372,6 +372,22 @@ Not run yet: whether the player's hits ever use type 0x40 records (the `DES_DEVL
 refusal (set `PS3_NET_ONLINE=1` with the debug console while God mode is on: one `[dev] PS3_NET_ONLINE is set` line,
 then God mode stops, and the Developer tab shows the online message); the window title.
 
+## 16. Test switches (2026-11-14)
+
+Four more switches for test scripts, in `des_dev.cpp` with the others. Like `DES_WARP`, each new value acts once, so a
+route's `set` step can use them. Set at start, they wait until the player is in a level with no cutscene (the wait
+`DES_GIVE` already had, now shared).
+
+| Switch | What it does | Cheat? |
+|---|---|---|
+| `DES_KILLSELF=1` | Kills the player through the function the scripts' deaths use (US 0x00272C28: HP 0, then the game's own death). | Yes |
+| `DES_KILLALL=all` or `=<m>` | Kills the area's living enemies, all of them (a boss too) or those within m metres, through the same function, so souls, drops and the scripts' kill events happen as for any kill. | Yes |
+| `DES_AREA=w,b[,point]` | Loads area mWW_BB the way the scripts' `WarpNextStage` does (US 0x00451430). The point is where the player arrives. By default it is the block's Archstone (999 for block 0, then 997, 996, 995), as the Nexus's warps use, or -1 for the Nexus (world 1). | Yes |
+| `DES_FLAGWATCH=a,b,...` | A log line with each listed event flag's value (up to 16) when first seen and whenever it changes. The flags are the bits the game's flag read (US 0x005087C8) takes: flag f at byte f >> 3, bit f & 7, ids 0 to 0x427F. | No: it only reads, so it works in any session |
+
+The cheats follow the offline rule (section 6): refused in an online session, and the first one keeps the session
+offline. The release scanner (`tools/ci/check_release_no_dev.py`) looks for the four new names too.
+
 ## Appendix A. The proposed hook lines
 
 ```

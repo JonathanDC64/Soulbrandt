@@ -83,6 +83,7 @@ DES_REGION_ADDR(0x00265C88, 0x00263D60)  /* hook des_fade_rate */
 DES_REGION_ADDR(0x0026FB20, 0x0026DBF8)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x0026FC48, 0x0026DD20)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x0026FC98, 0x0026DD70)  /* hook des_dev_hook */
+DES_REGION_ADDR(0x00272C28, 0x00270D00)  /* call des_dev (by address): the scripts' kill */
 DES_REGION_ADDR(0x00273620, 0x002716F8)  /* call */
 DES_REGION_ADDR(0x002737A0, 0x00271878)  /* call */
 DES_REGION_ADDR(0x00273BE0, 0x00271CB8)  /* call */
@@ -267,7 +268,9 @@ DES_REGION_ADDR(0x018CEFBC, 0x018CEE14)  /* data kCameraAspect */
 DES_REGION_ADDR(0x018F96C0, 0x018F9698)  /* data kPreviewTurnStep */
 DES_REGION_ADDR(0x0190433C, 0x0190430C)  /* data kContextAspect */
 DES_REGION_ADDR(0x019AD3B0, 0x019AD3C4)  /* data kSoulsConsts, a slot of the TOC */
+DES_REGION_ADDR(0x019AD4FC, 0x019AD510)  /* data kGameSlot, a slot of the TOC */
 DES_REGION_ADDR(0x019AD560, 0x019AD574)  /* data kChrInsConsts, a slot of the TOC */
+DES_REGION_ADDR(0x019AD7B4, 0x019AD7C8)  /* data kWorldSlot, a slot of the TOC */
 DES_REGION_ADDR(0x019AD7BC, 0x019AD7D0)  /* data kDevConsts, a slot of the TOC */
 DES_REGION_ADDR(0x019ADD50, 0x019ADD64)  /* data kMenusConsts, a slot of the TOC */
 DES_REGION_ADDR(0x019ADE38, 0x019ADE4C)  /* data kScrollConsts, a slot of the TOC */
