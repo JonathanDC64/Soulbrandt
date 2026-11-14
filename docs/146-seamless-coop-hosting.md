@@ -87,6 +87,9 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
 - **Your glow.** A friend shows as a blue phantom in the host's world. Settings > Network > Your glow (on by
   default) decides whether the others see your glow. Off: they see you as you look in your own world, and so do
   you. A change counts within 2 seconds.
+- **Your glow colour.** Settings > Network > Your glow colour picks the colour of your glow: blue (the game's),
+  one of eight named colours, or Custom, set by hue in the row below it. The others see that colour on you, and so
+  do you. Each player picks its own, so in a party of four each friend can have its own. Soul form stays the game's.
 - **In a boss fight,** a friend who dies first watches until the fight ends. Once the boss is dead, it comes back at
   the area's start. If the host dies too, it goes back with everyone.
 - **Bosses get more health with friends,** as in the original game: half as much again with one friend, double with
@@ -318,6 +321,20 @@ character for it, as after a load.
   choice (`DES_SEAMLESS_GLOW`) with its player id (the character's `+0x498`) every 2 s in a session (GLOW). The
   hook after the type's read (US 0x002DDAA8) gives 0 for a blue phantom whose player turned it off, itself
   included, so it is drawn as an alive player; the type and everything else that reads it stay a blue phantom's.
+- **Each player's glow colour.** The phantom material (kind 2) holds two colours: the edge's at `+0x2A8` and the
+  body's at `+0x2B8` (float4 each). For each draw of a phantom, the ghost colour upload (US 0x00080E88, called by
+  0x0006C850) takes the material from the ghost manager's table by kind (`+0x68 + kind * 4`), and sends its colours
+  to the shader when they differ from the last ones sent. A player with a colour (`DES_SEAMLESS_GLOW_COLOR`, sent
+  in GLOW) gets its own copy of the material in that colour (the body colour as chosen, the edge 40% of the way to
+  white). The hook at the upload's start (0x00080E88) puts that copy in kind 2's place when the drawn object (`r31`)
+  is that player's: its handle (`+0x8`) is the character's draw object's (`*(chr + 0x6A4) + 0x4`). The hook after
+  0x0006C850's call (0x0006C860) puts the material back. Other phantoms, and every other draw, read the game's.
+  The ghost model draw (0x000E8C48) takes its shader constants (0x0006DA20) before its own upload, so each model
+  is drawn with the colours of the model drawn before it. With one colour for every phantom that can't be seen;
+  with two players in different colours, parts of one phantom took the other's. So while any player has a colour,
+  the hook at 0x000E9650 (after the draw's `bl 0x0006C908`, `r31` the drawn object, `r26` its owner) writes that
+  model's own edge and body colours into the constant block (`+0x11F0`: `+0x8C0`, `+0x8D0`, dirty bits 0x800000
+  and 0x400000) and the manager's cache (`+0xC0`, `+0xD0`) first. With no colours chosen, nothing is written.
 - **Items.** A phantom's game makes no items: the area's items (lying on corpses, made at each load, US 0x0025CAE8)
   and a dead enemy's drop (rolled by each game when the enemy dies, 0x002B2900) are made only when the player type
   the area was loaded for is body form (0) or soul form (8), and a friend is a blue phantom (1). Both reads of that
@@ -428,6 +445,7 @@ The edited copies are cached by the original's size and hash, so a script read a
 | `DES_SEAMLESS_ADDRESS=ip` | The host's public IPv4 address, for the code, when the router doesn't give it. Co-op's Public address keeps it in settings.ini; a report shows only whether it is set. |
 | `DES_SEAMLESS_PLAYERS=n` | The most players a host takes, itself included: 2 to 4 (4 when unset). Settings > Network keeps it in settings.ini. One more connects but waits: the host answers its ask for the room with FULL, and it joins once the host answers with the room again (the room server also refuses a join past the limit, `max_players`). |
 | `DES_SEAMLESS_GLOW=0` | The other players (and this one) see this player without its blue phantom glow in a session. Settings > Network > Your glow keeps it in settings.ini; a change counts within 2 s (GLOW). |
+| `DES_SEAMLESS_GLOW_COLOR=RRGGBB` | This player's glow colour in a session, for the others and itself (unset: the game's blue). Settings > Network > Your glow colour keeps it in settings.ini; a change counts within 2 s (GLOW). |
 | `DES_SEAMLESS_STUN` | Unset: a host whose router gives no public address asks Google's STUN server (`stun.l.google.com:19302`) for it. `0`: never. `host:port`: that server instead. |
 | `DES_SEAMLESS_CODE_FILE=path` | Tests: the host writes its codes there (public, then local); a joining game with no `DES_SEAMLESS_CODE` waits for the file and takes the code from it. |
 

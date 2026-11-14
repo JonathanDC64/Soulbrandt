@@ -272,3 +272,6 @@
 0x0053EA2C=des_coop_hook   # lwz r0,0x8C(r9) in the session update 0x0053E578's check of a joined guest (state 6): one in body form (0) leaves; a friend joins in either form
 0x0043E4E0=des_coop_hook   # mr r3,r4 at the start of SetTextEffect's native (r3: the text's type): a friend's revival waits for its "The Demon Was Destroyed"
 0x002DDAA8=des_coop_hook   # bl 0x0026F378 in a character's draw update 0x002DD920 (r3: the type for its phantom material on or off): a friend whose glow is off is drawn without it
+0x00080E88=des_coop_hook   # cmpwi r5,0, the ghost colour upload 0x00080E88 starting (r3 the ghost manager, r5/r7 the material kinds, r31 the drawn object): a player's own glow colour
+0x0006C860=des_coop_hook   # bl 0x00080E88 in 0x0006C850 returned: kind 2's material back in the ghost manager's table
+0x000E9650=des_coop_hook   # bl 0x0006C908 in the ghost model draw 0x000E8C48 returned (r26 the ghost owner, r31 the drawn object): its own colours before 0x0006DA20 records its constants

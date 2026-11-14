@@ -158,7 +158,8 @@ constexpr char kMsgFlag[4] = {'F', 'L', 'A', 'G'};   // u32 flag, u32 area: a pr
 // u32 area, u32 offset, then up to kFlagChunk bytes of the host's flags from that offset (with each READY)
 constexpr char kMsgFlags[4] = {'F', 'L', 'G', 'S'};
 constexpr char kMsgBack[4] = {'B', 'A', 'C', 'K'};   // u32 player id: a guest back in the world after its respawn
-constexpr char kMsgGlow[4] = {'G', 'L', 'O', 'W'};   // u32 player id, u32 1 or 0: whether that player shows its phantom glow
+// u32 player id, u32 1 or 0: whether that player shows its phantom glow, u32 its colour (0x01RRGGBB; 0 the game's)
+constexpr char kMsgGlow[4] = {'G', 'L', 'O', 'W'};
 constexpr uint32_t kRoomMax = 0x200;
 
 bool guest_ok(uint32_t a) { return a >= 0x00010000u && a < 0xF0000000u; }
@@ -289,8 +290,8 @@ struct HostFlags {
     bool fresh = false;              // a full set not yet put in place
 };
 HostFlags sHostFlagSet;              // the host's flags (a guest)
-struct Glow { uint32_t id; bool on; };
-std::vector<Glow> sGlow;             // each other player's own glow (GLOW), by player id
+struct Glow { uint32_t id; bool on; uint32_t colour; };
+std::vector<Glow> sGlow;             // each other player's own glow and its colour (GLOW), by player id
 
 float getf(const uint8_t* p)
 {
@@ -340,16 +341,24 @@ void on_message(uint32_t from, const uint8_t* d, uint32_t n)
     } else if (!std::memcmp(d, kMsgGlow, 4) && n >= 12) {
         const uint32_t id = get32(d + 4);
         const bool on = get32(d + 8) != 0;
+        const uint32_t colour = n >= 16 && (get32(d + 12) >> 24) == 1 ? get32(d + 12) : 0;   // 1 << 24 | RRGGBB
+        auto say_colour = [&] {
+            if (colour) std::fprintf(stderr, "[coop] player %u: its glow colour %06X\n", id, colour & 0xFFFFFFu);
+            else std::fprintf(stderr, "[coop] player %u: its glow colour the game's\n", id);
+        };
         bool known = false;
         for (Glow& gl : sGlow)
             if (gl.id == id) {
                 if (gl.on != on) std::fprintf(stderr, "[coop] player %u: its glow %s\n", id, on ? "on" : "off");
+                if (gl.colour != colour) say_colour();
                 gl.on = on;
+                gl.colour = colour;
                 known = true;
             }
         if (!known && sGlow.size() < 16) {
-            sGlow.push_back({id, on});
+            sGlow.push_back({id, on, colour});
             if (!on) std::fprintf(stderr, "[coop] player %u: its glow off\n", id);
+            if (colour) say_colour();
         }
     } else if (!std::memcmp(d, kMsgFlags, 4) && n > 12) {
         HostFlags& f = sHostFlagSet;
@@ -531,28 +540,186 @@ void stain_tick(ppu_context* ctx, bool session)
 // its own choice with its player id (GLOW, every 2 s in a session), and draws a blue phantom whose player turned its
 // glow off, itself included, as an alive player is drawn (the hook at 0x002DDAA8). Only the material changes: the
 // type, and all the game reads from it, stay a blue phantom's.
+//
+// Each player's glow colour (DES_SEAMLESS_GLOW_COLOR, "RRGGBB"; "" the game's blue), sent the same way. The colours
+// are the phantom material's (kind 2, 0x0007FD38): an edge colour at +0x2A8 and a body colour at +0x2B8, which the
+// ghost colour upload (0x00080E88) reads from the ghost manager's table of materials by kind (+0x68 + kind * 4) for
+// each draw of a phantom, and sends to the shader when they differ from the last ones sent. A player with its own
+// colour gets its own copy of that material with its colours in it, and for the length of that upload, only for its
+// own draws, its copy takes kind 2's place in the table (the hooks at 0x00080E88 and 0x0006C860). A draw is a
+// player's when the drawn object's handle (+0x8) is its character's draw object's (*(chr + 0x6A4) + 0x4).
 std::atomic<bool> sOwnGlow{true};
 std::atomic<uint32_t> sOwnChr{0};
-void glow_tick(bool session)
+constexpr int kTints = 4;                    // the players on one screen, this one included
+constexpr uint32_t kTintSize = 0x400;        // a material copy: all of the material, and its colours at +0x2A8/+0x2B8
+std::atomic<uint64_t> sTint[kTints];         // handle << 32 | its material copy; 0 = none
+std::atomic<uint32_t> sWhiteMat{0};          // kind 2's own material, as the upload last read it
+uint32_t sTintBuf = 0;                       // the copies, kTints * kTintSize bytes of the guest heap
+thread_local uint32_t tTintMgr = 0, tTintMat = 0;   // the table put back after the upload (this thread's)
+
+bool tint_copy(uint32_t a) { return sTintBuf && a >= sTintBuf && a < sTintBuf + kTints * kTintSize; }
+
+// "RRGGBB" (a leading '#' allowed) as 0x01RRGGBB; 0 for "" or anything else.
+uint32_t glow_colour(const char* v)
+{
+    if (!v) return 0;
+    if (*v == '#') ++v;
+    uint32_t c = 0;
+    for (int i = 0; i < 6; i++) {
+        const char h = v[i];
+        const int d = h >= '0' && h <= '9' ? h - '0' : h >= 'a' && h <= 'f' ? h - 'a' + 10 : h >= 'A' && h <= 'F' ? h - 'A' + 10 : -1;
+        if (d < 0) return 0;
+        c = c << 4 | (uint32_t)d;
+    }
+    return v[6] ? 0 : (1u << 24) | c;
+}
+
+// The copy at `at` of kind 2's material `mat`, in colour c: the body colour is c, the edge colour c brightened 40%
+// of the way to white (the game's blue is close to that); the alphas stay the material's.
+void tint_paint(uint32_t at, uint32_t mat, uint32_t c)
+{
+    for (uint32_t o = 0; o < kTintSize; o += 4) vm_write32(at + o, vm_read32(mat + o));
+    const float rgb[3] = {((c >> 16) & 0xFF) / 255.0f, ((c >> 8) & 0xFF) / 255.0f, (c & 0xFF) / 255.0f};
+    for (int i = 0; i < 3; i++) {
+        const float body = rgb[i], edge = rgb[i] + (1.0f - rgb[i]) * 0.4f;
+        uint32_t w;
+        std::memcpy(&w, &edge, 4);
+        vm_write32(at + 0x2A8 + 4 * i, w);
+        std::memcpy(&w, &body, 4);
+        vm_write32(at + 0x2B8 + 4 * i, w);
+    }
+}
+
+void glow_tick(ppu_context* ctx, bool session)
 {
     static int frames = 0;
     const char* v = std::getenv("DES_SEAMLESS_GLOW");
     const bool on = !(v && v[0] == '0' && !v[1]);
+    const uint32_t colour = glow_colour(std::getenv("DES_SEAMLESS_GLOW_COLOR"));
     const uint32_t pc = player_chr();
     sOwnGlow.store(on);
     sOwnChr.store(pc);
+    static bool was = false;   // in a session last frame: the others' choices are forgotten when it ends
     if (!session) {
-        std::lock_guard<std::mutex> l(sMsgLock);
-        sGlow.clear();
+        for (auto& t : sTint) t.store(0);
+        if (was) {
+            std::lock_guard<std::mutex> l(sMsgLock);
+            sGlow.clear();
+        }
+        was = false;
         frames = 0;
         return;
+    }
+    was = true;
+    // The players on this screen with a colour of their own, each with its copy of the material in that colour.
+    {
+        struct Want { uint32_t handle, colour; };
+        std::vector<Want> want;
+        auto handle_of = [](uint32_t chr) { return rd(rd(chr + 0x6A4) + 0x4); };
+        if (colour && guest_ok(pc) && handle_of(pc)) want.push_back({handle_of(pc), colour});
+        const uint32_t man = rd(DES_AT(kChrMan));
+        const uint32_t pb = rd(man + 0x1A0), pe = rd(man + 0x1A4);
+        if (guest_ok(pb) && pe > pb && pe - pb <= 0x40) {
+            std::lock_guard<std::mutex> l(sMsgLock);
+            for (uint32_t q = pb; q < pe && want.size() < (size_t)kTints; q += 4) {
+                const uint32_t c = rd(q);
+                if (!guest_ok(c) || c == pc) continue;
+                const uint32_t id = vm_read32(c + 0x498);
+                for (const Glow& gl : sGlow)
+                    if (gl.id == id && gl.colour && handle_of(c)) want.push_back({handle_of(c), gl.colour});
+            }
+        }
+        const uint32_t mat = sWhiteMat.load();
+        if (!want.empty() && !sTintBuf && guest_ok(mat)) sTintBuf = guest_alloc(ctx, kTints * kTintSize);
+        static uint32_t painted[kTints][2];   // each copy's material and colour, as last painted
+        for (int i = 0; i < kTints; i++) {
+            if (i >= (int)want.size() || !sTintBuf || !guest_ok(mat)) {
+                sTint[i].store(0);
+                continue;
+            }
+            const uint32_t at = sTintBuf + i * kTintSize;
+            if (painted[i][0] != mat || painted[i][1] != want[i].colour) {
+                sTint[i].store(0);   // not drawn with while it changes
+                tint_paint(at, mat, want[i].colour);
+                painted[i][0] = mat;
+                painted[i][1] = want[i].colour;
+            }
+            sTint[i].store((uint64_t)want[i].handle << 32 | at);
+        }
     }
     if (++frames < 60 || !guest_ok(pc)) return;
     frames = 0;
     std::vector<uint8_t> b;
     put32(b, vm_read32(pc + 0x498));
     put32(b, on ? 1 : 0);
+    put32(b, colour);
     send(kMsgGlow, b);
+}
+
+bool tints_on()
+{
+    for (const auto& t : sTint)
+        if (t.load(std::memory_order_relaxed)) return true;
+    return false;
+}
+
+// The ghost model draw (0x000E8C48) records its shader constants (0x0006DA20) before its colour upload (0x0006C850),
+// so a model's draws take the colours sent before it: the last model's. Phantoms that share one colour never show
+// it; phantoms with their own colours would take each other's on some of their parts. So while any player has its
+// own colour, each ghost model's colours are sent first: its kind's material's, or its player's copy, written as the
+// upload writes them (the manager's +0x10 constant block: edge +0x11F0+0x8C0, body +0x8D0, dirty bits at +0x11F0+0x10;
+// the manager's last ones at +0xC0/+0xD0). Here: after 0x000E8C48's bl 0x0006C908, r26 the ghost owner (the manager at
+// +0x4C), r31 the drawn object (its kind at +0xAA).
+void tint_pre(ppu_context* ctx)
+{
+    if (!tints_on()) return;
+    const uint32_t obj = (uint32_t)ctx->gpr[31], own = (uint32_t)ctx->gpr[26];
+    if (!guest_ok(obj) || !guest_ok(own)) return;
+    const uint32_t kind = vm_read16(obj + 0xAA);
+    if (!kind || kind > 7) return;
+    const uint32_t mgr = vm_read32(own + 0x4C);
+    if (!guest_ok(mgr)) return;
+    const uint32_t blk = vm_read32(mgr + 0x10);
+    uint32_t mat = vm_read32(mgr + 0x68 + kind * 4);
+    if (!guest_ok(blk) || !guest_ok(mat) || tint_copy(mat)) return;
+    if (kind == 2) {
+        const uint32_t handle = vm_read32(obj + 0x8);
+        for (const auto& t : sTint) {
+            const uint64_t e = t.load(std::memory_order_relaxed);
+            if (e && (uint32_t)(e >> 32) == handle) mat = (uint32_t)e;
+        }
+    }
+    const uint32_t cb = blk + 0x11F0;
+    for (uint32_t i = 0; i < 16; i += 4) {
+        const uint32_t edge = vm_read32(mat + 0x2A8 + i), body = vm_read32(mat + 0x2B8 + i);
+        vm_write32(cb + 0x8C0 + i, edge);
+        vm_write32(mgr + 0xC0 + i, edge);
+        vm_write32(cb + 0x8D0 + i, body);
+        vm_write32(mgr + 0xD0 + i, body);
+    }
+    vm_write32(cb + 0x10, vm_read32(cb + 0x10) | (3u << 22));   // the edge's and the body's dirty bits
+}
+
+// The ghost colour upload (0x00080E88) is starting: r3 the ghost manager, r5 and r7 the material kinds it reads
+// (r7 0 or a second kind it blends with), r31 the drawn object. A player's own colour takes kind 2's place.
+void tint_begin(ppu_context* ctx)
+{
+    if ((uint32_t)ctx->gpr[5] != 2 && (uint32_t)ctx->gpr[7] != 2) return;
+    const uint32_t mgr = (uint32_t)ctx->gpr[3], obj = (uint32_t)ctx->gpr[31];
+    if (!guest_ok(mgr) || !guest_ok(obj)) return;
+    const uint32_t mat = vm_read32(mgr + 0x70);
+    if (!guest_ok(mat) || tint_copy(mat)) return;
+    if (sWhiteMat.load(std::memory_order_relaxed) != mat) sWhiteMat.store(mat);
+    const uint32_t handle = vm_read32(obj + 0x8);
+    for (const auto& t : sTint) {
+        const uint64_t e = t.load(std::memory_order_relaxed);
+        if (e && (uint32_t)(e >> 32) == handle) {
+            tTintMgr = mgr;
+            tTintMat = mat;
+            vm_write32(mgr + 0x70, (uint32_t)e);
+            return;
+        }
+    }
 }
 
 // Whether the character chr (a blue phantom) is drawn with its glow: its player's own choice.
@@ -1491,7 +1658,7 @@ extern "C" void des_seamless_tick(ppu_context* ctx)
                              (m == co::Mode::Join && st == kStateClient && own_kept());
         stone_tick(ctx, session, m == co::Mode::Join && session && !body_form());
         stain_tick(ctx, session && world);
-        glow_tick(session);
+        glow_tick(ctx, session);
     }
     std::deque<uint32_t> back;
     {
@@ -1589,9 +1756,22 @@ void item_taken(uint32_t fb, uint32_t flag)
 // Instruction hooks (port/insn_hooks.txt), with the US disc's addresses as keys.
 extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
 {
+    if (addr == 0x0006C860u) {   // 0x0006C850's bl 0x00080E88 returned: kind 2's material back in its place, always
+        if (tTintMgr) {
+            vm_write32(tTintMgr + 0x70, tTintMat);
+            tTintMgr = 0;
+        }
+        return;
+    }
     const co::Mode m = co::active();
     if (m == co::Mode::Off) return;
     switch (addr) {
+    case 0x00080E88u:   // the ghost colour upload's first instruction (cmpwi r5,0): a player's own glow colour
+        tint_begin(ctx);
+        break;
+    case 0x000E9650u:   // the ghost model draw 0x000E8C48, after bl 0x0006C908: its own colours before its constants
+        tint_pre(ctx);
+        break;
     case 0x002DDAA8u:   // a character's draw update (0x002DD920), after bl 0x0026F378: r3 its type, r31 the character
         // The type picks the draw object's (+0x6A4) phantom material, on or off (0x000D7C58: on for types 1-4, 8, 10,
         // 11). A blue phantom whose player turned its glow off is drawn as an alive player (glow_tick).

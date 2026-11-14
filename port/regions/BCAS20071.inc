@@ -31,9 +31,12 @@ DES_REGION_ADDR(0x0003D2E8, 0x0003AEA8)  /* hook + call des_luaheap: Lua's small
 DES_REGION_ADDR(0x0003D478, 0x0003B038)  /* hook + call des_luaheap: Lua's small heap, alloc */
 DES_REGION_ADDR(0x0003D548, 0x0003B108)  /* hook + call des_luaheap: Lua's small heap, alloc */
 DES_REGION_ADDR(0x0003D618, 0x0003B1D8)  /* hook + call des_luaheap: Lua's small heap, realloc */
+DES_REGION_ADDR(0x0006C860, 0x0006A1F8)  /* hook des_coop_hook: the ghost colour upload returned (the material put back) */
+DES_REGION_ADDR(0x00080E88, 0x0007E820)  /* hook des_coop_hook: the ghost colour upload starting (a player's own glow colour) */
 DES_REGION_ADDR(0x000B14C8, 0x000AEE60)  /* call kSpacingPlay */
 DES_REGION_ADDR(0x000B15C8, 0x000AEF60)  /* call kFontPlay */
 DES_REGION_ADDR(0x000D5B24, 0x000D34BC)  /* hook des_cam_own */
+DES_REGION_ADDR(0x000E9650, 0x000E6FE8)  /* hook des_coop_hook: the ghost model draw (a player's own glow colour) */
 DES_REGION_ADDR(0x00110608, 0x0010DFA0)  /* hook des_mouse_look */
 DES_REGION_ADDR(0x001107C0, 0x0010E158)  /* hook des_cam_step */
 DES_REGION_ADDR(0x00119670, 0x00117748)  /* hook des_mouse_look */
