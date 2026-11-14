@@ -23,14 +23,14 @@ licences in `port/ui/NOTICE.md`.
   with the focus, keeps them for the next start, and closing the menu doesn't
   ask again until something else waits. A setting pinned by the environment
   never waits.
+- **Questions** (`question.hpp`) put the action first and the safe answer
+  after it, as the game's own do. The safe answer has the focus first, and
+  Esc, Circle or F1 give it.
 - **Quit** asks first ("Quit to the desktop? Progress since the game last
   saved will be lost.") in a blood-red window, then posts WM_CLOSE to the
   game window. The window's close button and Alt+F4 ask the same question
   (the UI consumes their WM_CLOSE). The window closes at once only in a run
   nobody plays: a tools/des test run, `PAD_FILE` or `EXIT_AFTER_MS`.
-- **Questions** (`question.hpp`) put the action first and the safe answer
-  after it, as the game's own do. The safe answer has the focus first, and
-  Esc, Circle or F1 give it.
 - **Settings**: tabs Display, Game, Controls, Interface, About, the left
   pane showing the value, the right pane showing the choices and help. Rows
   that only apply at the next start say so. A row whose option was set in
