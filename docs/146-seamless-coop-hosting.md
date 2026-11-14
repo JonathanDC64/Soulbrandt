@@ -84,6 +84,9 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
   sees and touches its own stain. A friend can take its souls back in the host's world, or, if it goes home first,
   at the same spot in its own world. Dying again before that loses them, as in the game. A stain a friend left in its
   own world shows in the host's world too when it is in the same area.
+- **Your glow.** A friend shows as a blue phantom in the host's world. Settings > Network > Your glow (on by
+  default) decides whether the others see your glow. Off: they see you as you look in your own world, and so do
+  you. A change counts within 2 seconds.
 - **In a boss fight,** a friend who dies first watches until the fight ends. Once the boss is dead, it comes back at
   the area's start. If the host dies too, it goes back with everyone.
 - **Bosses get more health with friends,** as in the original game: half as much again with one friend, double with
@@ -308,6 +311,12 @@ character for it, as after a load.
   (`InvalidMyBloodMarkInfo`) for a phantom, and for a soul-form player with others in its world, so in a session it
   would stay hidden after every load. `stain_tick` shows it again as `ParamInitialize` does for type 0
   (`0x00419670(manager, player, 0)`) whenever the byte is cleared and the stain still holds souls.
+- **Each player's glow.** A character's draw update (US 0x002DD920) passes its type to `0x000D7C58`, which turns
+  the draw object's (`+0x6A4`) phantom material on (`+0x78`) for types 1 to 4, 8, 10 and 11; `0x000D81D0` then
+  picks the material from the type (`0x0007FD38`: 2 for a blue phantom, 1 for soul form). Each game sends its own
+  choice (`DES_SEAMLESS_GLOW`) with its player id (the character's `+0x498`) every 2 s in a session (GLOW). The
+  hook after the type's read (US 0x002DDAA8) gives 0 for a blue phantom whose player turned it off, itself
+  included, so it is drawn as an alive player; the type and everything else that reads it stay a blue phantom's.
 - **Items.** A phantom's game makes no items: the area's items (lying on corpses, made at each load, US 0x0025CAE8)
   and a dead enemy's drop (rolled by each game when the enemy dies, 0x002B2900) are made only when the player type
   the area was loaded for is body form (0) or soul form (8), and a friend is a blue phantom (1). Both reads of that
@@ -417,6 +426,7 @@ The edited copies are cached by the original's size and hash, so a script read a
 | `DES_SEAMLESS_UPNP=0` | The host leaves the router alone (the port forwarded by hand). |
 | `DES_SEAMLESS_ADDRESS=ip` | The host's public IPv4 address, for the code, when the router doesn't give it. Co-op's Public address keeps it in settings.ini; a report shows only whether it is set. |
 | `DES_SEAMLESS_PLAYERS=n` | The most players a host takes, itself included: 2 to 4 (4 when unset). Settings > Network keeps it in settings.ini. One more connects but waits: the host answers its ask for the room with FULL, and it joins once the host answers with the room again (the room server also refuses a join past the limit, `max_players`). |
+| `DES_SEAMLESS_GLOW=0` | The other players (and this one) see this player without its blue phantom glow in a session. Settings > Network > Your glow keeps it in settings.ini; a change counts within 2 s (GLOW). |
 | `DES_SEAMLESS_STUN` | Unset: a host whose router gives no public address asks Google's STUN server (`stun.l.google.com:19302`) for it. `0`: never. `host:port`: that server instead. |
 | `DES_SEAMLESS_CODE_FILE=path` | Tests: the host writes its codes there (public, then local); a joining game with no `DES_SEAMLESS_CODE` waits for the file and takes the code from it. |
 

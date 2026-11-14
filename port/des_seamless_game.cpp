@@ -158,6 +158,7 @@ constexpr char kMsgFlag[4] = {'F', 'L', 'A', 'G'};   // u32 flag, u32 area: a pr
 // u32 area, u32 offset, then up to kFlagChunk bytes of the host's flags from that offset (with each READY)
 constexpr char kMsgFlags[4] = {'F', 'L', 'G', 'S'};
 constexpr char kMsgBack[4] = {'B', 'A', 'C', 'K'};   // u32 player id: a guest back in the world after its respawn
+constexpr char kMsgGlow[4] = {'G', 'L', 'O', 'W'};   // u32 player id, u32 1 or 0: whether that player shows its phantom glow
 constexpr uint32_t kRoomMax = 0x200;
 
 bool guest_ok(uint32_t a) { return a >= 0x00010000u && a < 0xF0000000u; }
@@ -288,6 +289,8 @@ struct HostFlags {
     bool fresh = false;              // a full set not yet put in place
 };
 HostFlags sHostFlagSet;              // the host's flags (a guest)
+struct Glow { uint32_t id; bool on; };
+std::vector<Glow> sGlow;             // each other player's own glow (GLOW), by player id
 
 float getf(const uint8_t* p)
 {
@@ -334,6 +337,20 @@ void on_message(uint32_t from, const uint8_t* d, uint32_t n)
         sHostFlags.push_back({get32(d + 4), get32(d + 8)});
     } else if (!std::memcmp(d, kMsgBack, 4) && n >= 8 && sBack.size() < 16) {
         sBack.push_back(get32(d + 4));
+    } else if (!std::memcmp(d, kMsgGlow, 4) && n >= 12) {
+        const uint32_t id = get32(d + 4);
+        const bool on = get32(d + 8) != 0;
+        bool known = false;
+        for (Glow& gl : sGlow)
+            if (gl.id == id) {
+                if (gl.on != on) std::fprintf(stderr, "[coop] player %u: its glow %s\n", id, on ? "on" : "off");
+                gl.on = on;
+                known = true;
+            }
+        if (!known && sGlow.size() < 16) {
+            sGlow.push_back({id, on});
+            if (!on) std::fprintf(stderr, "[coop] player %u: its glow off\n", id);
+        }
     } else if (!std::memcmp(d, kMsgFlags, 4) && n > 12) {
         HostFlags& f = sHostFlagSet;
         const uint32_t area = get32(d + 4), off = get32(d + 8), len = n - 12;
@@ -507,6 +524,46 @@ void stain_tick(ppu_context* ctx, bool session)
     if (souls < 0 || !guest_ok(mgr) || !guest_ok(pc)) return;
     call_addr(ctx, DES_AT(0x00419670u), {mgr, pc, 0});
     std::fprintf(stderr, "[coop] own bloodstain: shown again after the load hid it (%d souls in it)\n", souls);
+}
+
+// Each player's own phantom glow (DES_SEAMLESS_GLOW, Settings > Network; on unless "0"). A friend is a blue phantom
+// (type 1) in the host's world, and every game draws it with the game's phantom material. Each game tells the others
+// its own choice with its player id (GLOW, every 2 s in a session), and draws a blue phantom whose player turned its
+// glow off, itself included, as an alive player is drawn (the hook at 0x002DDAA8). Only the material changes: the
+// type, and all the game reads from it, stay a blue phantom's.
+std::atomic<bool> sOwnGlow{true};
+std::atomic<uint32_t> sOwnChr{0};
+void glow_tick(bool session)
+{
+    static int frames = 0;
+    const char* v = std::getenv("DES_SEAMLESS_GLOW");
+    const bool on = !(v && v[0] == '0' && !v[1]);
+    const uint32_t pc = player_chr();
+    sOwnGlow.store(on);
+    sOwnChr.store(pc);
+    if (!session) {
+        std::lock_guard<std::mutex> l(sMsgLock);
+        sGlow.clear();
+        frames = 0;
+        return;
+    }
+    if (++frames < 60 || !guest_ok(pc)) return;
+    frames = 0;
+    std::vector<uint8_t> b;
+    put32(b, vm_read32(pc + 0x498));
+    put32(b, on ? 1 : 0);
+    send(kMsgGlow, b);
+}
+
+// Whether the character chr (a blue phantom) is drawn with its glow: its player's own choice.
+bool glow_shown(uint32_t chr)
+{
+    if (chr == sOwnChr.load()) return sOwnGlow.load();
+    const uint32_t id = vm_read32(chr + 0x498);
+    std::lock_guard<std::mutex> l(sMsgLock);
+    for (const Glow& gl : sGlow)
+        if (gl.id == id) return gl.on;
+    return true;
 }
 
 // Each frame of a friend's session in the host's world (arrived: the first frame after a load's arrival):
@@ -1434,6 +1491,7 @@ extern "C" void des_seamless_tick(ppu_context* ctx)
                              (m == co::Mode::Join && st == kStateClient && own_kept());
         stone_tick(ctx, session, m == co::Mode::Join && session && !body_form());
         stain_tick(ctx, session && world);
+        glow_tick(session);
     }
     std::deque<uint32_t> back;
     {
@@ -1534,6 +1592,11 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
     const co::Mode m = co::active();
     if (m == co::Mode::Off) return;
     switch (addr) {
+    case 0x002DDAA8u:   // a character's draw update (0x002DD920), after bl 0x0026F378: r3 its type, r31 the character
+        // The type picks the draw object's (+0x6A4) phantom material, on or off (0x000D7C58: on for types 1-4, 8, 10,
+        // 11). A blue phantom whose player turned its glow off is drawn as an alive player (glow_tick).
+        if ((uint32_t)ctx->gpr[3] == 1 && !glow_shown((uint32_t)ctx->gpr[31])) ctx->gpr[3] = 0;
+        break;
     case 0x0017A4A8u:   // the summoned reload's load step, after addi r9,r26,0x34
         if (m == co::Mode::Join) guest_load_step(ctx);
         break;

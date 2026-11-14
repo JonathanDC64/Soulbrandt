@@ -1026,6 +1026,9 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
             "joins as soon as a place frees up. A change counts at once; players already here stay.<br/><br/>"
             "The original game plays three at most in co-op.<br/><br/>(DES_SEAMLESS_PLAYERS)",
             [] { des::seamless::party_size_changed(); });
+        bool_row(leftPane, rightPane, "Your glow", "DES_SEAMLESS_GLOW",
+            "Whether the other players see your blue phantom glow while you are in a host's world. Off: they see "
+            "you as you look in your own world. A change counts at once.<br/><br/>(DES_SEAMLESS_GLOW)");
 
         leftPane.add_section("In your world");
         bool_row(leftPane, rightPane, "Messages", "DES_NET_MESSAGES",

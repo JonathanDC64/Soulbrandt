@@ -133,6 +133,7 @@ DES_REGION_ADDR(0x002C32C0, 0x002C12F8)  /* hook des_coop_hook: an NPC controlle
 DES_REGION_ADDR(0x002D0EB0, 0x002CF2D8)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x002D8978, 0x002D7140)  /* call */
 DES_REGION_ADDR(0x002DD368, 0x002DC058)  /* call kUseGoods */
+DES_REGION_ADDR(0x002DDAA8, 0x002DC798)  /* hook des_coop_hook: a character's draw update (a friend's own phantom glow) */
 DES_REGION_ADDR(0x002EC2B8, 0x002EA2B0)  /* call */
 DES_REGION_ADDR(0x002EDEB0, 0x002EBEA8)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x002F5B14, 0x002F3B0C)  /* hook des_ik_rate */
