@@ -20,10 +20,14 @@ licences in `port/ui/NOTICE.md`.
   game window. The window's close button and Alt+F4 ask the same question
   (the UI consumes their WM_CLOSE). The window closes at once only in a run
   nobody plays: a tools/des test run, `PAD_FILE` or `EXIT_AFTER_MS`.
-- **Settings**: tabs Display, Game, Controls, Interface, About, the left
-  pane showing the value, the right pane showing the choices and help. Rows
-  that only apply at the next start say so. A row whose option was set in
-  the environment shows that value, can't be changed, and its help says why.
+- **Settings**: tabs Display, Picture, Game, Controls, Network, Interface
+  and About (and Developer in a developer build), the left pane showing the
+  value, the right pane showing the choices and help. Display has the
+  window, HDR and the frame rate; Picture the render resolution ("150%
+  (1920 × 1080)"), the filtering and the effects. Rows that only apply at
+  the next start say so. A row whose option was set in the environment
+  shows that value with a lock before it, dimmed, can't be changed, and its
+  help says why.
 - **Trophies** (`trophies_window.cpp`, docs/44 section 5.4): the trophy set's
   summary (unlocked n of 38, the percentage, the count per grade) over a list
   of every trophy: its icon (dimmed while locked), name, description, grade,
