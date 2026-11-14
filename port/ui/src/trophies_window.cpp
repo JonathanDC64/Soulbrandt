@@ -13,6 +13,7 @@
 #include "bool_button.hpp"
 #include "pane.hpp"
 #include "settings.hpp"
+#include "text_fonts.hpp"
 #include "trophy_toasts.hpp"
 #include "ui.hpp"
 
@@ -129,9 +130,16 @@ struct TrophiesWindow::State {
         found = sceNpTrophy_snapshot(snap.get()) == 0 && snap->count > 0;
         if (snap->count > 128) snap->count = 128;
         hiddenCount = 0;
+        std::string text = found ? text_of(snap->title, sizeof snap->title) : std::string();  // (for host::cover_text)
         for (unsigned i = 0; found && i < snap->count; i++) {
-            if (hidden(snap->trophies[i])) hiddenCount++;
+            const sceNpTrophySnapshotEntry& t = snap->trophies[i];
+            if (hidden(t)) hiddenCount++;
+            text += text_of(t.name, sizeof t.name);
+            text += text_of(t.detail, sizeof t.detail);
         }
+        // The Japanese and Asian discs' trophy lists are in Japanese, Chinese or Korean: a font for them, before the
+        // rows are drawn.
+        host::cover_text(text);
         generation++;
     }
     bool hidden(const sceNpTrophySnapshotEntry& t) const { return t.hidden || testHidden.count(t.trophyId); }

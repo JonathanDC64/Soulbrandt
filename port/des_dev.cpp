@@ -24,6 +24,24 @@
  *   Stones, the Kick Item (9998) and the Friend's and Foe's Rings (a ring is
  *   ring:<id>). Each new value gives once, when the player is loaded and no
  *   cutscene runs, then asks the game to save (tools/des/online_save.sh).
+ * DES_KILLSELF=<v> — each new value (not 0) kills the player once, through
+ *   the function the scripts' deaths use (0x00272C28: HP 0, then the
+ *   game's own death). Test scripts use it to die on cue.
+ * DES_KILLALL=<v> — each new value kills the area's living enemies once:
+ *   "all" every one (a boss too), a number those within that many metres of
+ *   the player.
+ *   The same function, so souls, drops and the scripts' kill events work as
+ *   for any kill.
+ * DES_AREA=w,b[,point] — each new value loads area mWW_BB once, the way the
+ *   scripts' WarpNextStage does: w and b are the map name's numbers
+ *   (m02_01: 2,1). The point is where the player arrives; by default the
+ *   block's Archstone, as the Nexus's warps use (999 for block 0, then 997,
+ *   996, 995), and the Nexus's own start (-1) for world 1.
+ * DES_KILLSELF, DES_KILLALL, DES_AREA and DES_GIVE wait for the player to be
+ *   in a level (no cutscene) when set at start.
+ * DES_FLAGWATCH=a,b,... — a log line with each of these event flags' value
+ *   (up to 16) when first seen and whenever it changes. It only reads, so
+ *   it is not a cheat and works in any session.
  * DES_DEVLOG=1 — a line for each change a cheat makes, at most one a site
  *   every 250 ms (with the count of the ones in between).
  * RSX_DEV_HOTKEYS — not a cheat: des_dev_boot sets it to 1 when it is unset,
@@ -79,6 +97,7 @@
 extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
 #endif
 extern "C" const char* cellGame_get_title(void);   /* PARAM.SFO's TITLE (ps3recomp libs/system/cellGame.c) */
+extern "C" void ps3_indirect_call(ppu_context* ctx);   /* ppu_loader.cpp: a call to the guest address in CTR */
 
 namespace {
 
@@ -106,6 +125,12 @@ float vm_readf(uint32_t ea)
     return f;
 }
 
+/* The word at a, or 0 when a is not a guest pointer: for chains of pointers that are 0 before the game sets them. */
+uint32_t rd(uint32_t a)
+{
+    return guest_ptr_ok(a) ? vm_read32(a) : 0;
+}
+
 uint32_t player_chr()
 {
     uint32_t p = vm_read32(DES_AT(kChrMan));
@@ -117,6 +142,13 @@ bool env_on(const char* name)
 {
     const char* v = getenv(name);
     return v && *v && strcmp(v, "0") != 0;
+}
+
+/* "" for an unset knob, so a knob set and then cleared counts as a new value. */
+const char* knob_s(const char* name)
+{
+    const char* v = getenv(name);
+    return v ? v : "";
 }
 
 /* A float knob: def when unset or not a number, else clamped to [lo, hi]. */
@@ -356,7 +388,7 @@ extern "C" void des_dev_boot(void)
     const char* warp = getenv("DES_WARP");
     const char* give = getenv("DES_GIVE");
     const bool cheat = god_knob() || atk_knob() != 1.0f || speed_knob() != 1.0f || (warp && *warp) ||
-                       (give && *give);
+                       (give && *give) || env_on("DES_KILLSELF") || env_on("DES_KILLALL") || env_on("DES_AREA");
     if (cheat) {
         s_session = kCheats;
         mark_used("set at start");
@@ -458,29 +490,38 @@ static int32_t add_item(ppu_context* ctx, uint32_t inv, uint32_t cat, uint32_t i
     return (int32_t)call_game(ctx, func_008FB4F0, a, 6);
 }
 
+/* The player's game data while a level is in play and no cutscene runs, else 0. Read the way the AddInventoryItem
+ * script binding (0x00447748) reads it: *(*(*(*(TOC - 0x7884) - 0x8000)) + 8). AddItem checks the item burden, so
+ * the character's stats must be there too (the burden limit AddItem reads, *(inv + 0x1A8) + 0x498); a cutscene is
+ * RemoMan 0x01B3A28C's slots. */
+static uint32_t level_pgd()
+{
+    const uint32_t man = vm_read32(DES_AT(kChrMan)), base = vm_read32(DES_AT(0x019AD7BCu));
+    uint32_t slot_p = 0, gm = 0, pgd = 0;
+    if (!guest_ptr_ok(man) || !guest_ptr_ok(vm_read32(man + 0x1BC)) || !guest_ptr_ok(base) ||
+        !guest_ptr_ok(slot_p = vm_read32(base - 0x8000u)) || !guest_ptr_ok(gm = vm_read32(slot_p)) ||
+        !guest_ptr_ok(pgd = vm_read32(gm + 8)))
+        return 0;   /* not in a level yet */
+    const uint32_t stats = vm_read32(pgd + 0x128 + 0x1A8), remo = vm_read32(DES_AT(0x01B3A28Cu));
+    const bool cut = guest_ptr_ok(remo) && (vm_read32(remo + 0x28) || vm_read32(remo + 0x40) ||
+                                            vm_read32(remo + 0x58) || vm_read32(remo + 0x70));
+    if (!guest_ptr_ok(stats) || !(vm_readf(stats + 0x498) > 0.0f) || cut) return 0;
+    return pgd;
+}
+
+/* Frames level_pgd has held in a row, counted by des_debug_tick once a frame. The level switches wait for 90. */
+static int s_level_frames = 0;
+static bool level_ready() { return s_level_frames >= 90; }
+
 /* Gives the pending DES_GIVE list once the player is loaded; called every frame, so a value set at start waits for
  * the level. */
 static void give_tick(ppu_context* ctx)
 {
     static char done[256] = "";
     const char* e = getenv("DES_GIVE");
-    if (!e || !*e || !strcmp(e, done)) return;
-    /* The player's game data, read the way the AddInventoryItem script binding (0x00447748) reads it:
-     * *(*(*(*(TOC - 0x7884) - 0x8000)) + 8). */
-    const uint32_t man = vm_read32(DES_AT(kChrMan)), base = vm_read32(DES_AT(0x019AD7BCu));
-    uint32_t slot_p = 0, gm = 0, pgd = 0;
-    if (!guest_ptr_ok(man) || !guest_ptr_ok(vm_read32(man + 0x1BC)) || !guest_ptr_ok(base) ||
-        !guest_ptr_ok(slot_p = vm_read32(base - 0x8000u)) || !guest_ptr_ok(gm = vm_read32(slot_p)) ||
-        !guest_ptr_ok(pgd = vm_read32(gm + 8)))
-        return;   /* not in a level yet */
-    /* AddItem checks the item burden, so wait for the character's stats (the burden limit AddItem reads,
-     * *(inv + 0x1A8) + 0x498) and for no cutscene (RemoMan 0x01B3A28C's slots), held for 90 frames. */
-    static int ready = 0;
-    const uint32_t stats = vm_read32(pgd + 0x128 + 0x1A8), remo = vm_read32(DES_AT(0x01B3A28Cu));
-    const bool cut = guest_ptr_ok(remo) && (vm_read32(remo + 0x28) || vm_read32(remo + 0x40) ||
-                                            vm_read32(remo + 0x58) || vm_read32(remo + 0x70));
-    if (!guest_ptr_ok(stats) || !(vm_readf(stats + 0x498) > 0.0f) || cut) { ready = 0; return; }
-    if (++ready < 90) return;
+    if (!e || !*e || !strcmp(e, done) || !level_ready()) return;
+    const uint32_t pgd = level_pgd();
+    if (!pgd) return;
     snprintf(done, sizeof done, "%s", e);
     if (refused("DES_GIVE")) return;
     mark_used("DES_GIVE");
@@ -507,11 +548,136 @@ static void give_tick(ppu_context* ctx)
     }
 }
 
+/* A game function by its address (the running disc's: DES_AT at the call), through the runtime's indirect call, for
+ * the ones that are not in DES_GAME_CALLS. call_game puts CTR back as it found it, so this sets it around the call. */
+static uint32_t call_addr(ppu_context* ctx, uint32_t code, const uint32_t* a, int na)
+{
+    const uint64_t ctr = ctx->ctr;
+    ctx->ctr = code;
+    const uint32_t r3 = call_game(ctx, ps3_indirect_call, a, na);
+    ctx->ctr = ctr;
+    return r3;
+}
+
+/* The function the scripts' deaths use: HP 0, the dead flag and the game's death (docs/55 section 2.6). */
+constexpr uint32_t kKillChr = 0x00272C28u;
+/* TOC - 0x788C: the area's characters = *(*(*this - 0x7FFC)), the count at +0x14 and the array at +0xC. */
+constexpr uint32_t kWorldSlot = 0x019AD7B4u;
+
+/* DES_KILLSELF and DES_KILLALL (see the top): each new value acts once, in a level. */
+static void kill_tick(ppu_context* ctx)
+{
+    static char self_done[64] = "", all_done[64] = "";
+    const char* s = knob_s("DES_KILLSELF");
+    const char* a = knob_s("DES_KILLALL");
+    const bool self_new = strcmp(s, self_done) != 0, all_new = strcmp(a, all_done) != 0;
+    if ((!self_new && !all_new) || !level_ready()) return;
+    const uint32_t me = player_chr();
+    if (!me) return;
+    if (self_new) {
+        snprintf(self_done, sizeof self_done, "%s", s);
+        if (*s && strcmp(s, "0") && (int32_t)vm_read32(me + 0x3C4) > 0 && !refused("DES_KILLSELF")) {
+            mark_used("DES_KILLSELF");
+            const uint32_t arg[1] = {me};
+            call_addr(ctx, DES_AT(kKillChr), arg, 1);
+            fprintf(stderr, "[dev] DES_KILLSELF: the player killed (chr %08X)\n", me);
+        }
+    }
+    if (all_new) {
+        snprintf(all_done, sizeof all_done, "%s", a);
+        const bool all = !strcmp(a, "all");
+        const float r = all ? 0.0f : (float)atof(a);
+        if ((!all && !(r > 0.0f)) || refused("DES_KILLALL")) return;
+        const uint32_t wl = rd(rd(rd(DES_AT(kWorldSlot)) - 0x7FFCu));
+        if (!guest_ptr_ok(wl)) return;
+        mark_used("DES_KILLALL");
+        float p[3] = {};
+        const bool here = chr_pos(me, p);
+        const uint32_t cnt = vm_read32(wl + 0x14), arr = vm_read32(wl + 0xC);
+        int n = 0;
+        for (uint32_t i = 0; i < cnt && i < 4096 && guest_ptr_ok(arr); i++) {
+            const uint32_t c = vm_read32(arr + 4 * i);
+            float q[3];
+            if (!guest_ptr_ok(c) || c == me || vm_read32(c) != DES_AT(0x0185AF98u) || (int32_t)vm_read32(c + 0x3C4) <= 0)
+                continue;
+            if (!all && (!here || !chr_pos(c, q) ||
+                         std::sqrt((q[0] - p[0]) * (q[0] - p[0]) + (q[1] - p[1]) * (q[1] - p[1]) +
+                                   (q[2] - p[2]) * (q[2] - p[2])) > r))
+                continue;
+            const uint32_t arg[1] = {c};
+            call_addr(ctx, DES_AT(kKillChr), arg, 1);
+            n++;
+        }
+        fprintf(stderr, "[dev] DES_KILLALL %s: %d enem%s killed\n", a, n, n == 1 ? "y" : "ies");
+    }
+}
+
+/* DES_AREA (see the top): the scripts' WarpNextStage(world, block, 0, 0, point) is 0x00451430 (r4 to r8). */
+static void area_tick(ppu_context* ctx)
+{
+    static char done[64] = "";
+    const char* e = knob_s("DES_AREA");
+    if (!strcmp(e, done) || !level_ready()) return;
+    snprintf(done, sizeof done, "%s", e);
+    if (!*e) return;
+    int w = 0, b = 0, point = 0;
+    const int n = sscanf(e, "%d,%d,%d", &w, &b, &point);
+    if (n < 2 || w < 1 || w > 8 || b < 0 || b > 3) {
+        fprintf(stderr, "[dev] DES_AREA: \"%s\" is not world,block[,point] (m02_01: 2,1)\n", e);
+        return;
+    }
+    if (n < 3) point = w == 1 ? -1 : b == 0 ? 999 : 998 - b;
+    if (refused("DES_AREA")) return;
+    mark_used("DES_AREA");
+    const uint32_t a[6] = {0, (uint32_t)w, (uint32_t)b, 0, 0, (uint32_t)point};
+    call_addr(ctx, DES_AT(0x00451430u), a, 6);
+    fprintf(stderr, "[dev] DES_AREA: loading m%02d_%02d, arriving at point %d\n", w, b, point);
+}
+
+/* DES_FLAGWATCH (see the top). The flags are bits from *(*(*(TOC - 0x7B44) - 0x8000)), flag f at byte f >> 3, bit
+ * f & 7, as the game's flag read 0x005087C8 takes them; ids 0 to 0x427F. */
+constexpr uint32_t kGameSlot = 0x019AD4FCu;
+constexpr uint32_t kFlagLast = 0x427Fu;
+
+static void flag_tick()
+{
+    static char list[256] = "";
+    static uint32_t ids[16];
+    static int last[16], n = 0;
+    const char* e = knob_s("DES_FLAGWATCH");
+    if (strcmp(e, list)) {
+        snprintf(list, sizeof list, "%s", e);
+        n = 0;
+        for (const char* p = list; *p && n < 16;) {
+            char* end;
+            const unsigned long f = strtoul(p, &end, 10);
+            if (end == p) break;
+            if (f <= kFlagLast) { ids[n] = (uint32_t)f; last[n++] = -1; }
+            else fprintf(stderr, "[dev] DES_FLAGWATCH: flag %lu is past %u, skipped\n", f, kFlagLast);
+            p = *end == ',' ? end + 1 : end;
+        }
+        if (*list) fprintf(stderr, "[dev] DES_FLAGWATCH: watching %d flag(s)\n", n);
+    }
+    if (!n) return;
+    const uint32_t base = rd(rd(rd(DES_AT(kGameSlot)) - 0x8000u));
+    if (!guest_ptr_ok(base)) return;
+    for (int i = 0; i < n; i++) {
+        const int v = (vm_read8(base + (ids[i] >> 3)) >> (ids[i] & 7)) & 1;
+        if (v == last[i]) continue;
+        fprintf(stderr, "[dev] flag %u: %d%s\n", ids[i], v, last[i] < 0 ? " (first seen)" : "");
+        last[i] = v;
+    }
+}
+
 extern "C" void des_debug_tick(ppu_context* ctx)
 {
     static int gen = 0;
     static char last[96] = "";
+    s_level_frames = level_pgd() ? (s_level_frames < 90 ? s_level_frames + 1 : 90) : 0;
     give_tick(ctx);
+    kill_tick(ctx);
+    area_tick(ctx);
+    flag_tick();
     const int before = gen;
     PS3_KNOB(gen, gen + 1);
     if (gen == before) return;
