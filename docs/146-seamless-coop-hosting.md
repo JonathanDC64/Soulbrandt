@@ -97,7 +97,7 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
 - **A boss's Demon's Soul is everyone's.** When one player takes it at the boss's Archstone, every other player in
   the session gets it too, unless it already took that soul in its own world. A friend can take it itself as well.
 - **So are keys and the items only the host could take:** 3-1's prison keys, and the items pulled from the ground or
-  a corpse at a prompt (1-1's sword, the glowing corpse in 5-2 and the others like them). Whoever takes one, the
+  a corpse at a prompt (1-1's sword, the glowing corpse in 2-2 and the others like them). Whoever takes one, the
   others get it too. A player who joins later and doesn't have it yet still finds it there, in the host's world and
   in its own.
 - **Your own world stays yours.** In a friend's world you see it as it is there. Your own world's doors, items and
@@ -292,10 +292,11 @@ character for it, as after a load.
   treatment: each player's own prompt (`NotNetMessage`, `+ ATTR_WHITE`), the grant, and the flag mirror.
 - **The host's item prompts** (`gifts_for_all`): the items a prompt offers the host alone (`possible_chr_type`, at
   `ItemBoxDist_A`), with their own pickup steps that end in `OnEvent_<id>_1`, which gives the items and sets flag
-  `<id>`: 1-1's sword, 2-3's, 4-1's, 5-3's and the Nexus's, and 5-2's glowing corpse. The prompt is offered to a
-  friend too (`+ ATTR_WHITE`). `OnEvent_<id>_1` first sends `LuaCallStart(<id>, 78)` (before the pickup's own
-  messages, one of which removes the others' prompt), and each game's `SEAMLESS_Gift_<id>` gives the same items and
-  sets the flag unless its flag is set. The flag is mirrored as the souls' are.
+  `<id>`: the Nexus's, 1-1's sword, 2-3's, 4-3's, 5-1's, and 2-2's glowing corpse (5-2's has no such flag and
+  stays the host's). The prompt is offered to a friend too (`+ ATTR_WHITE`). `OnEvent_<id>_1` first sends
+  `LuaCallStart(<id>, 78)` (before the pickup's own messages, one of which removes the others' prompt), and each
+  game's `SEAMLESS_Gift_<id>` gives the same items and sets the flag unless its flag is set. The flag is mirrored
+  as the souls' are.
 - **The Stone of Ephemeral Eyes** (goods 1021). Its row (`EQUIP_PARAM_GOODS_ST`, param table 3) allows it only in
   soul form in one's own world: `enable_gray` (`+0x19`) 1, `enable_white` (`+0x1A`) and `enable_multi` (`+0x1C`) 0.
   Each frame of a session the row gets `enable_multi` 1 (the host), and `enable_white` 1 while this player is a friend
