@@ -25,6 +25,7 @@
 // --verbose: the first bytes that differ in each frame.
 // Exit code 0: every picture and count the same; 1: one differs; 2: it could not run.
 #include "host.hpp"
+#include "menu_bar.hpp"
 #include "renderer.hpp"
 #include "settings.hpp"
 #include "settings_window.hpp"
@@ -852,6 +853,14 @@ void open_settings(int tab, bool prelaunch) {
     if (tab > 0 && !w.set_active_tab(tab)) std::fprintf(stderr, "ui_render_compare: no tab %d\n", tab);  // (0: open)
 }
 
+// The F1 menu as F1 opens it (des_ui.cpp's open_menu_bar), and with its Quit question over it. One bar for every page,
+// as in the game: it stays when the pages close (it is permanent), hidden.
+void open_menu(bool quit) {
+    if (ui::Document* bar = ui::find_document(ui::DocumentScope::MenuBar)) bar->show();
+    else ui::push_document(std::make_unique<ui::MenuBar>(), false).show();
+    if (quit) ui::request_quit_confirm();
+}
+
 void close_pages() {
     ui::close_all_documents();
     for (Rml::ElementDocument* d : gDocuments) d->Close();
@@ -1110,6 +1119,8 @@ int main(int argc, char** argv) {
     const char* const kTabs[] = {"display", "game", "controls", "network", "interface", "about"};
     for (int t = 0; t < 6; t++) pages.push_back({std::string("settings-") + kTabs[t], 1280, 720, false, 1.f, false, [t] { open_settings(t, false); }, {}});
     pages.push_back({"settings-prelaunch", 1280, 720, false, 1.f, false, [] { open_settings(0, true); }, {}});
+    pages.push_back({"menu", 1280, 720, false, 1.f, false, [] { open_menu(false); }, {}});
+    pages.push_back({"menu-quit", 1280, 720, false, 1.f, false, [] { open_menu(true); }, {}});
     pages.push_back({"setup-start", 1280, 720, false, 1.f, false, [] {
         ui::push_document(std::make_unique<ui::SetupStartWindow>(ui::SetupStartWindow::Props{}));
     }, {}});
