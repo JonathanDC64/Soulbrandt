@@ -59,8 +59,10 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
 - **Joining needs no sign.** Once the host stands in an area, a friend's game joins by itself, wherever the friend
   is. The friend loads the host's area and arrives beside the host as a blue phantom, facing the way the host faces. A friend watching a cutscene
   in its own world (an area's opening one, say) goes when the cutscene ends: the game's load waits for it.
-- **Body form or soul form.** A friend in body form joins in soul form, since the game summons only soul-form
-  players, and gets its body form back when it goes home.
+- **Body form or soul form.** A friend joins in the form it has. In the host's world it is a blue phantom either way,
+  with its form's health: full in body form, half in soul form (as the game gives a summoned soul). A friend in body
+  form who dies is a soul from then on. A boss kill revives every friend in soul form, as it revives the host: at
+  once if it stands, or when it comes back if it is dead. Each friend goes home in the form it has then.
 - **Friends follow the host.** When the host travels (an Archstone, the Nexus, a death), its friends go too: one
   loading screen, then they stand beside the host again.
 - **Archstones:** the host can use them during co-op, and the group travels with it. A friend still gets "You can't
@@ -87,8 +89,7 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
 - **Your own world stays yours.** In a friend's world you see it as it is there. Your own world's doors, items and
   people stay as they were, and what the group did is added when you go back.
 - **Going back:** when the host leaves, its friends go back to their own worlds, where they stood when they joined,
-  and their games save there. A friend goes back in body form if it was in body form before the join, or was there
-  when a boss died.
+  and their games save there, each in the form it has then (above).
 - **The Nexus is shared.** Friends stand in the host's Nexus and see its people as the host does, not as phantoms,
   and can talk to them.
 - **The Nexus's cutscenes** (the one after a boss, the Monumental's story) play for each player who hasn't seen them
@@ -383,7 +384,8 @@ resolves) and `PS3_SAVEDATA_ROOT` (the co-op save). A value set in the environme
 1. leave the session (`LeaveSession`), and ask for the player's own flags back at the next load
    (`SetFlagInitState(2)`);
 2. once out of the session: back to where the player stood before the join (`SetSummonedPos`,
-   `SetDefaultMapUid(-1)`), in soul form (`SetChrTypeDataGreyNext`), with a load (`WarpNextStageKick`);
+   `SetDefaultMapUid(-1)`), in the form it had before the join (`SetChrTypeDataGreyNext`), with a load
+   (`WarpNextStageKick`);
 3. at home, the game saves by itself. The Co-op window waits for a file written in the co-op save after the arrival
    and for the game's save to finish: no save asked for (GameMan `+0xA97`, `+0xA98`) and its save task idle
    (`+0xAA4` back at 0). A save writes PARAM.SFO first and the data after, so a new file alone is too early. Then
@@ -409,19 +411,10 @@ host's boss kill while the friend was away don't count in the friend's world.
   manager's next area, `+0x08`, and summoned place, `+0x20`).
 - **The flags that load puts in play** come from the kept banks: the swap took the new world's from a bank older than
   the kept one.
-- **After a boss kill** with the friend in the session, the friend goes home revived, as `BlockClear2_3` does for a
-  blue phantom: at the end of `SetChrTypeDataGreyNext`, `SetAliveMotion`, `EraseEventSpecialEffect(10000, 101)`,
-  `RequestFullRecover` and `RevivePlayerNext`.
-- **A friend in body form before the join:** the game summons only soul-form players. A body-form friend's join fails
-  (`OnFailedJoinSession`, "Failed to join the session"), so the program calls the game's `ChangeGreyGhost` 10
-  frames before the join. Going home, it gets its body form back the same way, without the revival animation.
-  - If it leaves before a join came, or the host's game goes first, it gets its body form back where it
-    stands, as the game's `OnDemonsSoulRevive` gives it (`EraseEventSpecialEffect(10000, 101)`, `RevivePlayer`).
-    Its game may have saved it in soul form while it waited, so the program asks for a save
-    (`SaveRequest_Profile`); a Leave waits for that save before the game starts again. When the host's game is
-    back, the next join takes soul form again.
-  - If it dies before the join came, it stays a soul, as a player who dies in body form does. The program notes
-    the game's death count when the friend takes soul form, and a change means a death.
+- **The form it goes home in.** The session's start records the player's form (GameMan `+0xA90`: 0 body form, 8 soul
+  form), and on the trip home `SetChrTypeDataGreyNext` gives it back (from a blue phantom: soul form for 8, body form
+  for 0). That word is the friend's form during the session: a death in body form (its HP at 0) sets 8, and a boss
+  kill sets 0.
 - **The host's game closed:** the friend sees the game's own "The session has ended." once, and goes home. Two
   things keep it to that one box:
   - The program doesn't join again while the room server (the host's game) can't be reached: the room data and the
@@ -436,6 +429,28 @@ host's boss kill while the friend was away don't count in the friend's world.
   room". ps3recomp answers a leave of a room the friend was kicked out of as left, and a leave takes down only the
   room it names. Before, the leaves never stopped, and each one took down the room the friend had joined since, so
   the host's game, which never heard from the friend there, gave up and left; at every new room the same.
+
+**Forms in the host's world:**
+- **Joining in body form.** The game summons only soul-form players. Each frame of a joined guest's session (state
+  6), the session update (`0x0053E578`) reads the player's type (`0x0053EA2C`). If it is body form (0), the game
+  raises `OnFailedJoinSession` ("Failed to join the session") and leaves the room. On a friend the program reads it
+  as a phantom (1), so the join goes on in body form. The hook first checks that the instruction there is that load
+  (`lwz r0,0x8C(r9)`), as it is on all four discs.
+- **A blue phantom either way.** The summoned load makes a blue phantom (1) only of soul form: the type at the load's
+  request (the next load's record, `+0x8C`) must be 8, or the friend arrives in body form, not as a phantom. A friend
+  in body form goes to that load as 8 (at the load step).
+- **Health.** A load in soul form gives soul form's effect (SpEffect 8: the most HP x0.5) a little after the arrival.
+  The scripts' effect ids are behaviours: `0x00595B80` finds the id in BehaviorParam, and the row's `+0x14` names the
+  effect. Behaviour 101 is SpEffect 8, which the game's revivals erase (`EraseEventSpecialEffect(10000, 101)`). A
+  friend in body form has it erased whenever its effect list (`chr+0x304`: each entry's `+0x18` is its effect, `+0x20`
+  the next) holds it, then a full recover. A friend in soul form keeps it, as the game's summoned souls do (their most
+  HP is full at the arrival and half once the effect comes).
+- **A boss kill** (a flag of the kill's handlers, from the host) revives a friend in soul form as `InGameStart`
+  revives the host: soul form's effect erased, a full recover, the revival text (`SetTextEffect(3)`) and animation
+  (6100). One that is dead at the kill is in body form from its respawn.
+- An earlier version took soul form for the join (`ChangeGreyGhost`) and gave the body form back at home; a friend
+  that closed its game while it waited could start again as a soul. Before that, a friend went home revived after a
+  boss kill (`BlockClear2_3`'s steps at the end of `SetChrTypeDataGreyNext`).
 
 **Bringing a character** (`des_seamless_save.cpp`). The game's save folder (the disc's TITLE_ID and `DEMONSS005`)
 holds four character slots and a slot list:
@@ -467,6 +482,11 @@ the newer generation, and saves as usual.
   area alone (co-op brought it back once that area's opening cutscene had ended). Now it shows "You can't return
   during multiplayer." and the friend stays, on the Japanese and Asian discs too. The host's trip, run again with
   the change, is as before.
+- Forms, scripted (US disc): a friend in body form joined as a blue phantom with full health, in the Nexus and in
+  1-1. Killed in the boss's arena, it was a soul, and the boss's kill brought it back in body form at its respawn. A
+  friend in soul form standing at a boss kill was revived on the spot (the revival's glow, then full health). One
+  that died with no boss killed came back with soul form's health. Each went home in the form it had then. Not yet
+  by hand, and not on the other discs.
 - What a friend's talk changes (a conversation heard, a choice made, an item given) stays in its copy of the host's
   world: it is neither kept in the friend's own world nor sent to the host. Only the Archstones' seal is shared.
 - The Archstones' seal from a friend: checked through its four flags (scripted), and by hand. Host and friend
@@ -485,9 +505,6 @@ the newer generation, and saves as usual.
   - Boldwin: his Forge and Repair screens listed the friend's own equipment. No forge was done.
 - Closing the game window as a friend: the session is lost and nothing from it is saved (the game only saves at
   home).
-- A friend in body form whose joins keep failing with the host's game still there stays in soul form while it tries.
-  If it closes the game window then and its game saved meanwhile, it starts again in soul form. Leave gives its body
-  form back.
 - The tutorial's demon (the Vanguard, `m08_01`) offered its soul only outside a session (`ATTR_NOSESSION`; the
   game has no co-op there), so with a friend nobody got it. Its prompt is now offered with or without a session, to
   each player, like the other bosses'. Checked on the script (both of its registrations change, and only those); not

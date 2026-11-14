@@ -109,6 +109,9 @@ constexpr uint32_t kGmNextArea = 0x08;                       // FFFFFFFF unless 
 constexpr uint32_t kGmSaveAsked = 0xA97;   // u8: a save asked for (SaveRequest_Profile's 0x0020FBA8; SaveRequest too)
 constexpr uint32_t kGmSaveAsked2 = 0xA98;  // u8: SaveRequest's second request
 constexpr uint32_t kGmSaveTask = 0xAA4;    // u32: the save task, 0 idle (1 and 3 while it saves: 0x00211A50, 0x0020F738)
+// u32: the player's type when its session started (0x004193F0): 0 body form, 8 soul form. On a guest, the form it
+// goes home in: SetChrTypeDataGreyNext gives soul form for 8 and body form for 0 (a blue phantom's type then).
+constexpr uint32_t kGmForm = 0xA90;
 constexpr uint32_t kGmNextPoint = 0x0C;                      // the next load's warp point (-1: a place)
 constexpr uint32_t kGmSummonedPlace = 0x1C;                  // a byte: the next load puts the player at +0x20
 constexpr uint32_t kGmPlace[4] = {0x20, 0xA40, 0xAE0, 0xB20}; // where a summoned reload puts the player (x, y, z)
@@ -178,6 +181,16 @@ void wrf(uint32_t a, float f)
 uint32_t session_manager() { return rd(rd(rd(DES_AT(kSessionSlot)) - 0x7F08u)); }
 uint32_t game_manager() { return rd(rd(rd(DES_AT(kGameSlot)) - 0x7FFCu)); }
 uint32_t flag_base() { return rd(rd(rd(DES_AT(kGameSlot)) - 0x8000u)); }
+// The next load's record, *(*(*(*(TOC - 0x7884) - 0x8000)) + 8): +0x8C is the player's type at the load's request
+// (WarpNextStageKick copies it), and a summoned load makes a blue phantom (1) of soul form (8) only.
+uint32_t load_record() { return rd(rd(rd(rd(DES_AT(kSessionSlot)) - 0x8000u)) + 0x08u); }
+constexpr uint32_t kLoadType = 0x8C;
+uint32_t player_chr() { return rd(rd(DES_AT(kChrMan)) + 0x1BC); }
+constexpr uint32_t kChrHp = 0x3C4;   // the character's HP (GetHp's read)
+// The scripts' effect ids are behaviours (BehaviorParam, whose +0x14 names the effect: 0x00595B80). 101 is soul form's
+// effect (SpEffect 8: the most HP x0.5), which the game's revivals erase (global_event.lua's BlockClear2_3).
+constexpr uint32_t kSoulFx = 101;
+constexpr uint32_t kSoulEffect = 8;   // soul form's effect itself (SpEffect 8)
 
 
 void drain(ppu_context* ctx)
@@ -375,9 +388,7 @@ struct Own {
     uint32_t area = kNoArea;    // its area at the join, and where it stood
     float x = 0, y = 0, z = 0;
     bool stood = false;
-    bool helped = false;        // a boss was killed while it was in the session: it goes home revived
-    bool body = false;          // it was in body form before the join: it goes home in body form
-    bool sent = false;          // its trip home was pointed at area (going_home)
+    bool sent = false;         // its trip home was pointed at area (going_home)
     bool came_home = false;     // a trip home after a session came in this run (after_world_swap), at home_at
     std::filesystem::file_time_type home_at{};
     std::vector<uint8_t> flags = std::vector<uint8_t>(kFlagBytes);   // its own flags (the trip home's copy, +0x187C)
@@ -385,31 +396,6 @@ struct Own {
     std::vector<uint32_t> taken;   // the boss souls it took in the session (its view keeps them taken)
 };
 Own sOwn;
-std::atomic<bool> sJoinedInBody{false};   // set by guest_tick before a join from body form; taken by keep_own_world
-uint32_t sJoinedDeaths = 0;   // the game thread's: the player's death count when it took soul form for the join
-
-// The player's death count (0x0090BF60 reads what the scripts' AddDeathCount adds to at each death).
-uint32_t death_count(ppu_context* ctx)
-{
-    return call_addr(ctx, DES_AT(0x0090BF60u), {});
-}
-
-// A friend that took soul form for a join that never came to a load (its Leave, or the host's game gone): its body
-// form back where it stands. ChangeGreyGhost changes the form only, and the load after it makes the soul form's own
-// changes, so it is given back as global_event.lua's OnDemonsSoulRevive gives it (EraseEventSpecialEffect(10000,
-// 101), RevivePlayer), with no animation. Its game may have saved it in soul form while it waited, so it saves
-// (SaveRequest_Profile). False if none is owed (no soul form taken, or a death since: guest_tick), or not yet: with
-// no player (a load), it stays owed (sJoinedInBody) for a later call.
-bool body_form_back(ppu_context* ctx)
-{
-    if (!sJoinedInBody.load()) return false;
-    const int32_t form = (int32_t)call_addr(ctx, DES_AT(0x0043E660u), {0});   // GetLocalPlayerChrType: -1 no player
-    if (form < 0 || !sJoinedInBody.exchange(false) || form == 0) return false;
-    call_addr(ctx, DES_AT(0x00446C68u), {0, 10000, 101});   // EraseEventSpecialEffect(10000, 101)
-    call_addr(ctx, DES_AT(0x0043EE10u), {0});               // RevivePlayer
-    call_addr(ctx, DES_AT(0x004418B8u), {0});               // SaveRequest_Profile
-    return true;
-}
 
 bool own_kept()
 {
@@ -417,14 +403,80 @@ bool own_kept()
     return sOwn.kept;
 }
 
-// A boss was killed with this guest in the session: as the game revives a blue phantom after a boss kill, it goes
-// home in body form.
+// Forms (docs/146). In the host's world a friend is a blue phantom, in either form; its own form is the one the game
+// keeps for its trip home (kGmForm: 0 body form, 8 soul form).
+bool body_form()
+{
+    const uint32_t gm = game_manager();
+    return guest_ok(gm) && vm_read32(gm + kGmForm) == 0;
+}
+
+void set_form(bool body)
+{
+    const uint32_t gm = game_manager();
+    if (guest_ok(gm)) vm_write32(gm + kGmForm, body ? 0u : 8u);
+}
+
+// A boss was killed with this guest in the session (a flag of the kill's handlers; a kill sets several): a friend in
+// soul form is revived, as the game revives the host. forms_tick does it.
+std::atomic<bool> sBossRevive{false};
 void helped_kill()
 {
-    std::lock_guard<std::mutex> l(sOwn.lock);
-    if (sOwn.kept && !sOwn.helped) {
-        sOwn.helped = true;
-        std::fprintf(stderr, "[coop] a boss killed with this player in the session: it goes home revived\n");
+    if (own_kept() && !body_form() && !sBossRevive.exchange(true))
+        std::fprintf(stderr, "[coop] a boss killed with this player in the session, in soul form: revived\n");
+}
+
+// Whether the character has effect fx: its effect list (chr+0x304, +4: the first; each +0x18 its effect, +0x20 the
+// next), as the most HP's walk reads it (0x00378940).
+bool has_effect(uint32_t chr, uint32_t fx)
+{
+    const uint32_t list = rd(chr + 0x304);
+    uint32_t n = guest_ok(list) ? rd(list + 4) : 0;
+    for (int k = 0; k < 64 && guest_ok(n); ++k, n = rd(n + 0x20))
+        if (rd(n + 0x18) == fx) return true;
+    return false;
+}
+
+// Body form's health on a blue phantom: the summoned load makes it in soul form, and soul form's effect (half the most
+// HP) comes a little after its arrival. It goes as a revival takes it (EraseEventSpecialEffect(10000, 101)), then a
+// full recover, as the game gives at a load.
+void body_health(ppu_context* ctx)
+{
+    call_addr(ctx, DES_AT(0x00446C68u), {0, 10000, kSoulFx});   // EraseEventSpecialEffect(10000, 101)
+    call_addr(ctx, DES_AT(0x00439358u), {0});                   // RequestFullRecover
+}
+
+// Each frame of a friend's session in the host's world:
+// - in body form, soul form's effect is taken off whenever a load gave it (body form's full health);
+// - a death in body form makes it a soul (its HP at 0);
+// - a boss kill revives a friend in soul form: body form, full HP, and the game's revival text and animation
+//   (InGameStart's), at once if it stands, else from its respawn.
+void forms_tick(ppu_context* ctx)
+{
+    static bool was_dead = false;
+    const uint32_t pc = player_chr();
+    if (!guest_ok(pc)) return;
+    const bool dead = (int32_t)vm_read32(pc + kChrHp) <= 0;
+    if (dead && !was_dead && body_form()) {
+        set_form(false);
+        std::fprintf(stderr, "[coop] died in body form: a soul from now on\n");
+    }
+    was_dead = dead;
+    if (sBossRevive.exchange(false) && !body_form()) {
+        set_form(true);
+        if (dead) {
+            std::fprintf(stderr, "[coop] revived by the boss kill: body form from its respawn\n");
+            return;
+        }
+        body_health(ctx);
+        call_addr(ctx, DES_AT(0x0043E4E0u), {0, 3});             // SetTextEffect(TEXT_TYPE_Revival)
+        call_addr(ctx, DES_AT(0x00443DA0u), {0, 10000, 6100});   // PlayAnimation(10000, 6100): the revival
+        std::fprintf(stderr, "[coop] revived by the boss kill: body form\n");
+        return;
+    }
+    if (!dead && body_form() && has_effect(pc, kSoulEffect)) {
+        body_health(ctx);
+        std::fprintf(stderr, "[coop] in body form: soul form's effect taken off, full HP\n");
     }
 }
 
@@ -451,30 +503,6 @@ void going_home(uint32_t gm)
                  sOwn.x, sOwn.y, sOwn.z);
 }
 
-// The end of SetChrTypeDataGreyNext on a guest going home (its form after the next load: soul form, since it joined
-// in soul form). In body form instead:
-// - after a boss kill, revived as global_event.lua's BlockClear2_3 revives a blue phantom (SetAliveMotion,
-//   EraseEventSpecialEffect(10000, 101), RequestFullRecover, RevivePlayerNext);
-// - if it was in body form before the join (it took soul form for it), its body form back as a revival gives it,
-//   with full health (EraseEventSpecialEffect(10000, 101), RequestFullRecover, RevivePlayerNext), but no revival
-//   animation.
-void going_home_form(ppu_context* ctx)
-{
-    bool helped, body;
-    {
-        std::lock_guard<std::mutex> l(sOwn.lock);
-        if (!sOwn.kept) return;
-        helped = sOwn.helped;
-        body = sOwn.body;
-    }
-    if (!helped && !body) return;
-    if (helped) call_addr(ctx, DES_AT(0x004457A8u), {0, 1});   // SetAliveMotion(true)
-    call_addr(ctx, DES_AT(0x00446C68u), {0, 10000, 101});      // EraseEventSpecialEffect(10000, 101)
-    call_addr(ctx, DES_AT(0x00439358u), {0});                  // RequestFullRecover
-    call_addr(ctx, DES_AT(0x00439288u), {0});                  // RevivePlayerNext
-    std::fprintf(stderr, "[coop] going home: in body form (%s)\n",
-                 helped ? "revived: a boss was killed in the session" : "as before the join");
-}
 
 // Where flag is in Own::banks for world w, or -1 if it isn't a world's own flag.
 long own_bank_at(uint32_t w, uint32_t flag)
@@ -542,8 +570,7 @@ void keep_own_world(uint32_t fb)
             sOwn.banks[kWorlds * kBank1Size + sOwn.home * kBank2Size + i] = sOwn.flags[kLocal2 + i];
     }
     sOwn.stood = des_player_xyz(&sOwn.x, &sOwn.y, &sOwn.z) != 0;
-    sOwn.helped = false;
-    sOwn.body = sJoinedInBody.exchange(false);
+    sBossRevive = false;
     sOwn.sent = false;
     sOwn.taken.clear();
     sOwn.kept = true;
@@ -587,7 +614,8 @@ void after_world_swap(uint32_t fb, bool in_session)
 // world, so the guest does what its game does when the host's room is gone (global_event.lua's OnRoomDisappeared,
 // then OnLeave_Limit): it leaves the session (LeaveSession's native) and asks for its own flags back at the next load
 // (0x00508820: SetFlagInitState(2)); once out of the session it goes back to where it stood before the join
-// (SetSummonedPos, SetDefaultMapUid(-1)), in soul form (SetChrTypeDataGreyNext), with a load (WarpNextStageKick).
+// (SetSummonedPos, SetDefaultMapUid(-1)), in the form it had before the join (SetChrTypeDataGreyNext), with a load
+// (WarpNextStageKick).
 // Its game saves once home: the leave is done when the save folder has a file written since the arrival and the
 // game's save is over (save_idle).
 enum { kLeaveNone, kLeaveAsked, kLeaveOut, kLeaveGoing, kLeaveHome, kLeaveDone };
@@ -659,18 +687,12 @@ void leave_tick(ppu_context* ctx, uint32_t st, bool world)
             std::fprintf(stderr, "[coop] leave: going home\n");
         } else if (st == 0 && !own_kept()) {   // not in a session: nothing to take home
             // During a load (the game's own trip home after a session, say) it waits for the player in the world.
-            // Back from a session with no save since, it waits for that save, as its own trip home does. Its body
-            // form back if it took soul form for a join that never came (body_form_back), and it waits for the save
-            // that asks for. Else (the title screen, say) it's done.
+            // Back from a session with no save since, it waits for that save, as its own trip home does. Else (the
+            // title screen, say) it's done.
             std::filesystem::file_time_type home{};
             const bool unsaved = home_unsaved(&home);
             if (!world && (sGame.loading || unsaved)) {
                 // again next frame
-            } else if (world && body_form_back(ctx)) {
-                s.home_at = std::filesystem::file_time_type::clock::now();
-                sLeave = kLeaveHome;
-                std::fprintf(stderr, "[coop] leave: not in a session; body form again (the join never came), "
-                                     "waiting for the game's save\n");
             } else if (unsaved) {
                 s.home_at = home;
                 sLeave = kLeaveHome;
@@ -1023,10 +1045,6 @@ void host_tick(ppu_context* ctx, uint32_t sm, uint32_t gm, uint32_t st, bool wor
 void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
 {
     Game& g = sGame;
-    // A death after taking soul form for the join (in its own world, before the join came): a player who dies in body
-    // form is a soul from then on, so its body form isn't given back.
-    if (sJoinedInBody.load() && death_count(ctx) != sJoinedDeaths && sJoinedInBody.exchange(false))
-        std::fprintf(stderr, "[coop] this player died after taking soul form for the join: no body form back\n");
     if (world) g.loading = false;
     else if (vm_read32(game_manager() + kGmNextArea) != kNoArea) g.loading = true;
     leave_tick(ctx, st, world);
@@ -1068,10 +1086,6 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
                 sReady = Ready();
                 std::fprintf(stderr, "[coop] the host's game is gone: no join until it is back\n");
             }
-            // soul form taken for a join that didn't come: the body form back until the host is (the next join
-            // takes soul form again); at the first frame with the player in the world
-            if (g.host_gone && world && !own_kept() && body_form_back(ctx))
-                std::fprintf(stderr, "[coop] body form again until the host's game is back\n");
             g.calm = 0;
             return;
         }
@@ -1102,18 +1116,7 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
         }
         // standing in the world (150 frames), then every 20 s while not in a session
         if (g.calm == 150 || (g.calm > 150 && (g.calm - 150) % 1200 == 0)) {
-            // The game summons only players in soul form: one in body form fails its join (OnFailedJoinSession). It
-            // takes soul form for the join, as the game's own ChangeGreyGhost does, and gets its body form back at
-            // home (going_home_form), or where it stands if it leaves or the host's game goes before a join came
-            // (body_form_back), unless it dies first. The join is 10 frames on.
-            if ((int32_t)call_addr(ctx, DES_AT(0x0043E660u), {0}) == 0) {   // GetLocalPlayerChrType: 0 body form
-                call_addr(ctx, DES_AT(0x00445E48u), {0});                   // ChangeGreyGhost
-                sJoinedDeaths = death_count(ctx);
-                sJoinedInBody = true;
-                g.calm = 140;
-                std::fprintf(stderr, "[coop] this player is in body form: soul form for the join, body form again at home\n");
-                return;
-            }
+            // in either form: the session's check of a joined guest lets a friend in body form stay (0x0053EA2C)
             g.tries++;
             join(ctx, sm, data);
             if (g.tries % 2 == 0) {   // the host may have opened another room since: ask for its data again
@@ -1131,7 +1134,7 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
     }
     if (st != kStateClient) return;
     // the host's flags for the next reload, and its progress flags into this player's own world (they wait for the
-    // join's load to keep the own world apart: keep_own_world, which also starts the session's helped_kill afresh)
+    // join's load to keep the own world apart: keep_own_world, which also clears a boss kill's revive left from before)
     const uint32_t fb = flag_base();
     take_host_flags(fb);
     std::deque<HostFlag> flags;
@@ -1165,6 +1168,7 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
             std::fprintf(stderr, "[coop] back after the respawn: the others make this player's character again\n");
         }
     }
+    if (world && !g.in_load) forms_tick(ctx);
     uint32_t lead;
     {
         std::lock_guard<std::mutex> l(sMsgLock);
@@ -1197,6 +1201,13 @@ void guest_load_step(ppu_context* ctx)
     const bool joined = sGame.arrived.load();
     const char* why = trip ? "follow" : joined ? "respawn" : "join";
     if (joined && !trip) sGame.respawn = true;
+    // In body form (the type at the load's request 0), as soul form to the load: it makes a blue phantom of soul form
+    // only. The form the friend goes home in stays as the session's start recorded it (kGmForm).
+    const uint32_t lr = load_record();
+    if (guest_ok(lr) && vm_read32(lr + kLoadType) == 0) {
+        vm_write32(lr + kLoadType, 8);
+        std::fprintf(stderr, "[coop] %s: in body form, it loads as a blue phantom too\n", why);
+    }
     const uint32_t th = (uint32_t)ctx->gpr[26];
     const uint32_t size = rd(th + 0xC8), cap = rd(th + 0xCC);
     const uint32_t buf = cap > 7 ? rd(th + 0xB8) : th + 0xB8;
@@ -1503,6 +1514,23 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
         // Only body (0) and soul form (8) get items; a friend is a blue phantom (1) in the host's world
         if (m == co::Mode::Join && (uint32_t)ctx->gpr[9] == 1) ctx->gpr[9] = 0;
         break;
+    case 0x0053EA2Cu: { // the session update's check of a joined guest (state 6), after lwz r0,0x8C(r9): its type
+        // The game summons only players in soul form: a guest whose type reads body form (0) raises
+        // OnFailedJoinSession and leaves the room. A friend joins in either form, and keeps it: the game records it
+        // for the trip home (+0xA90), and the summoned load makes it a blue phantom (guest_load_step).
+        // Only where the disc has that load (lwz r0,0x8C(r9)), as all four have.
+        static const bool known = [] {
+            const bool ok = vm_read32(DES_AT(0x0053EA2Cu)) == 0x8009008Cu;
+            if (!ok) std::fprintf(stderr, "[coop] the joined guest's check is not where it was looked for: joins stay in soul form\n");
+            return ok;
+        }();
+        if (known && m == co::Mode::Join && (uint32_t)ctx->gpr[0] == 0) {
+            static std::atomic<bool> said{false};
+            if (!said.exchange(true)) std::fprintf(stderr, "[coop] joining in body form\n");
+            ctx->gpr[0] = 1;
+        }
+        break;
+    }
     case 0x0025CC34u:   // the area items' add, after bl 0x005087C8: the item taken already?
         if (m == co::Mode::Join) item_shown(ctx);
         break;
@@ -1516,12 +1544,10 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
                 after_world_swap(fb, guest_ok(sm) && vm_read32(sm + kSmState) == kStateClient);
         }
         break;
-    case 0x0044C780u:   // the end of WarpNextStageKick (ld r0,0x90(r1)): a load asked for
-    case 0x00447EF4u: { // the end of SetChrTypeDataGreyNext: the form after the next load
+    case 0x0044C780u: { // the end of WarpNextStageKick (ld r0,0x90(r1)): a load asked for
         const uint32_t sm = session_manager();
         if (m != co::Mode::Join || !guest_ok(sm) || vm_read32(sm + kSmState) != 0) break;   // only out of a session
-        if (addr == 0x0044C780u) going_home(game_manager());
-        else going_home_form(ctx);
+        going_home(game_manager());
         break;
     }
     default:
