@@ -141,6 +141,7 @@
 #include "des_rsx_route.h"      /* the renderer calls below: through rsx_out in a PS3RECOMP_RSX_HAL build */
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -172,6 +173,7 @@ extern "C" void des_route_on_open(const char* path);   /* des_route.cpp: a level
 extern "C" unsigned des_route_buttons(void);   /* des_route.cpp: the buttons a press step holds */
 extern "C" volatile unsigned g_pad0_reads, g_pad0_empty_reads, g_pad0_buttons, g_pad0_lstick;   /* cellPad.c */
 extern "C" void cellPad_host_stick(int stick, unsigned char x, unsigned char y, unsigned reads);   /* cellPad.c */
+extern "C" int cellPad_host_key_down(int vk);   /* cellPad.c: a key or mouse button held now */
 #ifdef _WIN32
 extern "C" __declspec(dllimport) short __stdcall GetAsyncKeyState(int vkey);   /* user32 */
 constexpr int VK_F8 = 0x77;
@@ -2545,6 +2547,132 @@ extern "C" void des_roll_tie(ppu_context* ctx, uint32_t)
     if (!on) return;
     if (hist) ctx->fpr[31] = 0.0;
     if (cur) ctx->fpr[27] = 0.0;
+}
+
+/* DES_KICK=1 (0, the original, is the default): attacking never kicks, and
+ * the Kick key does (Settings > Controls > Kick). The game kicks when the
+ * attack (R1) goes down while the left stick has just been pushed forward.
+ * The pad manipulator's update (0x003103F8) keeps that push at +0x184:
+ * 0x0030D9E8 passes the stick's forward axis there only for the first 0.06 s
+ * after it goes past 0.8 (in the character's own frame when not locked on).
+ * The player's script (c0000.esd) reads it through its function 212 (the case
+ * at 0x00300B80 of 0x002FF5C0: +0x184 > 0), and only beside an R1 press, in
+ * the transitions to the kick (one-handed, animation 3100) and to the
+ * two-handed forward attack (4100); nothing else reads it. With DES_KICK=1
+ * the press itself says whether it is a kick: on each frame R1 is down (slot
+ * 0's store at 0x00310AA8, r17 bit 0 = down, set on every frame of a press:
+ * a 3-frame press gives 3; r31 = the manipulator) this
+ * reads whether a Kick binding is held (DES_KICK_KEYS; settings.cpp adds them
+ * to R1's keys as well), and function 212's answer (r10 at 0x00300BAC, r29 =
+ * the controller) is that, for the player alone. So the Kick key does what a
+ * fresh push forward with an attack did, after the script's earlier choices
+ * as before (a backstab, a running, rolling or backstep attack), and the
+ * attack button never kicks. Other characters, and the other players'
+ * characters online, are left alone. Live. DES_KICKLOG=1 prints a line for
+ * each frame the attack is down, and, in either mode, the game's own answer
+ * each time the script asks;
+ * with PS3_NO_USER_INPUT (a scripted run) DES_KICK_TEST=1 stands for a held
+ * Kick key. */
+namespace {
+struct KickBind {
+    int in, mod;
+};
+struct KickKeys {
+    KickBind b[4];
+    int n;
+};
+
+/* One input as the Keyboard page writes it (controls_window.cpp, PAD_KEYS's
+ * names): its virtual-key code for cellPad_host_key_down, the mouse buttons as
+ * VK_LBUTTON to VK_XBUTTON2. 0: not an input, or a wheel notch (never held). */
+int kick_vk(const char* s, size_t n)
+{
+    static const struct { const char* name; int vk; } kNames[] = {
+        {"space", 0x20},   {"enter", 0x0D},    {"return", 0x0D},   {"tab", 0x09},      {"esc", 0x1B},
+        {"escape", 0x1B},  {"backspace", 0x08}, {"shift", 0x10},   {"lshift", 0xA0},   {"rshift", 0xA1},
+        {"ctrl", 0x11},    {"lctrl", 0xA2},    {"rctrl", 0xA3},    {"alt", 0x12},      {"lalt", 0xA4},
+        {"ralt", 0xA5},    {"up", 0x26},       {"down", 0x28},     {"left", 0x25},     {"right", 0x27},
+        {"insert", 0x2D},  {"delete", 0x2E},   {"home", 0x24},     {"end", 0x23},      {"pageup", 0x21},
+        {"pagedown", 0x22}, {"capslock", 0x14}, {"mouse1", 0x01},  {"mouse2", 0x02},   {"mouse3", 0x04},
+        {"mouse4", 0x05},  {"mouse5", 0x06},
+    };
+    if (n == 1 && std::isalnum((unsigned char)s[0])) return std::toupper((unsigned char)s[0]);
+    const auto same = [&](const char* name) {
+        if (std::strlen(name) != n) return false;
+        for (size_t i = 0; i < n; i++)
+            if (std::tolower((unsigned char)s[i]) != name[i]) return false;
+        return true;
+    };
+    for (const auto& k : kNames)
+        if (same(k.name)) return k.vk;
+    if ((n == 2 || n == 3) && (s[0] | 0x20) == 'f' && s[1] >= '1' && s[1] <= '9') {
+        const int f = n == 2 ? s[1] - '0' : (s[2] >= '0' && s[2] <= '9' ? (s[1] - '0') * 10 + s[2] - '0' : 0);
+        return f >= 1 && f <= 24 ? 0x70 + f - 1 : 0;
+    }
+    if (n > 2 && n < 8 && s[0] == '0' && (s[1] | 0x20) == 'x') {
+        char buf[8];
+        std::memcpy(buf, s, n);
+        buf[n] = 0;
+        return int(std::strtol(buf, nullptr, 16) & 0xFF);
+    }
+    return 0;
+}
+
+/* DES_KICK_KEYS: bindings separated by '|', each an input or a modifier and
+ * an input ("mouse4|shift+v"). */
+KickKeys kick_keys(const char* e)
+{
+    KickKeys k{};
+    while (e && *e && k.n < 4) {
+        const char* end = std::strchr(e, '|');
+        if (!end) end = e + std::strlen(e);
+        const char* plus = static_cast<const char*>(std::memchr(e, '+', size_t(end - e)));
+        KickBind b{};
+        if (plus) {
+            b.mod = kick_vk(e, size_t(plus - e));
+            b.in = kick_vk(plus + 1, size_t(end - plus - 1));
+        } else {
+            b.in = kick_vk(e, size_t(end - e));
+        }
+        if (b.in && (!plus || b.mod)) k.b[k.n++] = b;
+        e = *end ? end + 1 : end;
+    }
+    return k;
+}
+
+bool kick_held(const KickKeys& k)
+{
+    if (ps3_env_int("PS3_NO_USER_INPUT", 0)) return ps3_env_int("DES_KICK_TEST", 0) != 0;
+    for (int i = 0; i < k.n; i++)
+        if (cellPad_host_key_down(k.b[i].in) && (!k.b[i].mod || cellPad_host_key_down(k.b[i].mod))) return true;
+    return false;
+}
+}  // namespace
+
+extern "C" void des_kick(ppu_context* ctx, uint32_t addr)
+{
+    static int mode = 0, log = 0;
+    static KickKeys keys{};
+    static bool kick = false;   /* the player's last R1 press was the Kick key's */
+    PS3_KNOB(mode, ps3_env_int("DES_KICK", 0));
+    PS3_KNOB(log, env_on("DES_KICKLOG"));
+    PS3_KNOB(keys, kick_keys(std::getenv("DES_KICK_KEYS")));
+    if (mode != 1) kick = false;
+    if (mode != 1 && !log) return;
+    const uint32_t ctrl = player_controller();
+    if (!ctrl) return;
+    if (addr == 0x00310AA8u) {   /* stb r17, 0x84(r31): slot 0, R1 down this frame */
+        if (mode != 1 || !(ctx->gpr[17] & 1) || (uint32_t)ctx->gpr[31] != vm_read32(ctrl + 0x174)) return;
+        kick = kick_held(keys);
+        if (log) fprintf(stderr, "[kicklog] attack down: %s\n", kick ? "Kick key held, a kick" : "no kick");
+        return;
+    }
+    /* 0x00300BAC (lwz r0, -0x7F84(r30)): function 212's answer is in r10, both paths */
+    if ((uint32_t)ctx->gpr[29] != ctrl) return;
+    if (log)
+        fprintf(stderr, "[kicklog] the script asks \"stick just pushed forward?\": the game says %s%s\n",
+                ctx->gpr[10] ? "yes" : "no", mode != 1 ? "" : kick ? ", the Kick key says yes" : ", the Kick key says no");
+    if (mode == 1) ctx->gpr[10] = kick ? 1 : 0;
 }
 
 /* The game's error report, 0x00A9DD58(file, line, message), from paths such as

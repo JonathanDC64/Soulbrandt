@@ -241,6 +241,13 @@
 # tie rule means, instead of the side its turn's rounding picks.
 0x0030F2BC=des_roll_tie   # lfs f27, 0xB0(r1): the turn's last load; f30, f31 and f26, f27 = forward, side
 
+# des_kick (port/des_options.cpp): DES_KICK=1, attacking never kicks and the
+# Kick key does. The script asks its function 212 ("the stick was just pushed
+# forward") beside each R1 press to pick the kick; the answer becomes "this R1
+# press was the Kick key's", for the player alone.
+0x00300BAC=des_kick   # lwz r0, -0x7F84(r30): function 212's answer in r10 (both paths); r29 = the controller
+0x00310AA8=des_kick   # stb r17, 0x84(r31): the pad manipulator's slot 0, r17 = R1 down this frame
+
 # des_game_error (port/des_options.cpp): the game's error report goes to the log.
 # On a PS3 it stops the game; here the game goes on with the part that failed
 # (docs/116: NPC talks that end at once when no sound stream starts).

@@ -799,6 +799,14 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
         bool_row(leftPane, rightPane, "Roll toward the stick", "DES_ROLLDIR",
             "Locked on, a roll goes where the stick points. Off, it goes only forward, back, left or right, as in "
             "the original.<br/><br/>(DES_ROLLDIR)");
+        choice_row(leftPane, rightPane, "Forward attack", "DES_KICK", {"0", "1"},
+            {"Forward + attack (original)", "Own key"},
+            "The forward attack is the kick, or with a weapon held in both hands that weapon's forward attack."
+            "<br/><br/>Forward + attack: push the left stick forward as you attack, as in the original.<br/><br/>"
+            "Own key: attacking never does it. "
+            "The Forward attack key in Change Buttons, Keyboard and mouse, does it instead; with no key set, "
+            "there's no forward attack. A gamepad has no such button yet.<br/><br/>Only your own moves change; "
+            "other players see them as usual.<br/><br/>(DES_KICK)");
         info_row(leftPane, rightPane, "Keyboard and mouse", "WASD, mouse, Space",
             "As in the Souls games on PC:<br/>"
             "<b>W A S D</b> move &nbsp; <b>Left Alt</b> (held) walk &nbsp; <b>Mouse</b> camera (Mouse look, "

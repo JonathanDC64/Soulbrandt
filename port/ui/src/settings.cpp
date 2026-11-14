@@ -142,6 +142,7 @@ constexpr Def kDefs[] = {
     {"PAD_DEADZONE_LEFT", "", Apply::Live},    // cellPad, live: tilt where the stick starts counting; "" = the default
     {"PAD_DEADZONE_RIGHT", "", Apply::Live},   // (and PAD_DEADZONE_ANTI: des_options.cpp's run_defaults)
     {"DES_ROLLDIR", "1", Apply::Live},         // des_roll_dir, read at each roll; 0 = locked-on rolls go 4 ways only
+    {"DES_KICK", "0", Apply::Live},            // des_kick, at each attack: 1 = attacking never kicks, the Kick key does
     {"keys_layout", "souls", Apply::UiOnly},   // the layout PAD_KEYS changes; a file without this line is older
     {"DES_MOUSE_LOOK", "0", Apply::Live},      // mouse look (des_mouse_look; port/ui/src/mouse.cpp), read each frame
     {"DES_MOUSE_SENS", "0.09", Apply::Live},   // mouse look's degrees per mouse count
@@ -237,8 +238,66 @@ void make_dirs(const std::string& file) {
     std::filesystem::create_directories(std::filesystem::path(report::widen(file)).parent_path(), ec);
 }
 
+// The keyboard and mouse bindings as cellPad gets them: the layout with the changes after it, less the Kick key's
+// ("kick=", the Keyboard page's Kick row: the port's own, des_kick in des_options.cpp). With DES_KICK=1 its inputs
+// press R1 too, added to R1's last bindings, and DES_KICK_KEYS names them, for des_kick to read at each attack. A
+// wheel notch is left out: it is never held, so it could never be told from the attack.
+std::string keys_for_pad(const std::string& keys) {
+    const auto lower = [](std::string s) {
+        for (char& c : s) c = char(std::tolower(static_cast<unsigned char>(c)));
+        return s;
+    };
+    const std::string mode = pinned("DES_KICK") ? pinned_value("DES_KICK") : get("DES_KICK");
+    std::string out, r1, kick;
+    bool have_r1 = false;
+    size_t at = 0;
+    while (at < keys.size()) {
+        size_t end = keys.find_first_of(", ;", at);
+        if (end == std::string::npos) end = keys.size();
+        const std::string pair = keys.substr(at, end - at);
+        at = end + 1;
+        if (pair.empty()) continue;
+        const size_t eq = pair.find('=');
+        const std::string target = lower(pair.substr(0, eq));
+        const std::string value = eq == std::string::npos ? "" : pair.substr(eq + 1);
+        if (target == "kick") {   // (named again, it replaces, as a target does in cellPad)
+            kick = value;
+            continue;
+        }
+        if (target == "r1") {
+            r1 = value;
+            have_r1 = true;
+        }
+        if (!out.empty()) out += ',';
+        out += pair;
+    }
+    // (cellPad keeps 4 bindings a target, PAD_BIND_MAX: the Kick keys fill what R1's own leave)
+    int room = 4;
+    for (size_t a = 0; a < r1.size();) {
+        size_t end = r1.find('|', a);
+        if (end == std::string::npos) end = r1.size();
+        const std::string item = lower(r1.substr(a, end - a));
+        a = end + 1;
+        if (!item.empty() && item != "none") room--;
+    }
+    std::string held;
+    at = 0;
+    while (mode == "1" && room > 0 && at < kick.size()) {
+        size_t end = kick.find('|', at);
+        if (end == std::string::npos) end = kick.size();
+        const std::string item = kick.substr(at, end - at), in = lower(item.substr(item.find('+') + 1));
+        at = end + 1;
+        if (item.empty() || in == "none" || in == "wheelup" || in == "wheeldown") continue;
+        held += (held.empty() ? "" : "|") + item;
+        room--;
+    }
+    ps3_setenv("DES_KICK_KEYS", held.c_str());
+    if (!held.empty() && have_r1) out += ",r1=" + (r1.empty() || lower(r1) == "none" ? held : r1 + "|" + held);
+    return out;
+}
+
 // The environment variables a setting drives (DES_SKIP_INTRO_MOVIE sets PS3_SAIL_SKIP_FIRST, which cellSail reads as each movie opens; PAD_KEYS gives cellPad the
-// layout with the changes after it).
+// layout with the changes after it, keys_for_pad).
 void apply_env(std::string_view key, const std::string& value) {
     const std::string k(key);
     // (an unset option stays unset; DES_FPS "" is the game's mode, PAD_MAP "" the game's buttons, PAD_KEYS "" the
@@ -250,7 +309,7 @@ void apply_env(std::string_view key, const std::string& value) {
         return;
     if (key == "DES_NET_PASSWORD") return;  // (only its hash is used, in PS3_HTTP_HEADER: apply_match_group)
     if (key == "PAD_KEYS") {
-        ps3_setenv("PAD_KEYS", keys_with_layout(value).c_str());
+        ps3_setenv("PAD_KEYS", keys_for_pad(keys_with_layout(value)).c_str());
         return;
     }
     ps3_setenv(k.c_str(), value.c_str());
@@ -694,7 +753,7 @@ void load_and_apply_env() {
     // The keyboard and mouse layout applies with or without settings.ini; a PAD_KEYS from the environment changes it
     // as the setting would.
     const std::string keys = pinned("PAD_KEYS") ? pinned_value("PAD_KEYS") : get("PAD_KEYS");
-    ps3_setenv("PAD_KEYS", keys_with_layout(keys).c_str());
+    ps3_setenv("PAD_KEYS", keys_for_pad(keys_with_layout(keys)).c_str());
     std::fprintf(stderr, "[ui] keyboard and mouse: the Souls layout%s%s\n", keys.empty() ? "" : ", changed by ",
                  keys.c_str());
     // Mods before the network: a gameplay mod keeps it off. Which mods are on is the mods folder's order file
@@ -738,6 +797,8 @@ void set(std::string_view key, const std::string& value) {
     if ((d->apply == Apply::Live || d->apply == Apply::Session) && !pinned(key))
         apply_env(key, value.empty() ? default_of(*d) : value);
     if (key == "DES_NET_PASSWORD" && !pinned(key)) apply_match_group();
+    if (key == "DES_KICK" && !pinned(key))   // (the Kick key presses R1 only with DES_KICK=1: keys_for_pad)
+        apply_env("PAD_KEYS", pinned("PAD_KEYS") ? pinned_value("PAD_KEYS") : get("PAD_KEYS"));
     save();
     write_in_use();
 }
