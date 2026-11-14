@@ -1,6 +1,6 @@
-// Written for Demon's Souls. Settings as a page of the F1 menu (settings_page.hpp). It replaces the settings window
-// adapted from Dusklight (CC0) by way of FFCCEOT-Recomp, keeping what its rows did: a row whose option was set in the
-// environment when the game started can't change and says so, and Delete my data asks first.
+// Written for Demon's Souls. Settings as a page of the F1 menu (settings_page.hpp). It replaces the settings window,
+// keeping what its rows did: a row whose option was set in the environment when the game started can't change and
+// says so, and Delete my data asks first.
 #include "settings_page.hpp"
 
 #include "button.hpp"

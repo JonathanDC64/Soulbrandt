@@ -1,7 +1,6 @@
 // Written for Demon's Souls. The F1 menu as one document: its entries (menu_pages.hpp) and, opened from them, a page
 // drawn inside it (menu_page.hpp: Settings), with the prompts for what the keys do now. The same document shows
-// Settings on its own from the start screen and setup (standalone). It replaces the menu bar adapted from Dusklight
-// (CC0) by way of FFCCEOT-Recomp.
+// Settings on its own from the start screen and setup (standalone). It replaces the menu bar and the settings window.
 //
 // Its elements, the same in every look (how they look is the look's style sheet, looks.hpp):
 //   body(.entries .page .standalone .hiding .closing .motion, and the page's: .preview .listing .typing .comparing)
