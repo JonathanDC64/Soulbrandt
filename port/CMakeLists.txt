@@ -960,7 +960,7 @@ endif()
 if(_des_hal_vk)
     set_property(SOURCE
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/src/settings.cpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/ui/src/settings_window.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ui/src/settings_catalog.cpp"
         TARGET_DIRECTORY des_ui APPEND PROPERTY COMPILE_DEFINITIONS DES_RSX_VULKAN=1)
 endif()
 message(STATUS "des_boot: Settings > Display > Renderer (the runtime's Vulkan route): ${_des_hal_vk}")
