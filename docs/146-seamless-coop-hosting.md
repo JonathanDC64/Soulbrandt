@@ -445,9 +445,17 @@ host's boss kill while the friend was away don't count in the friend's world.
   friend in body form has it erased whenever its effect list (`chr+0x304`: each entry's `+0x18` is its effect, `+0x20`
   the next) holds it, then a full recover. A friend in soul form keeps it, as the game's summoned souls do (their most
   HP is full at the arrival and half once the effect comes).
-- **A boss kill** (a flag of the kill's handlers, from the host) revives a friend in soul form as `InGameStart`
-  revives the host: soul form's effect erased, a full recover, the revival text (`SetTextEffect(3)`) and animation
-  (6100). One that is dead at the kill is in body form from its respawn.
+- **A boss kill** (a flag of the kill's handlers, from the host) revives a friend in soul form as `BlockClear2` and
+  `BlockClear2_1` revive a soul-form host: soul form's effect erased and a full recover, with no animation. The host's
+  handler queues "The Demon Was Destroyed" and then "You Revived" (`SetTextEffect` 1, then 3); a blue phantom's
+  queues only the first. So the friend's revival waits for its own game's "The Demon Was Destroyed" (a hook at the
+  start of `SetTextEffect`'s native, `mr r3,r4` on all four discs) and queues "You Revived" after it. The kill's flag
+  comes first. One that is dead at the kill is in body form from its respawn; if a load comes before the text, it
+  is revived at the arrival, without the text.
+- **"The Demon Was Destroyed" once.** On a friend an area's boss-death handler runs twice: for its own copy of the
+  boss, and as the host's message (1-1's `OnEvent_4096`). Each starts the boss clear, so the text came twice. A
+  friend shows it once per load: at the same hook a second one becomes type 0, which the text queue (`0x00722170`)
+  ignores.
 - An earlier version took soul form for the join (`ChangeGreyGhost`) and gave the body form back at home; a friend
   that closed its game while it waited could start again as a soul. Before that, a friend went home revived after a
   boss kill (`BlockClear2_3`'s steps at the end of `SetChrTypeDataGreyNext`).
@@ -485,8 +493,10 @@ the newer generation, and saves as usual.
 - Forms, scripted (US disc): a friend in body form joined as a blue phantom with full health, in the Nexus and in
   1-1. Killed in the boss's arena, it was a soul, and the boss's kill brought it back in body form at its respawn. A
   friend in soul form standing at a boss kill was revived on the spot (the revival's glow, then full health). One
-  that died with no boss killed came back with soul form's health. Each went home in the form it had then. Not yet
-  by hand, and not on the other discs.
+  that died with no boss killed came back with soul form's health. Each went home in the form it had then. By hand
+  (two copies on one PC): a body-form join, a death, the revival at Phalanx's kill and Leave home all as described;
+  that test found the texts' order and the spawn-in animation, both fixed since (scripted: "The Demon Was
+  Destroyed", then "You Revived", once each). Not run on the other discs.
 - What a friend's talk changes (a conversation heard, a choice made, an item given) stays in its copy of the host's
   world: it is neither kept in the friend's own world nor sent to the host. Only the Archstones' seal is shared.
 - The Archstones' seal from a friend: checked through its four flags (scripted), and by hand. Host and friend

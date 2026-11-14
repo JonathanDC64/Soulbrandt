@@ -162,12 +162,11 @@ DES_REGION_ADDR(0x003E6330, 0x003E4698)  /* hook des_sun_gate */
 DES_REGION_ADDR(0x003E6518, 0x003E4880)  /* hook des_sun_gate */
 DES_REGION_ADDR(0x00419DCC, 0x00418134)  /* hook des_coop_hook: after a load's world swap of the flags (a guest's own world kept) */
 DES_REGION_ADDR(0x00439358, 0x004376C0)  /* call des_seamless_game (by address) */
-DES_REGION_ADDR(0x0043E4E0, 0x0043C848)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x0043E4E0, 0x0043C848)  /* hook + call des_coop_hook, des_seamless_game: SetTextEffect (a friend's revival after its "The Demon Was Destroyed") */
 DES_REGION_ADDR(0x0043EDE0, 0x0043D148)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x004418B8, 0x0043FC20)  /* call */
 DES_REGION_ADDR(0x00441AB8, 0x0043FE20)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00443838, 0x00441BA0)  /* call */
-DES_REGION_ADDR(0x00443DA0, 0x00442108)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00446C68, 0x00444FD0)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00447258, 0x004455C0)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00447EA0, 0x00446208)  /* call des_seamless_game (by address) */

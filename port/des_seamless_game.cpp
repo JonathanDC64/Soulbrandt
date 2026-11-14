@@ -423,8 +423,14 @@ std::atomic<bool> sBossRevive{false};
 void helped_kill()
 {
     if (own_kept() && !body_form() && !sBossRevive.exchange(true))
-        std::fprintf(stderr, "[coop] a boss killed with this player in the session, in soul form: revived\n");
+        std::fprintf(stderr, "[coop] a boss killed with this player in the session, in soul form: to be revived\n");
 }
+
+// This game showed "The Demon Was Destroyed" in a session (des_coop_hook at SetTextEffect's native). A blue phantom's
+// boss clear (global_event.lua's BlockClear2) shows only that; a soul-form host's shows it and then the revival's.
+std::atomic<bool> sKillText{false};
+std::atomic<bool> sKillShown{false};   // a friend's "The Demon Was Destroyed" was shown since the last load
+constexpr uint32_t kTextKillDemon = 1, kTextRevival = 3;   // TEXT_TYPE_KillDemon, TEXT_TYPE_Revival (event_define.lua)
 
 // Whether the character has effect fx: its effect list (chr+0x304, +4: the first; each +0x18 its effect, +0x20 the
 // next), as the most HP's walk reads it (0x00378940).
@@ -446,14 +452,16 @@ void body_health(ppu_context* ctx)
     call_addr(ctx, DES_AT(0x00439358u), {0});                   // RequestFullRecover
 }
 
-// Each frame of a friend's session in the host's world:
+// Each frame of a friend's session in the host's world (arrived: the first frame after a load's arrival):
 // - in body form, soul form's effect is taken off whenever a load gave it (body form's full health);
 // - a death in body form makes it a soul (its HP at 0);
-// - a boss kill revives a friend in soul form: body form, full HP, and the game's revival text and animation
-//   (InGameStart's), at once if it stands, else from its respawn.
-void forms_tick(ppu_context* ctx)
+// - a boss kill revives a friend in soul form as BlockClear2 revives a soul-form host: body form, full health, and the
+//   revival's text queued after this game's "The Demon Was Destroyed" (no animation). One that is dead at the kill
+//   is in body form from its respawn; if a load comes before the text, it is revived there without the text.
+void forms_tick(ppu_context* ctx, bool arrived)
 {
-    static bool was_dead = false;
+    static bool was_dead = false, text_seen = false;
+    if (sKillText.exchange(false)) text_seen = true;
     const uint32_t pc = player_chr();
     if (!guest_ok(pc)) return;
     const bool dead = (int32_t)vm_read32(pc + kChrHp) <= 0;
@@ -462,18 +470,22 @@ void forms_tick(ppu_context* ctx)
         std::fprintf(stderr, "[coop] died in body form: a soul from now on\n");
     }
     was_dead = dead;
-    if (sBossRevive.exchange(false) && !body_form()) {
-        set_form(true);
+    if (sBossRevive.load() && body_form()) sBossRevive = false;
+    if (sBossRevive.load()) {
         if (dead) {
+            sBossRevive = false;
+            set_form(true);
             std::fprintf(stderr, "[coop] revived by the boss kill: body form from its respawn\n");
-            return;
+        } else if (text_seen || arrived) {
+            sBossRevive = false;
+            set_form(true);
+            body_health(ctx);
+            if (text_seen) call_addr(ctx, DES_AT(0x0043E4E0u), {0, kTextRevival});   // SetTextEffect(TEXT_TYPE_Revival)
+            std::fprintf(stderr, "[coop] revived by the boss kill: body form (%s)\n",
+                         text_seen ? "its text after \"The Demon Was Destroyed\"" : "at a load, no text");
         }
-        body_health(ctx);
-        call_addr(ctx, DES_AT(0x0043E4E0u), {0, 3});             // SetTextEffect(TEXT_TYPE_Revival)
-        call_addr(ctx, DES_AT(0x00443DA0u), {0, 10000, 6100});   // PlayAnimation(10000, 6100): the revival
-        std::fprintf(stderr, "[coop] revived by the boss kill: body form\n");
-        return;
     }
+    if (arrived) text_seen = false;
     if (!dead && body_form() && has_effect(pc, kSoulEffect)) {
         body_health(ctx);
         std::fprintf(stderr, "[coop] in body form: soul form's effect taken off, full HP\n");
@@ -571,6 +583,8 @@ void keep_own_world(uint32_t fb)
     }
     sOwn.stood = des_player_xyz(&sOwn.x, &sOwn.y, &sOwn.z) != 0;
     sBossRevive = false;
+    sKillText = false;
+    sKillShown = false;
     sOwn.sent = false;
     sOwn.taken.clear();
     sOwn.kept = true;
@@ -1156,9 +1170,12 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
         }
         return;
     }
+    bool just_arrived = false;
     if (!world) g.in_load = true;
     else if (g.in_load && here) {   // arrived after a load in the session: the host and the others are placed again
         g.in_load = false;
+        just_arrived = true;
+        sKillShown = false;
         requeue(ctx, sm);
         const uint32_t man = rd(DES_AT(kChrMan));
         if (g.respawn.exchange(false) && guest_ok(man) && guest_ok(rd(man + 0x1BC))) {   // and they make this one again
@@ -1168,7 +1185,7 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
             std::fprintf(stderr, "[coop] back after the respawn: the others make this player's character again\n");
         }
     }
-    if (world && !g.in_load) forms_tick(ctx);
+    if (world && !g.in_load) forms_tick(ctx, just_arrived);
     uint32_t lead;
     {
         std::lock_guard<std::mutex> l(sMsgLock);
@@ -1528,6 +1545,21 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
             static std::atomic<bool> said{false};
             if (!said.exchange(true)) std::fprintf(stderr, "[coop] joining in body form\n");
             ctx->gpr[0] = 1;
+        }
+        break;
+    }
+    case 0x0043E4E0u: { // SetTextEffect's native, after its mr r3,r4 (r3: the text's type): "The Demon Was Destroyed"
+        // On a friend an area's boss-death handler runs twice (its own copy of the boss, then the host's message: 1-1's
+        // OnEvent_4096), and each starts the boss clear, so the text came twice. Once per load: a second is dropped
+        // (type 0 queues nothing, 0x00722170).
+        static const bool known = vm_read32(DES_AT(0x0043E4E0u)) == 0x7C832378u;   // the instruction on all four discs
+        if (known && m == co::Mode::Join && (uint32_t)ctx->gpr[3] == kTextKillDemon && own_kept()) {
+            if (sKillShown.exchange(true)) {
+                ctx->gpr[3] = 0;
+                std::fprintf(stderr, "[coop] a second \"The Demon Was Destroyed\" for this kill: not shown\n");
+            } else {
+                sKillText = true;
+            }
         }
         break;
     }
