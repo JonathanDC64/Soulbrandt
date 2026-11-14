@@ -262,6 +262,7 @@
 # changes unless co-op started (DES_SEAMLESS).
 0x0017A4A8=des_coop_hook   # addi r9,r26,0x34 in the load step 0x0017A358: a guest's follow waits for the host, then loads its area
 0x0053B31C=des_coop_hook   # lwz r9,0x9C(r3) in the session's leave 0x0053B300: the host keeps its session
+0x00467628=des_coop_hook   # cmpwi r4,0, the start of 0x00467628 (r4: the name of a script event the game raises, the session's among them): the co-op log names them
 0x00A6B2F8=des_coop_hook   # lwz r11,8(r4) in the game's Lua reader: co-op's edits to the area scripts
 0x00CA15A8=des_coop_hook   # lwz r0,4(r4) in Lua's string reader (getS): co-op's edits to the area scripts
 0x005086F8=des_coop_hook   # cmpwi cr7,r4,0x427F, the event flags' set (r3 flags, r4 flag, r5 value): progress kept for every player

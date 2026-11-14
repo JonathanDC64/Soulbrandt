@@ -152,6 +152,13 @@ The host's router has to let friends in on one port (36100, TCP and UDP).
   - With carrier-grade NAT, ask the provider for a public address.
 - **Players on the same network** can use the **local code** that Co-op shows below the invite code.
 
+### Reporting a co-op problem
+
+Right after it happens, each player picks **Report an issue** in the menu, and says who was the host. Each report
+holds that player's co-op log: what happened in the session (joins, leaves, loads, the game's own session events),
+each line with its time, so the host's and a friend's reports line up. A report made after restarting the game still
+has the last session's.
+
 ## How it works
 
 ```
@@ -488,6 +495,12 @@ their first instruction):
   host's level-up and moved the whole time (before: no movement for those 20 s).
 
 The edited copies are cached by the original's size and hash, so a script read again costs nothing.
+
+**The co-op log** (`logs\coop.log`, in every report; docs/74): the session's lines of the log, each with its time
+(UTC). Co-op adds a line at each change of the session's state, with the members and the room's timer, and the name
+of each session event the game raises (`OnRoomTimeOut`, `OnIrregularLeaveSession`, `OnLeave_Limit`, ...: a hook at
+`0x00467628`, the function that calls a `global_event.lua` handler by name). Read the host's and the friends' side by
+side by their times.
 
 ## Settings for developers and tests
 
