@@ -672,7 +672,11 @@ How it works:
   - on the start screen (`body.prelaunch`), `prelaunch-prompts`, the prompts
     for its keys;
   - in the report question, `tick-label` and `tick-value`, the tick's line
-    and its state in words (No, Yes).
+    and its state in words (No, Yes);
+  - `list-more.up` and `.down` (`.on` while there is more that way), where a
+    list goes on past its box;
+  - a page of the F1 menu's own (see `pages` below) lists its elements in
+    its header (`trophies_page.hpp`).
 - **The column.** A look that keeps its contents in a centred column sets
   `--menu-column` on the body, in dp or px. The shell sets `--menu-side`, the
   room each side of it in the window, for the sheet to pad its bands with.
@@ -699,6 +703,10 @@ How it works:
   - `menuHeight`: Interface > Menu height sizes Settings' frame. The shell
     sets that height inline, which a sheet can't override, so a look that
     sizes the frame itself turns this off and the row is hidden.
+  - `pages`: the F1 menu's other screens open as pages in its frame, as
+    Settings does (Trophies so far: `trophies_page.cpp`). Without it they
+    open as their own windows, as Alpha UI keeps them. The start screen
+    opens them the same way, alone in the frame (`menu::screen_alone`).
 - **Alpha UI** is the documents' own sheets as they are (for the F1 menu and
   Settings, `menu.rcss`). Its sheet is empty.
 - **DeS UI** is `looks/des.rcss`. Its text is Old Standard TT (SIL OFL

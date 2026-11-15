@@ -1,6 +1,7 @@
 // Written for Demon's Souls. The F1 menu as one document: its entries (menu_pages.hpp) and, opened from them, a page
-// drawn inside it (menu_page.hpp: Settings), with the prompts for what the keys do now. The same document shows
-// Settings on its own from the start screen and setup (standalone). It replaces the menu bar and the settings window.
+// drawn inside it (menu_page.hpp: Settings; in a look with looks.hpp's pages, Trophies too), with the prompts for what
+// the keys do now. The same document shows one page on its own from the start screen and setup (standalone). It
+// replaces the menu bar and the settings window.
 //
 // Its elements, the same in every look (how they look is the look's style sheet, looks.hpp; a look hides what it
 // doesn't draw):
@@ -31,6 +32,7 @@
 #include "menu_page.hpp"
 #include "prompts.hpp"
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -49,9 +51,11 @@ class MenuShell final : public Document, public menu::PageHost {
 public:
     // The F1 menu over the game (DocumentScope::MenuBar), made once and shown by F1, the chord or Esc.
     MenuShell();
-    // Settings on its own (the start screen's, setup's): Back closes it.
-    struct Standalone {};
-    explicit MenuShell(Standalone);
+    // One entry's page on its own (the start screen's, setup's): Back closes it.
+    struct Standalone {
+        std::string entry = "Settings";  // its title (menu_pages.hpp)
+    };
+    explicit MenuShell(Standalone alone);
     ~MenuShell() override;
 
     void show() override;
@@ -62,9 +66,11 @@ public:
     bool permanent() const override { return !mModel.standalone(); }  // (the F1 menu is made once)
     void cover() override;
 
-    // What the entries do (menu_pages.cpp): another document over the menu, which shows again when it closes, or
-    // Settings as the menu's page.
+    // What the entries do (menu_pages.cpp): another document over the menu, which shows again when it closes, or a
+    // page in the menu's frame, made for the entry of that title.
+    using PageMaker = std::function<std::unique_ptr<menu::Page>(Rml::Element* host, menu::PageHost& shell)>;
     void open(std::unique_ptr<Document> document);
+    void open_page(const std::string& entry, const PageMaker& make);
     void open_settings();
 
     // Closes the menu as Back does from its entries: asks about a restart first when something waits for one.
@@ -72,8 +78,9 @@ public:
     // Closes it without asking (Report an issue: the picture is taken without the menu).
     void dismiss();
 
-    // The page shown, for the tests (ui_render_compare): Settings, or null.
+    // The page shown, for the tests (ui_render_compare): Settings, or null; any page, or null.
     SettingsPage* settings_page();
+    menu::Page* page() { return mPage.get(); }
 
     // menu::PageHost
     void badge(const std::string& text, const std::string& kind) override;
@@ -99,6 +106,7 @@ private:
     void update_column();
 
     menu::Model mModel;
+    std::string mAlone;  // standalone: the entry whose page it shows
     std::unique_ptr<menu::Page> mPage;
     menu::Holds mHolds;
     int mEntry = 0;

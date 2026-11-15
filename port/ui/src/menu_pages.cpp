@@ -5,11 +5,13 @@
 #include "app.hpp"
 #include "coop_window.hpp"
 #include "crash_report.hpp"
+#include "looks.hpp"
 #include "menu_shell.hpp"
 #include "mods_window.hpp"
 #include "report_ack.hpp"
 #include "settings.hpp"
 #include "settings_catalog.hpp"
+#include "trophies_page.hpp"
 #include "trophies_window.hpp"
 #include "ui.hpp"
 
@@ -58,6 +60,10 @@ void restart_now() {
     if (app().quit) app().quit();
 }
 
+std::unique_ptr<Page> make_trophies_page(Rml::Element* host, PageHost& shell) {
+    return std::make_unique<TrophiesPage>(host, shell);
+}
+
 }  // namespace
 
 const std::vector<Entry>& entries() {
@@ -65,7 +71,10 @@ const std::vector<Entry>& entries() {
         {"Settings", "Change how the game looks, sounds and plays.",
             [](MenuShell& menu) { menu.open_settings(); }},
         {"Trophies", "See the trophies you have earned, and the ones still to find.",
-            [](MenuShell& menu) { menu.open(std::make_unique<TrophiesWindow>()); }},
+            [](MenuShell& menu) {
+                if (looks::current().pages) menu.open_page("Trophies", make_trophies_page);
+                else menu.open(std::make_unique<TrophiesWindow>());
+            }},
         {"Mods", "Turn mods on or off, and choose the order they load in.",
             [](MenuShell& menu) { menu.open(std::make_unique<ModsWindow>()); }},
         {"Co-op", "Play through the game with up to three friends.",
@@ -93,6 +102,17 @@ const std::vector<Entry>& entries() {
         {"Quit", "Close the game and return to the desktop.", [](MenuShell&) { request_quit_confirm(); }},
     };
     return sEntries;
+}
+
+std::unique_ptr<Document> screen_alone(const std::string& entry) {
+    if (entry == "Settings") return std::make_unique<MenuShell>(MenuShell::Standalone{});
+    if (entry == "Trophies") {
+        if (looks::current().pages) return std::make_unique<MenuShell>(MenuShell::Standalone{entry});
+        return std::make_unique<TrophiesWindow>();
+    }
+    if (entry == "Mods") return std::make_unique<ModsWindow>();
+    if (entry == "Co-op") return make_coop_window();
+    return nullptr;
 }
 
 Question quit_question() {

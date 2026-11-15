@@ -78,7 +78,9 @@ std::string glyph_rml(prompts::Device device, prompts::Key key) {
 
 MenuShell::MenuShell() : MenuShell(false, DocumentScope::MenuBar) {}
 
-MenuShell::MenuShell(Standalone) : MenuShell(true, DocumentScope::None) {}
+MenuShell::MenuShell(Standalone alone) : MenuShell(true, DocumentScope::None) {
+    mAlone = std::move(alone.entry);
+}
 
 MenuShell::MenuShell(bool standalone, DocumentScope scope)
     : Document(kDocumentSource, false, scope), mModel(standalone) {
@@ -147,7 +149,14 @@ bool MenuShell::handle_nav_command(Rml::Event&, NavCommand) {
 void MenuShell::show() {
     if (mModel.level() == menu::Model::Level::Closed) {
         mModel.open();
-        if (mModel.standalone()) open_settings();
+        if (mModel.standalone()) {
+            const std::vector<menu::Entry>& entries = menu::entries();
+            int alone = -1;
+            for (size_t i = 0; i < entries.size(); i++)
+                if (entries[i].title == mAlone) alone = static_cast<int>(i);
+            if (alone >= 0) choose_entry(alone);
+            else open_settings();
+        }
     }
     mClosing = false;
     mReleases = input::release_count();
@@ -269,9 +278,11 @@ void MenuShell::draw() {
         mEnds[1]->SetInnerRML(menu::glyph_rml(device, prompts::Key::NextTab));
     }
     std::string rml;
+    // (a prompt without words shares the next one's: L1 R1 Scroll; it is .joined, for the look to set them close)
     for (const prompts::Prompt& p : list)
-        rml += "<menu-prompt data-key=\"" + std::to_string(static_cast<int>(p.key)) + "\">" +
-               menu::glyph_rml(device, p.key) + "<menu-says>" + escape(p.label) + "</menu-says></menu-prompt>";
+        rml += "<menu-prompt data-key=\"" + std::to_string(static_cast<int>(p.key)) + "\"" +
+               (p.label.empty() ? " class=\"joined\"" : "") + ">" + menu::glyph_rml(device, p.key) + "<menu-says>" +
+               escape(p.label) + "</menu-says></menu-prompt>";
     if (rml != mPromptsShown) {
         mPromptsShown = rml;
         mPrompts->SetInnerRML(rml);
@@ -468,14 +479,20 @@ void MenuShell::open(std::unique_ptr<Document> document) {
     Document::push(std::move(document));
 }
 
-void MenuShell::open_settings() {
+void MenuShell::open_page(const std::string& entry, const PageMaker& make) {
     close_page();
     for (size_t i = 0; i < menu::entries().size(); i++)
-        if (menu::entries()[i].title == "Settings") mEntry = static_cast<int>(i);
-    mPage = std::make_unique<SettingsPage>(mPageHost, *this);
+        if (menu::entries()[i].title == entry) mEntry = static_cast<int>(i);
+    mPage = make(mPageHost, *this);
     mModel.open_page();
     if (!mModel.standalone()) play_sound(kSoundWindowOpen);
     draw();
+}
+
+void MenuShell::open_settings() {
+    open_page("Settings", [](Rml::Element* host, menu::PageHost& shell) -> std::unique_ptr<menu::Page> {
+        return std::make_unique<SettingsPage>(host, shell);
+    });
 }
 
 SettingsPage* MenuShell::settings_page() {

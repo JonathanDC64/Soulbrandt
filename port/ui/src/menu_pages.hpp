@@ -8,10 +8,12 @@
 #include "question.hpp"
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
 namespace ui {
+class Document;
 class MenuShell;
 }
 
@@ -25,6 +27,11 @@ struct Entry {
 
 // The F1 menu's entries, in order.
 const std::vector<Entry>& entries();
+
+// An entry's screen on its own, as the start screen's buttons and DES_UI_OPEN open it: in a look whose F1 screens are
+// pages (looks.hpp's pages), the menu's frame with that page alone; else the entry's own window. Null for an entry
+// that is a question (Report an issue, Quit).
+std::unique_ptr<Document> screen_alone(const std::string& entry);
 
 // Asked by Quit, the window's close button and the start screen's Quit.
 Question quit_question();

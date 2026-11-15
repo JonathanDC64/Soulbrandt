@@ -11,8 +11,8 @@
 #include "mods_window.hpp"
 #include "prompts.hpp"
 #include "settings.hpp"
+#include "menu_pages.hpp"
 #include "menu_shell.hpp"
-#include "trophies_window.hpp"
 #include "ui.hpp"
 #include "updates.hpp"
 #include "update_window.hpp"
@@ -121,7 +121,7 @@ void Prelaunch::build_menu_buttons() {
     mMenuButtons.push_back(std::make_unique<Button>(menuList, "Trophies"));
     mMenuButtons.back()->on_pressed([this] {
         play_sound(kSoundWindowOpen);
-        push(std::make_unique<TrophiesWindow>());
+        push(menu::screen_alone("Trophies"));
     });
     apply_intro_animation(mMenuButtons.back()->root(), "delay-3");
 

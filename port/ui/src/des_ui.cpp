@@ -25,6 +25,7 @@
 #include "host.hpp"
 #include "input.hpp"
 #include "keys.hpp"
+#include "menu_pages.hpp"
 #include "menu_shell.hpp"
 #include "mods.hpp"
 #include "mouse.hpp"
@@ -45,7 +46,6 @@
 #include "setup_window.hpp"
 #include "players_window.hpp"
 #include "mods_window.hpp"
-#include "trophies_window.hpp"
 #include "trophy_toasts.hpp"
 #include "ui.hpp"
 #include "updates.hpp"
@@ -660,7 +660,7 @@ void push_documents() {
             open_menu_bar();
             if (auto* bar = menu_bar()) bar->open_settings();
         }
-        else if (!std::strcmp(open, "trophies")) ui::push_document(std::make_unique<ui::TrophiesWindow>());
+        else if (!std::strcmp(open, "trophies")) ui::push_document(ui::menu::screen_alone("Trophies"));
         else if (!std::strcmp(open, "mods")) ui::push_document(std::make_unique<ui::ModsWindow>());
         else if (!std::strcmp(open, "players")) ui::push_document(std::make_unique<ui::PlayersWindow>());
         else if (!std::strcmp(open, "coop")) ui::push_document(ui::make_coop_window());

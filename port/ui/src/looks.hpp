@@ -18,11 +18,12 @@ struct Look {
     bool helpPane;           // Settings shows the help beside the rows; else a line under the band, and Help opens it
     bool listBeside;         // a value's list opens beside the value, at its row; else below the row (settings_page.cpp)
     bool menuHeight;         // Settings' frame is as tall as Interface > Menu height says; else as the sheet says
+    bool pages;              // the F1 menu's other screens (Trophies...) are pages in its frame; else their own windows
 };
 
 inline constexpr Look kLooks[] = {
-    {"alpha", "Alpha UI", true, true, false, true},
-    {"des", "DeS UI", false, false, true, false},
+    {"alpha", "Alpha UI", true, true, false, true, false},
+    {"des", "DeS UI", false, false, true, false, true},
 };
 
 inline constexpr std::string_view kDefault = "alpha";
