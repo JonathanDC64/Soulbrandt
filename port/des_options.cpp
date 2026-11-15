@@ -15,11 +15,16 @@
  *   The hold is 3 s for logo 0 and 5 s for the others; each fade is 1 s, so the
  *   sequence takes about 33 s. When the fade-out of logo 4 finishes, the dialog
  *   requests the next menu state itself (0x3C, the title).
- *   1 does what RPCS3's "Skip Intro" patch for BLUS30443 does (li r0,3;
- *   stw r0,0x100(r28) over the state tests at 0x008EEF78): every update takes
- *   state 3's branch, which moves to the next logo without waiting for a fade,
- *   and after the last one requests the title itself. No logo is drawn, and the
- *   title comes up about five frames after the dialog opens.
+ *   1 leaves the dialog the way it leaves after the last logo's fade-out, from
+ *   its first update: the request for the title (0x00720F50(0x3C, 0)), which
+ *   the dialog itself makes at every update from then until the menu moves
+ *   on. Its own update runs only once, in state 0, where it starts the fade
+ *   from black; after that it never runs, so no logo is ever shown (#518).
+ *   Before, 1 did what RPCS3's "Skip Intro" patch does (li r0,3;
+ *   stw r0,0x100(r28) over the state tests at 0x008EEF78): every update took
+ *   state 3's branch, one logo after the other, and each update still showed
+ *   the logo it was on, so the logos flashed by, a frame each, before the
+ *   title.
  *   2 (the first version of the option) makes a logo that is about to start
  *   fading in (state 0) the last one, and treats the hold of state 2 as already
  *   over: the last logo's fade-in and fade-out still play, about 2 s.
@@ -180,6 +185,10 @@ extern "C" __declspec(dllimport) short __stdcall GetAsyncKeyState(int vkey);   /
 constexpr int VK_F8 = 0x77;
 #endif
 
+#ifndef PS3_GAME_SPLIT   /* DES_SPLIT: the game DLL's (ps3emu/game_split.h) */
+extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
+#endif
+
 namespace {
 
 constexpr uint32_t kLogoUpdate   = 0x008EF430u;
@@ -222,8 +231,35 @@ void logo_update_skip(ppu_context* ctx)
     const uint32_t dlg = (uint32_t)ctx->gpr[3];
     const int mode = skip_intro();
     if (dlg && mode == 1) {
-        vm_write32(dlg + anim_state_at(), 3);   /* to the next logo, or out after the last */
-    } else if (dlg && mode == 2) {
+        static bool said = false;
+        if (!said) {
+            said = true;
+            fprintf(stderr, "[des] DES_SKIP_INTRO: no logos, straight to the title\n");
+        }
+        const uint64_t lr = ctx->lr;
+        if (vm_read32(dlg + anim_state_at()) == 0) {
+            /* Its first update only starts the fade from black (state 0 -> 1).
+             * Without it the dialog is drawn once at full strength before the
+             * title takes over, and the first logo shows for a frame. */
+            func_008EF430(ctx);
+            while (g_trampoline_fn) {
+                void (*tf)(void*) = g_trampoline_fn;
+                g_trampoline_fn = nullptr;
+                tf(ctx);
+            }
+        }
+        ctx->gpr[3] = 0x3C;   /* the title */
+        ctx->gpr[4] = 0;
+        func_00720F50(ctx);
+        while (g_trampoline_fn) {
+            void (*tf)(void*) = g_trampoline_fn;
+            g_trampoline_fn = nullptr;
+            tf(ctx);
+        }
+        ctx->lr = lr;
+        return;   /* (the dialog's own update would show the logo it is on) */
+    }
+    if (dlg && mode == 2) {
         const uint32_t state = vm_read32(dlg + anim_state_at());
         if (state == 0 && vm_read32(dlg + cur_log_type_at()) < last_log_type()) {
             static bool said = false;
