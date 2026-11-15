@@ -124,8 +124,9 @@ endif()
 # compile lines, only its link line.
 if(WIN32)
   target_link_libraries(des_ui PRIVATE des_rmlui_backend RmlUi::RmlUi d3d11 d3d12 d3dcompiler dxgi dxguid xinput shell32
-    ole32 user32 dbghelp uuid wevtapi winhttp)   # (dbghelp: the crash reports' minidump and stack; wevtapi: driver
-                                                 # resets; winhttp: the first Python with no curl, setup_http.cpp)
+    ole32 user32 dbghelp uuid wevtapi winhttp setupapi)   # (dbghelp: the crash reports' minidump and stack; wevtapi:
+                                                          # driver resets; winhttp: the first Python with no curl,
+                                                          # setup_http.cpp; setupapi: the GPU's PCI Express link)
 else()
   # SDL2 and vkd3d as port/CMakeLists.txt found them (the window, the pads, D3D12 and D3DCompile).
   if(NOT TARGET PkgConfig::DES_VKD3D_LIBS)
