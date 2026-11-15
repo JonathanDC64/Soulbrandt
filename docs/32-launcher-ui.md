@@ -19,11 +19,12 @@ licences in `port/ui/NOTICE.md`.
   (Settings > Interface can switch this to Select + Start). It is a bar at
   the top with **Settings**, **Trophies**, **Mods**, **Co-op**, **Report an
   issue** and **Quit** (`menu_pages.cpp`'s entries). Settings opens in a
-  frame below it: the entries along its top with Settings marked, the page,
-  and a row of prompts for what the keys do now, drawn for the device last
-  used (the keyboard, or the pad's own buttons). Back (Esc, Circle) closes
-  one thing at a time: a list or the preview, then the page, then the menu.
-  F1 or Start close it at once.
+  frame, and the bar goes: the tabs along the frame's top with a close
+  button at their right, the page, and a row of prompts for what the keys
+  do now, drawn for the device last used (the keyboard, or the pad's own
+  buttons). Back (Esc, Circle) closes one thing at a time: a list or the
+  preview, then the page (back to the bar), then the menu. F1 or Start
+  close it at once.
 - **Restart question**: closing the menu while a restart-only setting has
   changed since the game started asks first, "Restart the game now?", naming
   each one by its row with its value ("Start maximized (Off)"). **Restart
@@ -58,6 +59,8 @@ licences in `port/ui/NOTICE.md`.
     then the value now once it is let go.
   - **Hide** (Shift, R3, held) takes the menu off the screen.
   - Q and E, Page Up and Page Down, LB and RB or L1 and R1 change the tab.
+    Alpha UI shows them first in the prompts (Tabs); DeS UI at the tabs'
+    ends.
 
   Rows that only apply at the next start say so, with a mark before the
   label while their change waits. A row whose option was set in the
@@ -671,6 +674,13 @@ How it works:
   same ones; the documents' own sheet (`menu.rcss`) hides those Alpha UI
   doesn't draw, and a look's sheet shows them:
   - `menu-title`, the page's title;
+  - `menu-slot-entry`, the F1 entries along the frame's top (a click
+    switches page; `.on` the one open). Alpha UI's frame has only its close
+    button, `menu-slot-close`, at the right of Settings' tabs;
+  - `menu-tab-key`, the buttons that change Settings' tabs, at the tabs'
+    ends. Alpha UI has them in the prompts instead, as `menu-prompt.tabs`
+    (a prompt's kind is its class), which a look that shows `menu-tab-key`
+    hides;
   - `menu-end`, the buttons that move along the F1 entries (L1 and R1, Q
     and E), at their ends (`.end` at the first or the last);
   - `menu-strip`, a line about the entry or the row with the focus;
