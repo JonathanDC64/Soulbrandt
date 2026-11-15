@@ -119,7 +119,7 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
   and their games save there, each in the form it has then (above).
 - **The Nexus is shared.** Friends stand in the host's Nexus and see its people as the host does, not as phantoms,
   and can talk to them. The people there and in the areas (Ostrava in 1-1, for one) are the host's, as in the game's
-  own co-op.
+  own co-op. The tutorial's wandering ghosts (white phantoms on the way and in the demon's hall) are ghosts for everyone.
 - **The Nexus's cutscenes** (the one after a boss, the Monumental's story) play for each player who hasn't seen them
   in their own world yet, even when the host has. So does an area's opening, such as the dragon's flight at 1-1's
   start.
@@ -426,7 +426,16 @@ alive.
     - 0x0025D418.
 
     Types 5 and 9 read alike at all four. Each read is hooked (0x002DDAA8, 0x002DDADC, 0x002DDB48, 0x002DDB90). On a
-    friend, a character of type 4 that isn't a player reads 9, so the friend sees these people as the host does.
+    friend, such a person of type 4 reads 9, so the friend sees these people as the host does.
+  - **Only these people.** Some characters are set up with mode 4 in every game: the tutorial's developer ghosts
+    (`m08_00`'s 400, and `m08_01`'s 401 to 404, white phantoms that walk through the demon's hall and fight each
+    other) are type 4 on the host too. Until 11-15 every non-player of type 4 read 9 on a friend, so the friend saw the ghosts as living
+    people. The person's setup is now hooked twice:
+    - after the byte's read (0x00299B74), where `r24` still holds the mode the setup came with;
+    - after the new character's allocation (0x00299BB0).
+
+    A character whose mode the rule changed (byte set, mode not 4 already) is noted, and only the noted ones read 9.
+    Each new person at the same address replaces the note, and the notes go when the session ends.
   - **Their faces.** A character's face is made once, when its draw objects are built (US 0x002E0E60). Only a
     character that isn't of a phantom's type (3, 4, 10, 11) gets one (at `+0x664`), made from its own face data. So
     on a friend these people had no face: a hole where it goes, with the hair and ears around it (Thomas and the
@@ -729,6 +738,15 @@ the newer generation, and saves as usual.
   Crestfallen (with his sheen) have their faces, both still have type 4, and the friend still gets Thomas's talk
   prompt. Ostrava's check in 1-1 wasn't run again: the hook changes which draw objects are built, not the stored
   type.
+- The tutorial's ghosts (11-15, two copies, scripted, the pinned tutorial save, with a scratch log of the setups and
+  of the draw update's read):
+  - On the friend's game, each ghost's setup came with mode 4 already: `m08_00`'s 400, and `m08_01`'s 401 to 404
+    after the host's load. None was noted.
+  - With the friend in `m08_00`'s ghost region (2050), the ghost wandered, and the draw update read its type as 4.
+    With the rule before this change (a scratch switch, same build), the same run read 9.
+  - In the Nexus (the after-tutorial saves), the friend's game noted the 14 people the host's game sets up, so
+    Thomas and the others still read 9.
+  - The shots didn't catch the ghost itself on screen: it fades in for about 10 s at a time.
 - Closing the game window as a friend: the session is lost and nothing from it is saved (the game only saves at
   home).
 - The tutorial's demon (the Vanguard, `m08_01`) offered its soul only outside a session (`ATTR_NOSESSION`; the

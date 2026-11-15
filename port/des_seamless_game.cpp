@@ -48,7 +48,7 @@
 // The Nexus in a session (shared, as the host has it):
 //   - The NPCs a visitor's game sets up as the host's (type 4) stay so, as in the game's own co-op, but are drawn as
 //     the host sees them, not as phantoms, and a guest can talk to them: the talk scripts' phantom check sees it as
-//     alive.
+//     alive. Phantoms that every game sets up so (the tutorial's developer ghosts) stay phantoms.
 //   - Each Nexus cutscene, and the Monumental's tale, plays for each player once: a guest's flag in play for one is
 //     the host's and its own, and the guest keeps the flag in its own world once it has played. So does an area's
 //     opening (1-1's dragon): the one its start plays.
@@ -216,14 +216,37 @@ bool is_player(uint32_t chr)
 // Type 4 draws them as white phantoms: the draw update (0x002DD920) reads the type four times, for the phantom
 // material on or off (0x000D7C58), its kind (0x000D81D0), the draw path (types 3, 4, 10 and 11 take another) and
 // 0x0025D418. The host has these NPCs at types 5 and 9, and so does the friend's own world; the two read alike at all
-// four. At each read a friend gets 9 for an NPC of type 4, so it draws them as the host does. r3 the type read, the
+// four. At each read a friend gets 9 for such an NPC, so it draws them as the host does. r3 the type read, the
 // character in chr_reg (r31 in the draw update).
 // The face is made once, when the character's draw objects are built (0x002E0E60): a character that isn't of a
 // phantom's type (3, 4, 10, 11) gets one at +0x664, from its own face data. So those NPCs had no face on a friend
 // (11-15 playtest: Thomas and the Crestfallen, a hole where the face goes). That read gets 9 the same way.
+// Only the NPCs whose mode that rule changed get 9 (sHostNpcs). Characters that every game sets up at 4, such as the
+// tutorial's wandering ghosts (m08_00's 400, m08_01's 401-404), are white phantoms on the host too, and stay so on a
+// friend.
+std::mutex sHostNpcLock;
+std::set<uint32_t> sHostNpcs;              // the NPCs a friend's game set up at 4 instead of the mode they came with
+thread_local bool tHostNpcNext = false;    // the NPC being set up on this thread is one of them
 void host_npc_type(ppu_context* ctx, co::Mode m, int chr_reg = 31)
 {
-    if (m == co::Mode::Join && (uint32_t)ctx->gpr[3] == 4 && !is_player((uint32_t)ctx->gpr[chr_reg])) ctx->gpr[3] = 9;
+    if (m != co::Mode::Join || (uint32_t)ctx->gpr[3] != 4) return;
+    const uint32_t chr = (uint32_t)ctx->gpr[chr_reg];
+    {
+        std::lock_guard<std::mutex> l(sHostNpcLock);
+        if (!sHostNpcs.count(chr)) return;
+    }
+    if (!is_player(chr)) ctx->gpr[3] = 9;
+}
+// The NPC setup's new character (0 when out of memory): one of sHostNpcs if its mode was changed, else not (a
+// character made earlier at the same address doesn't count).
+void host_npc_made(uint32_t chr)
+{
+    const bool host = tHostNpcNext;
+    tHostNpcNext = false;
+    if (!chr) return;
+    std::lock_guard<std::mutex> l(sHostNpcLock);
+    if (host) sHostNpcs.insert(chr);
+    else sHostNpcs.erase(chr);
 }
 constexpr uint32_t kChrHp = 0x3C4;   // the character's HP (GetHp's read)
 // The scripts' effect ids are behaviours (BehaviorParam, whose +0x14 names the effect: 0x00595B80). 101 is soul form's
@@ -1611,6 +1634,10 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
         g.in_load = false;
         g.follow = 0;   // a follow or a respawn whose load never came: not the next session's
         g.respawn = false;
+        {
+            std::lock_guard<std::mutex> l(sHostNpcLock);
+            sHostNpcs.clear();
+        }
         g.calm = world ? g.calm + 1 : 0;
         std::vector<uint8_t> data;
         uint32_t lead;
@@ -2058,6 +2085,13 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
         break;
     case 0x002E1000u:   // a character's draw objects' build (0x002E0E60), after bl 0x0026F378 compared with 4 (r27
         host_npc_type(ctx, m, 27);   // the character): its face, or none for a phantom's type
+        break;
+    case 0x00299B74u:   // an NPC's setup (0x002999C8) in a visitor's game, after lbz r0,0xE8(r9) of its param row: the
+        // mode becomes 4 when that byte is set; r24 the mode it came with
+        tHostNpcNext = m == co::Mode::Join && (ctx->gpr[0] & 0xFFu) != 0 && (uint32_t)ctx->gpr[24] != 4;
+        break;
+    case 0x00299BB0u:   // the same setup, after mr r23,r3 (the new character, 0 when out of memory)
+        host_npc_made((uint32_t)ctx->gpr[3]);
         break;
     case 0x002DDAA8u:   // a character's draw update (0x002DD920), after bl 0x0026F378: r3 its type, r31 the character
         // The type picks the draw object's (+0x6A4) phantom material, on or off (0x000D7C58: on for types 1-4, 8, 10,
