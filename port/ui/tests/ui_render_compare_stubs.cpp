@@ -1,8 +1,12 @@
 // What the UI's library takes from the game's side (des_boot: boot_main.cpp, ppu_hle.cpp, ppu_loader.cpp, the lift,
-// des_hud.cpp, des_menu_mouse.cpp, des_prework.cpp), for ui_render_compare, which runs no game: inert, as the runtime's
-// host_stubs.c is for what its modules take from the PPU loader.
+// des_hud.cpp, des_menu_mouse.cpp, des_prework.cpp, des_seamless.cpp), for ui_render_compare, which runs no game:
+// inert, as the runtime's host_stubs.c is for what its modules take from the PPU loader.
+#include "../../des_seamless.h"
+
 #include <cstdint>
 #include <cstdio>
+#include <string>
+#include <vector>
 
 extern "C" {
 
@@ -69,3 +73,22 @@ int des_prework_status(float* fraction, char* text, int cap) {
 void des_prework_skip(void) {}
 
 }  // extern "C"
+
+// Seamless co-op (des_seamless.cpp, des_seamless_save.cpp): off, never started.
+namespace des::seamless {
+Mode mode() { return Mode::Off; }
+bool start(const std::string&, std::string* why) {
+    if (why) *why = "not in ui_render_compare";
+    return false;
+}
+void held(const std::string&) {}
+Status status() { return {}; }
+void party_size_changed() {}
+std::string set_public_address(const std::string&, std::string*) { return "not in ui_render_compare"; }
+std::string new_code() { return "not in ui_render_compare"; }
+std::string check_code(const std::string&, std::string*) { return "not in ui_render_compare"; }
+void leave() {}
+bool left() { return true; }
+std::vector<Character> characters_to_bring() { return {}; }
+std::string bring_character(int) { return "not in ui_render_compare"; }
+}  // namespace des::seamless

@@ -347,6 +347,14 @@ jobs:
           cmake --build build/host --target setup_folder_check
           build/host/ui/setup_folder_check.exe
 
+      # Settings' rows on their own (port/ui/tests/settings_catalog_check.cpp): every row's setting exists, its choices
+      # and numbers are sound, its help is written as the settings window expects. Linux runs it below.
+      - name: Settings' rows
+        shell: bash
+        run: |
+          cmake --build build/host --target settings_catalog_check
+          build/host/ui/settings_catalog_check.exe
+
       # mods.cpp on its own (port/ui/tests/mods_check.cpp): mod folders found and sorted into look and gameplay mods,
       # in made-up folders (docs/143). Linux runs it below.
       - name: Mods
@@ -861,6 +869,12 @@ jobs:
         run: |
           cmake --build build/host --target setup_folder_check
           build/host/ui/setup_folder_check
+
+      # Settings' rows, as on Windows above: Linux's choices (Display mode has no exclusive fullscreen).
+      - name: Settings' rows
+        run: |
+          cmake --build build/host --target settings_catalog_check
+          build/host/ui/settings_catalog_check
 
       # Mods, as on Windows above: names as they are (a case-sensitive file system).
       - name: Mods

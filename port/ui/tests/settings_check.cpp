@@ -13,6 +13,7 @@
 // temporary folder that it removes. Prints one line a case and "settings_check: N passed, M failed"; exit 1 on a
 // failure. Built on demand: cmake --build <build> --target settings_check.
 #include "settings.hpp"
+#include "../../des_seamless.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -82,6 +83,13 @@ namespace ui::privacy {
 int version() { return 1; }
 void set_needed(bool) {}
 }  // namespace ui::privacy
+
+// What settings.cpp needs of seamless co-op (des_seamless.cpp): off.
+namespace des::seamless {
+Mode mode() { return Mode::Off; }
+bool start(const std::string&, std::string*) { return false; }
+void held(const std::string&) {}
+}  // namespace des::seamless
 
 namespace {
 

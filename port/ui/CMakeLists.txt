@@ -164,6 +164,28 @@ if(WIN32)
 endif()
 add_dependencies(settings_check des_version)
 
+# Settings' rows on their own (tests/settings_catalog_check.cpp, which makes up settings_hooks.hpp): every row's setting
+# in settings.cpp, sound choices and numbers, help written as the settings window expects, each disc's Language row.
+# With the same definitions as des_ui's settings files (DES_RSX_VULKAN among them: port/CMakeLists.txt). The same on
+# every platform; CI runs it on both (host.yml). Built on demand:
+#   cmake --build <build> --target settings_catalog_check, then settings_catalog_check
+add_executable(settings_catalog_check EXCLUDE_FROM_ALL tests/settings_catalog_check.cpp src/settings_catalog.cpp
+  src/settings_values.cpp src/settings.cpp src/mods.cpp)
+target_include_directories(settings_catalog_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${DES_VERSION_DIR})
+target_compile_definitions(settings_catalog_check PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
+if(DES_DEV)
+  target_compile_definitions(settings_catalog_check PRIVATE DES_DEV=1)
+else()
+  target_compile_definitions(settings_catalog_check PRIVATE DES_DEV=0)
+endif()
+if(MSVC)
+  target_compile_options(settings_catalog_check PRIVATE /EHsc /W3 /wd4100)
+endif()
+if(WIN32)
+  target_link_libraries(settings_catalog_check PRIVATE dxgi)   # (settings.cpp's renderer_gpu)
+endif()
+add_dependencies(settings_catalog_check des_version)
+
 # setup_folder.cpp on its own (tests/setup_folder_check.cpp): where setup builds, the usual folder or the one chosen on
 # setup's screens (docs/88 section 3), in made-up folders under the system's temporary folder. The same on every
 # platform; CI runs it on both (host.yml). Built on demand:
