@@ -1018,6 +1018,40 @@ window.modal button.modal-btn:not(:disabled):focus-visible {
     color: var(--des-tan-light);
 }
 
+/* A question with named answers (Report a player, Public address, Your co-op characters): the answers as rows, as the
+   game's lists, and the last, Cancel, as the small stone button under them. */
+window.modal modal-actions.vertical {
+    flex-flow: column;
+    align-items: stretch;
+    gap: 6dp;
+    padding-top: 12dp;
+}
+
+window.modal modal-actions.vertical button.modal-btn {
+    flex: 0 0 38dp;
+    height: 38dp;
+    padding: 0 14dp;
+    font-size: 21dp;
+    line-height: 36dp;
+    letter-spacing: 0.3dp;
+    text-align: left;
+    text-transform: none;
+}
+
+window.modal modal-actions.vertical button.modal-btn:last-child {
+    flex: 0 0 34dp;
+    align-self: center;
+    width: 200dp;
+    height: 34dp;
+    margin-top: 18dp;
+    padding: 0;
+    font-size: 17dp;
+    line-height: 32dp;
+    letter-spacing: 0.5dp;
+    text-align: center;
+    text-transform: uppercase;
+}
+
 window.modal button.modal-btn:disabled {
     border-top-color: #33312d;
     decorator: image(/res/img/grain.png repeat left top), linear-gradient(#262625, #1e1e1d);

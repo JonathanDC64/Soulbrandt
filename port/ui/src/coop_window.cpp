@@ -167,7 +167,7 @@ void use_public_address(const std::string& text) {
 
 void open_public_address() {
     const std::string now = settings::get("DES_SEAMLESS_ADDRESS");
-    std::vector<ModalAction> actions{ModalAction{.label = "Cancel", .onPressed = close_action}};
+    std::vector<ModalAction> actions;
     if (!now.empty())
         actions.push_back({.label = "Use the router's",
                            .onPressed = [](Modal& m) {
@@ -208,6 +208,7 @@ void open_public_address() {
                            use_public_address(text);
                            m.pop();
                        }});
+    actions.push_back({.label = "Cancel", .onPressed = close_action});  // (last, as in every question's list)
     push_document(std::make_unique<Modal>(Modal::Props{
         .title = "Public address",
         .bodyRml = "When your router can't open the port by itself, forward port " +
