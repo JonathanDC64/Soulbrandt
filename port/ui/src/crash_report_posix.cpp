@@ -99,16 +99,18 @@ std::string stem_of(const char* kind) {
     return g_dir + stem;
 }
 
-// The end of the log, into `path`.
+// The end of the log, into `path`, and the co-op log's (this run's, if it has one) as <report>.coop.log.
 void write_log_tail(const std::string& path) {
     report::flush_log();
-    if (const auto log = report::log_path(); !log.empty()) {
-        const std::string tail = report::read_head_tail(log, 40, 192 << 10);
-        if (FILE* f = std::fopen(path.c_str(), "w")) {
-            std::fwrite(tail.data(), 1, tail.size(), f);
+    const auto write = [](const std::string& to, const std::string& text) {
+        if (FILE* f = std::fopen(to.c_str(), "w")) {
+            std::fwrite(text.data(), 1, text.size(), f);
             std::fclose(f);
         }
-    }
+    };
+    if (const auto log = report::log_path(); !log.empty()) write(path, report::read_head_tail(log, 40, 192 << 10));
+    if (const auto coop = report::coop_log_path(); !coop.empty() && path.size() > 4)
+        write(path.substr(0, path.size() - 4) + ".coop.log", report::read_head_tail(coop, 200, 2 << 20));
 }
 
 // The report, once: what happened, then a backtrace, then the end of the log beside it.

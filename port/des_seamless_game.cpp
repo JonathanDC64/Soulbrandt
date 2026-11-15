@@ -44,8 +44,9 @@
 //   - The Archstones' seal (the Monumental's tale heard): its handlers run in the hearer's game alone, so a guest that
 //     opens it tells the host (FLAG), whose world takes it and passes it on as its own progress.
 // The Nexus in a session (shared, as the host has it):
-//   - The NPCs a visitor's game would set up as phantoms (drawn as such) stay as the host has them, and a guest can
-//     talk to them: the talk scripts' phantom check sees it as alive.
+//   - The NPCs a visitor's game sets up as the host's (type 4) stay so, as in the game's own co-op, but are drawn as
+//     the host sees them, not as phantoms, and a guest can talk to them: the talk scripts' phantom check sees it as
+//     alive.
 //   - Each Nexus cutscene, and the Monumental's tale, plays for each player once: a guest's flag in play for one is
 //     the host's and its own, and the guest keeps the flag in its own world once it has played. So does an area's
 //     opening (1-1's dragon): the one its start plays.
@@ -85,6 +86,7 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
 int des_seamless_flag_kind(uint32_t world, uint32_t flag);       // _scripts.cpp: 1 progress, 3 a boss kill's, 2 a soul, key or item pickup, 4 a cutscene seen, 5 the Archstones' seal
 extern "C" void ps3_indirect_call(ppu_context* ctx);             // ppu_loader.cpp: a call to the guest address in CTR
 extern "C" int des_player_xyz(float* x, float* y, float* z);     // des_options.cpp: 0 with no player
+extern "C" int des_cutscene_playing(void);                       // des_options.cpp: 1 while a cutscene plays
 extern "C" int np_psnr_connected(void);                         // ps3recomp's np_psnr.c: connected to the room server
 
 namespace co = des::seamless;
@@ -161,6 +163,9 @@ constexpr char kMsgFlags[4] = {'F', 'L', 'G', 'S'};
 constexpr char kMsgBack[4] = {'B', 'A', 'C', 'K'};   // u32 player id: a guest back in the world after its respawn
 // u32 player id, u32 1 or 0: whether that player shows its phantom glow, u32 its colour (0x01RRGGBB; 0 the game's)
 constexpr char kMsgGlow[4] = {'G', 'L', 'O', 'W'};
+// 14 x u32: the host's world tendency in use, two floats for each of worlds 1-7 (before each READY), as the game's own
+// message to a phantom (P2P 0x17) gives them
+constexpr char kMsgQwc[4] = {'Q', 'W', 'C', ' '};
 constexpr uint32_t kRoomMax = 0x200;
 
 bool guest_ok(uint32_t a) { return a >= 0x00010000u && a < 0xF0000000u; }
@@ -189,6 +194,32 @@ uint32_t flag_base() { return rd(rd(rd(DES_AT(kGameSlot)) - 0x8000u)); }
 uint32_t load_record() { return rd(rd(rd(rd(DES_AT(kSessionSlot)) - 0x8000u)) + 0x08u); }
 constexpr uint32_t kLoadType = 0x8C;
 uint32_t player_chr() { return rd(rd(DES_AT(kChrMan)) + 0x1BC); }
+// Whether chr is a player's character: this game's own, or one of the others (the character manager's vector at
+// +0x19C: begin +0x1A0, end +0x1A4).
+bool is_player(uint32_t chr)
+{
+    const uint32_t man = rd(DES_AT(kChrMan));
+    if (chr == rd(man + 0x1BC)) return true;
+    const uint32_t pb = rd(man + 0x1A0), pe = rd(man + 0x1A4);
+    if (!guest_ok(pb) || pe < pb || pe - pb > 0x40) return false;
+    for (uint32_t q = pb; q < pe; q += 4)
+        if (rd(q) == chr) return true;
+    return false;
+}
+
+// A visitor's game sets up each NPC whose param row has byte 0xE8 set (an NPC's setup, 0x002999C8, and its
+// controller's, 0x002C2588 and 0x002C3018) in a mode of its own, with type 4. A friend keeps that mode, as the game's
+// own co-op does. (Set up as a body's game sets them up instead, they were the friend's own: in 1-1, Ostrava died in
+// the friend's copy of the world, and his death reached the host's.)
+// Type 4 draws them as white phantoms: the draw update (0x002DD920) reads the type four times, for the phantom
+// material on or off (0x000D7C58), its kind (0x000D81D0), the draw path (types 3, 4, 10 and 11 take another) and
+// 0x0025D418. The host has these NPCs at types 5 and 9, and so does the friend's own world; the two read alike at all
+// four. At each read a friend gets 9 for an NPC of type 4, so it draws them as the host does. r3 the type read, r31
+// the character.
+void host_npc_type(ppu_context* ctx, co::Mode m)
+{
+    if (m == co::Mode::Join && (uint32_t)ctx->gpr[3] == 4 && !is_player((uint32_t)ctx->gpr[31])) ctx->gpr[3] = 9;
+}
 constexpr uint32_t kChrHp = 0x3C4;   // the character's HP (GetHp's read)
 // The scripts' effect ids are behaviours (BehaviorParam, whose +0x14 names the effect: 0x00595B80). 101 is soul form's
 // effect (SpEffect 8: the most HP x0.5), which the game's revivals erase (global_event.lua's BlockClear2_3).
@@ -295,6 +326,12 @@ struct HostFlags {
 HostFlags sHostFlagSet;              // the host's flags (a guest)
 struct Glow { uint32_t id; bool on; uint32_t colour; };
 std::vector<Glow> sGlow;             // each other player's own glow and its colour (GLOW), by player id
+constexpr uint32_t kQwcInUse = 0x10, kQwcWords = 14;   // the QWC object's tendency in use: worlds 1-7, two floats each
+constexpr uint32_t kQwcOwn = 0x48;                      // and the player's own (the save keeps them), the same layout
+struct Qwc { bool have = false; uint32_t w[kQwcWords] = {}; };
+Qwc sHostQwc;                        // the host's tendency in use (QWC, a guest)
+Qwc sOwnQwc;                         // this guest's own in use, kept while the host's is in place
+uint32_t sOwnSaved[kQwcWords];       // and its own values (+0x48) at that time
 
 float getf(const uint8_t* p)
 {
@@ -363,6 +400,16 @@ void on_message(uint32_t from, const uint8_t* d, uint32_t n)
             if (!on) std::fprintf(stderr, "[coop] player %u: its glow off\n", id);
             if (colour) say_colour();
         }
+    } else if (!std::memcmp(d, kMsgQwc, 4) && n >= 4 + 4 * kQwcWords) {
+        Qwc q;
+        q.have = true;
+        for (uint32_t i = 0; i < kQwcWords; i++) {
+            q.w[i] = get32(d + 4 + 4 * i);
+            float f;
+            std::memcpy(&f, &q.w[i], 4);
+            if (!std::isfinite(f)) return;   // not a tendency
+        }
+        sHostQwc = q;
     } else if (!std::memcmp(d, kMsgFlags, 4) && n > 12) {
         HostFlags& f = sHostFlagSet;
         const uint32_t area = get32(d + 4), off = get32(d + 8), len = n - 12;
@@ -551,9 +598,16 @@ void stain_tick(ppu_context* ctx, bool session)
 // colour gets its own copy of that material with its colours in it, and for the length of that upload, only for its
 // own draws, its copy takes kind 2's place in the table (the hooks at 0x00080E88 and 0x0006C860). A draw is a
 // player's when the drawn object's handle (+0x8) is its character's draw object's (*(chr + 0x6A4) + 0x4).
+//
+// A cutscene draws its own copies of the players (the tutorial's opening shows the player walking in, for one). The
+// cutscene sets each copy up once, when a cut first shows it (0x006087B8): its draw object at +0x70, the character it
+// copies at +0xBC, and the phantom material from that character's type, as the character's own draw update does. So a
+// copy is drawn as its player is: with the player's colour (its handle is in sCopy), and without the glow when its
+// player turned it off (the hook at 0x00609338).
 std::atomic<bool> sOwnGlow{true};
-std::atomic<uint32_t> sOwnChr{0};
-constexpr int kTints = 4;                    // the players on one screen, this one included
+constexpr int kCopies = 8;                   // the cutscene's copies of players, at most
+std::atomic<uint64_t> sCopy[kCopies];        // a copy's handle << 32 | the character it copies; 0 = none
+constexpr int kTints = 8;                    // the players on one screen, this one included, and their cutscene copies
 constexpr uint32_t kTintSize = 0x400;        // a material copy: all of the material, and its colours at +0x2A8/+0x2B8
 std::atomic<uint64_t> sTint[kTints];         // handle << 32 | its material copy; 0 = none
 std::atomic<uint32_t> sWhiteMat{0};          // kind 2's own material, as the upload last read it
@@ -601,7 +655,6 @@ void glow_tick(ppu_context* ctx, bool session)
     const uint32_t colour = glow_colour(std::getenv("DES_SEAMLESS_GLOW_COLOR"));
     const uint32_t pc = player_chr();
     sOwnGlow.store(on);
-    sOwnChr.store(pc);
     static bool was = false;   // in a session last frame: the others' choices are forgotten when it ends
     if (!session) {
         for (auto& t : sTint) t.store(0);
@@ -614,24 +667,40 @@ void glow_tick(ppu_context* ctx, bool session)
         return;
     }
     was = true;
-    // The players on this screen with a colour of their own, each with its copy of the material in that colour.
+    // The players on this screen with a colour of their own, and their copies in the cutscene playing, each with its
+    // copy of the material in that colour.
     {
-        struct Want { uint32_t handle, colour; };
-        std::vector<Want> want;
-        auto handle_of = [](uint32_t chr) { return rd(rd(chr + 0x6A4) + 0x4); };
-        if (colour && guest_ok(pc) && handle_of(pc)) want.push_back({handle_of(pc), colour});
+        struct Player { uint32_t chr, colour; };
+        std::vector<Player> players;
+        if (colour && guest_ok(pc)) players.push_back({pc, colour});
         const uint32_t man = rd(DES_AT(kChrMan));
         const uint32_t pb = rd(man + 0x1A0), pe = rd(man + 0x1A4);
         if (guest_ok(pb) && pe > pb && pe - pb <= 0x40) {
             std::lock_guard<std::mutex> l(sMsgLock);
-            for (uint32_t q = pb; q < pe && want.size() < (size_t)kTints; q += 4) {
+            for (uint32_t q = pb; q < pe; q += 4) {
                 const uint32_t c = rd(q);
                 if (!guest_ok(c) || c == pc) continue;
                 const uint32_t id = vm_read32(c + 0x498);
                 for (const Glow& gl : sGlow)
-                    if (gl.id == id && gl.colour && handle_of(c)) want.push_back({handle_of(c), gl.colour});
+                    if (gl.id == id && gl.colour) players.push_back({c, gl.colour});
             }
         }
+        struct Want { uint32_t handle, colour; };
+        std::vector<Want> want;
+        for (const Player& p : players)
+            if (const uint32_t h = rd(rd(p.chr + 0x6A4) + 0x4)) want.push_back({h, p.colour});
+        const bool cut = des_cutscene_playing() != 0;   // a cutscene's copies last as long as it does
+        for (auto& cp : sCopy) {
+            const uint64_t e = cp.load();
+            if (!e) continue;
+            if (!cut) {
+                cp.store(0);
+                continue;
+            }
+            for (const Player& p : players)
+                if (p.chr == (uint32_t)e) want.push_back({(uint32_t)(e >> 32), p.colour});
+        }
+        if (want.size() > (size_t)kTints) want.resize(kTints);
         const uint32_t mat = sWhiteMat.load();
         if (!want.empty() && !sTintBuf && guest_ok(mat)) sTintBuf = guest_alloc(ctx, kTints * kTintSize);
         static uint32_t painted[kTints][2];   // each copy's material and colour, as last painted
@@ -728,12 +797,37 @@ void tint_begin(ppu_context* ctx)
 // Whether the character chr (a blue phantom) is drawn with its glow: its player's own choice.
 bool glow_shown(uint32_t chr)
 {
-    if (chr == sOwnChr.load()) return sOwnGlow.load();
+    if (chr == player_chr()) return sOwnGlow.load();   // this game's own: the character in use now (also in a load's first frame)
     const uint32_t id = vm_read32(chr + 0x498);
     std::lock_guard<std::mutex> l(sMsgLock);
     for (const Glow& gl : sGlow)
         if (gl.id == id) return gl.on;
     return true;
+}
+
+// A cutscene's copy of a character set up (0x006087B8, after its bl 0x0026F378 at 0x00609338): r3 the
+// character's type (for the copy's phantom material, on or off), r31 the copy (+0x70 its draw object, +0xBC the
+// character). The copy is kept in sCopy for its player's colour (glow_tick), and a blue phantom whose player turned its
+// glow off is copied without it, as its character is drawn (the hook at 0x002DDAA8).
+void copy_seen(ppu_context* ctx)
+{
+    const uint32_t cp = (uint32_t)ctx->gpr[31];
+    const uint32_t chr = rd(cp + 0xBC), handle = rd(rd(cp + 0x70) + 0x4);
+    if (!guest_ok(chr)) return;
+    if ((uint32_t)ctx->gpr[3] == 1 && !glow_shown(chr)) ctx->gpr[3] = 0;
+    if (!handle) return;
+    const uint64_t e = (uint64_t)handle << 32 | chr;
+    for (auto& c : sCopy)   // a copy set up again
+        if ((uint32_t)(c.load() >> 32) == handle) {
+            c.store(e);
+            return;
+        }
+    for (auto& c : sCopy) {
+        uint64_t none = 0;
+        if (c.compare_exchange_strong(none, e)) return;
+    }
+    static int next = 0;   // all taken: one goes, each in turn
+    sCopy[next++ % kCopies].store(e);
 }
 
 // Each frame of a friend's session in the host's world (arrived: the first frame after a load's arrival):
@@ -1037,6 +1131,81 @@ void leave_tick(ppu_context* ctx, uint32_t st, bool world)
     }
 }
 
+// World tendency (docs/69): the QWC object, *(game data + 0x24), keeps the tendency in use for worlds 1-7 at +0x10, two
+// floats each (IsSuccessQWC's 0x009214D0 reads +0x08 + 8 * world), and the player's own at +0x48 (the ones the save
+// keeps). A phantom's game takes the host's in-use values from the host's (P2P 0x17, received at 0x005256F0), so the area
+// scripts' IsSuccessQWC see the host's world. That message never comes in seamless co-op, so the host sends its own (QWC)
+// and each friend puts them in place: at its load step, after the Nexus's blend (0x004117E4), and when they change. The
+// friend's own values are never touched, and its own in-use values come back when the session ends.
+uint32_t qwc_object()
+{
+    return rd(rd(DES_AT(kPgdRoot)) + 0x24);
+}
+
+void log_qwc(const char* whose, const char* why, const Qwc& t)
+{
+    std::string s;
+    for (uint32_t i = 0; i < kQwcWords; i += 2) {
+        float f;
+        std::memcpy(&f, &t.w[i], 4);
+        char x[24];
+        std::snprintf(x, sizeof x, " %u:%.2f", i / 2 + 1, f);
+        s += x;
+    }
+    std::fprintf(stderr, "[coop] world tendency in use: %s (%s; white/black by world%s)\n", whose, why, s.c_str());
+}
+
+// The host's tendency in use to its guests (before each READY).
+void send_qwc()
+{
+    const uint32_t q = qwc_object();
+    if (!guest_ok(q)) return;
+    std::vector<uint8_t> b;
+    for (uint32_t i = 0; i < kQwcWords; i++) put32(b, vm_read32(q + kQwcInUse + 4 * i));
+    send(kMsgQwc, b);
+}
+
+// The host's tendency in use (QWC) in place on this guest's game, its own kept the first time; why for the log.
+void take_host_qwc(const char* why)
+{
+    const uint32_t q = qwc_object();
+    if (!guest_ok(q)) return;
+    std::lock_guard<std::mutex> l(sMsgLock);
+    if (!sHostQwc.have) return;
+    if (!sOwnQwc.have) {
+        sOwnQwc.have = true;
+        for (uint32_t i = 0; i < kQwcWords; i++) {
+            sOwnQwc.w[i] = vm_read32(q + kQwcInUse + 4 * i);
+            sOwnSaved[i] = vm_read32(q + kQwcOwn + 4 * i);
+        }
+    }
+    bool changed = false;
+    for (uint32_t i = 0; i < kQwcWords; i++)
+        if (vm_read32(q + kQwcInUse + 4 * i) != sHostQwc.w[i]) {
+            vm_write32(q + kQwcInUse + 4 * i, sHostQwc.w[i]);
+            changed = true;
+        }
+    if (changed) log_qwc("the host's", why, sHostQwc);
+}
+
+// Out of the session: this guest's own tendency in use again. A value that was its own (saved) one at the join follows
+// that own value, so a change to it during the session (a Nexus's blend, say) is in play at once; any other is put back
+// as it was at the join.
+void own_qwc_back()
+{
+    std::lock_guard<std::mutex> l(sMsgLock);
+    sHostQwc.have = false;
+    if (!sOwnQwc.have) return;
+    sOwnQwc.have = false;
+    const uint32_t q = qwc_object();
+    if (!guest_ok(q)) return;
+    for (uint32_t i = 0; i < kQwcWords; i++) {
+        if (sOwnQwc.w[i] == sOwnSaved[i]) sOwnQwc.w[i] = vm_read32(q + kQwcOwn + 4 * i);
+        vm_write32(q + kQwcInUse + 4 * i, sOwnQwc.w[i]);
+    }
+    log_qwc("this player's own again", "out of the session", sOwnQwc);
+}
+
 // The host's latest flags (FLGS) into the copy each summoned reload puts in place, if a full set came since.
 void take_host_flags(uint32_t fb)
 {
@@ -1301,6 +1470,7 @@ void send_ready(ppu_context* ctx, uint32_t sm, uint32_t trip, const Place& arriv
     const std::vector<uint8_t> rec = dead_record(ctx);
     b.insert(b.end(), rec.begin(), rec.end());
     send_flags(sm);
+    send_qwc();
     send(kMsgReady, b);
 }
 
@@ -1597,6 +1767,7 @@ void guest_load_step(ppu_context* ctx)
     }
     const Place at = trip || !joined ? r.now : r.arrived;
     take_host_flags(flag_base());   // the host's flags where it is now (sent just before that READY), for this load
+    take_host_qwc(why);             // and its tendency in use, before this load's area scripts read it
     char want[16];
     std::snprintf(want, sizeof want, "m%02u_%02u_%02u_%02u", r.area >> 24, (r.area >> 16) & 0xFFu, (r.area >> 8) & 0xFFu,
                   r.area & 0xFFu);
@@ -1665,6 +1836,25 @@ bool left()
 
 }  // namespace des::seamless
 
+// A line for each change of the session's state, for the co-op log (report.cpp's coop.log). With it, what tells the
+// game's leaves apart: the members as the room library has them (+0x11C to +0x120, 0x30 bytes each) and as the game
+// counts them (its member list's count), and the room's timer (+0x2C4, seconds: 55 when a room opens, -1 once a
+// member is in, 10 after one left; the room is left when it runs out).
+static void state_line(uint32_t sm, uint32_t st)
+{
+    static uint32_t last = ~0u;
+    if (st == last) return;
+    if (last != ~0u) {
+        static const char* const kNames[] = {"none", "opening a room", "opening a room", "host", "joining", "joining",
+                                             "client", "leaving"};
+        const uint32_t a = vm_read32(sm + 0x11C), b = vm_read32(sm + 0x120);
+        std::fprintf(stderr, "[coop] session state %u -> %u (%s): %d in the room, %u in the game; room timer %.1f s\n",
+                     last, st, st < 8 ? kNames[st] : "?", b >= a ? (int)((b - a) / 0x30) : -1,
+                     vm_read32(sm + kSmMembers + 0x10), rdf(sm + 0x2C4));
+    }
+    last = st;
+}
+
 // From des_menu_tick, every frame, on the game's main thread.
 extern "C" void des_seamless_tick(ppu_context* ctx)
 {
@@ -1698,6 +1888,7 @@ extern "C" void des_seamless_tick(ppu_context* ctx)
     if (!sGame.record_buf) sGame.record_buf = guest_alloc(ctx, 0x100);
     if (!sGame.scratch) return;
     const uint32_t st = vm_read32(sm + kSmState);
+    state_line(sm, st);
     const bool world = in_world(sm, gm);
     {   // the Stone of Ephemeral Eyes' row for this frame: a session, and a friend's soul form
         const bool session = (m == co::Mode::Host && st == kStateHost) ||
@@ -1709,6 +1900,10 @@ extern "C" void des_seamless_tick(ppu_context* ctx)
     const bool session = st == kStateHost || st == kStateClient;
     if (world && session) dead_copies_tick();
     if (!session) sDied = false;
+    if (m == co::Mode::Join) {   // the host's tendency in use while in its world (a change: a new QWC); own again after
+        if (!session) own_qwc_back();
+        else if (world && !sGame.in_load) take_host_qwc("the host's changed");
+    }
     if (m == co::Mode::Host) host_tick(ctx, sm, gm, st, world);
     else guest_tick(ctx, sm, st, world);
     // BACKs: once this game is in the world after its own load (the others' dead characters survive a load, and a
@@ -1825,13 +2020,26 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
     case 0x000E9650u:   // the ghost model draw 0x000E8C48, after bl 0x0006C908: its own colours before its constants
         tint_pre(ctx);
         break;
+    case 0x002DDADCu:   // the draw update's other reads of the type (bl 0x0026F378, r31 the character): the
+    case 0x002DDB48u:   // material's kind (0x000D81D0), the draw path's (types 3, 4, 10 and 11 take another),
+    case 0x002DDB90u:   // and 0x0025D418's
+        host_npc_type(ctx, m);
+        break;
     case 0x002DDAA8u:   // a character's draw update (0x002DD920), after bl 0x0026F378: r3 its type, r31 the character
         // The type picks the draw object's (+0x6A4) phantom material, on or off (0x000D7C58: on for types 1-4, 8, 10,
         // 11). A blue phantom whose player turned its glow off is drawn as an alive player (glow_tick).
+        host_npc_type(ctx, m);
         if ((uint32_t)ctx->gpr[3] == 1 && !glow_shown((uint32_t)ctx->gpr[31])) ctx->gpr[3] = 0;
+        break;
+    case 0x00609338u:   // a cutscene's copy of a character set up (0x006087B8), after bl 0x0026F378: r3 its type, r31 the copy
+        copy_seen(ctx);
         break;
     case 0x0017A4A8u:   // the summoned reload's load step, after addi r9,r26,0x34
         if (m == co::Mode::Join) guest_load_step(ctx);
+        break;
+    case 0x004117E4u:   // the Nexus script's RecvGlobalQwc (0x004117C0), after bl 0x009204A0: the online blend set the
+        // tendency in use from this player's own; a friend in the session plays in the host's
+        if (m == co::Mode::Join) take_host_qwc("after the Nexus's blend");
         break;
     case 0x00272A88u:   // an enemy's souls for this game's player (0x00272938), after bl 0x0052A610: r3 1 for a guest
         // Each game gives its own player an enemy's souls when it dies (its NpcParam souls, through 0x002D6C40), halved
@@ -1848,6 +2056,27 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
             ctx->gpr[9] = 0;
         }
         break;
+    case 0x00467628u: { // the start of 0x00467628 (cmpwi r4,0): r4 names a script event the game raises by name
+        // global_event.lua's handlers for the session's ends and joins (OnRoomTimeOut, OnRoomDisappeared,
+        // OnIrregularLeaveSession, OnLeave_Limit, the kicks, the failed joins) come this way. The co-op log names
+        // them, so that a report says how a session ended; the others (OnUpDate, OnTalk, ...) aren't logged.
+        const uint32_t p = (uint32_t)ctx->gpr[4];
+        if (!guest_ok(p) || vm_read8(p) != 'O' || vm_read8(p + 1) != 'n') break;
+        char name[48];
+        size_t n = 0;
+        while (n + 1 < sizeof name && (name[n] = (char)vm_read8(p + (uint32_t)n)) != 0) n++;
+        name[n] = 0;
+        static const char* const kSession[] = {"Session", "Kick", "Room", "Leave", "Lan", "SignOut", "ServerError",
+                                               "Summon", "Join", "ReturnTitle"};
+        for (const char* k : kSession)
+            if (std::strstr(name, k)) {
+                const uint32_t sm = session_manager();
+                std::fprintf(stderr, "[coop] the game's event %s (session state %u)\n", name,
+                             guest_ok(sm) ? vm_read32(sm + kSmState) : 0u);
+                break;
+            }
+        break;
+    }
     case 0x00A6B2F8u:   // the game's Lua reader, after lwz r11,8(r4): ud = {buf, size, pos}; pos 0 is the first read
     case 0x00CA15A8u: { // Lua's string reader (getS), after lwz r0,4(r4): ud = {s, size}; size 0 after the first read
         const uint32_t ud = (uint32_t)ctx->gpr[4];
@@ -1910,13 +2139,6 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
         }
         break;
     }
-    case 0x00299B74u:   // an NPC's setup (0x002999C8), after lbz r0,0xE8(r9) of its param row
-    case 0x002C2830u:   // the same test where its controller is set up (0x002C2588, 0x002C3018), after lbz r0,0xE8(r11)
-    case 0x002C32C0u:
-        // A visitor's game (a phantom) sets up the NPCs whose row has that byte in mode 4: drawn as phantoms, and no
-        // talk. In co-op a friend shares the host's world, so the NPCs stay as the host has them (0 skips the 4).
-        if (m == co::Mode::Join) ctx->gpr[0] = 0;
-        break;
     case 0x004C9638u:   // the talk scripts' check of the player's type (bl 0x0026F378 in 0x004C9600 and 0x004C9C18)
     case 0x004C9C5Cu:
         // The check marks the player as a phantom (the talk scripts' function 19) unless the type is 0 (alive) or 8
