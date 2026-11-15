@@ -115,7 +115,8 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
 - **Going back:** when the host leaves, its friends go back to their own worlds, where they stood when they joined,
   and their games save there, each in the form it has then (above).
 - **The Nexus is shared.** Friends stand in the host's Nexus and see its people as the host does, not as phantoms,
-  and can talk to them.
+  and can talk to them. The people there and in the areas (Ostrava in 1-1, for one) are the host's, as in the game's
+  own co-op.
 - **The Nexus's cutscenes** (the one after a boss, the Monumental's story) play for each player who hasn't seen them
   in their own world yet, even when the host has. So does an area's opening, such as the dragon's flight at 1-1's
   start.
@@ -402,9 +403,23 @@ character (the friend unseen on the host's screen, the host stuck in its death a
   the host's, so that read (0x0025CC34) gives the friend's own world's instead. A friend sees the items it hasn't
   taken, whether the host has or not. One it takes is kept in its own world (the item list's flag set, from
   0x0025C5EC), as a boss's soul is: its own world doesn't offer it again.
-- **The Nexus's people.** A visitor's game (a phantom's) sets up each person whose character row has byte `0xE8` set
-  in a mode of its own (4): drawn as a phantom. The three places that choose it (a person's setup, US 0x002999C8, and
-  its controller's two, 0x002C2588 and 0x002C3018) are hooked after they read that byte, and on a friend they read 0.
+- **The people (the Nexus's and the areas').** A visitor's game (a phantom's) sets up each person whose character row
+  has byte `0xE8` set in a mode of its own (4), chosen in three places (a person's setup, US 0x002999C8, and its
+  controller's two, 0x002C2588 and 0x002C3018). Such a person has type 4, so the visitor sees a white phantom. On the
+  host, and in the friend's own world, the same people are types 5 and 9.
+  - A friend keeps that mode, as the game's own co-op does.
+  - The character's draw update (US 0x002DD920) reads the type four times:
+    - the phantom material on or off (0x000D7C58, the hook at 0x002DDAA8 above);
+    - the material's kind (0x000D81D0);
+    - the draw path (types 3, 4, 10 and 11 take another);
+    - 0x0025D418.
+
+    Types 5 and 9 read alike at all four. Each read is hooked (0x002DDAA8, 0x002DDADC, 0x002DDB48, 0x002DDB90). On a
+    friend, a character of type 4 that isn't a player reads 9, so the friend sees these people as the host does.
+  - Until 11-14 the three places were hooked to give a body's mode instead, which made these people the friend's own.
+    In 1-1, Ostrava then died in the friend's copy of the world within 20 s of the group reaching him, and his death
+    (a network event, `OnCharacterDead(300, 624)`) reached the host's world, so he was gone in both. With the mode
+    kept, he lives in both.
 - **Talking to them.** The talk scripts ask whether the player is a phantom (their function 19), and give a phantom no
   talk prompt. The answer comes from the player's type, read through 0x0026F378 in two places (US 0x004C9600 and
   0x004C9C18): any type but 0 (alive) or 8 (soul form) is a phantom. Both calls are hooked, and on a friend they
@@ -674,6 +689,15 @@ the newer generation, and saves as usual.
   - Stockpile Thomas: the friend took 96 Half Moon Grass from his storage, and after a Leave, at home, it still
     carried them and his list still showed 6.
   - Boldwin: his Forge and Repair screens listed the friend's own equipment. No forge was done.
+
+  The Maiden's level up, the storage and the smith were checked before the people were kept as the host's (11-14),
+  and not run again since.
+- The people kept as the host's (11-14, scripted, each player on an after-tutorial save):
+  - In 1-1, Ostrava lived in both worlds at each check, up to 80 s after the group reached him. Before, he died in
+    both within 20 s.
+  - In the Nexus, the friend got Stockpile Thomas's and the Crestfallen's talk prompts and first lines.
+  - The friend saw both as the host did: Thomas plain, and the Crestfallen with the sheen the host's game gives him
+    too.
 - Closing the game window as a friend: the session is lost and nothing from it is saved (the game only saves at
   home).
 - The tutorial's demon (the Vanguard, `m08_01`) offered its soul only outside a session (`ATTR_NOSESSION`; the
