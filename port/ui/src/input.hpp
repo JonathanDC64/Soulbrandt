@@ -53,6 +53,11 @@ int take_captured_wheel() noexcept;
 void note_device(int device) noexcept;
 prompts::Device menu_device();
 
+// This PC is a Steam Deck: Automatic then shows the Deck's buttons for an Xbox-style pad, which is how the Deck's own
+// controls reach the game. Its firmware names the maker (as cellPad's PAD_KEYBOARD_WITH_PAD default reads it on
+// Linux), and Steam sets SteamDeck=1 for the games it starts there, the Windows program under Proton too.
+bool on_steam_deck() noexcept;
+
 // The gamepads this build reads, for the settings: a short value and its help text.
 struct PadSupport {
     const char* value;

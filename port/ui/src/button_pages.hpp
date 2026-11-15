@@ -55,7 +55,9 @@ std::vector<Page> read_sprites(const std::vector<uint8_t>& tpf, const std::strin
 // Level 0 of a page decoded: RGBA, straight alpha. Empty for a format it does not know.
 std::vector<uint8_t> decode(const Page& page);
 
-enum class Kind { PlayStation, Xbox, Nintendo, Keyboard };
+// SteamDeck: the Deck's own controls. Its face buttons are Xbox's letters in Xbox's places, without the colours; its
+// shoulders and stick buttons are L1 to R3, and View and Menu stand for Select and Start.
+enum class Kind { PlayStation, Xbox, Nintendo, Keyboard, SteamDeck };
 
 // A keyboard or mouse input as cellPad codes it (controls_window.hpp, KeyInput) and its key cap's name.
 struct Key {

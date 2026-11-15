@@ -295,10 +295,10 @@ std::vector<TabDesc> make_tabs() {
                 "screen. Centred keeps the HUD in a 16:9 area in the middle. Stretched spreads it across."),
             choice("Button icons", "DES_GLYPHS",
                 {{"auto", "Automatic"}, {"playstation", "PlayStation"}, {"xbox", "Xbox"}, {"nintendo", "Nintendo"},
-                    {"keyboard", "Keyboard and mouse"}},
+                    {"steamdeck", "Steam Deck"}, {"keyboard", "Keyboard and mouse"}},
                 "The buttons in the game's prompts. Automatic shows the controller or keyboard you used last and "
-                "changes when you switch. Keyboard and mouse shows the keys you set in Controls. PlayStation is the "
-                "game's own."),
+                "changes when you switch. A Steam Deck's own controls show the Deck's buttons. Keyboard and mouse "
+                "shows the keys you set in Controls. PlayStation is the game's own."),
             toggle("Health, magic, stamina", "DES_HUD_BARS", "The bars at the top left."),
             toggle("Area name", "DES_HUD_AREA", "The name of the area at the top right."),
             toggle("Equipment", "DES_HUD_EQUIP", "Your weapons, item and spell at the bottom left."),

@@ -281,7 +281,7 @@ bool untouched(const Spec& s) {
 }
 
 std::string describe(const Spec& s) {
-    static const char* const kNames[] = {"PlayStation", "Xbox", "Nintendo", "keyboard"};
+    static const char* const kNames[] = {"PlayStation", "Xbox", "Nintendo", "keyboard", "Steam Deck"};
     std::string out = kNames[int(s.kind)];
     out += " x" + std::to_string(s.scale);
     if (s.kind != Kind::Keyboard) {
@@ -321,6 +321,9 @@ constexpr Rgba kGloss = rgb(110, 110, 112), kLetter = rgb(178, 176, 178), kShado
 constexpr Rgba kYellow = rgb(236, 226, 112), kDim = rgb(96, 94, 96), kLine = rgb(6, 6, 6);
 constexpr Rgba kXboxA = rgb(96, 178, 84), kXboxB = rgb(210, 72, 66), kXboxX = rgb(78, 132, 210);
 constexpr Rgba kXboxY = rgb(226, 196, 72);
+constexpr Rgba kDeckRing = rgb(72, 70, 72);   // the raised edge around a Steam Deck stick's top
+// A Steam Deck's face letters: no colour, so lighter than the game's grey to read as well as the coloured ones.
+constexpr Rgba kDeckLetter = rgb(218, 216, 218);
 // PlayStation's shapes, for the menus' prompts only (draw_single): the page keeps the game's own pictures.
 constexpr Rgba kPsCross = rgb(127, 178, 229), kPsCircle = rgb(232, 106, 106), kPsTriangle = rgb(79, 201, 164);
 constexpr Rgba kPsSquare = rgb(217, 149, 201);
@@ -572,18 +575,34 @@ void ps_face(Ctx& c, const Box& b, int p) {
     }
 }
 
-void shoulder(Ctx& c, const Box& b, const char* label, bool trigger) {
+// A bumper or a trigger with its name on it. A Steam Deck's (deck) have its own shapes: a slim bumper with round ends,
+// and a narrower trigger with a round top.
+void shoulder(Ctx& c, const Box& b, const char* label, bool trigger, bool deck = false) {
+    if (deck) {
+        const float w = (trigger ? 0.78f : 0.94f) * b.w(), h = (trigger ? 0.92f : 0.64f) * b.h();
+        const Box k = centred(b.cx(), b.cy(), w, h);
+        cap(c, k, trigger ? 0.5f * w : 0.5f * h, trigger ? 0.20f * h : 0.5f * h);
+        text(c, k, label, 0.34f * b.h(), kLetter);
+        return;
+    }
     const float w = 0.94f * b.w(), h = (trigger ? 0.86f : 0.70f) * b.h();
     const Box k = centred(b.cx(), b.cy(), w, h);
     cap(c, k, trigger ? 0.45f * w : 0.24f * h, 0.24f * h);
     text(c, k, label, 0.34f * b.h(), kLetter);
 }
 
-// A stick: its letter, with the four ways it moves in yellow (moving), or with no arrows (pressed in).
-void stick(Ctx& c, const Box& b, const char* label, bool moving) {
+// A stick: its letter, with the four ways it moves in yellow (moving), or with no arrows (pressed in). A Steam Deck's
+// (deck) has a ring around its dished top.
+void stick(Ctx& c, const Box& b, const char* label, bool moving, bool deck = false) {
     const float d = std::min(b.w(), b.h());
     const Box k = centred(b.cx(), b.cy(), d, d);
-    disc(c, moving ? centred(k.cx(), k.cy(), 0.86f * d, 0.86f * d) : k);
+    const Box top = moving ? centred(k.cx(), k.cy(), 0.86f * d, 0.86f * d) : k;
+    disc(c, top);
+    if (deck) {
+        const float r = 0.37f * top.w(), lw = std::max(1.f, 0.05f * top.w()), cx = top.cx(), cy = top.cy();
+        fill(c.cv, top, [=](float x, float y) { return std::fabs(sd_circle(x, y, cx, cy, r)) - lw / 2; },
+             [](float, float) { return kDeckRing; });
+    }
     text(c, k, label, (moving ? 0.34f : 0.32f) * d, kLetter);
     if (moving) {
         const float a = 0.20f * d, r = 0.40f * d;
@@ -607,11 +626,13 @@ void dpad(Ctx& c, const Box& b, unsigned lit) {
     for (int i = 0; i < 4; i++) arrow(c, b.cx() + dx[i], b.cy() + dy[i], a, i, (lit >> i) & 1 ? kYellow : kDim);
 }
 
-// Select and Start: a small button with the pad's picture on it, then the button's name when the cell is wide.
+// Select and Start: a small button with the pad's picture on it, then the button's name when the cell is wide. A Steam
+// Deck's View and Menu are small buttons with well-rounded corners, with Xbox's pictures on them.
 void menu_button(Ctx& c, const Box& b, Kind kind, bool start) {
     const float d = b.h();
     const Box k = {b.x0, b.y0, b.x0 + d, b.y1};
-    disc(c, k);
+    if (kind == Kind::SteamDeck) cap(c, centred(k.cx(), k.cy(), 0.80f * d, 0.80f * d), 0.32f * d, 0.32f * d);
+    else disc(c, k);
     const float u = d / 26.f, cx = k.cx(), cy = k.cy();
     const auto bar = [&](float x, float y, float w, float h) {
         const Box r = centred(x, y, w, h);
@@ -661,20 +682,21 @@ void pad_button(Ctx& c, const Box& b, Kind kind, int p) {
         default: break;   // the D-pad, Select and Start as below
         }
     }
-    const bool x = kind == Kind::Xbox;
+    const bool x = kind == Kind::Xbox, deck = kind == Kind::SteamDeck;
     // SDL names a Nintendo pad's buttons by their letters (SDL2's default), so A presses Cross as it does on an Xbox
-    // pad: the same letters, without the colours.
+    // pad: the same letters, without the colours. A Steam Deck has Xbox's letters too, without the colours, and names
+    // its shoulders and sticks L1 to R3.
     switch (p) {
-    case kPCross: face(c, b, "A", x ? kXboxA : kLetter); break;
-    case kPCircle: face(c, b, "B", x ? kXboxB : kLetter); break;
-    case kPSquare: face(c, b, "X", x ? kXboxX : kLetter); break;
-    case kPTriangle: face(c, b, "Y", x ? kXboxY : kLetter); break;
-    case kPR1: shoulder(c, b, x ? "RB" : "R", false); break;
-    case kPR2: shoulder(c, b, x ? "RT" : "ZR", true); break;
-    case kPL1: shoulder(c, b, x ? "LB" : "L", false); break;
-    case kPL2: shoulder(c, b, x ? "LT" : "ZL", true); break;
-    case kPR3: stick(c, b, "RS", false); break;
-    case kPL3: stick(c, b, "LS", false); break;
+    case kPCross: face(c, b, "A", x ? kXboxA : deck ? kDeckLetter : kLetter); break;
+    case kPCircle: face(c, b, "B", x ? kXboxB : deck ? kDeckLetter : kLetter); break;
+    case kPSquare: face(c, b, "X", x ? kXboxX : deck ? kDeckLetter : kLetter); break;
+    case kPTriangle: face(c, b, "Y", x ? kXboxY : deck ? kDeckLetter : kLetter); break;
+    case kPR1: shoulder(c, b, x ? "RB" : deck ? "R1" : "R", false, deck); break;
+    case kPR2: shoulder(c, b, x ? "RT" : deck ? "R2" : "ZR", true, deck); break;
+    case kPL1: shoulder(c, b, x ? "LB" : deck ? "L1" : "L", false, deck); break;
+    case kPL2: shoulder(c, b, x ? "LT" : deck ? "L2" : "ZL", true, deck); break;
+    case kPR3: stick(c, b, deck ? "R3" : "RS", false, deck); break;
+    case kPL3: stick(c, b, deck ? "L3" : "LS", false, deck); break;
     case kPUp: dpad(c, b, 1); break;
     case kPRight: dpad(c, b, 2); break;
     case kPDown: dpad(c, b, 4); break;
@@ -712,8 +734,8 @@ void draw_pad_cell(Ctx& c, const Box& b, Role role, const Spec& s) {
     case kDpad: dpad(c, b, 15); return;
     case kDpadLR: dpad(c, b, 10); return;
     case kDpadUD: dpad(c, b, 5); return;
-    case kRStick: stick(c, b, "R", true); return;
-    case kLStick: stick(c, b, "L", true); return;
+    case kRStick: stick(c, b, "R", true, s.kind == Kind::SteamDeck); return;
+    case kLStick: stick(c, b, "L", true, s.kind == Kind::SteamDeck); return;
     default: break;
     }
     const int g = role_button(role);
@@ -849,7 +871,8 @@ void draw_tile_cell(Ctx& c, const Box& b, Role role, const Spec& s) {
     const char* letter = p == kPCross ? "A" : p == kPCircle ? "B" : p == kPSquare ? "X" : p == kPTriangle ? "Y" : nullptr;
     if (!letter) return draw_pad_cell(c, b, role, s);
     const bool x = s.kind == Kind::Xbox;
-    const Rgba col = !x ? kLetter : p == kPCross ? kXboxA : p == kPCircle ? kXboxB : p == kPSquare ? kXboxX : kXboxY;
+    const Rgba col = s.kind == Kind::SteamDeck ? kDeckLetter : !x ? kLetter
+                     : p == kPCross ? kXboxA : p == kPCircle ? kXboxB : p == kPSquare ? kXboxX : kXboxY;
     text(c, b, letter, 0.62f * b.h(), col);
 }
 
@@ -1052,7 +1075,7 @@ Image draw(const Page& page, const std::vector<uint8_t>& base, const Spec& spec,
             std::memset(&cv.px[(size_t(y) * size_t(W) + size_t(cell.x * S)) * 4], 0, size_t(cell.w * S) * 4);
         if (moved >= 0) put_moved(cv, page, base, cell, b, moved, pictures);
         else if (spec.kind == Kind::Keyboard) draw_key_cell(c, b, cell.role, spec);
-        else if (spec.kind == Kind::Xbox || spec.kind == Kind::Nintendo) draw_pad_cell(c, b, cell.role, spec);
+        else draw_pad_cell(c, b, cell.role, spec);   // Xbox, Nintendo, Steam Deck
     }
     // Level 0, then each level half the last (a box filter on the premultiplied colours), each straight alpha.
     Image out;

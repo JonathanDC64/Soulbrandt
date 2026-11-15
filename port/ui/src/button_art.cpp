@@ -27,8 +27,9 @@ namespace {
 namespace bp = button_pages;
 
 // The device attribute's values (prompts::Device's order, as DES_GLYPHS names them) and what each draws.
-constexpr std::string_view kDevices[] = {"keyboard", "playstation", "xbox", "nintendo"};
-constexpr bp::Kind kKinds[] = {bp::Kind::Keyboard, bp::Kind::PlayStation, bp::Kind::Xbox, bp::Kind::Nintendo};
+constexpr std::string_view kDevices[] = {"keyboard", "playstation", "xbox", "nintendo", "steamdeck"};
+constexpr bp::Kind kKinds[] = {bp::Kind::Keyboard, bp::Kind::PlayStation, bp::Kind::Xbox, bp::Kind::Nintendo,
+                               bp::Kind::SteamDeck};
 // The D-pad's ways, in Art::code's bit order.
 constexpr std::string_view kWays[] = {"up", "right", "down", "left"};
 
