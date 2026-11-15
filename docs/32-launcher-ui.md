@@ -636,17 +636,56 @@ edge and a fading band.
 The menus can have more than one look. Every look draws the same
 documents. Only the style sheets differ.
 
+There are two looks:
+
+- **Today**, the default and the only one in a release build.
+- **Pause band**, offered in developer builds only until it is signed off.
+  It copies the game's own pause menu.
+
+How it works:
+
 - **The list.** `looks.hpp` lists the looks. Each look's `id` is three
   things: its `ui_look` value, its RmlUi theme name, and its sheet's name,
   `res/rml/looks/<id>.rcss`.
 - **The sheets.** A look's sheet holds only what it changes. All of it sits
-  inside `@media (theme: <id>)`.
+  inside `@media (theme: <id>)`, its `@spritesheet` and `@keyframes` too.
 - **How a look is chosen.** Every document gets every look's sheet, after its
   own sheets (`document.cpp`). Only the chosen look's theme is on in RmlUi
   (`looks::apply`). So switching looks needs no reload, and the chosen look
   wins over the documents' own rules.
+- **The elements.** `menu_shell.hpp` (the F1 menu, the frame, the prompts)
+  and `settings_page.hpp` (the tabs and rows) list them. Every look gets the
+  same ones; the documents' own sheet (`menu.rcss`) hides those Today
+  doesn't draw, and a look's sheet shows them:
+  - `menu-title`, the page's title;
+  - `menu-end`, the arrows at the F1 entries' ends (`.end` at the first or
+    the last);
+  - `menu-strip`, a line about the entry or the row with the focus;
+  - `menu-gauge > menu-fill`, how far a number is along its range (its width
+    is a percent, from `rows::Value::fill`).
+- **Body classes** carry the state: the level (`entries`, `page`), what the
+  page has open (`listing`, `typing`, `preview`, `helping`, `comparing`),
+  `hiding`, `closing`, `asking` (a question is up, `ui::asking()`) and
+  `motion`.
+- **Motion.** A look's moves run only when animations are on: they sit
+  under `body.motion`, or `body.closing` for the menu going away, and the
+  shell sets neither otherwise. The tests' pictures (`DES_UI_NO_ANIM`,
+  `ui_render_compare`) are taken without them, so they stay the same from
+  run to run.
+- **Traits.** A few things a sheet can't say are fields of the look in
+  `kLooks`. The rule: if RCSS can do it, it isn't a trait.
+  - `helpPane`: Settings shows the help beside the rows. Without it there's a
+    line under the band (`menu-strip`), and Help (H, View, Select) opens the
+    whole help in a box.
+  - `listBeside`: a value's list opens beside the value, at its row. Without
+    it the list opens below the row.
+  - `menuHeight`: Interface > Menu height sizes Settings' frame. The shell
+    sets that height inline, which a sheet can't override, so a look that
+    sizes the frame itself turns this off and the row is hidden.
 - **Today** is the documents' own sheets as they are (for the F1 menu and
   Settings, `menu.rcss`). Its sheet is empty.
+- **Pause band** is `looks/band.rcss`. Its text is Old Standard TT (SIL OFL
+  1.1, in `res/fonts` with its licence).
 - **Images.** The looks draw with images of the menus' own in `res/img`,
   made by `tools/ui/make_ui_art.py` from numbers, never from the game:
   - `grain.png`, a worn-stone noise that tiles;
@@ -658,14 +697,22 @@ documents. Only the style sheets differ.
 To add a look:
 
 1. Add a line to `kLooks`. Set `released = false` until it is finished, so
-   only developer builds offer it.
-2. Write its sheet.
+   only developer builds offer it. Set its traits.
+2. Write its sheet. Show the elements it draws that Today hides.
 3. Run `ui_style_check`. CI runs it too (`host.yml`, on Windows and Linux).
    It checks that:
    - every look has its sheet;
    - every sheet belongs to a look;
    - each sheet's rules are all inside its own theme;
    - RmlUi reads each sheet without a warning.
+4. Add its pages to `ui_render_compare`, as Pause band's `band-*` pages are
+   added. Each switches to the look first (`use_look`), and they're added
+   only in a build that offers it, so a release build skips them until the
+   look is released.
+5. Take shots in the game with `tools/des/uishots.sh`, setting
+   `UISHOTS_LOOKS` to the looks to compare (for example `"today band"`).
+   A look the build doesn't offer draws as the default, so one not
+   released yet needs a developer build.
 
 The Interface tab shows a Menu look row once a build offers more than one
 look.

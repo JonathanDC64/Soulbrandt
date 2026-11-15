@@ -2,14 +2,20 @@
 // drawn inside it (menu_page.hpp: Settings), with the prompts for what the keys do now. The same document shows
 // Settings on its own from the start screen and setup (standalone). It replaces the menu bar and the settings window.
 //
-// Its elements, the same in every look (how they look is the look's style sheet, looks.hpp):
-//   body(.entries .page .standalone .hiding .closing .motion, and the page's: .preview .listing .typing .comparing)
-//     menu-entries > menu-entry(.on), menu-close       the F1 menu's entries
-//     menu-frame > menu-slot > menu-slot-entry(.on)    the page's frame: the entries, the one open marked
+// Its elements, the same in every look (how they look is the look's style sheet, looks.hpp; a look hides what it
+// doesn't draw):
+//   body(.entries .page .closed .standalone .hiding .closing .asking .motion, and the page's: .preview .listing
+//        .typing .helping .comparing)                  .asking: a question is up (question.hpp)
+//     menu-entries > menu-end.left(.end), menu-entry(.on), menu-end.right(.end), menu-close
+//                                                      the F1 menu's entries, with arrows at their ends (.end: at the
+//                                                      first or the last)
+//     menu-frame > menu-slot > menu-title, menu-slot-entry(.on)
+//                                                      the page's frame: its title, the entries, the one open marked
 //                  menu-strip                          a line on what has the focus (an entry's, a row's)
 //                  menu-page                           the page's own elements (settings_page.hpp)
-//                  menu-prompts > menu-prompt > menu-glyph > menu-key, menu-says
-//     menu-badge(.before .now)                         Compare's line over the game
+//                  menu-prompts > menu-prompt > menu-glyph > menu-art, menu-key; menu-says
+//                                                      menu-art: the button's picture (button_art.hpp)
+//     menu-badge(.on .before .now)                     Compare's line over the game
 //
 // Back closes one thing at a time: what the page has open, the page (back to the entries), then the menu, which asks
 // about a restart first when restart-only settings changed (menu_model.hpp). Shift, or R3, held hides it all.
