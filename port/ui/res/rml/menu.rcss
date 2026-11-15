@@ -316,7 +316,8 @@ menu-heading {
     color: rgba(var(--color-text-rgb), 64%);
 }
 
-menu-bracket {
+menu-bracket,
+menu-aside {
     display: none;
 }
 
@@ -406,6 +407,7 @@ menu-value menu-text {
     flex: 0 1 auto;
     min-width: 0;
     overflow: hidden;
+    text-overflow: ellipsis;
     text-align: right;
 }
 

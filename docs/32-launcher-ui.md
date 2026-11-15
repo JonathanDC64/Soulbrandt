@@ -658,11 +658,23 @@ How it works:
   same ones; the documents' own sheet (`menu.rcss`) hides those Today
   doesn't draw, and a look's sheet shows them:
   - `menu-title`, the page's title;
-  - `menu-end`, the arrows at the F1 entries' ends (`.end` at the first or
-    the last);
+  - `menu-end`, the buttons that move along the F1 entries (L1 and R1, Q
+    and E), at their ends (`.end` at the first or the last);
   - `menu-strip`, a line about the entry or the row with the focus;
   - `menu-gauge > menu-fill`, how far a number is along its range (its width
-    is a percent, from `rows::Value::fill`).
+    is a percent, from `rows::Value::fill`);
+  - `menu-heading > menu-bracket`, a line down a section's side, as long as
+    its rows (`SettingsPage::update_brackets` sets its height after layout);
+  - `menu-aside`, beside the focused row: its notes and a stick's picture
+    (see `helpPane` below);
+  - on the start screen (`body.prelaunch`), `prelaunch-prompts`, the prompts
+    for its keys;
+  - in the report question, `tick-label` and `tick-value`, the tick's line
+    and its state in words (No, Yes).
+- **The column.** A look that keeps its contents in a centred column sets
+  `--menu-column` on the body, in dp or px. The shell sets `--menu-side`, the
+  room each side of it in the window, for the sheet to pad its bands with.
+  RmlUi has no `calc()`, so the shell works it out (`update_column`).
 - **Body classes** carry the state: the level (`entries`, `page`), what the
   page has open (`listing`, `typing`, `preview`, `helping`, `comparing`),
   `hiding`, `closing`, `asking` (a question is up, `ui::asking()`) and
@@ -676,7 +688,10 @@ How it works:
   `kLooks`. The rule: if RCSS can do it, it isn't a trait.
   - `helpPane`: Settings shows the help beside the rows. Without it there's a
     line under the band (`menu-strip`), and Help (H, View, Select) opens the
-    whole help in a box.
+    whole help in a box. What the help shows that matters while a value
+    changes goes beside the focused row instead (`menu-aside`): the row's
+    notes (why it is as it is, such as staying offline) and a stick's
+    picture for a deadzone.
   - `listBeside`: a value's list opens beside the value, at its row. Without
     it the list opens below the row.
   - `menuHeight`: Interface > Menu height sizes Settings' frame. The shell

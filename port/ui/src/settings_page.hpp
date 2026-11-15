@@ -8,9 +8,11 @@
 //   menu-body > menu-rows > menu-heading > menu-bracket (a line as long as the section, for a look that draws it)
 //               menu-rows > menu-row(.focused .locked .waits .modified .listing)
 //       menu-row > menu-label > menu-mark, menu-name
-//                  menu-value(.tagged: its tag shows) > menu-gauge > menu-fill (a number's share of its range, for a look that draws it),
+//                  menu-value > menu-gauge > menu-fill (a number's share of its range, for a look that draws it),
 //                               menu-arrow.left(.end), icon.lock, menu-text, menu-tag, menu-arrow.right(.end)
 //                  menu-list > menu-item(.cursor .now .disabled) > menu-text, menu-tag
+//                  menu-aside > menu-notes > status-badge, stick-preview (the focused row's, in a look without the
+//                               help beside the rows: looks.hpp's helpPane)
 //       menu-row's kind: .choice .toggle .number .text .info .action
 //   menu-body > menu-help > h3, menu-notes, menu-helptext, menu-footnote, menu-buttons, menu-facts (beside the rows, or
 //               a box over them while Help has it open: body.helping)
@@ -78,8 +80,11 @@ private:
     void update_help();
     void update_peek();
     void update_brackets();
+    void update_aside();
+    void drop_aside();
     void scroll_to_focus();
     void place_list();
+    void place_aside();
     void listen(Rml::Element* element, Rml::EventId event, std::function<void(Rml::Event&)> callback);
 
     const catalog::RowDesc* focused_row() const;
@@ -126,6 +131,12 @@ private:
     // The help of the row with the focus, rebuilt when what it says changes.
     std::unique_ptr<Component> mHelpBox;
     std::string mHelpShown;
+
+    // Beside the focused row, in a look without the help beside the rows: its notes and a stick's picture.
+    Rml::Element* mAside = nullptr;
+    std::unique_ptr<Component> mAsideBox;
+    std::unique_ptr<ScopedEventListener> mAsideListener;
+    std::string mAsideShown;
 
     // The preview's strip.
     Rml::Element* mPeekPrev = nullptr;

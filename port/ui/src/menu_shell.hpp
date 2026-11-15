@@ -7,15 +7,19 @@
 //   body(.entries .page .closed .standalone .hiding .closing .asking .motion, and the page's: .preview .listing
 //        .typing .helping .comparing)                  .asking: a question is up (question.hpp)
 //     menu-entries > menu-end.left(.end), menu-entry(.on), menu-end.right(.end), menu-close
-//                                                      the F1 menu's entries, with arrows at their ends (.end: at the
-//                                                      first or the last)
-//     menu-frame > menu-slot > menu-title, menu-slot-entry(.on)
-//                                                      the page's frame: its title, the entries, the one open marked
+//                                                      the F1 menu's entries; at their ends the buttons that move
+//                                                      along them, as menu-glyph (.end: at the first or the last)
+//     menu-frame > menu-slot > menu-title, menu-slot-entry(.on), menu-slot-close
+//                                                      the page's frame: its title, the entries (a click switches page),
+//                                                      the one open marked, and a close button
 //                  menu-strip                          a line on what has the focus (an entry's, a row's)
 //                  menu-page                           the page's own elements (settings_page.hpp)
 //                  menu-prompts > menu-prompt > menu-glyph > menu-art, menu-key; menu-says
 //                                                      menu-art: the button's picture (button_art.hpp)
 //     menu-badge(.on .before .now)                     Compare's line over the game
+//
+// A look that keeps its contents in a centred column sets --menu-column on the body; the shell sets --menu-side, the
+// room each side of it (update_column).
 //
 // Back closes one thing at a time: what the page has open, the page (back to the entries), then the menu, which asks
 // about a restart first when restart-only settings changed (menu_model.hpp). Shift, or R3, held hides it all.

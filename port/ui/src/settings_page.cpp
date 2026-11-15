@@ -120,6 +120,26 @@ std::string brief(const RowDesc& row) {
     return at == std::string::npos ? text : text.substr(0, at + 1);
 }
 
+std::string note_badge(const catalog::Note& n) {
+    return std::string("<status-badge class=\"") + (n.kind == catalog::Note::Kind::Warning ? "warning" : "info") + "\">" +
+           n.text + "</status-badge>";
+}
+
+// The row's own notes while they apply (why it is as it is: offline, not valid), as badges.
+std::string own_notes(const RowDesc& row) {
+    std::string out;
+    if (row.notes)
+        for (const catalog::Note& n : row.notes()) out += note_badge(n);
+    return out;
+}
+
+// A choice's note while it applies (Server's address from a copied file).
+std::string live_note(const RowDesc& row) {
+    if (const auto* c = std::get_if<catalog::ChoiceRow>(&row.kind); c && c->liveNote && c->liveNote->visible())
+        return note_badge(c->liveNote->note);
+    return "";
+}
+
 RowFacts::Enter facts_enter(rows::Enter e) {
     switch (e) {
     case rows::Enter::List: return RowFacts::Enter::List;
@@ -198,6 +218,7 @@ std::vector<const RowDesc*> SettingsPage::visible_rows(int tab) const {
 void SettingsPage::build_tab() {
     stop_edit(false);
     compare(false);
+    drop_aside();
     mRowListeners.clear();
     mViews.clear();
     mBrackets.clear();
@@ -334,8 +355,62 @@ void SettingsPage::update() {
     update_help();
     update_peek();
     update_brackets();
+    update_aside();
     scroll_to_focus();
     place_list();
+    place_aside();
+}
+
+// Without the help beside the rows (looks.hpp's helpPane), what it shows that matters while a value changes goes beside
+// the focused row, where its list opens: the row's notes (why it is as it is: offline, not valid) and a stick's
+// picture. The strip has the rest in a line, and Help the whole help.
+void SettingsPage::update_aside() {
+    const RowDesc* row = looks::current().helpPane ? nullptr : focused_row();
+    std::string notes;
+    const catalog::NumberRow* number = nullptr;
+    if (row && mModel.mode() == SettingsModel::Mode::Rows) {
+        notes = own_notes(*row) + live_note(*row);
+        number = std::get_if<catalog::NumberRow>(&row->kind);
+        if (number && number->stick < 0) number = nullptr;
+    }
+    const std::string shown = notes.empty() && !number ? "" : std::to_string(mModel.focus()) + '\x1f' + notes;
+    if (shown != mAsideShown) {
+        drop_aside();
+        mAsideShown = shown;
+        if (!shown.empty()) {
+            mAside = append(mViews[static_cast<size_t>(mModel.focus())].row, "menu-aside");
+            mAsideBox = std::make_unique<Component>(mAside);
+            if (!notes.empty()) mAsideBox->add_rml("<menu-notes>" + notes + "</menu-notes>");
+            if (number) mAsideBox->add_child<StickPreview>(StickPreview::Props{.stick = number->stick, .zone = number->get});
+            // (a click on it is its own: the row under it would take it as Enter)
+            mAsideListener = std::make_unique<ScopedEventListener>(mAside, Rml::EventId::Click,
+                                                                   [](Rml::Event& e) { e.StopPropagation(); });
+        }
+    }
+    if (mAsideBox) mAsideBox->update();
+}
+
+void SettingsPage::drop_aside() {
+    mAsideListener.reset();
+    mAsideBox.reset();
+    if (mAside) {
+        if (Rml::Element* parent = mAside->GetParentNode()) parent->RemoveChild(mAside);
+        mAside = nullptr;
+    }
+    mAsideShown.clear();
+}
+
+// The aside at its row's height, moved up to stay inside the rows.
+void SettingsPage::place_aside() {
+    if (!mAside) return;
+    Rml::Element* row = mAside->GetParentNode();
+    const float view = mRows->GetClientHeight();
+    const float h = mAside->GetOffsetHeight();
+    if (!row || view <= 0.f || h <= 0.f) return;
+    const float rowTop = row->GetOffsetTop() - mRows->GetScrollTop();
+    float top = 0.f;
+    if (rowTop + h > view - 2.f) top = std::max(view - 2.f - h - rowTop, 2.f - rowTop);
+    set_px(mAside, Rml::PropertyId::Top, top);
 }
 
 // A look that joins a section's heading to its rows with a line down their side (Pause band's bracket) gets the line's
@@ -385,7 +460,6 @@ void SettingsPage::update_rows() {
         set_class(v.right, "end", value.last);
         set_text_content(v.text, value.text);
         set_text_content(v.tag, value.original ? "(original)" : "");
-        set_class(v.value, "tagged", value.original);
         if (v.fill && value.fill >= 0.f && value.fill != v.fillShown) {
             v.fillShown = value.fill;
             v.fill->SetProperty(Rml::PropertyId::Width, Rml::Property(value.fill * 100.f, Rml::Unit::PERCENT));
@@ -446,11 +520,7 @@ void SettingsPage::update_help() {
     const bool changedSinceOpen = rows::comparable(*row) && mOpened.count(row->key) &&
                                   mOpened[row->key] != settings::get(row->key);
     const std::string compareKey(prompts::glyph(input::menu_device(), prompts::Key::Compare).text);
-    std::string notes;
-    if (row->notes)
-        for (const catalog::Note& n : row->notes())
-            notes += std::string("<status-badge class=\"") + (n.kind == catalog::Note::Kind::Warning ? "warning" : "info") +
-                     "\">" + n.text + "</status-badge>";
+    std::string notes = own_notes(*row);
     if (const std::string lock = rows::lock_note(*row); !lock.empty())
         notes += "<status-badge class=\"warning\">" + escape(lock) + "</status-badge>";
     else if (rows::waits(*row))
@@ -461,10 +531,7 @@ void SettingsPage::update_help() {
     else if (changedSinceOpen && mComparing.empty())
         notes += "<status-badge class=\"info\">Changed since the menu opened. Hold " + escape(compareKey) +
                  " to see how it was.</status-badge>";
-    if (const auto* c = std::get_if<catalog::ChoiceRow>(&row->kind); c && c->liveNote && c->liveNote->visible())
-        notes += std::string("<status-badge class=\"") +
-                 (c->liveNote->note.kind == catalog::Note::Kind::Warning ? "warning" : "info") + "\">" +
-                 c->liveNote->note.text + "</status-badge>";
+    notes += live_note(*row);
     std::string facts;
     if (const std::string when = rows::applies(*row); !when.empty())
         facts += "<menu-fact><menu-fact-name>Applies</menu-fact-name><menu-fact-value>" + escape(when) +
@@ -519,7 +586,6 @@ void SettingsPage::update_peek() {
     const rows::Value v = rows::value(*row);
     set_text_content(mPeekValue, v.text);
     set_text_content(mPeekTag, v.original ? "(original)" : "");
-    set_class(mPeekTag->GetParentNode(), "tagged", v.original);
     set_class(mPeekLeft, "end", v.first);
     set_class(mPeekRight, "end", v.last);
     set_text_content(mPeekLine, brief(*row));
