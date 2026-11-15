@@ -90,6 +90,16 @@ MenuShell::MenuShell(bool standalone, DocumentScope scope)
     mBadge = mDocument->GetElementById("badge");
 
     const std::vector<menu::Entry>& entries = menu::entries();
+    // The arrows at the entries' ends (a look's: Today shows none), dim at the first or last; a click moves one way.
+    const auto end = [this](int side) {
+        Rml::Element* e = append(mEntries, "menu-end");
+        e->SetClass(side ? "right" : "left", true);
+        listen(e, Rml::EventId::Click, [this, side](Rml::Event&) {
+            if (mModel.level() == menu::Model::Level::Entries) command(side ? menu::Command::Right : menu::Command::Left, true);
+        });
+        return e;
+    };
+    mEnds[0] = end(0);
     for (size_t i = 0; i < entries.size(); i++) {
         Rml::Element* e = append_text_element(mEntries, "menu-entry", entries[i].title);
         mEntryElems.push_back(e);
@@ -99,6 +109,7 @@ MenuShell::MenuShell(bool standalone, DocumentScope scope)
         Rml::Element* s = append_text_element(mSlot, "menu-slot-entry", entries[i].title);
         mSlotElems.push_back(s);
     }
+    mEnds[1] = end(1);
     Rml::Element* close = append(mEntries, "menu-close");
     listen(close, Rml::EventId::Click, [this](Rml::Event&) { close_menu(); });
 
@@ -207,6 +218,7 @@ void MenuShell::draw() {
     if (mModel.standalone()) classes += " standalone";
     if (mHiding) classes += " hiding";
     if (mClosing) classes += " closing";
+    if (asking()) classes += " asking";
     if (host::animations_enabled()) classes += " motion";
     if (mPage && level == Level::Page)
         if (const std::string own = mPage->classes(); !own.empty()) classes += " " + own;
@@ -221,6 +233,9 @@ void MenuShell::draw() {
         if (mEntryElems[i]->IsClassSet("on") != on) mEntryElems[i]->SetClass("on", on);
         if (mSlotElems[i]->IsClassSet("on") != on) mSlotElems[i]->SetClass("on", on);
     }
+    const bool first = mEntry <= 0, last = mEntry + 1 >= static_cast<int>(mEntryElems.size());
+    if (mEnds[0]->IsClassSet("end") != first) mEnds[0]->SetClass("end", first);
+    if (mEnds[1]->IsClassSet("end") != last) mEnds[1]->SetClass("end", last);
 
     std::string strip;
     if (level == Level::Entries && mEntry >= 0 && mEntry < static_cast<int>(menu::entries().size()))

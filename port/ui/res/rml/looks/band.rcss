@@ -164,6 +164,28 @@ menu-close {
     display: none;
 }
 
+/* The amber arrows at the entries' ends, dim at the first or last entry. */
+menu-end {
+    display: block;
+    flex: 0 0 22dp;
+    font-family: Material Symbols Rounded;
+    font-size: 28dp;
+    color: var(--band-amber);
+    cursor: pointer;
+}
+
+menu-end.left {
+    decorator: text("&#xe5de;" center center);
+}
+
+menu-end.right {
+    decorator: text("&#xe5df;" center center);
+}
+
+menu-end.end {
+    opacity: 0.3;
+}
+
 menu-tabs {
     position: absolute;
     left: 476dp;
@@ -353,6 +375,22 @@ menu-value menu-tag {
     color: var(--band-tan-muted);
 }
 
+/* A number's share of its range: a tarnish fill inside the box, clear of its cut corners. */
+menu-gauge {
+    display: block;
+    position: absolute;
+    left: 3dp;
+    right: 3dp;
+    top: 3dp;
+    bottom: 3dp;
+}
+
+menu-fill {
+    display: block;
+    height: 100%;
+    decorator: linear-gradient(#1b4652, #133038 45%, #0e2229);
+}
+
 /* The arrows that change the value: the game's small amber triangles at the box's ends, dim at the first or last. */
 menu-arrow {
     flex: 0 0 22dp;
@@ -459,6 +497,15 @@ menu-prompts {
     background-color: #1c1c1c;
     decorator: image(/res/img/grain.png repeat left top);
     font-size: 17dp;
+}
+
+/* A question's up: the prompts give way to its answers. */
+body.asking menu-prompts {
+    opacity: 0;
+}
+
+body.motion menu-prompts {
+    transition: opacity 0.1s linear-in-out;
 }
 
 body.entries menu-prompts {

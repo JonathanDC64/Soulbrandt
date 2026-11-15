@@ -25,6 +25,10 @@ public:
 
 }  // namespace
 
+bool asking() {
+    return sAsked && !sAsked->closed();
+}
+
 bool ask(Question question) {
     // (one closed with every document at once, ui::close_all_documents, is still in the stack until the next frame:
     // it is asked no more)

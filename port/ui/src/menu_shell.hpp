@@ -103,6 +103,7 @@ private:
     Rml::Element* mPrompts = nullptr;
     Rml::Element* mBadge = nullptr;
     std::vector<Rml::Element*> mEntryElems;
+    Rml::Element* mEnds[2] = {};  // the entries' ends, left and right: arrows in a look that draws them
     std::vector<Rml::Element*> mSlotElems;
     std::string mClassesShown;
     std::string mPromptsShown;

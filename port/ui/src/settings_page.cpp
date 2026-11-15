@@ -240,6 +240,7 @@ void SettingsPage::build_tab() {
             append(label, "menu-mark");
             append_text_element(label, "menu-name", r.label);
             v.value = append(v.row, "menu-value");
+            if (std::holds_alternative<catalog::NumberRow>(r.kind)) v.fill = append(append(v.value, "menu-gauge"), "menu-fill");
             v.left = append(v.value, "menu-arrow");
             v.left->SetClass("left", true);
             append(v.value, "icon")->SetClass("lock", true);
@@ -367,6 +368,10 @@ void SettingsPage::update_rows() {
         set_class(v.right, "end", value.last);
         set_text_content(v.text, value.text);
         set_text_content(v.tag, value.original ? "(original)" : "");
+        if (v.fill && value.fill >= 0.f && value.fill != v.fillShown) {
+            v.fillShown = value.fill;
+            v.fill->SetProperty(Rml::PropertyId::Width, Rml::Property(value.fill * 100.f, Rml::Unit::PERCENT));
+        }
     }
 }
 

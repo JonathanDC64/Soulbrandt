@@ -7,7 +7,8 @@
 //   menu-tabs > menu-tab-key(.prev .next) > menu-glyph, menu-tab(.on)
 //   menu-body > menu-rows > menu-heading, menu-row(.focused .locked .waits .modified .listing)
 //       menu-row > menu-label > menu-mark, menu-name
-//                  menu-value > menu-arrow.left(.end), icon.lock, menu-text, menu-tag, menu-arrow.right(.end)
+//                  menu-value > menu-gauge > menu-fill (a number's share of its range, for a look that draws it),
+//                               menu-arrow.left(.end), icon.lock, menu-text, menu-tag, menu-arrow.right(.end)
 //                  menu-list > menu-item(.cursor .now .disabled) > menu-text, menu-tag
 //       menu-row's kind: .choice .toggle .number .text .info .action
 //   menu-body > menu-help > h3, menu-notes, menu-helptext, menu-footnote, menu-buttons, menu-facts (beside the rows, or
@@ -62,6 +63,8 @@ private:
         Rml::Element* right = nullptr;
         Rml::Element* text = nullptr;
         Rml::Element* tag = nullptr;
+        Rml::Element* fill = nullptr;  // a number row's: its share of the value box (menu-gauge > menu-fill)
+        float fillShown = -1.f;
         std::string info;  // an info row's value, read once (unless it is read each frame)
     };
 
