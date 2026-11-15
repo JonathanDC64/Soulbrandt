@@ -91,6 +91,7 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
 - **Your glow colour.** Settings > Network > Your glow colour picks the colour of your glow: blue (the game's),
   one of eight named colours, or Custom, set by hue in the row below it. The others see that colour on you, and so
   do you. Each player picks its own, so in a party of four each friend can have its own. Soul form stays the game's.
+  Cutscenes that show you (the tutorial's opening, for one) show your glow and its colour as you chose them too.
 - **In a boss fight,** a friend who dies first watches until the fight ends. Once the boss is dead, it comes back at
   the area's start. If the host dies too, it goes back with everyone. If the connection to the host is lost while it
   watches, it goes home (with the game's own message for a lost session) and joins again from there.
@@ -358,6 +359,17 @@ character (the friend unseen on the host's screen, the host stuck in its death a
   the hook at 0x000E9650 (after the draw's `bl 0x0006C908`, `r31` the drawn object, `r26` its owner) writes that
   model's own edge and body colours into the constant block (`+0x11F0`: `+0x8C0`, `+0x8D0`, dirty bits 0x800000
   and 0x400000) and the manager's cache (`+0xC0`, `+0xD0`) first. With no colours chosen, nothing is written.
+- **A cutscene's copies of the players.** A cutscene draws its own copy of a player, not the character (the
+  tutorial's opening has two). When a cut first shows a copy, `0x006087B8` (from the cut change `0x005FCA10`,
+  through `0x00603D28`) sets it up once: its draw object at `+0x70`, the character it copies at `+0xBC`, and the
+  phantom material from that character's type (`0x0026F378`), as the character's own draw update does
+  (`0x000D7C58` sets the draw object's `+0x78` on for types 1 to 4, 8, 10 and 11, and off for the rest). The copy's
+  handle is not the character's, so it kept the game's blue whatever the player's colour, and its glow when the
+  player turned it off. The hook after that type's read (US 0x00609338) keeps the copy (its handle and its
+  character) for the length of the cutscene, and gives 0 for a blue phantom whose player turned its glow off.
+  `glow_tick` gives each copy of a player with a colour that player's material copy, as it does the player.
+  `glow_shown` finds this game's own player by the character in use (`player_chr()`), so a copy set up in the frame
+  a load brings the character in gets the player's own choice too.
 - **Souls from enemies.** Each game gives its own player an enemy's souls when the enemy dies (US 0x00272938: the
   NpcParam row's `+0x3C`, through `0x002D6C40` and the character's soul gain `0x002D8978`, which applies the player's
   own soul rate, SpEffect `+0xDC`). `0x002D6C40` halves them when `0x0052A610` says this game is a guest (session

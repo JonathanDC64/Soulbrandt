@@ -214,6 +214,7 @@ DES_REGION_ADDR(0x005F7254, 0x005F8474)  /* hook des_cut_cam */
 DES_REGION_ADDR(0x005F72EC, 0x005F850C)  /* hook des_cut_cam */
 DES_REGION_ADDR(0x005F7394, 0x005F85B4)  /* hook des_cut_cam */
 DES_REGION_ADDR(0x005F743C, 0x005F865C)  /* hook des_cut_cam */
+DES_REGION_ADDR(0x00609338, 0x0060A558)  /* hook des_coop_hook: a cutscene's copy of a character set up (its glow and colour) */
 DES_REGION_ADDR(0x006A2E8C, 0x006A3F74)  /* hook des_noise_rate */
 DES_REGION_ADDR(0x006A3990, 0x006A4A78)  /* hook des_noise_rate */
 DES_REGION_ADDR(0x00718D84, 0x00719E6C)  /* hook des_hud_canvas */
