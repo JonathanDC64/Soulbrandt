@@ -14,9 +14,10 @@ buttons. They now show the buttons of the controller the player used last, or th
 - **Xbox**: A B X Y in their usual colours, LB RB LT RT, LS RS, View and Menu.
 - **Nintendo**: the same letters in grey (SDL names a Nintendo pad's buttons by their letters, so A is Cross), L R
   ZL ZR, Minus and Plus.
-- **Steam Deck**: A B X Y where Xbox has them, in grey like the Deck's own; L1 R1 as slim bumpers, L2 R2 as triggers
-  with a round top, L3 R3 as sticks with a ring around the top, and View and Menu on small square keys. Drawn here in
-  the game's style, like the others; none of Valve's art is used. On a Steam Deck, Automatic shows these.
+- **Steam Deck**: A B X Y where Xbox has them, in a light grey with no colour, like the Deck's own; L1 R1 as slim
+  bumpers, L2 R2 as triggers with a round top, L3 R3 as sticks with a ring around the top, and View and Menu on small
+  buttons with well-rounded corners. Drawn here in the game's style, like the others; none of Valve's art is used. On
+  a Steam Deck, Automatic shows these.
 - **Keyboard and mouse**: the keys set in Settings > Controls (E, Space, Esc...), the mouse with the button in use
   lit, arrow keys, WASD for moving and the mouse for the camera. A chord (Shift + left button) shows a small Shift key
   on the mouse.
