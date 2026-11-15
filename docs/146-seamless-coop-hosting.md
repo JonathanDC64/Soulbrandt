@@ -416,6 +416,11 @@ character (the friend unseen on the host's screen, the host stuck in its death a
 
     Types 5 and 9 read alike at all four. Each read is hooked (0x002DDAA8, 0x002DDADC, 0x002DDB48, 0x002DDB90). On a
     friend, a character of type 4 that isn't a player reads 9, so the friend sees these people as the host does.
+  - **Their faces.** A character's face is made once, when its draw objects are built (US 0x002E0E60). Only a
+    character that isn't of a phantom's type (3, 4, 10, 11) gets one (at `+0x664`), made from its own face data. So
+    on a friend these people had no face: a hole where it goes, with the hair and ears around it (Thomas and the
+    Crestfallen in the Nexus, 11-15). The read compared with 4 there is hooked too (0x002E1000), and on a friend it
+    reads 9 by the same rule. The type kept at `+0x68` is still 4.
   - Until 11-14 the three places were hooked to give a body's mode instead, which made these people the friend's own.
     In 1-1, Ostrava then died in the friend's copy of the world within 20 s of the group reaching him, and his death
     (a network event, `OnCharacterDead(300, 624)`) reached the host's world, so he was gone in both. With the mode
@@ -697,7 +702,13 @@ the newer generation, and saves as usual.
     both within 20 s.
   - In the Nexus, the friend got Stockpile Thomas's and the Crestfallen's talk prompts and first lines.
   - The friend saw both as the host did: Thomas plain, and the Crestfallen with the sheen the host's game gives him
-    too.
+    too. Their faces were missing on the friend, though, which these checks didn't catch from where they looked.
+- The people's faces (11-15, scripted, the same saves, the friend joining the host in the Nexus, each person seen
+  from 2 m): before, Thomas had no face on the friend's game, with the wall showing through where it goes, as soon
+  as the friend arrived in the Nexus and again after it died there. With the face's read hooked, Thomas and the
+  Crestfallen (with his sheen) have their faces, both still have type 4, and the friend still gets Thomas's talk
+  prompt. Ostrava's check in 1-1 wasn't run again: the hook changes which draw objects are built, not the stored
+  type.
 - Closing the game window as a friend: the session is lost and nothing from it is saved (the game only saves at
   home).
 - The tutorial's demon (the Vanguard, `m08_01`) offered its soul only outside a session (`ATTR_NOSESSION`; the

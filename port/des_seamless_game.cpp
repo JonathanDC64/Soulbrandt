@@ -214,11 +214,14 @@ bool is_player(uint32_t chr)
 // Type 4 draws them as white phantoms: the draw update (0x002DD920) reads the type four times, for the phantom
 // material on or off (0x000D7C58), its kind (0x000D81D0), the draw path (types 3, 4, 10 and 11 take another) and
 // 0x0025D418. The host has these NPCs at types 5 and 9, and so does the friend's own world; the two read alike at all
-// four. At each read a friend gets 9 for an NPC of type 4, so it draws them as the host does. r3 the type read, r31
-// the character.
-void host_npc_type(ppu_context* ctx, co::Mode m)
+// four. At each read a friend gets 9 for an NPC of type 4, so it draws them as the host does. r3 the type read, the
+// character in chr_reg (r31 in the draw update).
+// The face is made once, when the character's draw objects are built (0x002E0E60): a character that isn't of a
+// phantom's type (3, 4, 10, 11) gets one at +0x664, from its own face data. So those NPCs had no face on a friend
+// (11-15 playtest: Thomas and the Crestfallen, a hole where the face goes). That read gets 9 the same way.
+void host_npc_type(ppu_context* ctx, co::Mode m, int chr_reg = 31)
 {
-    if (m == co::Mode::Join && (uint32_t)ctx->gpr[3] == 4 && !is_player((uint32_t)ctx->gpr[31])) ctx->gpr[3] = 9;
+    if (m == co::Mode::Join && (uint32_t)ctx->gpr[3] == 4 && !is_player((uint32_t)ctx->gpr[chr_reg])) ctx->gpr[3] = 9;
 }
 constexpr uint32_t kChrHp = 0x3C4;   // the character's HP (GetHp's read)
 // The scripts' effect ids are behaviours (BehaviorParam, whose +0x14 names the effect: 0x00595B80). 101 is soul form's
@@ -2024,6 +2027,9 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
     case 0x002DDB48u:   // material's kind (0x000D81D0), the draw path's (types 3, 4, 10 and 11 take another),
     case 0x002DDB90u:   // and 0x0025D418's
         host_npc_type(ctx, m);
+        break;
+    case 0x002E1000u:   // a character's draw objects' build (0x002E0E60), after bl 0x0026F378 compared with 4 (r27
+        host_npc_type(ctx, m, 27);   // the character): its face, or none for a phantom's type
         break;
     case 0x002DDAA8u:   // a character's draw update (0x002DD920), after bl 0x0026F378: r3 its type, r31 the character
         // The type picks the draw object's (+0x6A4) phantom material, on or off (0x000D7C58: on for types 1-4, 8, 10,
