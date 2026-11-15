@@ -48,6 +48,7 @@
 #include "trophies_page.hpp"
 #include "trophy_set.hpp"
 #include "ui.hpp"
+#include "updates.hpp"
 
 #include "gpu.h"
 #include "gpu_shader.h"
@@ -1035,6 +1036,13 @@ void open_note(const std::string& kind) {
     ui::push_toast(std::move(t));
 }
 
+// The start screen with a new version found (a made-up 0.9.0).
+void open_start_update() {
+    static const ui::updates::Release release{.version = "0.9.0", .notes = {"Made up for the test."}};
+    ui::updates::set_test_found(&release);
+    ui::push_document(std::make_unique<ui::Prelaunch>());
+}
+
 // Settings closed on that tab's row and opened again: it opens where it was left.
 void reopen_settings(const std::string& tab, const std::string& row) {
     ui::SettingsPage* page = open_settings(tab, false);
@@ -1190,6 +1198,7 @@ des::seamless::Status standin_guest(bool lost) {
 void close_pages() {
     ui::close_all_documents();
     ui::get_toasts().clear();
+    ui::updates::set_test_found(nullptr);
     ui::trophy_set::set_test_source({});
     des::seamless::set_test_status({});
     ui::players::clear_test_list();
@@ -1529,6 +1538,8 @@ int main(int argc, char** argv) {
     // Notes over the game: a warning, a trophy, and the menu hint.
     for (const char* kind : {"warning", "trophy", "hint"})
         pages.push_back({std::string("note-") + kind, 1280, 720, false, 1.f, false, [kind] { open_note(kind); }, {}});
+    // The start screen with a new version found: its note and the Update choice stand out.
+    pages.push_back({"start-update", 1280, 720, false, 1.f, false, open_start_update, {}});
     // The crash window, at its own size.
     pages.push_back({"crash", 1024, 640, false, 1.f, false, open_crash, {}});
     // Players as Alpha UI shows it (its window), from the made-up list.
@@ -1594,6 +1605,7 @@ int main(int argc, char** argv) {
         for (const char* kind : {"warning", "done", "info", "trophy", "hint"})
             pages.push_back({std::string("des-note-") + kind, 1280, 720, false, 1.f, false,
                              in_band([kind] { open_note(kind); }), {}});
+        pages.push_back({"des-start-update", 1280, 720, false, 1.f, false, in_band(open_start_update), {}});
         // The crash window, its red mark kept, the focus on Report on GitHub.
         pages.push_back({"des-crash", 1024, 640, false, 1.f, false, in_band(open_crash), {}});
         // Players as a page over Settings: the list's first page, further down (its marks above and below), and offline
