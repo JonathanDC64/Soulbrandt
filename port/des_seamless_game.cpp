@@ -44,8 +44,9 @@
 //   - The Archstones' seal (the Monumental's tale heard): its handlers run in the hearer's game alone, so a guest that
 //     opens it tells the host (FLAG), whose world takes it and passes it on as its own progress.
 // The Nexus in a session (shared, as the host has it):
-//   - The NPCs a visitor's game would set up as phantoms (drawn as such) stay as the host has them, and a guest can
-//     talk to them: the talk scripts' phantom check sees it as alive.
+//   - The NPCs a visitor's game sets up as the host's (type 4) stay so, as in the game's own co-op, but are drawn as
+//     the host sees them, not as phantoms, and a guest can talk to them: the talk scripts' phantom check sees it as
+//     alive.
 //   - Each Nexus cutscene, and the Monumental's tale, plays for each player once: a guest's flag in play for one is
 //     the host's and its own, and the guest keeps the flag in its own world once it has played. So does an area's
 //     opening (1-1's dragon): the one its start plays.
@@ -193,6 +194,32 @@ uint32_t flag_base() { return rd(rd(rd(DES_AT(kGameSlot)) - 0x8000u)); }
 uint32_t load_record() { return rd(rd(rd(rd(DES_AT(kSessionSlot)) - 0x8000u)) + 0x08u); }
 constexpr uint32_t kLoadType = 0x8C;
 uint32_t player_chr() { return rd(rd(DES_AT(kChrMan)) + 0x1BC); }
+// Whether chr is a player's character: this game's own, or one of the others (the character manager's vector at
+// +0x19C: begin +0x1A0, end +0x1A4).
+bool is_player(uint32_t chr)
+{
+    const uint32_t man = rd(DES_AT(kChrMan));
+    if (chr == rd(man + 0x1BC)) return true;
+    const uint32_t pb = rd(man + 0x1A0), pe = rd(man + 0x1A4);
+    if (!guest_ok(pb) || pe < pb || pe - pb > 0x40) return false;
+    for (uint32_t q = pb; q < pe; q += 4)
+        if (rd(q) == chr) return true;
+    return false;
+}
+
+// A visitor's game sets up each NPC whose param row has byte 0xE8 set (an NPC's setup, 0x002999C8, and its
+// controller's, 0x002C2588 and 0x002C3018) in a mode of its own, with type 4. A friend keeps that mode, as the game's
+// own co-op does. (Set up as a body's game sets them up instead, they were the friend's own: in 1-1, Ostrava died in
+// the friend's copy of the world, and his death reached the host's.)
+// Type 4 draws them as white phantoms: the draw update (0x002DD920) reads the type four times, for the phantom
+// material on or off (0x000D7C58), its kind (0x000D81D0), the draw path (types 3, 4, 10 and 11 take another) and
+// 0x0025D418. The host has these NPCs at types 5 and 9, and so does the friend's own world; the two read alike at all
+// four. At each read a friend gets 9 for an NPC of type 4, so it draws them as the host does. r3 the type read, r31
+// the character.
+void host_npc_type(ppu_context* ctx, co::Mode m)
+{
+    if (m == co::Mode::Join && (uint32_t)ctx->gpr[3] == 4 && !is_player((uint32_t)ctx->gpr[31])) ctx->gpr[3] = 9;
+}
 constexpr uint32_t kChrHp = 0x3C4;   // the character's HP (GetHp's read)
 // The scripts' effect ids are behaviours (BehaviorParam, whose +0x14 names the effect: 0x00595B80). 101 is soul form's
 // effect (SpEffect 8: the most HP x0.5), which the game's revivals erase (global_event.lua's BlockClear2_3).
@@ -1993,9 +2020,15 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
     case 0x000E9650u:   // the ghost model draw 0x000E8C48, after bl 0x0006C908: its own colours before its constants
         tint_pre(ctx);
         break;
+    case 0x002DDADCu:   // the draw update's other reads of the type (bl 0x0026F378, r31 the character): the
+    case 0x002DDB48u:   // material's kind (0x000D81D0), the draw path's (types 3, 4, 10 and 11 take another),
+    case 0x002DDB90u:   // and 0x0025D418's
+        host_npc_type(ctx, m);
+        break;
     case 0x002DDAA8u:   // a character's draw update (0x002DD920), after bl 0x0026F378: r3 its type, r31 the character
         // The type picks the draw object's (+0x6A4) phantom material, on or off (0x000D7C58: on for types 1-4, 8, 10,
         // 11). A blue phantom whose player turned its glow off is drawn as an alive player (glow_tick).
+        host_npc_type(ctx, m);
         if ((uint32_t)ctx->gpr[3] == 1 && !glow_shown((uint32_t)ctx->gpr[31])) ctx->gpr[3] = 0;
         break;
     case 0x00609338u:   // a cutscene's copy of a character set up (0x006087B8), after bl 0x0026F378: r3 its type, r31 the copy
@@ -2106,13 +2139,6 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
         }
         break;
     }
-    case 0x00299B74u:   // an NPC's setup (0x002999C8), after lbz r0,0xE8(r9) of its param row
-    case 0x002C2830u:   // the same test where its controller is set up (0x002C2588, 0x002C3018), after lbz r0,0xE8(r11)
-    case 0x002C32C0u:
-        // A visitor's game (a phantom) sets up the NPCs whose row has that byte in mode 4: drawn as phantoms, and no
-        // talk. In co-op a friend shares the host's world, so the NPCs stay as the host has them (0 skips the 4).
-        if (m == co::Mode::Join) ctx->gpr[0] = 0;
-        break;
     case 0x004C9638u:   // the talk scripts' check of the player's type (bl 0x0026F378 in 0x004C9600 and 0x004C9C18)
     case 0x004C9C5Cu:
         // The check marks the player as a phantom (the talk scripts' function 19) unless the type is 0 (alive) or 8

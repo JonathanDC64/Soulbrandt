@@ -111,7 +111,6 @@ DES_REGION_ADDR(0x00286614, 0x0028464C)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x0028B224, 0x0028925C)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x002977C0, 0x002957F8)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x002986B8, 0x002966F0)  /* call */
-DES_REGION_ADDR(0x00299B74, 0x00297BAC)  /* hook des_coop_hook: an NPC's setup after lbz r0,0xE8(r9) (a friend sees the NPCs as the host does) */
 DES_REGION_ADDR(0x0029EC08, 0x0029CC40)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x002A6AA8, 0x002A4AE0)  /* wrapped kChrInsThread */
 DES_REGION_ADDR(0x002A6AF4, 0x002A4B2C)  /* return address in 0x002A6AA8 */
@@ -133,12 +132,13 @@ DES_REGION_ADDR(0x002A6C60, 0x002A4C98)  /* return address in 0x002A6AA8 */
 DES_REGION_ADDR(0x002A6C70, 0x002A4CA8)  /* return address in 0x002A6AA8 */
 DES_REGION_ADDR(0x002A6CA8, 0x002A4CE0)  /* return address in 0x002A6AA8 */
 DES_REGION_ADDR(0x002B2984, 0x002B09BC)  /* hook des_coop_hook: a corpse's drop add after lwz r9,0x8C(r9) (a friend gets drops too) */
-DES_REGION_ADDR(0x002C2830, 0x002C0868)  /* hook des_coop_hook: an NPC controller's setup after lbz r0,0xE8(r11) (a friend sees the NPCs as the host does) */
-DES_REGION_ADDR(0x002C32C0, 0x002C12F8)  /* hook des_coop_hook: an NPC controller's setup after lbz r0,0xE8(r11) (a friend sees the NPCs as the host does) */
 DES_REGION_ADDR(0x002D0EB0, 0x002CF2D8)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x002D8978, 0x002D7140)  /* call */
 DES_REGION_ADDR(0x002DD368, 0x002DC058)  /* call kUseGoods */
 DES_REGION_ADDR(0x002DDAA8, 0x002DC798)  /* hook des_coop_hook: a character's draw update (a friend's own phantom glow) */
+DES_REGION_ADDR(0x002DDADC, 0x002DC7CC)  /* hook des_coop_hook: a character's draw update, the material kind's type read (a friend draws an NPC of type 4 as the host does) */
+DES_REGION_ADDR(0x002DDB48, 0x002DC838)  /* hook des_coop_hook: a character's draw update, the draw path's type read (a friend draws an NPC of type 4 as the host does) */
+DES_REGION_ADDR(0x002DDB90, 0x002DC880)  /* hook des_coop_hook: a character's draw update, 0x0025D418's type read (a friend draws an NPC of type 4 as the host does) */
 DES_REGION_ADDR(0x002EC2B8, 0x002EA2B0)  /* call */
 DES_REGION_ADDR(0x002EDEB0, 0x002EBEA8)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x002F5B14, 0x002F3B0C)  /* hook des_ik_rate */
