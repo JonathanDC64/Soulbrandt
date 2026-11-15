@@ -32,10 +32,12 @@ struct Glyph {
 };
 Glyph glyph(Device device, Key key) noexcept;
 
-// A prompt of a page's: the button and what it does ("Open").
+// A prompt of a page's: the button and what it does ("Open"). Its kind, when it has one, is a class for the look's
+// style sheet: "tabs", Settings' buttons that change its tab (a look that draws those at the tabs' ends hides these).
 struct Prompt {
     Key key;
     std::string label;
+    std::string_view kind{};
 };
 
 // The device the prompts show: the Button icons row's choice (DES_GLYPHS: auto, playstation, xbox, nintendo,

@@ -143,6 +143,8 @@ std::vector<prompts::Prompt> SettingsModel::prompts(std::span<const RowFacts> ro
         out.push_back({Key::Back, "Back"});
         break;
     case Mode::Rows:
+        out.push_back({Key::PrevTab, "", "tabs"});  // (one prompt with the next: L1 R1 Tabs)
+        out.push_back({Key::NextTab, "Tabs", "tabs"});
         out.push_back({Key::Move, "Select"});
         if (r && r->steps) out.push_back({Key::Change, "Change"});
         if (r && r->enter != RowFacts::Enter::None && !r->enterLabel.empty()) out.push_back({Key::Confirm, r->enterLabel});

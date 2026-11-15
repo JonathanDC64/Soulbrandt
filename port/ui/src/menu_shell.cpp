@@ -289,11 +289,15 @@ void MenuShell::draw() {
         mEnds[1]->SetInnerRML(menu::glyph_rml(device, prompts::Key::NextTab));
     }
     std::string rml;
-    // (a prompt without words shares the next one's: L1 R1 Scroll; it is .joined, for the look to set them close)
-    for (const prompts::Prompt& p : list)
+    // (a prompt without words shares the next one's: L1 R1 Scroll; it is .joined, for the look to set them close. Its
+    // kind is a class too: .tabs)
+    for (const prompts::Prompt& p : list) {
+        std::string classes = p.label.empty() ? "joined" : "";
+        if (!p.kind.empty()) classes += (classes.empty() ? "" : " ") + std::string(p.kind);
         rml += "<menu-prompt data-key=\"" + std::to_string(static_cast<int>(p.key)) + "\"" +
-               (p.label.empty() ? " class=\"joined\"" : "") + ">" + menu::glyph_rml(device, p.key) + "<menu-says>" +
-               escape(p.label) + "</menu-says></menu-prompt>";
+               (classes.empty() ? "" : " class=\"" + classes + "\"") + ">" + menu::glyph_rml(device, p.key) +
+               "<menu-says>" + escape(p.label) + "</menu-says></menu-prompt>";
+    }
     if (rml != mPromptsShown) {
         mPromptsShown = rml;
         mPrompts->SetInnerRML(rml);
