@@ -1307,7 +1307,8 @@ int main(int argc, char** argv) {
         pages.push_back({"des-wide", 2560, 1080, false, 1.f, false, in_band([] { open_settings("Display", false); }), {}});
         // Rows that open something (the word in the box) and empty texts (Not set).
         pages.push_back({"des-network", 1280, 720, false, 1.f, false, in_band([] { open_settings("Network", false); }), {}});
-        // Every tab in a window tall enough for all its rows (des-tab-display, des-tab-game...), to set beside Alpha UI's.
+        // Every tab in a window tall enough for all its rows (des-tab-display, des-tab-game...), to set beside Alpha
+        // UI's.
         for (const ui::catalog::TabDesc& t : ui::catalog::tabs()) {
             std::string name = "des-tab-";
             for (const char c : t.title)
