@@ -139,6 +139,7 @@ DES_REGION_ADDR(0x002DDAA8, 0x002DC798)  /* hook des_coop_hook: a character's dr
 DES_REGION_ADDR(0x002DDADC, 0x002DC7CC)  /* hook des_coop_hook: a character's draw update, the material kind's type read (a friend draws an NPC of type 4 as the host does) */
 DES_REGION_ADDR(0x002DDB48, 0x002DC838)  /* hook des_coop_hook: a character's draw update, the draw path's type read (a friend draws an NPC of type 4 as the host does) */
 DES_REGION_ADDR(0x002DDB90, 0x002DC880)  /* hook des_coop_hook: a character's draw update, 0x0025D418's type read (a friend draws an NPC of type 4 as the host does) */
+DES_REGION_ADDR(0x002E1000, 0x002DE3C0)  /* hook des_coop_hook: a character's draw objects' build, the face's type read (a friend's NPCs of type 4 get their faces) */
 DES_REGION_ADDR(0x002EC2B8, 0x002EA2B0)  /* call */
 DES_REGION_ADDR(0x002EDEB0, 0x002EBEA8)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x002F5B14, 0x002F3B0C)  /* hook des_ik_rate */
