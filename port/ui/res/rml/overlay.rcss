@@ -116,6 +116,11 @@ toast.menu-notification message row {
     gap: 6dp;
 }
 
+/* A note's mark, for a look that draws one (overlay.cpp): this look shows the warning in the heading instead. */
+toast-mark {
+    display: none;
+}
+
 toast icon {
     width: 1.2em;
     height: 1.2em;

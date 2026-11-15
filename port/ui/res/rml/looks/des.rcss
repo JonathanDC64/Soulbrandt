@@ -2442,6 +2442,165 @@ body.page.motion players-page {
     animation: 0.17s linear-in-out des-page-in;
 }
 
+/* ---- Notes over the game (overlay.hpp's toasts): a small stone bar at the top right, as the game's own notes, its
+   mark at the left in its status colour (a trophy's picture in a dark tile); it slides in from the right, linear, as
+   the menu's pages do. The menu hint sits low in the middle, as a prompt does. ---- */
+toast {
+    top: 32dp;
+    right: 40dp;
+    width: 500dp;
+    padding: 12dp 18dp 13dp 72dp;
+    gap: 2dp;
+    border-width: 0;
+    border-top-width: 1dp;
+    border-top-color: #4f4d46;
+    border-bottom-width: 1dp;
+    border-bottom-color: #111111;
+    border-radius: 0;
+    box-shadow: #000000 0 0 0 1dp;
+    background-color: #2c2c2b;
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#333331, #262626);
+    font-family: Old Standard TT;
+    font-weight: normal;
+    color: var(--des-tan);
+    transform: translateX(60dp);
+    transition: filter transform 0.17s linear-in-out;
+}
+
+toast[open] {
+    transform: translateX(0dp);
+}
+
+toast heading {
+    font-family: Old Standard TT;
+    font-size: 17dp;
+    font-weight: normal;
+    line-height: 24dp;
+    letter-spacing: 0.3dp;
+    text-transform: none;
+    color: var(--des-tan-light);
+}
+
+toast heading icon {
+    display: none;
+}
+
+toast message {
+    gap: 2dp;
+    font-size: 17dp;
+    line-height: 24dp;
+    letter-spacing: 0.3dp;
+    color: var(--des-tan);
+}
+
+toast progress {
+    display: none;
+}
+
+toast-mark {
+    display: block;
+    position: absolute;
+    left: 14dp;
+    top: 12dp;
+    width: 44dp;
+    height: 44dp;
+    font-family: var(--font-family-icons);
+    font-size: 30dp;
+    line-height: 44dp;
+    text-align: center;
+}
+
+toast-mark.warning {
+    color: var(--des-warn);
+    decorator: text("&#xe002;" center center);
+}
+
+toast-mark.info {
+    color: var(--des-info);
+    decorator: text("&#xe88e;" center center);
+}
+
+toast-mark.done {
+    color: var(--des-ok);
+    decorator: text("&#xe86c;" center center);
+}
+
+toast-mark.menu-notification {
+    display: none;
+}
+
+/* A trophy: its picture in the mark's place, in a dark tile. */
+toast.trophy {
+    padding-left: 14dp;
+}
+
+toast toast-row {
+    gap: 14dp;
+    align-items: flex-start;
+}
+
+toast toast-icon {
+    flex: 0 0 44dp;
+    width: 44dp;
+    height: 44dp;
+    justify-content: center;
+    border-width: 1dp;
+    border-color: #4d4a42;
+    background-color: #0b0b0a;
+}
+
+toast toast-icon img,
+toast toast-icon icon {
+    width: 42dp;
+    height: 42dp;
+}
+
+toast toast-icon icon {
+    font-size: 30dp;
+}
+
+toast toast-body {
+    gap: 2dp;
+    max-width: none;
+}
+
+toast.trophy message,
+toast.trophy trophy-name {
+    font-size: 17dp;
+    font-weight: normal;
+    color: var(--des-tan);
+}
+
+/* (its grade in words, without colour: only status has colour) */
+toast.trophy grade,
+toast.trophy grade.platinum,
+toast.trophy grade.gold,
+toast.trophy grade.silver,
+toast.trophy grade.bronze {
+    font-size: 14dp;
+    color: var(--des-tan-muted);
+}
+
+/* The menu hint: low in the middle, as a prompt. */
+toast.menu-notification {
+    top: auto;
+    bottom: 64dp;
+    left: 50%;
+    right: auto;
+    width: auto;
+    padding: 9dp 20dp;
+    transform: translateX(-50%) translateY(20dp);
+}
+
+toast.menu-notification[open] {
+    transform: translateX(-50%) translateY(0dp);
+}
+
+toast.menu-notification b {
+    font-weight: normal;
+    color: var(--des-tan-light);
+}
+
 /* ---- Motion (body.motion), the game's: the band and its lines drop in from the top edge when the menu opens (once:
    opening a page keeps them), a page slides in from the left, and on closing the band and its lines go back up the
    same way, in the F1 menu's shape (the page is already closed). ---- */
