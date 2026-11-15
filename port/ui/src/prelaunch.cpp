@@ -8,7 +8,6 @@
 #include "host.hpp"
 #include "input.hpp"
 #include "modal.hpp"
-#include "mods_window.hpp"
 #include "prompts.hpp"
 #include "settings.hpp"
 #include "menu_pages.hpp"
@@ -128,7 +127,7 @@ void Prelaunch::build_menu_buttons() {
     mMenuButtons.push_back(std::make_unique<Button>(menuList, "Mods"));
     mMenuButtons.back()->on_pressed([this] {
         play_sound(kSoundWindowOpen);
-        push(std::make_unique<ModsWindow>());
+        push(menu::screen_alone("Mods"));
     });
     apply_intro_animation(mMenuButtons.back()->root(), "delay-4");
 

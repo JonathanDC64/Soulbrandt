@@ -7,6 +7,7 @@
 #include "crash_report.hpp"
 #include "looks.hpp"
 #include "menu_shell.hpp"
+#include "mods_page.hpp"
 #include "mods_window.hpp"
 #include "report_ack.hpp"
 #include "settings.hpp"
@@ -64,6 +65,10 @@ std::unique_ptr<Page> make_trophies_page(Rml::Element* host, PageHost& shell) {
     return std::make_unique<TrophiesPage>(host, shell);
 }
 
+std::unique_ptr<Page> make_mods_page(Rml::Element* host, PageHost& shell) {
+    return std::make_unique<ModsPage>(host, shell);
+}
+
 }  // namespace
 
 const std::vector<Entry>& entries() {
@@ -76,7 +81,10 @@ const std::vector<Entry>& entries() {
                 else menu.open(std::make_unique<TrophiesWindow>());
             }},
         {"Mods", "Turn mods on or off, and choose the order they load in.",
-            [](MenuShell& menu) { menu.open(std::make_unique<ModsWindow>()); }},
+            [](MenuShell& menu) {
+                if (looks::current().pages) menu.open_page("Mods", make_mods_page);
+                else menu.open(std::make_unique<ModsWindow>());
+            }},
         {"Co-op", "Play through the game with up to three friends.",
             [](MenuShell& menu) { menu.open(make_coop_window()); }},
         {"Report an issue", "Make a report of a problem, with what the game was doing.",
@@ -106,10 +114,9 @@ const std::vector<Entry>& entries() {
 
 std::unique_ptr<Document> screen_alone(const std::string& entry) {
     if (entry == "Settings") return std::make_unique<MenuShell>(MenuShell::Standalone{});
-    if (entry == "Trophies") {
-        if (looks::current().pages) return std::make_unique<MenuShell>(MenuShell::Standalone{entry});
-        return std::make_unique<TrophiesWindow>();
-    }
+    if (looks::current().pages && (entry == "Trophies" || entry == "Mods"))
+        return std::make_unique<MenuShell>(MenuShell::Standalone{entry});
+    if (entry == "Trophies") return std::make_unique<TrophiesWindow>();
     if (entry == "Mods") return std::make_unique<ModsWindow>();
     if (entry == "Co-op") return make_coop_window();
     return nullptr;
