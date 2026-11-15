@@ -75,6 +75,9 @@ set(DES_UI_FILES
   ${DES_UI_DIR}/res/fonts/Cinzel.ttf
   ${DES_UI_DIR}/res/fonts/AlegreyaSans-Regular.ttf
   ${DES_UI_DIR}/res/fonts/AlegreyaSans-Bold.ttf
+  ${DES_UI_DIR}/res/fonts/OldStandard-Regular.ttf
+  ${DES_UI_DIR}/res/fonts/OldStandard-Bold.ttf
+  ${DES_UI_DIR}/res/fonts/OldStandard-Italic.ttf
   ${DES_UI_DIR}/res/fonts/MaterialSymbolsRounded-Regular.ttf
   ${DES_UI_DIR}/../../PRIVACY.md)  # (the privacy note: privacy.cpp; its path in the table is ../../PRIVACY.md)
 set(DES_UI_ASSETS ${CMAKE_CURRENT_BINARY_DIR}/ui_assets.cpp)

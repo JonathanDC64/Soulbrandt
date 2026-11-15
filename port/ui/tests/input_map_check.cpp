@@ -166,7 +166,7 @@ void check_prompts() {
     using ui::prompts::Device;
     using ui::prompts::Key;
     g_where = "prompts";
-    for (int d = 0; d < 4; d++)
+    for (int d = 0; d <= int(Device::SteamDeck); d++)
         for (int k = 0; k < int(Key::Count); k++) {
             const ui::prompts::Glyph g = ui::prompts::glyph(Device(d), Key(k));
             check(!g.text.empty() && !g.classes.empty(),
@@ -177,10 +177,16 @@ void check_prompts() {
     check(ui::prompts::glyph(Device::Nintendo, Key::Confirm).text == "A", "Nintendo: A, as SDL names it");
     check(ui::prompts::glyph(Device::Keyboard, Key::Hide).text == "Shift", "the keyboard hides with Shift");
     check(ui::prompts::glyph(Device::Xbox, Key::Help).text == "View", "Xbox's Help is View");
+    check(ui::prompts::glyph(Device::SteamDeck, Key::Confirm).text == "A" &&
+              ui::prompts::glyph(Device::SteamDeck, Key::Help).text == "View" &&
+              ui::prompts::glyph(Device::SteamDeck, Key::NextTab).text == "R1" &&
+              ui::prompts::glyph(Device::SteamDeck, Key::Hide).text == "R3",
+          "the Steam Deck: A, View, R1 and R3");
+    check(ui::prompts::glyph(Device(int(Device::SteamDeck) + 1), Key::Confirm).text.empty(), "no device past the last");
 
     // Each button's picture (button_art.hpp): a pad's name one of cellPad's buttons or the D-pad, the keyboard's keys.
     using ui::prompts::Art;
-    for (int d = 0; d < 4; d++)
+    for (int d = 0; d <= int(Device::SteamDeck); d++)
         for (int k = 0; k < int(Key::Count); k++) {
             const ui::prompts::Glyph g = ui::prompts::glyph(Device(d), Key(k));
             const std::string what = "device " + std::to_string(d) + " key " + std::to_string(k);
@@ -216,6 +222,12 @@ void check_prompts() {
     check(ui::prompts::resolve("auto", 2) == Device::PlayStation, "auto, a PlayStation pad");
     check(ui::prompts::resolve("auto", 0) == Device::PlayStation, "auto, nothing yet: the game's own");
     check(ui::prompts::resolve("", 3) == Device::Xbox, "no setting: as auto");
+    check(ui::prompts::resolve("steamdeck", 2) == Device::SteamDeck, "Button icons: Steam Deck, whatever was used");
+    check(ui::prompts::resolve("auto", 3, true) == Device::SteamDeck, "auto on a Steam Deck: an Xbox-style pad is the Deck");
+    check(ui::prompts::resolve("auto", 2, true) == Device::PlayStation && ui::prompts::resolve("auto", 4, true) == Device::Nintendo &&
+              ui::prompts::resolve("auto", 1, true) == Device::Keyboard && ui::prompts::resolve("auto", 0, true) == Device::PlayStation,
+          "auto on a Steam Deck: other pads and the keyboard as anywhere");
+    check(ui::prompts::resolve("xbox", 3, true) == Device::Xbox, "Xbox chosen on a Steam Deck stays Xbox");
 }
 
 }  // namespace

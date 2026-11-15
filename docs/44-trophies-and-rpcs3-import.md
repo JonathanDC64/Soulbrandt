@@ -328,7 +328,7 @@ Key names are read from the RPCS3 source and config. The rules are proposals.
 
 | RPCS3 key | Ours | Rule |
 |---|---|---|
-| Video: Resolution Scale (25-800 %) | Render resolution, `RSX_SCALE` | same meaning, a percentage of 1280x720. The backend takes 50-800; the menu offers 100, 150, 200 and 300, so pick the nearest of those |
+| Video: Resolution Scale (25-800 %) | Render resolution, `RSX_SCALE` | same meaning, a percentage of 1280x720. The backend takes 50-800; the menu offers 50 to 90 in steps of 10, 100, 150, 200 and 300, so pick the nearest of those |
 | Video: Anisotropic Filter Override (0 = auto) | Anisotropic filtering, `RSX_ANISO` (0 = the game's own) | copy |
 | Video: VSync Mode (older builds: VSync) | V-sync, `DES_VSYNC` | off / false gives 0, anything else 1 |
 | Video: Frame limit, Second Frame Limit, Vblank Rate, and the "Unlock FPS" patch | Frame rate, `DES_FPS` (and `fps_custom`) | patch off: "" (the game's own 30). Patch on: the lowest of the frame limit, the second limit (if not 0) and the vblank rate. Off or Infinite count as no limit. With the default vblank of 60 that gives 60. A rate the menu lists is used as it is; any other goes through Custom |

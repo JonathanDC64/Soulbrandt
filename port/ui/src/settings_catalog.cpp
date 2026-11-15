@@ -211,9 +211,11 @@ std::vector<TabDesc> make_tabs() {
     tabs.push_back({"Picture", {
         {"Sharpness", {
             preview(choice("Render resolution", "RSX_SCALE",
-                {{"100", "100% (1280 × 720)", true}, {"150", "150% (1920 × 1080)"},
-                    {"200", "200% (2560 × 1440)"}, {"300", "300% (3840 × 2160)"}},
-                "Draws the game sharper. Higher costs more GPU time.")),
+                {{"50", "50% (640 × 360)"}, {"60", "60% (768 × 432)"}, {"70", "70% (896 × 504)"},
+                    {"80", "80% (1024 × 576)"}, {"90", "90% (1152 × 648)"}, {"100", "100% (1280 × 720)", true},
+                    {"150", "150% (1920 × 1080)"}, {"200", "200% (2560 × 1440)"}, {"300", "300% (3840 × 2160)"}},
+                "Above 100% draws the game sharper and costs more GPU time. Below 100% costs less, for handhelds and "
+                "slower graphics cards, but the picture and the HUD are softer.")),
             preview(choice("Scaling filter", "RSX_OUTFILTER", {{"0", "Bilinear"}, {"1", "Sharp"}},
                 "How the picture is fitted to the window. Sharp is cleaner, most of all with a high Render "
                 "resolution.")),
@@ -293,10 +295,10 @@ std::vector<TabDesc> make_tabs() {
                 "screen. Centred keeps the HUD in a 16:9 area in the middle. Stretched spreads it across."),
             choice("Button icons", "DES_GLYPHS",
                 {{"auto", "Automatic"}, {"playstation", "PlayStation"}, {"xbox", "Xbox"}, {"nintendo", "Nintendo"},
-                    {"keyboard", "Keyboard and mouse"}},
+                    {"steamdeck", "Steam Deck"}, {"keyboard", "Keyboard and mouse"}},
                 "The buttons in the game's prompts. Automatic shows the controller or keyboard you used last and "
-                "changes when you switch. Keyboard and mouse shows the keys you set in Controls. PlayStation is the "
-                "game's own."),
+                "changes when you switch. A Steam Deck's own controls show the Deck's buttons. Keyboard and mouse "
+                "shows the keys you set in Controls. PlayStation is the game's own."),
             toggle("Health, magic, stamina", "DES_HUD_BARS", "The bars at the top left."),
             toggle("Area name", "DES_HUD_AREA", "The name of the area at the top right."),
             toggle("Equipment", "DES_HUD_EQUIP", "Your weapons, item and spell at the bottom left."),
@@ -548,7 +550,8 @@ std::vector<TabDesc> make_tabs() {
             own_setting({.label = "Menu look", .key = "ui_look",
                 .kind = ChoiceRow{.choices = std::move(looks), .changed = hooks::apply_look},
                 .help = "How these menus look. Every look has the same menus and rows."})),
-        own_setting({.label = "Menu height", .key = "ui_menu_height",
+        // (shown in a look whose frame it sizes)
+        only(hooks::menu_height_used, own_setting({.label = "Menu height", .key = "ui_menu_height",
             .kind = NumberRow{.min = 0, .max = 100, .step = 10,
                 .get = [] { return std::clamp(s::get_int("ui_menu_height"), 0, 100); },
                 .set = [](int v) { s::set("ui_menu_height", std::to_string(v)); },
@@ -556,7 +559,7 @@ std::vector<TabDesc> make_tabs() {
                     return v == 0 ? std::string("Compact") : v == 100 ? std::string("Whole window") : std::to_string(v) + "%";
                 }},
             .help = "How tall Settings is in a large window: from Compact, its height in a 720p window, to the "
-                    "window's whole height. Taller shows more rows before they scroll."}),
+                    "window's whole height. Taller shows more rows before they scroll."})),
         own_setting(toggle("Start screen", "show_start_screen",
             "Shows Play, Settings and Quit when the game starts. Off goes straight to the game.")),
         own_setting(toggle("Menu hint", "menu_hint", "After Play, a note says how to open this menu.")),

@@ -44,6 +44,8 @@ public:
     virtual void hidden() {}
 
     virtual std::vector<prompts::Prompt> prompts(const std::string& backLabel) const = 0;
+    // A line on what has the focus (the row's brief, and why it is as it is), for a look's strip under the band.
+    virtual std::string strip() const { return ""; }
     virtual std::string classes() const { return ""; }  // the menu body's, while it shows ("preview listing")
     virtual void closing() {}                            // the page goes (the menu closes, or back to its entries)
 };

@@ -257,11 +257,21 @@ PythonFetch::Result PythonFetch::steps() {
 
 // curl into the .part file, carrying on from what a stopped try left there (-C -); the bar from the file's size. A curl
 // that does not start hands over to the host's own download.
+//
+// curl's exit 35 (the secure connection did not start) gets one more try with --ssl-revoke-best-effort, as in fetch.py
+// (REVOKE_RETRY). Windows' TLS ends a connection so when it could not check whether the server's certificate was
+// revoked, and an antivirus that checks secure connections puts its own certificate in front, which often names no
+// place to check (issue #483: this download stopped with curl exit 35 every time, with such an antivirus installed).
+// The second try lets a check that cannot be made pass, as a web browser does; a certificate found revoked or not
+// trusted is still refused, and the download still has to match its size and SHA-256. A curl too old for the option
+// (before 7.70) ends that try with exit 2, and the first try's failure is the one reported.
 PythonFetch::Result PythonFetch::download(const std::filesystem::path& part) {
     std::filesystem::path relative = relative_archive();
     relative += ".part";
     std::error_code ec;
-    for (bool again = false;; again = true) {
+    bool restarted = false, relaxed = false;
+    int first = 0;  // (the first try's exit, when the second one's curl did not know --ssl-revoke-best-effort)
+    for (;;) {
         unsigned long long have = size_of(part);
         if (have > kPythonSize) {  // (larger than the pin: start over, as fetch.py does)
             std::filesystem::remove(part, ec);
@@ -271,20 +281,34 @@ PythonFetch::Result PythonFetch::download(const std::filesystem::path& part) {
         if (have == kPythonSize) return Result::Ok;  // (all there: a try that stopped before its check)
         // -q first: no curlrc of the player's changes what it does. --silent --show-error: no meter on the pipe, only
         // what went wrong. The two limits end a stalled try after a minute, as fetch.py's timeout does.
-        const Ran ran = run_tool("curl",
-                                 {"-q", "--fail", "--location", "--proto", "=https", "--tlsv1.2", "--silent",
-                                  "--show-error", "--connect-timeout", "60", "--speed-limit", "1", "--speed-time",
-                                  "60", "-C", "-", "-o", utf8(relative), kPythonUrl},
-                                 nullptr, [&] { progress(size_of(part)); });
+        std::vector<std::string> args = {"-q"};
+        if (relaxed) args.push_back("--ssl-revoke-best-effort");
+        for (const char* a : {"--fail", "--location", "--proto", "=https", "--tlsv1.2", "--silent", "--show-error",
+                              "--connect-timeout", "60", "--speed-limit", "1", "--speed-time", "60", "-C", "-", "-o"})
+            args.push_back(a);
+        args.push_back(utf8(relative));
+        args.push_back(kPythonUrl);
+        const Ran ran = run_tool("curl", args, nullptr, [&] { progress(size_of(part)); });
         if (stopping()) return Result::Stopped;
         progress(size_of(part));
         if (!ran.started) return download_own(part);
         if (ran.status == 0) return Result::Ok;
-        if (ran.status == 33 && !again) {  // (curl's "cannot resume": the server ignored the range; start over once)
+        if (ran.status == 33 && !restarted) {  // (curl's "cannot resume": the server ignored the range; start over once)
+            restarted = true;
             std::filesystem::remove(part, ec);
             continue;
         }
-        say(std::string("FIX  ") + kPythonName + ": the download stopped (curl exit " + std::to_string(ran.status) +
+        if (ran.status == 35 && !relaxed) {
+            relaxed = true;
+            first = ran.status;
+            std::fprintf(stderr,
+                         "[setup] the first Python: %s: the secure connection did not start (curl exit 35); once "
+                         "more, letting a revocation check that cannot be made pass\n",
+                         kPythonName);
+            continue;
+        }
+        const int status = ran.status == 2 && first ? first : ran.status;
+        say(std::string("FIX  ") + kPythonName + ": the download stopped (curl exit " + std::to_string(status) +
             "); it resumes next time");
         // (23: curl could not write; with less room left than the download needs, the disk is full)
         const unsigned long long left = kPythonSize - std::min(kPythonSize, size_of(part));

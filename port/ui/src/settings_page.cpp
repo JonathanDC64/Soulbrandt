@@ -9,6 +9,7 @@
 #include "event.hpp"
 #include "hud_editor.hpp"
 #include "input.hpp"
+#include "looks.hpp"
 #include "menu_shell.hpp"
 #include "modal.hpp"
 #include "players_window.hpp"
@@ -143,6 +144,7 @@ void set_px(Rml::Element* e, Rml::PropertyId id, float px) {
 SettingsPage::SettingsPage(Rml::Element* host, menu::PageHost& shell)
     : mHost(host), mShell(shell), mModel(static_cast<int>(catalog::tabs().size())) {
     for (const settings::Def& d : settings::defs()) mOpened[d.key] = settings::get(d.key);
+    mModel.set_help_key(!looks::current().helpPane);  // (and each frame: the look can change while the page shows)
 
     mTabs = append(mHost, "menu-tabs");
     Rml::Element* body = append(mHost, "menu-body");
@@ -238,6 +240,7 @@ void SettingsPage::build_tab() {
             append(label, "menu-mark");
             append_text_element(label, "menu-name", r.label);
             v.value = append(v.row, "menu-value");
+            if (std::holds_alternative<catalog::NumberRow>(r.kind)) v.fill = append(append(v.value, "menu-gauge"), "menu-fill");
             v.left = append(v.value, "menu-arrow");
             v.left->SetClass("left", true);
             append(v.value, "icon")->SetClass("lock", true);
@@ -297,6 +300,7 @@ const RowDesc* SettingsPage::focused_row() const {
 }
 
 void SettingsPage::update() {
+    mModel.set_help_key(!looks::current().helpPane);
     if (mModel.tab() != mBuiltTab) build_tab();
     else {
         // A row can come or go while the page shows (a disc's Language row): the tab is built again.
@@ -364,6 +368,10 @@ void SettingsPage::update_rows() {
         set_class(v.right, "end", value.last);
         set_text_content(v.text, value.text);
         set_text_content(v.tag, value.original ? "(original)" : "");
+        if (v.fill && value.fill >= 0.f && value.fill != v.fillShown) {
+            v.fillShown = value.fill;
+            v.fill->SetProperty(Rml::PropertyId::Width, Rml::Property(value.fill * 100.f, Rml::Unit::PERCENT));
+        }
     }
 }
 
@@ -530,8 +538,9 @@ void SettingsPage::scroll_to_focus() {
     mRows->SetScrollTop(std::clamp(scroll, 0.f, std::max(0.f, mRows->GetScrollHeight() - view)));
 }
 
-// A list stays inside the rows: one that would run past their bottom opens above its row, or moves up beside its
-// value, and scrolls when it still doesn't fit.
+// A list stays inside the rows. It opens below its row, or beside its value at the row's height in a look that says so
+// (looks.hpp's listBeside); one that would run past the rows' bottom opens above its row (below) or moves up (beside),
+// and scrolls when it still doesn't fit.
 void SettingsPage::place_list() {
     if (!mList || mListRow < 0) return;
     Rml::Element* row = mViews[mListRow].row;
@@ -540,9 +549,10 @@ void SettingsPage::place_list() {
     if (view <= 0.f || h <= 0.f) return;
     const float rowTop = row->GetOffsetTop() - mRows->GetScrollTop();
     const float rowH = row->GetOffsetHeight();
-    float top = rowH + 3.f;
+    const bool beside = looks::current().listBeside;
+    float top = beside ? 0.f : rowH + 3.f;
     if (rowTop + top + h > view - 2.f) {
-        if (rowTop - h - 3.f >= 2.f) top = -h - 3.f;
+        if (!beside && rowTop - h - 3.f >= 2.f) top = -h - 3.f;
         else top = std::max(view - 2.f - h - rowTop, 2.f - rowTop);
     }
     set_px(mList, Rml::PropertyId::Top, top);
@@ -703,6 +713,7 @@ bool SettingsPage::command(menu::Command c, bool down) {
     }
     const SettingsModel::Mode mode = mModel.mode();
     if (mode == SettingsModel::Mode::Edit) return false;  // (the field takes the keys; Enter and Esc end it)
+    if (mode == SettingsModel::Mode::Help && c != Command::Help) return true;  // (only Help or Back close it)
     switch (c) {
     case Command::Up:
     case Command::Down: {
@@ -741,6 +752,9 @@ bool SettingsPage::command(menu::Command c, bool down) {
     case Command::Compare:
         compare(true);
         return true;
+    case Command::Help:
+        if (mModel.help(mFacts)) play_sound(mode == SettingsModel::Mode::Help ? kSoundWindowClose : kSoundWindowOpen);
+        return true;
     default:
         return false;
     }
@@ -776,10 +790,32 @@ std::string SettingsPage::classes() const {
     case SettingsModel::Mode::List: out = "listing"; break;
     case SettingsModel::Mode::Edit: out = "typing"; break;
     case SettingsModel::Mode::Preview: out = "preview"; break;
+    case SettingsModel::Mode::Help: out = "helping"; break;
     case SettingsModel::Mode::Rows: break;
     }
     if (!mComparing.empty()) out += out.empty() ? "comparing" : " comparing";
     return out;
+}
+
+std::string SettingsPage::strip() const {
+    const RowDesc* row = focused_row();
+    if (!row) return "";
+    switch (mModel.mode()) {
+    case SettingsModel::Mode::List: return "Choose a value for " + row->label + ".";
+    case SettingsModel::Mode::Edit: return "Type a value for " + row->label + ".";
+    default: break;
+    }
+    // Its brief, then why it is as it is now (the help's notes, in short).
+    std::string line = brief(*row);
+    std::string note;
+    if (rows::locked(*row)) note = "Set when the game started, so it can't change here.";
+    else if (rows::waits(*row)) note = "Takes effect after a restart.";
+    else if (rows::applies(*row) == "After a restart") note = "Applies after a restart.";
+    else if (const auto it = mOpened.find(row->key);
+             mComparing.empty() && rows::comparable(*row) && it != mOpened.end() && it->second != settings::get(row->key))
+        note = "Hold " + std::string(prompts::glyph(input::menu_device(), prompts::Key::Compare).text) +
+               " to see how it was.";
+    return note.empty() ? line : line + " " + note;
 }
 
 void SettingsPage::closing() {

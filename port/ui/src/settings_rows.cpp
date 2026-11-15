@@ -105,7 +105,10 @@ Value value(const RowDesc& row) {
                 const int n = kind.get();
                 return {.text = kind.format ? kind.format(n) : std::to_string(n) + kind.suffix,
                     .first = n <= kind.min,
-                    .last = n >= kind.max};
+                    .last = n >= kind.max,
+                    .fill = kind.max > kind.min
+                                ? std::clamp(static_cast<float>(n - kind.min) / static_cast<float>(kind.max - kind.min), 0.f, 1.f)
+                                : 1.f};
             },
             [&](const TextRow&) -> Value {
                 return {.text = settings::in_use(row.key), .first = true, .last = true};

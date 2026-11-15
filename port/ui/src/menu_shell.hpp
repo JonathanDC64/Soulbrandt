@@ -6,6 +6,7 @@
 //   body(.entries .page .standalone .hiding .closing .motion, and the page's: .preview .listing .typing .comparing)
 //     menu-entries > menu-entry(.on), menu-close       the F1 menu's entries
 //     menu-frame > menu-slot > menu-slot-entry(.on)    the page's frame: the entries, the one open marked
+//                  menu-strip                          a line on what has the focus (an entry's, a row's)
 //                  menu-page                           the page's own elements (settings_page.hpp)
 //                  menu-prompts > menu-prompt > menu-glyph > menu-key, menu-says
 //     menu-badge(.before .now)                         Compare's line over the game
@@ -97,10 +98,12 @@ private:
     Rml::Element* mEntries = nullptr;
     Rml::Element* mFrame = nullptr;
     Rml::Element* mSlot = nullptr;
+    Rml::Element* mStrip = nullptr;
     Rml::Element* mPageHost = nullptr;
     Rml::Element* mPrompts = nullptr;
     Rml::Element* mBadge = nullptr;
     std::vector<Rml::Element*> mEntryElems;
+    Rml::Element* mEnds[2] = {};  // the entries' ends, left and right: arrows in a look that draws them
     std::vector<Rml::Element*> mSlotElems;
     std::string mClassesShown;
     std::string mPromptsShown;

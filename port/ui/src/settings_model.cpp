@@ -27,10 +27,11 @@ void SettingsModel::rows_changed(std::span<const RowFacts> rows) {
     if (mMode == Mode::List && (!r || r->items == 0)) mMode = Mode::Rows;
     if (mMode == Mode::List) mCursor = std::clamp(mCursor, 0, r->items - 1);
     if (mMode == Mode::Preview && (!r || !r->previewable)) mMode = Mode::Rows;
+    if (mMode == Mode::Help && (!r || !mHelpKey)) mMode = Mode::Rows;
 }
 
 bool SettingsModel::move(int dir, std::span<const RowFacts> rows) {
-    if (mMode == Mode::List || mMode == Mode::Edit) return false;
+    if (mMode == Mode::List || mMode == Mode::Edit || mMode == Mode::Help) return false;
     const int to = next(focus(), dir < 0 ? -1 : 1, rows);
     if (to < 0) return false;
     mFocus[mTab] = to;
@@ -106,6 +107,16 @@ bool SettingsModel::preview(std::span<const RowFacts> rows) {
     return true;
 }
 
+bool SettingsModel::help(std::span<const RowFacts> rows) {
+    if (mMode == Mode::Help) {
+        mMode = Mode::Rows;
+        return true;
+    }
+    if (!mHelpKey || mMode != Mode::Rows || !focused(rows)) return false;
+    mMode = Mode::Help;
+    return true;
+}
+
 bool SettingsModel::back() {
     if (mMode == Mode::Rows) return false;
     mMode = Mode::Rows;
@@ -122,6 +133,9 @@ std::vector<prompts::Prompt> SettingsModel::prompts(std::span<const RowFacts> ro
     case Mode::Edit:
         out = {{Key::Confirm, "Done"}, {Key::Back, "Cancel"}};
         break;
+    case Mode::Help:
+        out = {{Key::Back, "Close"}};
+        break;
     case Mode::Preview:
         out.push_back({Key::Move, "Select"});
         if (r && r->steps) out.push_back({Key::Change, "Change"});
@@ -133,6 +147,7 @@ std::vector<prompts::Prompt> SettingsModel::prompts(std::span<const RowFacts> ro
         if (r && r->steps) out.push_back({Key::Change, "Change"});
         if (r && r->enter != RowFacts::Enter::None && !r->enterLabel.empty()) out.push_back({Key::Confirm, r->enterLabel});
         if (r && r->previewable) out.push_back({Key::Preview, "Preview"});
+        if (r && mHelpKey) out.push_back({Key::Help, "Help"});
         out.push_back({Key::Back, back});
         break;
     }

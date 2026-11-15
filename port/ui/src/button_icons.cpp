@@ -7,14 +7,17 @@
 // - What to show: the Button icons row (DES_GLYPHS). Automatic follows cellPad's last-used device
 //   (cellPad_host_glyph_device: a pad button or a stick pushed, or a key or mouse button). PlayStation is the game's own
 //   page, untouched until PAD_MAP moves a button: then each moved button shows the game's own picture of the pad button
-//   that reads it now. Xbox, Nintendo and Keyboard and mouse are drawn here (button_pages.cpp) at the render scale
-//   (RSX_SCALE, up to 4x), following PAD_MAP and the keys bound in Controls.
+//   that reads it now. Xbox, Nintendo, Steam Deck and Keyboard and mouse are drawn here (button_pages.cpp) at the
+//   render scale (RSX_SCALE, up to 4x), following PAD_MAP and the keys bound in Controls. On a Steam Deck, Automatic
+//   shows an Xbox-style pad (the Deck's own controls) as the Deck's buttons.
 // - Drawing takes tens of milliseconds, so it happens on this module's thread; the game's page (or the last one drawn)
 //   shows until the new one is ready. Up to six drawn pages are kept, so switching back is at once.
 #include "button_icons.hpp"
 
 #include "button_pages.hpp"
 #include "controls_window.hpp"
+#include "input.hpp"
+#include "prompts.hpp"
 #include "settings.hpp"
 #include "ui_assets.hpp"
 
@@ -255,13 +258,14 @@ int pad_index(const std::string& name) {
 
 bp::Spec make_spec(int device) {
     bp::Spec s;
-    const std::string choice = value("DES_GLYPHS");
-    if (choice == "playstation") s.kind = bp::Kind::PlayStation;
-    else if (choice == "xbox") s.kind = bp::Kind::Xbox;
-    else if (choice == "nintendo") s.kind = bp::Kind::Nintendo;
-    else if (choice == "keyboard") s.kind = bp::Kind::Keyboard;
-    else s.kind = device == 1 ? bp::Kind::Keyboard : device == 3 ? bp::Kind::Xbox
-                : device == 4 ? bp::Kind::Nintendo : bp::Kind::PlayStation;
+    // The same choice as the menus' prompts make (prompts.hpp), Automatic's rule included.
+    switch (prompts::resolve(value("DES_GLYPHS"), device, input::on_steam_deck())) {
+    case prompts::Device::Keyboard: s.kind = bp::Kind::Keyboard; break;
+    case prompts::Device::PlayStation: s.kind = bp::Kind::PlayStation; break;
+    case prompts::Device::Xbox: s.kind = bp::Kind::Xbox; break;
+    case prompts::Device::Nintendo: s.kind = bp::Kind::Nintendo; break;
+    case prompts::Device::SteamDeck: s.kind = bp::Kind::SteamDeck; break;
+    }
     const int percent = std::atoi(value("RSX_SCALE").c_str());
     s.scale = std::clamp((percent + 99) / 100, 1, 4);
     for (int i = 0; i < 16; i++) s.pad_map[i] = i;
@@ -313,7 +317,8 @@ void poll() {
         }
     }
     s.cv.notify_one();
-    static const char* const kNames[] = {"PlayStation, buttons moved", "Xbox", "Nintendo", "keyboard and mouse"};
+    static const char* const kNames[] = {"PlayStation, buttons moved", "Xbox", "Nintendo", "keyboard and mouse",
+                                         "Steam Deck"};
     std::fprintf(stderr, "[icons] button icons: %s\n",
                  bp::untouched(spec) ? "PlayStation (the game's own)" : kNames[int(spec.kind)]);
     if (ready) rsx_texture_override_changed();   // (otherwise the thread does, once it has drawn the page)
