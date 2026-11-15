@@ -262,6 +262,7 @@
 # changes unless co-op started (DES_SEAMLESS).
 0x0017A4A8=des_coop_hook   # addi r9,r26,0x34 in the load step 0x0017A358: a guest's follow waits for the host, then loads its area
 0x0053B31C=des_coop_hook   # lwz r9,0x9C(r3) in the session's leave 0x0053B300: the host keeps its session
+0x00467628=des_coop_hook   # cmpwi r4,0, the start of 0x00467628 (r4: the name of a script event the game raises, the session's among them): the co-op log names them
 0x00A6B2F8=des_coop_hook   # lwz r11,8(r4) in the game's Lua reader: co-op's edits to the area scripts
 0x00CA15A8=des_coop_hook   # lwz r0,4(r4) in Lua's string reader (getS): co-op's edits to the area scripts
 0x005086F8=des_coop_hook   # cmpwi cr7,r4,0x427F, the event flags' set (r3 flags, r4 flag, r5 value): progress kept for every player
@@ -282,4 +283,6 @@
 0x00080E88=des_coop_hook   # cmpwi r5,0, the ghost colour upload 0x00080E88 starting (r3 the ghost manager, r5/r7 the material kinds, r31 the drawn object): a player's own glow colour
 0x0006C860=des_coop_hook   # bl 0x00080E88 in 0x0006C850 returned: kind 2's material back in the ghost manager's table
 0x000E9650=des_coop_hook   # bl 0x0006C908 in the ghost model draw 0x000E8C48 returned (r26 the ghost owner, r31 the drawn object): its own colours before 0x0006DA20 records its constants
+0x00609338=des_coop_hook   # bl 0x0026F378 in a cutscene's copy setup 0x006087B8 returned (r3 the character's type, r31 the copy: +0x70 its draw object, +0xBC the character): the copy drawn with its player's glow and colour
 0x00272A88=des_coop_hook   # bl 0x0052A610 in an enemy's souls for this game's player (0x00272938; r3 1 for a guest, which halves them): a friend gets the full souls
+0x004117E4=des_coop_hook   # bl 0x009204A0 in RecvGlobalQwc's 0x004117C0 (the Nexus script) returned: a friend plays in the host's world tendency

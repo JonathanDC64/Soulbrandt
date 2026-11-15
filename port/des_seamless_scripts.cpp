@@ -10,8 +10,10 @@
 //     multiplayer walls drop as at a session's end;
 //   - no rating screen after a kill: a short timer goes on to the next step instead;
 //   - a blue phantom's death keeps it in the session: it comes back where the host last arrived, and in a boss fight
-//     it first watches until the fight ends (the boss dead, or the host dead: then it goes back with the host);
+//     it first watches until the fight ends (the boss dead, or the host dead: then it goes back with the host); out
+//     of the session meanwhile, it goes home;
 //   - the cutscenes keep their solo mode in a session: each player skips its own;
+//   - no multiplayer wall closes the way back to an Archstone (the host may use them in a session);
 //   - a boss's extra health counts a third blue phantom (a party of four) as two: x2, the game's most.
 // Each area's script:
 //   - a boss fight is marked from the boss's health bar to its clearing (for the watch above);
@@ -23,7 +25,7 @@
 //   - the wandering ghosts' sightings are each player's own (local_wander_loops);
 //   - a light wall one player walks through is gone in every player's game (walls_for_watchers);
 //   - the room is never locked (LockSession), here or at a kill in global_event.lua, so a friend can always join again;
-//   - the Nexus's timers and checks are each player's own (local_timers).
+//   - the Nexus's timers and checks are each player's own (local_timers), and so is the kneel at a level-up.
 // And from each area's script, the flags that move forward in every player's world (progress_flags), the soul
 // pickups each player makes for itself (own_flags) and the cutscenes each player sees for itself (the Nexus's,
 // scene_flags, and an area's opening, opening_flags), for des_seamless_game.cpp.
@@ -122,6 +124,18 @@ bool edit_global(std::string& t, const std::string& nl)
     if (!replace_in(t, "OnEvent_4034", "REMO_FLAG = 2;",
                     "REMO_FLAG = 0; --SEAMLESS each player's cutscenes are its own"))
         return false;
+    // Lua_MultiWall (OnEvent_4034's too): no multiplayer wall. When a session connects past an area's first part, the
+    // host's game closes the way back to that part's Archstone, which stands in the last boss's room, with that room's
+    // exit wall (1996 minus the block: 1-2 is block 1, wall 1995, the Phalanx room's way to 1-2), and only the
+    // session's end (4035) opens it. But the host may use the Archstones in a session (edit_area), and the session
+    // stays across a load: after a death, or a trip to that Archstone, it connected again with the host at the
+    // Archstone, and the wall shut the host in the boss room. A guest's wall comes from its own flags 3001-3003, which
+    // a guest's world doesn't set in seamless co-op.
+    if (!replace_func(t, "Lua_MultiWall",
+                      "function Lua_MultiWall(proxy,id)\n"
+                      "\t--SEAMLESS: no multiplayer wall; the host may go back to the Archstone, and the group follows it\n"
+                      "end\n", nl))
+        return false;
     if (!replace_func(t, "BlockClear2_3",
                       "function BlockClear2_3(proxy,param)\n"
                       "\t--SEAMLESS: everyone stays in the world; no flag rollback, no trip home\n"
@@ -169,9 +183,25 @@ bool edit_global(std::string& t, const std::string& nl)
     // edit_area) the phantom first watches until the fight ends: it looks again each second (two timer slots in turn,
     // so a handler never sets up its own slot) until the boss is dead, or the host has died: the host's respawn
     // then takes everyone back (des_seamless_game.cpp's follow), and this phantom goes with it at full health.
+    // The session can end meanwhile (the host's game gone or out of reach). The game's own handlers for that
+    // (OnRoomDisappeared, OnIrregularLeaveSession_1) start the trip home, but skip it while flag 4047 (a reload under
+    // way) is set, and the phantom holds it from its death until it is back. So the watch never ended (no boss fight
+    // to end, no host), no trip home came, and the phantom stayed a dead watcher out of the session, which
+    // des_seamless_game.cpp doesn't join again until 4047 is clear. Out of the session, it now goes home as
+    // OnRoomDisappeared would take it: the same message, and OnLeave_Limit's trip 5 s later.
     if (!replace_func(t, "PartyGhostDeath_2",
                       "function PartyGhostDeath_2(proxy,param)\n"
                       "\t--SEAMLESS: the phantom comes back in the host's world and stays in the session\n"
+                      "\tif proxy:IsSession() == false then\n"
+                      "\t\tproxy:InfomationMenu( INFOMENU_TYPE_LIST, -1, 0, -1, 1 );\n"
+                      "\t\tproxy:AddInfomationTosBuffer( 20001000 );\n"
+                      "\t\tproxy:NotNetMessage_begin();\n"
+                      "\t\t\tproxy:OnKeyTime2( 4046, \"OnLeave_Limit\", 5.0, 0, 1, once );\n"
+                      "\t\t\tproxy:SetLoadWait();\n"
+                      "\t\t\tproxy:SetFlagInitState(2);\n"
+                      "\t\tproxy:NotNetMessage_end();\n"
+                      "\t\treturn;\n"
+                      "\tend\n"
                       "\tif SeamlessHostDown == true then\n"
                       "\t\tproxy:RequestFullRecover();\n"
                       "\t\tproxy:SetEventFlag(4047, false);\n"
@@ -584,6 +614,23 @@ int edit_area(std::string& t, bool nexus)
             sub(std::regex("(\\nfunction OnEvent_" + id + "\\s*\\(\\s*proxy\\s*,\\s*param\\s*\\)[^\\n]*\\n)"),
                 ("$1" + guard).c_str());
         }
+        // The kneel before the Maiden at a level-up: OnEvent_90 turns the player to her, takes its control
+        // (EnableLogic(10000, false)) and kneels; OnEvent_91 stands it up and gives the control back. The talk system
+        // starts them (LuaCall(<id>, 0, ...)), and in a session that call reaches every game, where 10000 is that
+        // game's own player: a friend knelt and couldn't move while the host leveled up. A handler of that kind (a
+        // LuaCall's that takes or gives back the player's control) now ignores a call from another player's game.
+        const std::regex talk("proxy:LuaCall\\(\\s*\\d+\\s*,\\s*\\d+\\s*,\\s*\"(\\w+)\"\\s*,\\s*everytime\\s*\\)");
+        const std::regex control("EnableLogic\\(\\s*10000\\s*,");
+        std::set<std::string> own;
+        for (auto it = std::sregex_iterator(t.begin(), t.end(), talk); it != std::sregex_iterator(); ++it) {
+            size_t a, e;
+            if (!func_span(t, (*it)[1].str(), &a, &e)) continue;
+            const std::string c = code_of(t.substr(a, e - a));
+            if (std::regex_search(c, control) && c.find("IsNetMessage") == std::string::npos) own.insert((*it)[1].str());
+        }
+        for (const std::string& h : own)
+            sub(std::regex("(\\nfunction " + h + "\\s*\\(\\s*proxy\\s*,\\s*param\\s*\\)[^\\n]*\\n)"),
+                "$1\tif param:IsNetMessage() == true then return; end --SEAMLESS: another player's, not this one's\n");
         // Each game's timers and checks stay its own (local_timers)
         n += local_timers(t);
         return n;
@@ -957,7 +1004,7 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
     std::string ed = t;
     int edits = 0;
     if (global) {
-        if (edit_global(ed, nl)) edits = 16;
+        if (edit_global(ed, nl)) edits = 19;
         else ed = t;
     } else {
         static const char kNexus[] = "function Initialize_m01_00_00_00(";   // the Nexus: no Archstone edits
