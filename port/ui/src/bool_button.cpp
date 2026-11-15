@@ -1,4 +1,5 @@
-// From Dusklight (CC0), src/dusk/ui/bool_button.cpp, by way of FFCCEOT-Recomp. Adapted for Demon's Souls (unchanged here).
+// From Dusklight (CC0), src/dusk/ui/bool_button.cpp, by way of FFCCEOT-Recomp. Adapted for Demon's Souls: a press that
+// changes nothing (a setting set from outside) sounds refused, not switched.
 #include "bool_button.hpp"
 
 
@@ -40,9 +41,11 @@ Rml::String BoolButton::format_value() {
 
 bool BoolButton::handle_nav_command(NavCommand cmd) {
     if (cmd == NavCommand::Confirm || cmd == NavCommand::Left || cmd == NavCommand::Right) {
-        const bool newValue = !mGetValue();
-        mSetValue(newValue);
-        play_sound(newValue ? kSoundItemEnable : kSoundItemDisable);
+        const bool before = mGetValue();
+        mSetValue(!before);
+        const bool after = mGetValue();
+        if (after == before) play_sound(kSoundItemDisable);  // (held where it is: the refusal, as Co-op's)
+        else play_sound(after ? kSoundItemEnable : kSoundItemDisable);
         return true;
     }
     return false;

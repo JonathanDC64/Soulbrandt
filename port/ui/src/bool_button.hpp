@@ -1,4 +1,5 @@
-// From Dusklight (CC0), src/dusk/ui/bool_button.hpp, by way of FFCCEOT-Recomp. Adapted for Demon's Souls (unchanged here).
+// From Dusklight (CC0), src/dusk/ui/bool_button.hpp, by way of FFCCEOT-Recomp. Adapted for Demon's Souls (a refused
+// press: bool_button.cpp).
 #pragma once
 #include "select_button.hpp"
 
