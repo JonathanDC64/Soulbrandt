@@ -133,6 +133,15 @@ Second round, after a player test (the same save and build kind, this branch):
 Offered through the HUD editor (section 9): `DES_HUD_<PART>_SIZE`, a percent of HUD size, set by dragging a
 corner. The settings window has no number rows for them.
 
+**Edges of resized art (2026-11-15).** At 50% a thin frame showed round the health, magic and stamina bars at 100%
+render scale: the top and left edges of `piece17` (the eye emblem's art, 65,43 to 233,173 in the layout). Drawn
+at another size than its own, a piece samples between texels at its edges and picks up the next sprite in the
+atlas. The renderer's sprite-edge clamp (docs/37) keeps the filter inside each sprite, but it was on only at render
+scales other than 100%. While any part's size is not 100%, `des_hud.cpp` now sets `RSX_UVCLAMP_1X=1`, which turns
+it on at 100% too (ps3recomp, the default renderer). Art drawn 1:1 does not change with it. Measured on the frame's
+top row at 50%: 46.9 with the clamp off, 19.0 with it, against 18.6 for the row above.
+A HUD larger than 100% keeps a fainter frame there: the clamp's margin is then under half a texel.
+
 ## 6. Text size (read and measured)
 
 - **Why text kept its size.** The text shape draw (0x00F9E0A8) asks the renderer's transform for its scale and passes
