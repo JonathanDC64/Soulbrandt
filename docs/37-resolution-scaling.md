@@ -399,3 +399,41 @@ and stripes instead of a smooth blur.
   - at 200%, copies and stripes;
   - at 200% with the threshold, a smooth blur again, matching 100%.
 - **To go back.** `RSX_SCALE_MIN=64` brings back the old behaviour.
+
+### Below 100% (2026-11-15)
+
+Asked for in issue #530, for handhelds such as the Steam Deck. Render
+resolution now also offers 50, 60, 70, 80 and 90%. `RSX_SCALE` has taken
+50 to 800 from the start, and an RPCS3 import already brought lower scales
+across; only the row stopped at 100%.
+
+- **What gets smaller.** The same targets as above 100%: everything larger
+  than `RSX_SCALE_MIN` (640 px). That is the scene, the display buffers the
+  HUD and menus are drawn into, and the 2048x2048 shadow map (1434x1434 at
+  70%). The depth of field, bloom and exposure chain keep the game's size.
+  The window shows the smaller frame scaled up; Scaling filter > Sharp does
+  that with its bicubic.
+- **Write-back and refill.** The same passes as above 100%. The draw to the
+  guest size repeats texels instead of skipping them, and the refill from
+  guest memory skips them instead of repeating them. Both stay inside the
+  target.
+- **Sprite edges.** The clamp stays on below 100%: at a scale such as 70% an
+  edge can fall just past a pixel centre, closer than half a guest pixel.
+- **ZPASS.** The counts were scaled only for a target scaled up. Below 100%
+  they reached the game at the square of the scale (about half at 70%).
+  ps3recomp #288 scales them both ways, as RPCS3 does.
+- **Checked** (the core's D3D12 renderer, Stonefang 2-2): the loading
+  screen, the HUD and the in-game menu at 70% and 50%, and switching live
+  70 -> 100 -> 50 -> 70%. Frames came out at 896x504, 1280x720 and
+  640x360, complete, with the HUD and exposure as at 100%. The sun probe was
+  not in view there, so the ZPASS change has not been seen live. Vulkan
+  runs the same core code but was not run.
+- **Known: a line on the loading screens.** Below 100% the loading screens
+  show a faint dark line down guest x 1024, likely where two pieces of the
+  picture meet: 3-11% darker on one or two columns at 50, 70 and 90%, none
+  at 100% or 200%. It goes away with `RSX_TEX_MIPS=0`: drawn smaller than at
+  1x, the picture also samples its next mip level, whose texels reach past
+  the clamp's half guest pixel. A whole guest pixel removed the column left
+  of the join but not the one right of it. The fix to try is sampling these
+  draws at the level of detail they have at 1x (a mip bias of log2 of the
+  scale on draws that get the clamp), not a wider margin.
