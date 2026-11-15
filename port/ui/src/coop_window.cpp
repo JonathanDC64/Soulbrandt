@@ -165,7 +165,7 @@ void open_public_address() {
     const std::string now = settings::get("DES_SEAMLESS_ADDRESS");
     std::vector<ModalAction> actions;
     if (!now.empty())
-        actions.push_back({.label = "Use the router's",
+        actions.push_back({.label = "Use the router's address",
                            .onPressed = [](Modal& m) {
                                use_public_address("");
                                m.pop();
@@ -183,7 +183,7 @@ void open_public_address() {
                                    [](bool ok, const std::u16string& typed) {
                                        if (!ok) return;
                                        const std::string text = utf16_to_utf8(typed);
-                                       if (blank(text)) {   // (clearing it is "Use the router's")
+                                       if (blank(text)) {   // (clearing it is "Use the router's address")
                                            play_sound(kSoundItemDisable);
                                            toast("warning", "No address typed: nothing changed.");
                                            return;
