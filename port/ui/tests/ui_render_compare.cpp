@@ -25,12 +25,12 @@
 // --verbose: the first bytes that differ in each frame.
 // Exit code 0: every picture and count the same; 1: one differs; 2: it could not run.
 #include "host.hpp"
-#include "menu_bar.hpp"
+#include "menu_shell.hpp"
 #include "menu_pages.hpp"
 #include "renderer.hpp"
 #include "settings.hpp"
 #include "settings_catalog.hpp"
-#include "settings_window.hpp"
+#include "settings_page.hpp"
 #include "setup_screens.hpp"
 #include "souls_model.hpp"
 #include "ui.hpp"
@@ -880,16 +880,39 @@ void open_rml(const char* rml) {
     }
 }
 
-// Settings on the tab of that title (settings_catalog.hpp's), or as it opens ("").
+// The F1 menu, made once as in the game: it stays when the pages close (it is permanent), hidden.
+ui::MenuShell& menu_shell() {
+    if (ui::Document* bar = ui::find_document(ui::DocumentScope::MenuBar)) return static_cast<ui::MenuShell&>(*bar);
+    return static_cast<ui::MenuShell&>(ui::push_document(std::make_unique<ui::MenuShell>(), false));
+}
+
+// Settings on the tab of that title (settings_catalog.hpp's), or as it opens (""): in the F1 menu as its entry opens
+// it, or on its own as the start screen opens it (prelaunch).
 void open_settings(const std::string& tab, bool prelaunch) {
-    auto& w = static_cast<ui::SettingsWindow&>(ui::push_document(std::make_unique<ui::SettingsWindow>(prelaunch)));
-    const std::vector<ui::catalog::TabDesc>& tabs = ui::catalog::tabs();
-    for (size_t i = 0; i < tabs.size(); i++)
-        if (tabs[i].title == tab) {
-            if (i > 0) w.set_active_tab(static_cast<int>(i));
-            return;
-        }
-    if (!tab.empty()) std::fprintf(stderr, "ui_render_compare: no tab %s\n", tab.c_str());
+    ui::MenuShell* shell = nullptr;
+    if (prelaunch) {
+        shell = &static_cast<ui::MenuShell&>(
+            ui::push_document(std::make_unique<ui::MenuShell>(ui::MenuShell::Standalone{})));
+    } else {
+        shell = &menu_shell();
+        shell->show();
+        shell->open_settings();
+    }
+    ui::SettingsPage* page = shell->settings_page();
+    if (!page) std::fprintf(stderr, "ui_render_compare: Settings did not open\n");
+    else if (!tab.empty() && !page->show_tab(tab)) std::fprintf(stderr, "ui_render_compare: no tab %s\n", tab.c_str());
+}
+
+// Settings in the F1 menu on that tab with the focus on that row, and a key pressed there: Enter (its list, or typing),
+// Preview, Compare held.
+void open_settings_row(const std::string& tab, const std::string& row, ui::menu::Command command) {
+    open_settings(tab, false);
+    ui::SettingsPage* page = menu_shell().settings_page();
+    if (!page || !page->focus_row(row)) {
+        std::fprintf(stderr, "ui_render_compare: no row %s\n", row.c_str());
+        return;
+    }
+    page->command(command, true);
 }
 
 void close_pages() {
@@ -898,11 +921,9 @@ void close_pages() {
     gDocuments.clear();
 }
 
-// The F1 menu as F1 opens it (des_ui.cpp's open_menu_bar), and with its Quit question over it. One bar for every page,
-// as in the game: it stays when the pages close (it is permanent), hidden.
+// The F1 menu as F1 opens it (des_ui.cpp's open_menu_bar), and with its Quit question over it.
 void open_menu(bool quit) {
-    if (ui::Document* bar = ui::find_document(ui::DocumentScope::MenuBar)) bar->show();
-    else ui::push_document(std::make_unique<ui::MenuBar>(), false).show();
+    menu_shell().show();
     if (quit) ui::request_quit_confirm();
 }
 
@@ -1182,6 +1203,16 @@ int main(int argc, char** argv) {
         pages.push_back({name, 1280, 720, false, 1.f, false, [title = t.title] { open_settings(title, false); }, {}});
     }
     pages.push_back({"settings-prelaunch", 1280, 720, false, 1.f, false, [] { open_settings("", true); }, {}});
+    using ui::menu::Command;
+    pages.push_back({"settings-list", 1280, 720, false, 1.f, false,
+                     [] { open_settings_row("Display", "Aspect ratio", Command::Confirm); }, {}});
+    pages.push_back({"settings-preview", 1280, 720, false, 1.f, false,
+                     [] { open_settings_row("Picture", "Render resolution", Command::Preview); }, {}});
+    pages.push_back({"settings-compare", 1280, 720, false, 1.f, false,
+                     [] { open_settings_row("Picture", "Render resolution", Command::Compare); }, {}});
+    pages.push_back({"settings-tall", 1920, 1200, false, 1.f, false, [] { open_settings("Network", false); }, {}});
+    pages.push_back({"settings-typing", 1280, 720, false, 1.f, false,
+                     [] { open_settings_row("Network", "Online name", Command::Confirm); }, {}});
     pages.push_back({"setup-start", 1280, 720, false, 1.f, false, [] {
         ui::push_document(std::make_unique<ui::SetupStartWindow>(ui::SetupStartWindow::Props{}));
     }, {}});

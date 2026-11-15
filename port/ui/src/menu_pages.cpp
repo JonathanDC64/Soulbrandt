@@ -5,12 +5,11 @@
 #include "app.hpp"
 #include "coop_window.hpp"
 #include "crash_report.hpp"
-#include "menu_bar.hpp"
+#include "menu_shell.hpp"
 #include "mods_window.hpp"
 #include "report_ack.hpp"
 #include "settings.hpp"
 #include "settings_catalog.hpp"
-#include "settings_window.hpp"
 #include "trophies_window.hpp"
 #include "ui.hpp"
 
@@ -63,17 +62,12 @@ void restart_now() {
 
 const std::vector<Entry>& entries() {
     static const std::vector<Entry> sEntries = {
-        {"Settings", [](MenuBar& bar) { bar.open(std::make_unique<SettingsWindow>()); }},
-        {"Trophies", [](MenuBar& bar) { bar.open(std::make_unique<TrophiesWindow>()); }},
-        {"Mods", [](MenuBar& bar) { bar.open(std::make_unique<ModsWindow>()); }},
-        {"Co-op",
-            [](MenuBar& bar) {
-                bar.unselect();
-                bar.open(make_coop_window());
-            }},
+        {"Settings", [](MenuShell& menu) { menu.open_settings(); }},
+        {"Trophies", [](MenuShell& menu) { menu.open(std::make_unique<TrophiesWindow>()); }},
+        {"Mods", [](MenuShell& menu) { menu.open(std::make_unique<ModsWindow>()); }},
+        {"Co-op", [](MenuShell& menu) { menu.open(make_coop_window()); }},
         {"Report an issue",
-            [](MenuBar& bar) {
-                bar.unselect();
+            [](MenuShell& menu) {
                 ask({
                     .title = "Report an issue?",
                     .body = "Opens a new issue on GitHub with the details filled in, and a zip to attach with a "
@@ -82,9 +76,9 @@ const std::vector<Entry>& entries() {
                             "can be seen where it happened. It has no game files; nothing is sent until you submit the "
                             "issue. Making it takes a few seconds.",
                     .answers = {{"Report",
-                                    [&bar] {
-                                        with_zip_ack([&bar] {  // (the first report on this PC: report_ack.hpp)
-                                            bar.hide(false);
+                                    [&menu] {
+                                        with_zip_ack([&menu] {  // (the first report on this PC: report_ack.hpp)
+                                            menu.dismiss();
                                             if (app().report_issue) app().report_issue();
                                         });
                                     }},
@@ -92,11 +86,7 @@ const std::vector<Entry>& entries() {
                     .safe = 1,
                 });
             }},
-        {"Quit",
-            [](MenuBar& bar) {
-                bar.unselect();
-                request_quit_confirm();
-            }},
+        {"Quit", [](MenuShell&) { request_quit_confirm(); }},
     };
     return sEntries;
 }

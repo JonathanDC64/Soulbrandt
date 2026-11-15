@@ -7,7 +7,7 @@
 #include "portable.hpp"
 #include "report.hpp"
 #include "settings.hpp"
-#include "settings_window.hpp"
+#include "menu_shell.hpp"
 #include "setup_options_window.hpp"
 #include "setup_screens.hpp"
 #include "ui.hpp"
@@ -518,7 +518,7 @@ void SetupWindow::draw_done() {
         set_actions({{"Choose your options", [this] { push(std::make_unique<SetupPresetWindow>()); }, Look::Primary}});
     } else if (ready && mProps.onPlay) {
         set_actions({{"Play", [this] { close(true); }, Look::Primary},
-                     {"Settings", [this] { push(std::make_unique<SettingsWindow>(true)); }, Look::Plain}});
+                     {"Settings", [this] { push(std::make_unique<MenuShell>(MenuShell::Standalone{})); }, Look::Plain}});
     } else {
         set_actions({{"Close", [this] { close(false); }, Look::Primary}});
     }

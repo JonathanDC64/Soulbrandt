@@ -30,7 +30,7 @@ constexpr std::size_t kMaxWaiting = 8;                       // (more than that 
 enum class Kind {
     Refusal,  // the sign-in's or psnr's, or a block or report the server turned down: a warning toast
     Banner,   // the server's: the thin bar at the top
-    Done,     // a block, report or deletion that went through (players_window.cpp, settings_window.cpp): a toast
+    Done,     // a block, report or deletion that went through (players_window.cpp, settings_page.cpp): a toast
 };
 
 struct Message {

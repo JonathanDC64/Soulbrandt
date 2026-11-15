@@ -11,6 +11,7 @@
 #include "../../des_dev_marker.h"
 #endif
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <initializer_list>
@@ -65,6 +66,12 @@ RowDesc only(std::function<bool()> when, RowDesc row) {
 // A setting of the program's own (Interface's, Check for updates), not a run option: its help has no "(KEY)".
 RowDesc own_setting(RowDesc row) {
     row.flags |= kHideKey;
+    return row;
+}
+
+// A setting that changes the picture at once: Preview sets the menu aside so it shows on the game.
+RowDesc preview(RowDesc row) {
+    row.flags |= kPreview;
     return row;
 }
 
@@ -154,27 +161,27 @@ std::vector<TabDesc> make_tabs() {
             choice("Renderer", "RSX_BACKEND", {{"d3d12", "D3D12"}, {"vulkan", "Vulkan"}},
                 "Vulkan or D3D12. On GeForce GTX 10 series and older cards, Vulkan is the default. Restart to apply."),
 #endif
-            choice("Aspect ratio", "DES_ASPECT",
+            preview(choice("Aspect ratio", "DES_ASPECT",
                 {{"", "16:9", true}, {"16:10", "16:10 (Steam Deck)"}, {"2560:1080", "21:9 (2560 × 1080)"},
                     {"3440:1440", "21:9 (3440 × 1440)"}, {"3840:1600", "21:9 (3840 × 1600)"}, {"32:9", "32:9"},
                     {"auto", "Match the display"}},
                 "The shape of the picture. Wider shows more at the sides, 16:10 more above and below. Raise Render "
-                "resolution to keep a wide picture sharp."),
+                "resolution to keep a wide picture sharp.")),
         }},
         {"HDR", {
-            choice("HDR", "RSX_HDR", {{"0", "Off", true}, {"1", "On"}},
+            preview(choice("HDR", "RSX_HDR", {{"0", "Off", true}, {"1", "On"}},
                 "Brighter lights and sky on an HDR display. Turn on HDR in Windows first. Turn off RTX HDR and Auto "
-                "HDR for the game when this is on."),
-            choice("HDR brightness", "RSX_HDR_WHITE",
+                "HDR for the game when this is on.")),
+            preview(choice("HDR brightness", "RSX_HDR_WHITE",
                 {{"0", "Windows' setting"}, {"100", "100 nits"}, {"150", "150 nits"}, {"200", "200 nits"},
                     {"250", "250 nits"}, {"300", "300 nits"}, {"400", "400 nits"}},
-                "How bright white is with HDR on. Lower leaves more room for the highlights."),
-            choice("HDR peak", "RSX_HDR_PEAK",
+                "How bright white is with HDR on. Lower leaves more room for the highlights.")),
+            preview(choice("HDR peak", "RSX_HDR_PEAK",
                 {{"0", "The display's"}, {"400", "400 nits"}, {"600", "600 nits"}, {"1000", "1000 nits"},
                     {"1500", "1500 nits"}},
-                "The brightest the highlights get with HDR on. The display's own figure suits most."),
-            choice("HDR shadows", "RSX_HDR_GAMMA", {{"0", "Gamma 2.2 (darker)"}, {"1", "sRGB (lighter)"}},
-                "How dark areas look with HDR on. Gamma 2.2 matches a TV."),
+                "The brightest the highlights get with HDR on. The display's own figure suits most.")),
+            preview(choice("HDR shadows", "RSX_HDR_GAMMA", {{"0", "Gamma 2.2 (darker)"}, {"1", "sRGB (lighter)"}},
+                "How dark areas look with HDR on. Gamma 2.2 matches a TV.")),
         }},
         {"Frame rate", {
             {.label = "Frame rate", .key = "DES_FPS",
@@ -203,32 +210,32 @@ std::vector<TabDesc> make_tabs() {
 
     tabs.push_back({"Picture", {
         {"Sharpness", {
-            choice("Render resolution", "RSX_SCALE",
+            preview(choice("Render resolution", "RSX_SCALE",
                 {{"100", "100% (1280 × 720)", true}, {"150", "150% (1920 × 1080)"},
                     {"200", "200% (2560 × 1440)"}, {"300", "300% (3840 × 2160)"}},
-                "Draws the game sharper. Higher costs more GPU time."),
-            choice("Scaling filter", "RSX_OUTFILTER", {{"0", "Bilinear"}, {"1", "Sharp"}},
+                "Draws the game sharper. Higher costs more GPU time.")),
+            preview(choice("Scaling filter", "RSX_OUTFILTER", {{"0", "Bilinear"}, {"1", "Sharp"}},
                 "How the picture is fitted to the window. Sharp is cleaner, most of all with a high Render "
-                "resolution."),
-            choice("Anti-aliasing", "RSX_AA", {{"0", "Off", true}, {"1", "FXAA"}, {"2", "SMAA"}},
+                "resolution.")),
+            preview(choice("Anti-aliasing", "RSX_AA", {{"0", "Off", true}, {"1", "FXAA"}, {"2", "SMAA"}},
                 "Smooths jagged edges and keeps the HUD sharp. FXAA softens textures a little; SMAA keeps them sharper "
-                "and costs a little more."),
+                "and costs a little more.")),
         }},
         {"Textures", {
-            choice("Texture filtering", "RSX_TEXFILTER",
+            preview(choice("Texture filtering", "RSX_TEXFILTER",
                 {{"0", "Original"}, {"1", "Nearest"}, {"2", "Bilinear"}, {"3", "Trilinear"}},
                 "How textures are smoothed. Original uses the game's choice. Nearest looks pixelated; Trilinear is the "
-                "smoothest."),
-            choice("Anisotropic filtering", "RSX_ANISO",
+                "smoothest.")),
+            preview(choice("Anisotropic filtering", "RSX_ANISO",
                 {{"0", "Original (4x)"}, {"1", "Off"}, {"2", "2x"}, {"4", "4x"}, {"8", "8x"}, {"16", "16x"}},
-                "Keeps floors and walls sharp into the distance. Original is the game's own, 4x on most surfaces."),
-            choice("Mipmaps", "RSX_TEX_MIPS", {{"1", "On", true}, {"0", "Off"}},
+                "Keeps floors and walls sharp into the distance. Original is the game's own, 4x on most surfaces.")),
+            preview(choice("Mipmaps", "RSX_TEX_MIPS", {{"1", "On", true}, {"0", "Off"}},
                 "Smaller copies of each texture for distant surfaces, as on the PS3. Off draws them at full size, "
-                "so they shimmer."),
+                "so they shimmer.")),
         }},
         {"Effects", {
-            toggle("Depth of field", "DES_DOF", "The game's blur on distant scenery. Off keeps it sharp."),
-            toggle("Motion blur", "DES_MOTION_BLUR", "The game's blur when the camera moves."),
+            preview(toggle("Depth of field", "DES_DOF", "The game's blur on distant scenery. Off keeps it sharp.")),
+            preview(toggle("Motion blur", "DES_MOTION_BLUR", "The game's blur when the camera moves.")),
         }},
     }});
 
@@ -541,6 +548,15 @@ std::vector<TabDesc> make_tabs() {
             own_setting({.label = "Menu look", .key = "ui_look",
                 .kind = ChoiceRow{.choices = std::move(looks), .changed = hooks::apply_look},
                 .help = "How these menus look. Every look has the same menus and rows."})),
+        own_setting({.label = "Menu height", .key = "ui_menu_height",
+            .kind = NumberRow{.min = 0, .max = 100, .step = 10,
+                .get = [] { return std::clamp(s::get_int("ui_menu_height"), 0, 100); },
+                .set = [](int v) { s::set("ui_menu_height", std::to_string(v)); },
+                .format = [](int v) {
+                    return v == 0 ? std::string("Compact") : v == 100 ? std::string("Whole window") : std::to_string(v) + "%";
+                }},
+            .help = "How tall Settings is in a large window: from Compact, its height in a 720p window, to the "
+                    "window's whole height. Taller shows more rows before they scroll."}),
         own_setting(toggle("Start screen", "show_start_screen",
             "Shows Play, Settings and Quit when the game starts. Off goes straight to the game.")),
         own_setting(toggle("Menu hint", "menu_hint", "After Play, a note says how to open this menu.")),

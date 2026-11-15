@@ -123,6 +123,7 @@ constexpr Def kDefs[] = {
     {"DES_DISCORD", "1", Apply::Live},         // discord_presence.cpp: the Discord status; "0" = none
     {"ui_scale", "0", Apply::UiOnly},          // 0 = Auto, else percent
     {"ui_look", "today", Apply::UiOnly},       // the menus' look: a looks.hpp id
+    {"ui_menu_height", "40", Apply::UiOnly},   // menu_shell.cpp: Settings' height, 0 = 640 dp ... 100 = the window's
     {"show_start_screen", "1", Apply::UiOnly},
     {"update_check", "1", Apply::UiOnly},      // updates.hpp: look for a newer release at each start (docs/105)
     {"update_skip", "", Apply::UiOnly},        // the release the player chose to skip ("Skip this version")
@@ -156,6 +157,8 @@ constexpr Def kDefs[] = {
 };
 
 std::map<std::string, std::string, std::less<>> sValues;
+// Values being tried (try_value): shown and applied for now, over sValues', and never saved.
+std::map<std::string, std::string, std::less<>> sTried;
 std::set<std::string, std::less<>> sPinned;
 std::map<std::string, std::string, std::less<>> sPinnedValues;
 // The restart-only settings' values the game runs with: as load_and_apply_env left them, or as now_in_effect noted.
@@ -786,10 +789,16 @@ void load_and_apply_env() {
         if (d.apply == Apply::Restart) sInEffect[d.key] = get(d.key);
 }
 
-std::string get(std::string_view key) {
+// The value settings.ini has (or will have), leaving out one being tried.
+static std::string stored(std::string_view key) {
     if (const auto it = sValues.find(key); it != sValues.end()) return it->second;
     const Def* d = find(key);
     return d ? default_of(*d) : "";
+}
+
+std::string get(std::string_view key) {
+    if (const auto it = sTried.find(key); it != sTried.end()) return it->second;
+    return stored(key);
 }
 
 int get_int(std::string_view key) {
@@ -804,6 +813,7 @@ bool is_default(std::string_view key) {
 void set(std::string_view key, const std::string& value) {
     const Def* d = find(key);
     if (!d) return;
+    if (const auto it = sTried.find(key); it != sTried.end()) sTried.erase(it);
     sValues[std::string(key)] = value;
     if ((d->apply == Apply::Live || d->apply == Apply::Session) && !pinned(key))
         apply_env(key, value.empty() ? default_of(*d) : value);
@@ -819,6 +829,22 @@ void store(std::string_view key, const std::string& value) {
     sValues[std::string(key)] = value;
     save();
     write_in_use();
+}
+
+bool try_value(std::string_view key, const std::string& value) {
+    const Def* d = find(key);
+    if (!d || d->apply != Apply::Live || pinned(key)) return false;
+    sTried[std::string(key)] = value;
+    apply_env(key, value.empty() ? default_of(*d) : value);
+    return true;
+}
+
+void end_try(std::string_view key) {
+    const auto it = sTried.find(key);
+    if (it == sTried.end()) return;
+    sTried.erase(it);
+    const std::string value = stored(key);
+    apply_env(key, value.empty() ? default_of(*find(key)) : value);
 }
 
 bool pinned(std::string_view key) {
@@ -961,7 +987,7 @@ void save() {
                  "# The option keys are the environment variables of the same name; a variable set in the\n"
                  "# environment wins over this file.\n");
     for (const Def& d : kDefs) {
-        if (d.apply != Apply::Session) std::fprintf(f, "%s = %s\n", d.key, get(d.key).c_str());
+        if (d.apply != Apply::Session) std::fprintf(f, "%s = %s\n", d.key, stored(d.key).c_str());
     }
     std::fclose(f);
     report::replace_file(report::widen(tmp), report::widen(file));

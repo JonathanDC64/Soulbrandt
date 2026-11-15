@@ -10,7 +10,7 @@
 #include "modal.hpp"
 #include "mods_window.hpp"
 #include "settings.hpp"
-#include "settings_window.hpp"
+#include "menu_shell.hpp"
 #include "trophies_window.hpp"
 #include "ui.hpp"
 #include "updates.hpp"
@@ -94,7 +94,7 @@ void Prelaunch::build_menu_buttons() {
     mMenuButtons.push_back(std::make_unique<Button>(menuList, "Settings"));
     mMenuButtons.back()->on_pressed([this] {
         play_sound(kSoundWindowOpen);
-        push(std::make_unique<SettingsWindow>(true));
+        push(std::make_unique<MenuShell>(MenuShell::Standalone{}));
     });
     apply_intro_animation(mMenuButtons.back()->root(), "delay-2");
 
