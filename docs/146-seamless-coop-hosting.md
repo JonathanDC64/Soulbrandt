@@ -68,7 +68,8 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
 - **Friends follow the host.** When the host travels (an Archstone, the Nexus, a death), its friends go too: one
   loading screen, then they stand beside the host again.
 - **Archstones:** the host can use them during co-op, and the group travels with it. A friend still gets "You can't
-  return during multiplayer.", at the Nexus's stones too.
+  return during multiplayer.", at the Nexus's stones too. No multiplayer wall closes the way back to an Archstone
+  (in 1-2, the Phalanx room's wall to 1-2), so the host is never shut in with the Archstone after a death.
 - **The White Eye Stone** takes a friend home as its own trip home does (in body form, its own world back); co-op
   then joins the host again a few seconds later. Leave co-op is the way out of co-op.
 - **Items are each player's own.** A friend sees the items lying in the area and gets drops from dead enemies, as the
@@ -90,8 +91,10 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
 - **Your glow colour.** Settings > Network > Your glow colour picks the colour of your glow: blue (the game's),
   one of eight named colours, or Custom, set by hue in the row below it. The others see that colour on you, and so
   do you. Each player picks its own, so in a party of four each friend can have its own. Soul form stays the game's.
+  Cutscenes that show you (the tutorial's opening, for one) show your glow and its colour as you chose them too.
 - **In a boss fight,** a friend who dies first watches until the fight ends. Once the boss is dead, it comes back at
-  the area's start. If the host dies too, it goes back with everyone.
+  the area's start. If the host dies too, it goes back with everyone. If the connection to the host is lost while it
+  watches, it goes home (with the game's own message for a lost session) and joins again from there.
 - **Bosses get more health with friends,** as in the original game: half as much again with one friend, double with
   two. Three friends get double too (the original has nothing for three, so a boss had its solo health).
 - **When the host dies,** everyone goes back to the start together.
@@ -107,6 +110,8 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
   in its own.
 - **Your own world stays yours.** In a friend's world you see it as it is there. Your own world's doors, items and
   people stay as they were, and what the group did is added when you go back.
+- **World tendency.** In the host's world a friend plays in the host's world tendency, as a summoned phantom does in
+  the original game. The friend's own tendency doesn't change, and it is in play again when the friend goes back.
 - **Going back:** when the host leaves, its friends go back to their own worlds, where they stood when they joined,
   and their games save there, each in the form it has then (above).
 - **The Nexus is shared.** Friends stand in the host's Nexus and see its people as the host does, not as phantoms,
@@ -149,6 +154,13 @@ The host's router has to let friends in on one port (36100, TCP and UDP).
   - With carrier-grade NAT, ask the provider for a public address.
 - **Players on the same network** can use the **local code** that Co-op shows below the invite code.
 
+### Reporting a co-op problem
+
+Right after it happens, each player picks **Report an issue** in the menu, and says who was the host. Each report
+holds that player's co-op log: what happened in the session (joins, leaves, loads, the game's own session events),
+each line with its time, so the host's and a friend's reports line up. A report made after restarting the game still
+has the last session's.
+
 ## How it works
 
 ```
@@ -172,6 +184,11 @@ The host's router has to let friends in on one port (36100, TCP and UDP).
 - **The game's own online server** (messages, signs, ghosts, world tendency, login) is answered inside each game, by
   `des_seamless.cpp`, with nothing in it: no messages, no signs, no ghosts, and a neutral world tendency. The answers
   follow the open-source dessego server's.
+- **World tendency:** each player's own, as offline. Online, the game mixes the server's tendency into the player's
+  at a load into the Nexus (half each). With only the neutral answer above, that pulled every area halfway to neutral
+  on each such trip (0.8 to 0.4 in a test). In co-op the game now skips the server's values (`des_qwc_local`, the
+  Network tab's "Yours only", docs/69). Each game still plays the shared area with its own player's tendency: the
+  game's own message that gives a phantom the host's tendency (0x17) doesn't come in seamless co-op (docs/69).
 - **Nothing else is reached,** apart from the STUN request above, from a host whose router gives no address. No name
   the game looks up (`c.demons-souls.com` and the rest) resolves, and no sign-in happens. A gameplay mod keeps co-op off, as it keeps online off (docs/143).
 - **Which discs:** every disc plays with every other. The US and European discs are one program; the Japanese and
@@ -342,6 +359,17 @@ character (the friend unseen on the host's screen, the host stuck in its death a
   the hook at 0x000E9650 (after the draw's `bl 0x0006C908`, `r31` the drawn object, `r26` its owner) writes that
   model's own edge and body colours into the constant block (`+0x11F0`: `+0x8C0`, `+0x8D0`, dirty bits 0x800000
   and 0x400000) and the manager's cache (`+0xC0`, `+0xD0`) first. With no colours chosen, nothing is written.
+- **A cutscene's copies of the players.** A cutscene draws its own copy of a player, not the character (the
+  tutorial's opening has two). When a cut first shows a copy, `0x006087B8` (from the cut change `0x005FCA10`,
+  through `0x00603D28`) sets it up once: its draw object at `+0x70`, the character it copies at `+0xBC`, and the
+  phantom material from that character's type (`0x0026F378`), as the character's own draw update does
+  (`0x000D7C58` sets the draw object's `+0x78` on for types 1 to 4, 8, 10 and 11, and off for the rest). The copy's
+  handle is not the character's, so it kept the game's blue whatever the player's colour, and its glow when the
+  player turned it off. The hook after that type's read (US 0x00609338) keeps the copy (its handle and its
+  character) for the length of the cutscene, and gives 0 for a blue phantom whose player turned its glow off.
+  `glow_tick` gives each copy of a player with a colour that player's material copy, as it does the player.
+  `glow_shown` finds this game's own player by the character in use (`player_chr()`), so a copy set up in the frame
+  a load brings the character in gets the player's own choice too.
 - **Souls from enemies.** Each game gives its own player an enemy's souls when the enemy dies (US 0x00272938: the
   NpcParam row's `+0x3C`, through `0x002D6C40` and the character's soul gain `0x002D8978`, which applies the player's
   own soul rate, SpEffect `+0xDC`). `0x002D6C40` halves them when `0x0052A610` says this game is a guest (session
@@ -350,6 +378,21 @@ character (the friend unseen on the host's screen, the host stuck in its death a
   souls, but what dies with it pays the same way (Phalanx's 38 blobs, 35 each, killed by `PhalanxDead`). A killing
   blow of at least 1.5 times the enemy's most HP (`0x00280DC8` sets a bit at `+0x318`) adds a fifth on the game that
   dealt it; the result is rounded up.
+- **World tendency.** The game's QWC object (`*(*0x01B4EF9C + 0x24)`) holds the tendency in play at `+0x10`, two
+  floats (white/black, left/right) for each of worlds 1-7, and the player's own at `+0x48`, which the save keeps
+  (docs/69). In online co-op the host's game sends a phantom its values in play (P2P message 0x17, read at US
+  0x00525750), and the phantom's game copies them to `+0x10`. That message never comes in seamless co-op, so each
+  game would play the shared area in its own player's tendency, and the area scripts that read it on every game
+  (`IsSuccessQWC`, in the 1-1 script's events 35, 61 and 62 for one) could differ between players. So the host's
+  game sends its values in play before each READY (QWC, 14 words), and a friend's game writes them to `+0x10`:
+  - before each summoned load's area scripts run;
+  - when a new QWC comes in while it is in the host's world;
+  - after the Nexus script's blend (the hook after `bl 0x009204A0` at US 0x004117E4, in `RecvGlobalQwc`'s
+    0x004117C0), which sets `+0x10` from the player's own.
+
+  When the session ends, the friend's own values are put back in play: each one that matched its own saved value at
+  the first write follows that value as it is then, and any other is put back as it was. The own values at `+0x48`
+  are never written.
 - **Items.** A phantom's game makes no items: the area's items (lying on corpses, made at each load, US 0x0025CAE8)
   and a dead enemy's drop (rolled by each game when the enemy dies, 0x002B2900) are made only when the player type
   the area was loaded for is body form (0) or soul form (8), and a friend is a blue phantom (1). Both reads of that
@@ -393,6 +436,12 @@ their first instruction):
     `ClearBoss` isn't. Two timer slots take turns, so a handler never sets up its own slot. Once the host has died
     (`HostDead` sets `SeamlessHostDown`), it asks for full health and leaves the load to the host's respawn, which
     takes everyone back.
+  - Out of the session (`proxy:IsSession() == false`: the host's game gone or out of reach), `PartyGhostDeath_2`
+    starts the trip home as `OnRoomDisappeared` does: its message (20001000), then `OnLeave_Limit` 5 s later. The
+    game's own handlers for a lost session (`OnRoomDisappeared`, `OnIrregularLeaveSession_1`) skip it while flag 4047
+    (a reload under way) is set, and the phantom holds 4047 from its death until it is back. Before, a session lost
+    during the watch left the phantom dead out of the session for good, and co-op doesn't join again until 4047 is
+    clear ("on its way home: no join until it is there"; playtest 11-14, the second Tower Knight fight).
   - The host's death doesn't send the phantoms home; the host's respawn takes them along.
   - `proxy:ClearBossGauge(` also clears `SeamlessBossFight`.
   - A boss's extra health: `Lua_MultiDoping` (and `Lua_MultiDopingm04_02`, for 4-2), at the boss room's first entry,
@@ -406,6 +455,16 @@ their first instruction):
     boss's at its fog, any asked for after the session connected) can't be skipped on a friend's game, and the host's
     skip ends only the host's. Ones asked for before 4034, such as an area's opening, were already mode 0 in a session
     and each player skips its own. `OnEvent_4034` now sets 0, so every cutscene works that way.
+  - No multiplayer wall. When a session connects past an area's first part, `OnEvent_4034` has the host's game close
+    the way back to that part's Archstone (`Lua_MultiWall`). The Archstone stands in the last boss's room, and the
+    wall is that room's exit, 1996 minus the block (1-2 is block 1: 1995, the Phalanx room's way to 1-2). Only
+    `OnEvent_4035` (the session's end) opens it. A session stays across a load, so after a death, or a trip to that
+    Archstone, it connected again with the host at the Archstone, and the wall shut the host in the boss room
+    (playtest 11-14, after a death at the Tower Knight; reproduced with two copies). A friend's game raised none: its
+    wall comes from its own flags 3001-3003, which it doesn't set. `Lua_MultiWall` is now empty, as the host may use
+    the Archstones in a session anyway. Checked with two copies: the Phalanx dead, the host to 1-2 and killed there,
+    then the respawn at the 1-2 Archstone. The host's way to 1-2 is open, as the friend's is (before: the wall, on the
+    host's game only).
 - Each area's script: the boss rooms' party walls drop as in solo play; a guest doesn't play the warp-out pose at a
   boss's death; the host may use the Archstones in a session, and the Nexus's stones (which had no session check)
   give a guest the levels' "You can't return during multiplayer." (10010720); a blue phantom may take a boss's soul.
@@ -446,8 +505,21 @@ their first instruction):
   the Maiden's revival, the clear items), so when two ran at once in a session each step multiplied: a friend got
   three Bindings after the tutorial's end. The edit registers all 29 between `NotNetMessage_begin` and `_end` (not
   the ones in a comment). The Nexus's other network events (the Archstones, the NPCs' events) stay as they are.
+- The kneel before the Maiden in Black at a level-up is the leveling player's own. The talk system starts two events
+  through `LuaCall`: `OnEvent_90` turns the player to her, takes its control (`EnableLogic(10000, false)`) and kneels,
+  and `OnEvent_91` stands it up and gives the control back. In a session that call reaches every game, where 10000 is
+  that game's own player, so a friend knelt and couldn't move while the host leveled up. The edit makes any `LuaCall`
+  handler in the Nexus that takes or gives back the player's control ignore a call from another game
+  (`param:IsNetMessage()`); only 90 and 91 match. Checked with two copies: the friend held the stick through the
+  host's level-up and moved the whole time (before: no movement for those 20 s).
 
 The edited copies are cached by the original's size and hash, so a script read again costs nothing.
+
+**The co-op log** (`logs\coop.log`, in every report; docs/74): the session's lines of the log, each with its time
+(UTC). Co-op adds a line at each change of the session's state, with the members and the room's timer, and the name
+of each session event the game raises (`OnRoomTimeOut`, `OnIrregularLeaveSession`, `OnLeave_Limit`, ...: a hook at
+`0x00467628`, the function that calls a `global_event.lua` handler by name). Read the host's and the friends' side by
+side by their times.
 
 ## Settings for developers and tests
 

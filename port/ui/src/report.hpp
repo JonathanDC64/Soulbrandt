@@ -67,6 +67,10 @@ std::string redact_log(std::string text);
 // folder.
 void start_log();
 std::filesystem::path log_path();
+// The co-op log, logs\coop.log beside des.log: the session's lines of the log ([coop], the rooms, matching, the
+// network, the router, reports), each with its time (UTC). Made at this run's first such line; the one before it is
+// kept as coop.prev.log. Its path once this run made it, else empty.
+std::filesystem::path coop_log_path();
 // Waits (briefly) until what was printed so far is in the log file (a crash, before reading the log).
 void flush_log();
 // The first `head` lines and the last `tail_bytes` of a text file, with a note where text was left out.
@@ -131,6 +135,8 @@ void flip_hook();
 //   runtime.txt     the runtime's snapshot: what every thread is doing (ps3_diag_report, 2 s of sampling)
 //   des.log         the log's start and its last 512 KB; des.prev.log the end of the previous run's (a freeze or
 //                   crash the player restarted after), when it is from the last day
+//   coop.log        this run's co-op log whole (its last 4 MB at most); coop.prev.log the session before it, when it
+//                   is from the last day
 //   save/...        the player's save (save_files)
 // Nothing of the game's files or memory: names, numbers, settings, the log and the save only.
 void send_issue_report(void* back_buffer, unsigned index, int width, int height, std::string session);
