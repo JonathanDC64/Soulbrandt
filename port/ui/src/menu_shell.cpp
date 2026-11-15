@@ -92,8 +92,8 @@ MenuShell::MenuShell(bool standalone, DocumentScope scope)
     mBadge = mDocument->GetElementById("badge");
 
     const std::vector<menu::Entry>& entries = menu::entries();
-    // The ends of the entries (a look's: Alpha UI shows none): the buttons that move along them, dim at the first or last;
-    // a click moves one way.
+    // The ends of the entries (a look's: Alpha UI shows none): the buttons that move along them, dim at the first or
+    // last; a click moves one way.
     const auto end = [this](int side) {
         Rml::Element* e = append(mEntries, "menu-end");
         e->SetClass(side ? "right" : "left", true);

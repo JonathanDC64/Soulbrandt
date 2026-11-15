@@ -1,5 +1,6 @@
-/* Written for Demon's Souls. The F1 menu and Settings (menu_shell.hpp, settings_page.hpp) in the Alpha UI look: the port's
-   own, as the menu bar and the settings window drew it, with the prompts, the list beside the value and the preview.
+/* Written for Demon's Souls. The F1 menu and Settings (menu_shell.hpp, settings_page.hpp) in the Alpha UI look: the
+   port's own, as the menu bar and the settings window drew it, with the prompts, the list beside the value and the
+   preview.
    Another look changes what it needs in its own sheet (looks.hpp). Colours and fonts from theme.rcss.
 
    The body's classes say what shows: entries (the F1 menu's bar), page (a page in its frame), closed, standalone
