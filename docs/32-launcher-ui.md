@@ -595,6 +595,44 @@ translucent fills. `prelaunch.rcss` is rewritten (no picture, no
 golds): menu buttons in bone that light up white with a soul-white left
 edge and a fading band.
 
+### Menu looks
+
+The menus can have more than one look. Every look draws the same
+documents. Only the style sheets differ.
+
+- **The list.** `looks.hpp` lists the looks. Each look's `id` is three
+  things: its `ui_look` value, its RmlUi theme name, and its sheet's name,
+  `res/rml/looks/<id>.rcss`.
+- **The sheets.** A look's sheet holds only what it changes. All of it sits
+  inside `@media (theme: <id>)`.
+- **How a look is chosen.** Every document gets every look's sheet, after its
+  own sheets (`document.cpp`). Only the chosen look's theme is on in RmlUi
+  (`looks::apply`). So switching looks needs no reload, and the chosen look
+  wins over the documents' own rules.
+- **Today** is the documents' own sheets as they are. Its sheet is empty.
+- **Images.** The looks draw with images of the menus' own in `res/img`,
+  made by `tools/ui/make_ui_art.py` from numbers, never from the game:
+  - `grain.png`, a worn-stone noise that tiles;
+  - `valuebox.png`, a box with cut corners, drawn as a nine-patch.
+
+  CI checks that the files in the tree are what the script makes.
+  `ui_render_compare`'s `look-primitives` page draws them on every renderer.
+
+To add a look:
+
+1. Add a line to `kLooks`. Set `released = false` until it is finished, so
+   only developer builds offer it.
+2. Write its sheet.
+3. Run `ui_style_check`. CI runs it too (`host.yml`, on Windows and Linux).
+   It checks that:
+   - every look has its sheet;
+   - every sheet belongs to a look;
+   - each sheet's rules are all inside its own theme;
+   - RmlUi reads each sheet without a warning.
+
+The Interface tab shows a Menu look row once a build offers more than one
+look.
+
 ## Not done
 
 - Sounds are the game's own menu sounds (docs/33, `port/des_menu_sfx.cpp`),

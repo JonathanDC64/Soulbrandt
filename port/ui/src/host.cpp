@@ -39,15 +39,24 @@ void log_message(Rml::Log::Type type, const Rml::String& message) {
     if (type <= Rml::Log::LT_WARNING) std::fprintf(stderr, "[ui] %s\n", message.c_str());
 }
 
+std::string normalize(const std::string& path);
+
 // add_png's images, by source.
 std::mutex sPngLock;
 std::map<std::string, std::vector<uint8_t>, std::less<>> sPngs;
 
+// An image by source: add_png's, else one of the UI's own (res/img, embedded), by its path from a style sheet.
 bool find_png(const Rml::String& source, std::vector<unsigned char>& file) {
-    std::lock_guard<std::mutex> lock(sPngLock);
-    const auto it = sPngs.find(source);
-    if (it == sPngs.end()) return false;
-    file = it->second;
+    {
+        std::lock_guard<std::mutex> lock(sPngLock);
+        if (const auto it = sPngs.find(source); it != sPngs.end()) {
+            file = it->second;
+            return true;
+        }
+    }
+    const Asset* a = find_asset(normalize(source));
+    if (!a) return false;
+    file.assign(a->data, a->data + a->size);
     return true;
 }
 

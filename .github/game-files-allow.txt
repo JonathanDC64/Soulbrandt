@@ -14,3 +14,8 @@
 # size, as text in a gzip, made by tools/setup/disc_list.py from the disc's public IRD. Names and sizes only, as
 # game_table.json has them for 55 files: no bytes of the game.
 tools/setup/des_setup/disc/*.txt.gz
+
+# The menus' own images (docs/32, Menu looks): drawn from numbers by tools/ui/make_ui_art.py with Python's standard
+# library, a tiling noise and a box with cut corners; CI's Scripts job runs it with --check. No game pixels.
+port/ui/res/img/grain.png
+port/ui/res/img/valuebox.png

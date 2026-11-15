@@ -2,6 +2,7 @@
 // restart-only settings itself.
 #include "settings_catalog.hpp"
 
+#include "looks.hpp"
 #include "settings.hpp"
 #include "settings_hooks.hpp"
 #include "settings_values.hpp"
@@ -526,12 +527,20 @@ std::vector<TabDesc> make_tabs() {
 
     std::vector<Choice> swords;
     for (const hooks::Sword& sword : hooks::swords()) swords.push_back({sword.name, sword.label});
+    std::vector<Choice> looks;
+    for (const looks::Look& look : looks::kLooks)
+        if (looks::offered(look)) looks.push_back({std::string(look.id), std::string(look.label)});
     tabs.push_back({"Interface", {{"", {
         own_setting({.label = "UI scale", .key = "ui_scale",
             .kind = ChoiceRow{
                 .choices = {{"0", "Auto"}, {"75", "75%"}, {"100", "100%"}, {"125", "125%"}, {"150", "150%"}},
                 .changed = hooks::apply_scale},
             .help = "The size of these menus. Auto follows the display's scale, and shrinks to fit a small window."}),
+        // (shown once this build offers more than one look)
+        only([] { return looks::offered_count() > 1; },
+            own_setting({.label = "Menu look", .key = "ui_look",
+                .kind = ChoiceRow{.choices = std::move(looks), .changed = hooks::apply_look},
+                .help = "How these menus look. Every look has the same menus and rows."})),
         own_setting(toggle("Start screen", "show_start_screen",
             "Shows Play, Settings and Quit when the game starts. Off goes straight to the game.")),
         own_setting(toggle("Menu hint", "menu_hint", "After Play, a note says how to open this menu.")),

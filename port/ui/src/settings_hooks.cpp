@@ -3,6 +3,7 @@
 
 #include "app.hpp"
 #include "input.hpp"
+#include "looks.hpp"
 #include "modal.hpp"
 #include "report.hpp"
 #include "settings.hpp"
@@ -68,6 +69,10 @@ std::vector<Sword> swords() {
 
 void apply_scale() {
     ui::apply_scale();
+}
+
+void apply_look() {
+    looks::apply();
 }
 
 void party_size_changed() {

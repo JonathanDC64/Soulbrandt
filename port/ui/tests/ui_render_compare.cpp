@@ -653,6 +653,33 @@ const char* const kModelPage = R"(<rml><head><style>
      height: 300px;"></div></div>
 </body></rml>)";
 
+// What a look's sheet draws with (looks.hpp): the UI's own images (res/img, tools/ui/make_ui_art.py), the grain tiled
+// and the value box as a nine-patch with corners in dp; a focus bar that breathes; a page that slides in, as the game's
+// menus move (linear, 400 px in 0.17 s).
+const char* const kLookPage = R"(<rml><head><style>
+@spritesheet ui-art { src: /res/img/valuebox.png; resolution: 2x;
+    valuebox: 0px 0px 24px 24px; valuebox-inner: 10px 10px 4px 4px; }
+@keyframes breathe { from { opacity: 1; } to { opacity: 0.8; } }
+@keyframes slide-in { from { transform: translateX(-400px); opacity: 0; } to { transform: none; opacity: 1; } }
+.band { position: absolute; left: 0px; top: 56px; width: 1280px; height: 120px; background-color: #2c2b2b;
+    decorator: image(/res/img/grain.png repeat left top); border-top: 1px #45433d; border-bottom: 1px #45433d; }
+.page { position: absolute; left: 96px; top: 220px; width: 720px; height: 400px;
+    animation: 0.17s linear-in-out slide-in; }
+.row { display: block; height: 40px; margin-bottom: 8px; }
+.label { display: inline-block; width: 340px; height: 32px; padding: 4px 16px; background-color: #333331;
+    decorator: image(/res/img/grain.png repeat left top); color: #c8aa8c; }
+.focus .label { background-color: #752a29; animation: 0.5s linear-in-out infinite alternate breathe; }
+.value { display: inline-block; width: 300px; height: 32px; margin-left: 16px; padding: 4px 14px; color: #c8aa8c;
+    decorator: ninepatch(valuebox, valuebox-inner, 5dp); }
+</style></head><body>
+<div class="band"/>
+<div class="page">
+  <div class="row focus"><span class="label">Render resolution</span><span class="value">150% (1920 x 1080)</span></div>
+  <div class="row"><span class="label">Anti-aliasing</span><span class="value">SMAA</span></div>
+  <div class="row"><span class="label">Frame rate</span><span class="value" style="width: 120px;">60 fps</span></div>
+</div>
+</body></rml>)";
+
 // A 64x64 TGA (stb_image reads it, as the UI's PNGs): a gradient and a disc, half transparent at the edge.
 std::vector<unsigned char> test_image() {
     const int n = 64;
@@ -1178,6 +1205,7 @@ int main(int argc, char** argv) {
     pages.push_back({"menu-quit", 1280, 720, false, 1.f, false, [] { open_menu(true); }, {}});
     pages.push_back({"menu-restart", 1280, 720, false, 1.f, false, open_menu_restart, {}});
     pages.push_back({"clip", 1280, 720, false, 1.f, false, [] { open_rml(kClipPage); }, {}, true});
+    pages.push_back({"look-primitives", 1280, 720, false, 1.f, false, [] { open_rml(kLookPage); }, {}});
     pages.push_back({"filters", 1280, 720, false, 1.f, false, [] { open_rml(kFilterPage); }, {}, true});
     pages.push_back({"filters-odd-size", 1001, 563, false, 1.f, false, [] { open_rml(kFilterPage); }, {}, true});
     pages.push_back({"hdr-settings", 1280, 720, true, 2.5f, true, [] { open_settings("Interface", false); }, {}});

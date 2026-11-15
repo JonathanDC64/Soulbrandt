@@ -1,0 +1,5 @@
+/* Today: the port's own look (looks.hpp). A look's sheet holds what it changes from the documents' own sheets, all of
+   it inside @media (theme: <its id>), so only the chosen look's rules apply. Today is the documents' own sheets as
+   they are: nothing to change. */
+@media (theme: today) {
+}
