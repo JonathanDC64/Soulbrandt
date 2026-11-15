@@ -33,6 +33,7 @@
 #include "menu_shell.hpp"
 #include "menu_pages.hpp"
 #include "mods_page.hpp"
+#include "osk_window.hpp"
 #include "overlay.hpp"
 #include "players_page.hpp"
 #include "players_state.hpp"
@@ -1036,6 +1037,15 @@ void open_note(const std::string& kind) {
     ui::push_toast(std::move(t));
 }
 
+// The on-screen keyboard as the game opens it (cellOskDialog), or Co-op's Public address: a prompt, a made-up address.
+void open_osk() {
+    ui::push_document(std::make_unique<ui::OskWindow>(ui::OskWindow::Props{
+        .prompt = "Your public address, like 203.0.113.7",
+        .text = u"203.0.113.7",
+        .limit = 15,
+    }));
+}
+
 // The start screen with a new version found (a made-up 0.9.0).
 void open_start_update() {
     static const ui::updates::Release release{.version = "0.9.0", .notes = {"Made up for the test."}};
@@ -1540,6 +1550,8 @@ int main(int argc, char** argv) {
         pages.push_back({std::string("note-") + kind, 1280, 720, false, 1.f, false, [kind] { open_note(kind); }, {}});
     // The start screen with a new version found: its note and the Update choice stand out.
     pages.push_back({"start-update", 1280, 720, false, 1.f, false, open_start_update, {}});
+    // The on-screen keyboard.
+    pages.push_back({"osk", 1280, 720, false, 1.f, false, open_osk, {}});
     // The crash window, at its own size.
     pages.push_back({"crash", 1024, 640, false, 1.f, false, open_crash, {}});
     // Players as Alpha UI shows it (its window), from the made-up list.
@@ -1606,6 +1618,8 @@ int main(int argc, char** argv) {
             pages.push_back({std::string("des-note-") + kind, 1280, 720, false, 1.f, false,
                              in_band([kind] { open_note(kind); }), {}});
         pages.push_back({"des-start-update", 1280, 720, false, 1.f, false, in_band(open_start_update), {}});
+        // The on-screen keyboard: the question box with small stone keys, every key and button of Alpha UI's.
+        pages.push_back({"des-osk", 1280, 720, false, 1.f, false, in_band(open_osk), {}});
         // The crash window, its red mark kept, the focus on Report on GitHub.
         pages.push_back({"des-crash", 1024, 640, false, 1.f, false, in_band(open_crash), {}});
         // Players as a page over Settings: the list's first page, further down (its marks above and below), and offline
