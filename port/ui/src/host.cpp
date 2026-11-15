@@ -347,7 +347,7 @@ void load_fonts() {
     for (const Font& f : {Font{"res/fonts/AlegreyaSans-Regular.ttf", "Alegreya Sans", FontWeight::Normal, true},
                           Font{"res/fonts/AlegreyaSans-Bold.ttf", "Alegreya Sans", FontWeight::Bold, false},
                           Font{"res/fonts/Cinzel.ttf", "Cinzel", FontWeight::Auto, false},
-                          // (the Pause band look's text: looks.hpp)
+                          // (the DeS UI look's text: looks.hpp)
                           Font{"res/fonts/OldStandard-Regular.ttf", "Old Standard TT", FontWeight::Normal, false},
                           Font{"res/fonts/OldStandard-Bold.ttf", "Old Standard TT", FontWeight::Bold, false},
                           Font{"res/fonts/OldStandard-Italic.ttf", "Old Standard TT", FontWeight::Normal, false,

@@ -1,4 +1,4 @@
-/* Pause band (looks.hpp): the menus as the game's own pause menu draws its System options screen (docs/148; the looks
+/* DeS UI (looks.hpp): the menus as the game's own pause menu draws its System options screen (docs/148; the looks
    mock-up in docs/151). A band across the top edge holds the page's title and its tabs, with a line about the row
    under it; the rows sit straight on the dimmed game, a section's name in a bracket at their left, a stone bar for the
    setting and a dark box with cut corners for its value; the prompts run in a band near the bottom. In the F1 menu the
@@ -11,31 +11,31 @@
 
    Every decorator list puts the grain first: RmlUi draws a list's first decorator on top.
 
-   Everything is inside @media (theme: band), its sprites and keyframes too, named for the look. */
+   Everything is inside @media (theme: des), its sprites and keyframes too, named for the look. */
 
-@media (theme: band) {
+@media (theme: des) {
 
 /* The value box: dark inside a one-pixel warm edge, its corners cut (res/img, tools/ui/make_ui_art.py). */
-@spritesheet band-art {
+@spritesheet des-art {
     src: /res/img/valuebox.png;
     resolution: 2x;
-    band-box: 0px 0px 24px 24px;
-    band-box-inner: 10px 10px 4px 4px;
+    des-box: 0px 0px 24px 24px;
+    des-box-inner: 10px 10px 4px 4px;
 }
 
 /* The game's motion, measured (docs/151): even speed, no easing. The band drops in from the top edge, 190 px in
    0.2 s; a page slides in from the left, 400 px in 0.17 s; the focus bar breathes. */
-@keyframes band-drop {
+@keyframes des-drop {
     from { transform: translateY(-190dp); }
     to { transform: translateY(0dp); }
 }
 
-@keyframes band-page-in {
+@keyframes des-page-in {
     from { transform: translateX(-400dp); }
     to { transform: translateX(0dp); }
 }
 
-@keyframes band-breathe {
+@keyframes des-breathe {
     from { opacity: 1; }
     to { opacity: 0.82; }
 }
@@ -43,18 +43,18 @@
 body {
     --menu-column: 1152dp;
     --menu-side: 64dp;
-    --band-tan: #c8aa8c;
-    --band-tan-light: #e8d6c0;
-    --band-tan-muted: #a8927a;
-    --band-bracket: #6a665b;
-    --band-blood-edge: #a24742;
-    --band-amber: #e0a63c;
-    --band-amber-light: #ffd27a;
-    --band-hover-edge: #8a7c66;
-    --band-locked: #7d7264;
+    --des-tan: #c8aa8c;
+    --des-tan-light: #e8d6c0;
+    --des-tan-muted: #a8927a;
+    --des-bracket: #6a665b;
+    --des-blood-edge: #a24742;
+    --des-amber: #e0a63c;
+    --des-amber-light: #ffd27a;
+    --des-hover-edge: #8a7c66;
+    --des-locked: #7d7264;
 }
 
-/* ---- The frame: the whole window (Interface > Menu height is Today's: looks.hpp). ---- */
+/* ---- The frame: the whole window (Interface > Menu height is Alpha UI's: looks.hpp). ---- */
 menu-frame {
     position: absolute;
     left: 0;
@@ -72,7 +72,7 @@ menu-frame {
     box-shadow: none;
     font-family: Old Standard TT;
     font-weight: normal;
-    color: var(--band-tan);
+    color: var(--des-tan);
 }
 
 body.entries menu-frame {
@@ -101,7 +101,7 @@ menu-slot {
     font-size: 26dp;
     letter-spacing: 0;
     text-transform: none;
-    color: var(--band-tan-light);
+    color: var(--des-tan-light);
 }
 
 menu-slot-entry,
@@ -121,7 +121,7 @@ menu-slot-entry.on {
     border-bottom-width: 1dp;
     border-bottom-color: rgba(255, 255, 255, 7%);
     decorator: linear-gradient(90deg, #00000073, #0000004d 60%, #00000000);
-    color: var(--band-tan-light);
+    color: var(--des-tan-light);
 }
 
 menu-entries {
@@ -138,7 +138,7 @@ menu-entries {
     font-weight: normal;
     font-size: 17dp;
     text-transform: none;
-    color: var(--band-tan-muted);
+    color: var(--des-tan-muted);
     transform: none;
 }
 
@@ -158,18 +158,18 @@ menu-entry {
 
 menu-entry:hover {
     opacity: 1;
-    border-top-color: var(--band-hover-edge);
+    border-top-color: var(--des-hover-edge);
     background-color: rgba(255, 255, 255, 6%);
-    color: var(--band-tan-light);
+    color: var(--des-tan-light);
 }
 
 menu-entry.on {
     border-bottom-width: 0;
     border-top-width: 1dp;
-    border-top-color: var(--band-blood-edge);
+    border-top-color: var(--des-blood-edge);
     decorator: image(/res/img/grain.png repeat left top), linear-gradient(#853432, #6a2524);
     font-effect: none;
-    color: var(--band-tan-light);
+    color: var(--des-tan-light);
 }
 
 menu-close {
@@ -222,20 +222,20 @@ menu-tab {
     font-weight: normal;
     font-size: 17dp;
     text-transform: none;
-    color: var(--band-tan-muted);
+    color: var(--des-tan-muted);
     font-effect: none;
 }
 
 menu-tab:hover {
-    border-top-color: var(--band-hover-edge);
+    border-top-color: var(--des-hover-edge);
     background-color: rgba(255, 255, 255, 6%);
-    color: var(--band-tan-light);
+    color: var(--des-tan-light);
 }
 
 menu-tab.on {
     border-top-color: #5a574f;
     background-color: rgba(255, 255, 255, 14%);
-    color: var(--band-tan-light);
+    color: var(--des-tan-light);
     font-effect: none;
 }
 
@@ -276,7 +276,7 @@ menu-page {
 }
 
 /* The rows' scroll bar: a thin line just right of the value boxes (the rows end there; the body runs on for the help
-   Today shows beside them). */
+   Alpha UI shows beside them). */
 menu-rows {
     flex: 0 0 1032dp;
 }
@@ -294,12 +294,12 @@ menu-rows scrollbarvertical slidertrack {
 menu-rows scrollbarvertical sliderbar {
     width: 4dp;
     border-radius: 0;
-    background-color: var(--band-bracket);
+    background-color: var(--des-bracket);
 }
 
 menu-rows scrollbarvertical sliderbar:hover,
 menu-rows scrollbarvertical sliderbar:active {
-    background-color: var(--band-tan);
+    background-color: var(--des-tan);
 }
 
 body.entries menu-page {
@@ -329,14 +329,14 @@ menu-heading {
     margin: 14dp 0 -34dp;
     padding: 6dp 12dp 0 0;
     border-top-width: 1dp;
-    border-color: var(--band-bracket);
+    border-color: var(--des-bracket);
     font-family: Old Standard TT;
     font-weight: normal;
     font-size: 17dp;
     letter-spacing: 0.5dp;
     text-transform: uppercase;
     text-align: right;
-    color: var(--band-tan);
+    color: var(--des-tan);
 }
 
 menu-heading:first-child {
@@ -351,7 +351,7 @@ menu-bracket {
     width: 0;
     height: 34dp;
     border-right-width: 1dp;
-    border-color: var(--band-bracket);
+    border-color: var(--des-bracket);
 }
 
 menu-row {
@@ -384,34 +384,34 @@ menu-label {
     font-size: 21dp;
     letter-spacing: 0.3dp;
     text-transform: none;
-    color: var(--band-tan);
+    color: var(--des-tan);
 }
 
 menu-row:hover menu-label {
-    border-top-color: var(--band-hover-edge);
+    border-top-color: var(--des-hover-edge);
     decorator: image(/res/img/grain.png repeat left top), linear-gradient(#4c4a45, #393835);
-    color: var(--band-tan-light);
+    color: var(--des-tan-light);
 }
 
 menu-row:hover menu-value menu-text {
-    color: var(--band-tan-light);
+    color: var(--des-tan-light);
 }
 
 menu-row.focused menu-label {
-    border-top-color: var(--band-blood-edge);
+    border-top-color: var(--des-blood-edge);
     decorator: image(/res/img/grain.png repeat left top), linear-gradient(#853432, #6a2524);
-    color: var(--band-tan-light);
+    color: var(--des-tan-light);
 }
 
 body.motion menu-row.focused menu-label {
-    animation: 1.1s linear-in-out infinite alternate band-breathe;
+    animation: 1.1s linear-in-out infinite alternate des-breathe;
 }
 
 menu-row.locked menu-label,
 menu-row.locked:hover menu-label {
     border-top-color: #3a3833;
     decorator: image(/res/img/grain.png repeat left top), linear-gradient(#292927, #212120);
-    color: var(--band-locked);
+    color: var(--des-locked);
     opacity: 1;
 }
 
@@ -431,7 +431,7 @@ menu-row.locked menu-value {
 
 menu-row.locked menu-value menu-text,
 menu-row.locked menu-value icon.lock {
-    color: var(--band-locked);
+    color: var(--des-locked);
 }
 
 /* A row whose list is open: its bar a deeper red while the list has the focus. */
@@ -447,11 +447,11 @@ menu-value icon {
 
 menu-mark {
     flex: 0 0 20dp;
-    color: var(--band-tan-muted);
+    color: var(--des-tan-muted);
 }
 
 menu-row.waits menu-mark {
-    color: var(--band-tan);
+    color: var(--des-tan);
 }
 
 menu-value {
@@ -459,10 +459,10 @@ menu-value {
     height: 32dp;
     padding: 0 6dp;
     justify-content: space-between;
-    decorator: ninepatch(band-box, band-box-inner, 5dp);
+    decorator: ninepatch(des-box, des-box-inner, 5dp);
     font-size: 21dp;
     letter-spacing: 0.3dp;
-    color: var(--band-tan);
+    color: var(--des-tan);
 }
 
 /* (positioned, so they draw over the number's fill, which is; too long for the box, it ends in an ellipsis) */
@@ -482,7 +482,7 @@ menu-value icon {
 
 menu-row.modified menu-value menu-text {
     font-weight: normal;
-    color: var(--band-tan-light);
+    color: var(--des-tan-light);
 }
 
 /* The tag just past the box's right end, so the value keeps the whole box and its middle (a list or the aside opening
@@ -497,7 +497,7 @@ menu-value menu-tag {
     font-size: 14dp;
     letter-spacing: 0;
     white-space: nowrap;
-    color: var(--band-tan-muted);
+    color: var(--des-tan-muted);
 }
 
 /* An empty text (Custom server, Online name): what that means, in the tag's colour. */
@@ -505,7 +505,7 @@ menu-row.text menu-value menu-text:empty {
     decorator: text("Not set" #8f8270 center center);
 }
 
-/* A row that opens something: what Enter does, in the box, as the game's own buttons on a row (in place of Today's
+/* A row that opens something: what Enter does, in the box, as the game's own buttons on a row (in place of Alpha UI's
    chevron). */
 menu-row.action menu-value menu-text {
     display: block;
@@ -537,7 +537,7 @@ menu-arrow {
     flex: 0 0 22dp;
     height: 30dp;
     font-size: 30dp;
-    color: var(--band-amber);
+    color: var(--des-amber);
     opacity: 1;
 }
 
@@ -551,17 +551,17 @@ menu-arrow.right {
 }
 
 menu-arrow:hover {
-    color: var(--band-amber-light);
+    color: var(--des-amber-light);
 }
 
 menu-arrow.end,
 menu-row.focused.steps menu-arrow.end {
     opacity: 0.3;
-    color: var(--band-amber);
+    color: var(--des-amber);
 }
 
 menu-row.comparing menu-value menu-text {
-    color: var(--band-tan-light);
+    color: var(--des-tan-light);
 }
 
 menu-value input {
@@ -569,7 +569,7 @@ menu-value input {
     background-color: transparent;
     font-size: 21dp;
     text-align: center;
-    color: var(--band-tan-light);
+    color: var(--des-tan-light);
 }
 
 /* ---- A value's list: beside its box (looks.hpp's listBeside), in the same box, the cursor on a blood bar. (On its
@@ -583,30 +583,30 @@ menu-row menu-list {
     border-radius: 0;
     background-color: transparent;
     box-shadow: none;
-    decorator: ninepatch(band-box, band-box-inner, 5dp);
+    decorator: ninepatch(des-box, des-box-inner, 5dp);
     font-family: Old Standard TT;
 }
 
 menu-item {
     padding: 5dp 14dp;
     font-size: 21dp;
-    color: var(--band-tan);
+    color: var(--des-tan);
 }
 
 menu-item menu-tag {
     font-size: 14dp;
-    color: var(--band-tan-muted);
+    color: var(--des-tan-muted);
 }
 
 menu-item:hover {
     background-color: rgba(255, 255, 255, 14%);
-    color: var(--band-tan-light);
+    color: var(--des-tan-light);
 }
 
 menu-item.cursor {
     background-color: transparent;
     decorator: linear-gradient(#853432, #6a2524);
-    color: var(--band-tan-light);
+    color: var(--des-tan-light);
 }
 
 /* A choice that can't be taken here: the locked rows' colour, with no light under the pointer. */
@@ -614,7 +614,7 @@ menu-item.disabled,
 menu-item.disabled:hover {
     opacity: 1;
     background-color: transparent;
-    color: var(--band-locked);
+    color: var(--des-locked);
 }
 
 menu-item.disabled.cursor {
@@ -633,13 +633,13 @@ menu-row menu-aside {
     clip: none;
     width: 240dp;
     padding: 12dp 14dp;
-    decorator: ninepatch(band-box, band-box-inner, 5dp);
+    decorator: ninepatch(des-box, des-box-inner, 5dp);
     font-family: Old Standard TT;
     font-weight: normal;
     font-size: 16dp;
     line-height: 22dp;
     text-transform: none;
-    color: var(--band-tan);
+    color: var(--des-tan);
     cursor: default;
 }
 
@@ -653,12 +653,12 @@ menu-helpbox menu-notes status-badge {
     margin-bottom: 8dp;
     font-size: 16dp;
     line-height: 22dp;
-    color: var(--band-tan);
+    color: var(--des-tan);
 }
 
 menu-aside menu-notes status-badge.warning,
 menu-helpbox menu-notes status-badge.warning {
-    color: var(--band-amber);
+    color: var(--des-amber);
 }
 
 menu-aside stick-preview {
@@ -669,7 +669,7 @@ menu-aside stick-preview {
 }
 
 stick-ring {
-    border-color: var(--band-bracket);
+    border-color: var(--des-bracket);
 }
 
 stick-zone {
@@ -678,17 +678,17 @@ stick-zone {
 }
 
 stick-dot {
-    background-color: var(--band-tan-light);
+    background-color: var(--des-tan-light);
 }
 
 stick-dot.game {
-    background-color: var(--band-amber);
+    background-color: var(--des-amber);
 }
 
 stick-legend {
     font-size: 15dp;
     line-height: 21dp;
-    color: var(--band-tan);
+    color: var(--des-tan);
 }
 
 /* ---- Help (H, View, Select): the whole help in a box over the rows. ---- */
@@ -712,19 +712,19 @@ menu-helpbox h3 {
     font-family: Old Standard TT;
     font-weight: normal;
     font-size: 21dp;
-    color: var(--band-tan-light);
+    color: var(--des-tan-light);
 }
 
 menu-helpbox menu-helptext {
     font-size: 17dp;
     line-height: 26dp;
-    color: var(--band-tan);
+    color: var(--des-tan);
 }
 
 menu-helpbox menu-facts {
     padding-top: 14dp;
     font-size: 17dp;
-    color: var(--band-tan-muted);
+    color: var(--des-tan-muted);
 }
 
 menu-helpbox menu-fact {
@@ -741,7 +741,7 @@ menu-helpbox menu-fact-value,
 menu-helpbox menu-fact-value.key {
     font-size: 17dp;
     letter-spacing: 0;
-    color: var(--band-tan-light);
+    color: var(--des-tan-light);
 }
 
 /* ---- The prompts: a band near the bottom; in the F1 menu, straight under the line. ---- */
@@ -787,7 +787,7 @@ menu-prompt:hover {
 }
 
 menu-prompt:hover menu-says {
-    color: var(--band-tan-light);
+    color: var(--des-tan-light);
 }
 
 menu-glyph menu-art {
@@ -838,13 +838,13 @@ menu-peek-row menu-name {
     padding-left: 24dp;
     line-height: 32dp;
     border-top-width: 1dp;
-    border-top-color: var(--band-blood-edge);
+    border-top-color: var(--des-blood-edge);
     decorator: image(/res/img/grain.png repeat left top), linear-gradient(#853432, #6a2524);
     font-family: Old Standard TT;
     font-weight: normal;
     font-size: 21dp;
     text-transform: none;
-    color: var(--band-tan-light);
+    color: var(--des-tan-light);
 }
 
 menu-peek-row menu-value {
@@ -862,7 +862,7 @@ menu-peek-next {
     width: 300dp;
     margin-left: var(--menu-side);
     font-size: 14dp;
-    color: var(--band-tan-muted);
+    color: var(--des-tan-muted);
 }
 
 menu-peek-prev {
@@ -898,11 +898,11 @@ menu-badge {
     line-height: 34dp;
     letter-spacing: 0;
     text-transform: none;
-    color: var(--band-tan-light);
+    color: var(--des-tan-light);
 }
 
 menu-badge.now {
-    color: var(--band-tan-light);
+    color: var(--des-tan-light);
 }
 
 body.preview menu-badge {
@@ -920,7 +920,7 @@ window.modal {
     background-color: #030303;
     font-family: Old Standard TT;
     font-weight: normal;
-    color: var(--band-tan);
+    color: var(--des-tan);
 }
 
 window.modal.danger {
@@ -943,13 +943,13 @@ window.modal.danger modal-title {
     font-weight: normal;
     font-size: 21dp;
     text-transform: none;
-    color: var(--band-tan-light);
+    color: var(--des-tan-light);
 }
 
 window.modal modal-body {
     font-size: 17dp;
     line-height: 26dp;
-    color: var(--band-tan);
+    color: var(--des-tan);
 }
 
 window.modal modal-actions {
@@ -976,21 +976,21 @@ window.modal button.modal-btn {
     letter-spacing: 0.5dp;
     line-height: 32dp;
     text-transform: uppercase;
-    color: var(--band-tan);
+    color: var(--des-tan);
 }
 
 window.modal button.modal-btn:not(:disabled):hover {
-    border-top-color: var(--band-hover-edge);
+    border-top-color: var(--des-hover-edge);
     box-shadow: none;
     decorator: image(/res/img/grain.png repeat left top), linear-gradient(#4c4a45, #393835);
-    color: var(--band-tan-light);
+    color: var(--des-tan-light);
 }
 
 window.modal button.modal-btn:not(:disabled):focus-visible {
-    border-top-color: var(--band-blood-edge);
+    border-top-color: var(--des-blood-edge);
     box-shadow: none;
     decorator: image(/res/img/grain.png repeat left top), linear-gradient(#853432, #6a2524);
-    color: var(--band-tan-light);
+    color: var(--des-tan-light);
 }
 
 window.modal button.modal-btn:disabled {
@@ -1016,7 +1016,7 @@ window.modal button.report-ack-tick {
     font-family: Old Standard TT;
     font-size: 21dp;
     text-align: left;
-    color: var(--band-tan);
+    color: var(--des-tan);
 }
 
 window.modal button.report-ack-tick icon {
@@ -1037,15 +1037,15 @@ window.modal button.report-ack-tick tick-label {
 }
 
 window.modal button.report-ack-tick:hover tick-label {
-    border-top-color: var(--band-hover-edge);
+    border-top-color: var(--des-hover-edge);
     decorator: image(/res/img/grain.png repeat left top), linear-gradient(#4c4a45, #393835);
-    color: var(--band-tan-light);
+    color: var(--des-tan-light);
 }
 
 window.modal button.report-ack-tick:focus-visible tick-label {
-    border-top-color: var(--band-blood-edge);
+    border-top-color: var(--des-blood-edge);
     decorator: image(/res/img/grain.png repeat left top), linear-gradient(#853432, #6a2524);
-    color: var(--band-tan-light);
+    color: var(--des-tan-light);
 }
 
 window.modal button.report-ack-tick tick-value {
@@ -1054,8 +1054,8 @@ window.modal button.report-ack-tick tick-value {
     height: 32dp;
     line-height: 32dp;
     text-align: center;
-    decorator: ninepatch(band-box, band-box-inner, 5dp);
-    color: var(--band-tan-light);
+    decorator: ninepatch(des-box, des-box-inner, 5dp);
+    color: var(--des-tan-light);
 }
 
 /* ---- The start screen (prelaunch.cpp), as the game's title menu: the name where the game's logo stands, the choices
@@ -1088,7 +1088,7 @@ body.prelaunch hero title-text {
     font-size: 60dp;
     letter-spacing: 1dp;
     text-transform: none;
-    color: var(--band-tan-light);
+    color: var(--des-tan-light);
     font-effect: glow(0dp 6dp 0dp 0dp rgba(0, 0, 0, 90%));
 }
 
@@ -1101,7 +1101,7 @@ body.prelaunch eyebrow {
     font-size: 19dp;
     letter-spacing: 1.5dp;
     text-transform: none;
-    color: var(--band-tan);
+    color: var(--des-tan);
 }
 
 body.prelaunch menu-list {
@@ -1120,13 +1120,13 @@ body.prelaunch #menu-list button {
     font-size: 23dp;
     line-height: 40dp;
     letter-spacing: 2.5dp;
-    color: var(--band-tan);
+    color: var(--des-tan);
     font-effect: glow(0dp 3dp 0dp 0dp rgba(0, 0, 0, 85%));
     decorator: none;
 }
 
 body.prelaunch #menu-list button:not(:disabled):hover {
-    color: var(--band-tan-light);
+    color: var(--des-tan-light);
     font-effect: glow(0dp 3dp 0dp 0dp rgba(0, 0, 0, 85%));
     decorator: radial-gradient(ellipse 190dp 14dp at center, rgba(255, 236, 214, 22%) 0%, rgba(255, 236, 214, 0%) 100%);
 }
@@ -1134,7 +1134,7 @@ body.prelaunch #menu-list button:not(:disabled):hover {
 /* A choice that can't be taken now: the locked rows' colour, and no smear or glow when the pointer is on it. */
 body.prelaunch #menu-list button:disabled {
     opacity: 1;
-    color: var(--band-locked);
+    color: var(--des-locked);
     decorator: none;
 }
 
@@ -1154,7 +1154,7 @@ body.prelaunch version-info {
     text-align: center;
     font-family: Old Standard TT;
     font-size: 17dp;
-    color: var(--band-tan);
+    color: var(--des-tan);
 }
 
 body.prelaunch hint-info {
@@ -1163,7 +1163,7 @@ body.prelaunch hint-info {
 
 body.prelaunch version-info {
     bottom: 100dp;
-    color: var(--band-tan-muted);
+    color: var(--des-tan-muted);
 }
 
 body.prelaunch prelaunch-prompts {
@@ -1178,7 +1178,7 @@ body.prelaunch prelaunch-prompts {
     gap: 22dp;
     font-family: Old Standard TT;
     font-size: 17dp;
-    color: var(--band-tan);
+    color: var(--des-tan);
 }
 
 body.prelaunch menu-prompt {
@@ -1203,11 +1203,11 @@ body.prelaunch menu-glyph menu-key {
 body.entries.motion menu-frame,
 body.page.motion menu-frame,
 body.entries.motion menu-entries {
-    animation: 0.2s linear-in-out band-drop;
+    animation: 0.2s linear-in-out des-drop;
 }
 
 body.page.motion menu-body {
-    animation: 0.17s linear-in-out band-page-in;
+    animation: 0.17s linear-in-out des-page-in;
 }
 
 body.closing menu-frame,

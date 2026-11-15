@@ -1,5 +1,6 @@
-/* Written for Demon's Souls. The F1 menu and Settings (menu_shell.hpp, settings_page.hpp) in the Today look: the port's
-   own, as the menu bar and the settings window drew it, with the prompts, the list beside the value and the preview.
+/* Written for Demon's Souls. The F1 menu and Settings (menu_shell.hpp, settings_page.hpp) in the Alpha UI look: the
+   port's own, as the menu bar and the settings window drew it, with the prompts, the list beside the value and the
+   preview.
    Another look changes what it needs in its own sheet (looks.hpp). Colours and fonts from theme.rcss.
 
    The body's classes say what shows: entries (the F1 menu's bar), page (a page in its frame), closed, standalone
@@ -147,7 +148,7 @@ menu-slot-entry:hover {
     color: var(--color-white);
 }
 
-/* The menu's own title, for a look whose band names it (Today's slot lists the entries instead). */
+/* The menu's own title, for a look whose band names it (Alpha UI's slot lists the entries instead). */
 menu-title {
     display: none;
 }
@@ -186,7 +187,7 @@ body.standalone menu-slot-entry.on {
     display: block;
 }
 
-/* The line under a look's band (Today has the help beside the rows instead). */
+/* The line under a look's band (Alpha UI has the help beside the rows instead). */
 menu-strip {
     display: none;
 }

@@ -2,7 +2,7 @@
 
   grain.png     192x192, tiles: a worn-stone noise laid over the menus' bars and boxes. Four octaves of value noise
                 from a fixed seed (the looks mock-up's, so the same image), dark specks and light ones, mostly clear.
-  valuebox.png  24x24 at 2x: the Pause band's value box, ink inside a one-pixel warm edge, its corners cut at 45
+  valuebox.png  24x24 at 2x: DeS UI's value box, ink inside a one-pixel warm edge, its corners cut at 45
                 degrees. A nine-patch: its 10-pixel corners stay, the middle stretches (the sheet's spritesheet says
                 where).
 

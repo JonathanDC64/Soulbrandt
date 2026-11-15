@@ -28,6 +28,19 @@
 namespace ui {
 namespace {
 
+// Where Settings was when it last closed, so it opens there again while the game runs (from the F1 menu, the start
+// screen or setup alike): the tab shown, and on each tab the row with the focus, by its label, as rows come and go (a
+// disc's Language).
+struct Place {
+    int tab = 0;
+    std::vector<std::string> rows;  // per tab; "" for its first row
+};
+
+Place& last_place() {
+    static Place place;
+    return place;
+}
+
 using catalog::RowDesc;
 using menu::RowFacts;
 using menu::SettingsModel;
@@ -190,6 +203,10 @@ SettingsPage::SettingsPage(Rml::Element* host, menu::PageHost& shell)
         const float mid = peekValue->GetAbsoluteLeft() + peekValue->GetClientWidth() / 2;
         step(x < mid ? -1 : 1);
     });
+    const Place& place = last_place();
+    mPlaceRows = place.rows;
+    mPlaceRows.resize(catalog::tabs().size());
+    mModel.set_tab(place.tab);
     build_tab();
 }
 
@@ -293,6 +310,12 @@ void SettingsPage::build_tab() {
     }
     refresh_facts();
     mModel.rows_changed(mFacts);
+    // The first time this tab shows, the focus goes back to the row it was on when Settings last closed.
+    if (mBuiltTab < static_cast<int>(mPlaceRows.size()) && !mPlaceRows[mBuiltTab].empty()) {
+        const std::string label = std::move(mPlaceRows[mBuiltTab]);
+        mPlaceRows[mBuiltTab].clear();
+        focus_row(label);
+    }
 }
 
 void SettingsPage::refresh_facts() {
@@ -413,7 +436,7 @@ void SettingsPage::place_aside() {
     set_px(mAside, Rml::PropertyId::Top, top);
 }
 
-// A look that joins a section's heading to its rows with a line down their side (Pause band's bracket) gets the line's
+// A look that joins a section's heading to its rows with a line down their side (DeS UI's bracket) gets the line's
 // length here, from the heading's top to the foot of the section's last row as laid out, as the look sizes its rows.
 void SettingsPage::update_brackets() {
     for (Bracket& b : mBrackets) {
@@ -907,6 +930,24 @@ void SettingsPage::closing() {
     stop_edit(true);
     compare(false);
     settings::save();
+
+    // Where it is now, to open there next time: a tab not shown since keeps the row it was to get.
+    Place& place = last_place();
+    place.tab = mModel.tab();
+    place.rows.assign(catalog::tabs().size(), std::string());
+    for (size_t t = 0; t < place.rows.size(); t++) {
+        if (t < mPlaceRows.size() && !mPlaceRows[t].empty()) {
+            place.rows[t] = mPlaceRows[t];
+            continue;
+        }
+        const std::vector<const RowDesc*> rows = visible_rows(static_cast<int>(t));
+        const int f = mModel.focus_on(static_cast<int>(t));
+        if (f > 0 && f < static_cast<int>(rows.size())) place.rows[t] = rows[f]->label;
+    }
+}
+
+void SettingsPage::forget_place() {
+    last_place() = Place{};
 }
 
 bool SettingsPage::show_tab(const std::string& title) {

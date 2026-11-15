@@ -223,7 +223,7 @@ void Prelaunch::update() {
     Document::update();
 }
 
-// The prompts for the keys here, as the menus show theirs (a look that draws them: Pause band), drawn again only when
+// The prompts for the keys here, as the menus show theirs (a look that draws them: DeS UI), drawn again only when
 // they change (the device used last).
 void Prelaunch::update_prompts() {
     if (mPrompts == nullptr) return;

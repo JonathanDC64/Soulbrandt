@@ -506,9 +506,11 @@ Files:
   Settings, a passive view of `settings_model.cpp` (the tab, the focus on
   each tab, the list, the typing and the preview, and the prompts for each)
   and of `settings_rows.cpp` (each row's value and list from the catalogue).
+  While the game runs, Settings opens where it was left, from the F1 menu,
+  the start screen or setup alike: the tab, and each tab's row, by its label.
   `menu_logic_check` checks both models alone. Both files list the elements
   they build, the same in every look, and the classes their state sets;
-  `menu.rcss` is how Today draws them.
+  `menu.rcss` is how Alpha UI draws them.
 - `prelaunch.cpp`, `overlay.cpp`,
   `prework_modal.cpp`: the documents. `input.cpp`: pad state to UI keys with repeat. The rest is
   Dusklight's framework (document stack, windows, panes, buttons, modals,
@@ -638,9 +640,9 @@ documents. Only the style sheets differ.
 
 There are two looks:
 
-- **Today**, the default and the only one in a release build.
-- **Pause band**, offered in developer builds only until it is signed off.
-  It copies the game's own pause menu.
+- **Alpha UI** (`alpha`), the default and the only one in a release build.
+- **DeS UI** (`des`), offered in developer builds only until it is signed
+  off. It copies the game's own pause menu and its band.
 
 How it works:
 
@@ -655,7 +657,7 @@ How it works:
   wins over the documents' own rules.
 - **The elements.** `menu_shell.hpp` (the F1 menu, the frame, the prompts)
   and `settings_page.hpp` (the tabs and rows) list them. Every look gets the
-  same ones; the documents' own sheet (`menu.rcss`) hides those Today
+  same ones; the documents' own sheet (`menu.rcss`) hides those Alpha UI
   doesn't draw, and a look's sheet shows them:
   - `menu-title`, the page's title;
   - `menu-end`, the buttons that move along the F1 entries (L1 and R1, Q
@@ -697,9 +699,9 @@ How it works:
   - `menuHeight`: Interface > Menu height sizes Settings' frame. The shell
     sets that height inline, which a sheet can't override, so a look that
     sizes the frame itself turns this off and the row is hidden.
-- **Today** is the documents' own sheets as they are (for the F1 menu and
+- **Alpha UI** is the documents' own sheets as they are (for the F1 menu and
   Settings, `menu.rcss`). Its sheet is empty.
-- **Pause band** is `looks/band.rcss`. Its text is Old Standard TT (SIL OFL
+- **DeS UI** is `looks/des.rcss`. Its text is Old Standard TT (SIL OFL
   1.1, in `res/fonts` with its licence).
 - **Images.** The looks draw with images of the menus' own in `res/img`,
   made by `tools/ui/make_ui_art.py` from numbers, never from the game:
@@ -713,19 +715,19 @@ To add a look:
 
 1. Add a line to `kLooks`. Set `released = false` until it is finished, so
    only developer builds offer it. Set its traits.
-2. Write its sheet. Show the elements it draws that Today hides.
+2. Write its sheet. Show the elements it draws that Alpha UI hides.
 3. Run `ui_style_check`. CI runs it too (`host.yml`, on Windows and Linux).
    It checks that:
    - every look has its sheet;
    - every sheet belongs to a look;
    - each sheet's rules are all inside its own theme;
    - RmlUi reads each sheet without a warning.
-4. Add its pages to `ui_render_compare`, as Pause band's `band-*` pages are
+4. Add its pages to `ui_render_compare`, as DeS UI's `des-*` pages are
    added. Each switches to the look first (`use_look`), and they're added
    only in a build that offers it, so a release build skips them until the
    look is released.
 5. Take shots in the game with `tools/des/uishots.sh`, setting
-   `UISHOTS_LOOKS` to the looks to compare (for example `"today band"`).
+   `UISHOTS_LOOKS` to the looks to compare (for example `"alpha des"`).
    A look the build doesn't offer draws as the default, so one not
    released yet needs a developer build.
 

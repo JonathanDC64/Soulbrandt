@@ -114,7 +114,7 @@ Value value(const RowDesc& row) {
                 return {.text = settings::in_use(row.key), .first = true, .last = true};
             },
             [&](const InfoRow& kind) -> Value { return {.text = kind.value(), .first = true, .last = true}; },
-            // What Enter does, for a look that writes it in the box (Today draws a chevron instead).
+            // What Enter does, for a look that writes it in the box (Alpha UI draws a chevron instead).
             [&](const ActionRow& kind) -> Value {
                 return {.text = kind.opens == ActionRow::Opens::DeleteData ? "Delete" : "Open", .first = true, .last = true};
             },
