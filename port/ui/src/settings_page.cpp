@@ -210,7 +210,7 @@ void SettingsPage::build_tab() {
     // The tab bar: the tabs, between the buttons that change them.
     if (mTabElems.empty()) {
         const std::vector<catalog::TabDesc>& tabs = catalog::tabs();
-        append(mTabs, "menu-glyph")->SetClass("prev", true);
+        append(mTabs, "menu-tab-key")->SetClass("prev", true);
         for (size_t t = 0; t < tabs.size(); t++) {
             Rml::Element* e = append_text_element(mTabs, "menu-tab", tabs[t].title);
             mTabElems.push_back(e);
@@ -218,7 +218,7 @@ void SettingsPage::build_tab() {
                 if (mModel.set_tab(static_cast<int>(t))) play_sound(kSoundTabChanged);
             });
         }
-        append(mTabs, "menu-glyph")->SetClass("next", true);
+        append(mTabs, "menu-tab-key")->SetClass("next", true);
         mGlyphsDrawn = false;
     }
 

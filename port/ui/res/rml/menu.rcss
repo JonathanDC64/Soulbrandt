@@ -246,7 +246,8 @@ menu-tabs {
     border-bottom-color: rgba(var(--color-border-rgb), 28%);
 }
 
-menu-tabs > menu-glyph {
+menu-tab-key {
+    display: block;
     flex: 0 0 auto;
     margin: 0 6dp;
 }
