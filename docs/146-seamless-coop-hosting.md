@@ -285,6 +285,11 @@ the four are emptied once more, at the next read, on the readers' thread. A `HER
 once its sender's load has ended, so what that player sent from the old area (peer to peer) left a load's time
 before it.
 
+The players waited on are the game's members with a slot (`+0x38`) that are still in the room. A friend that leaves
+during the host's load (its own trip, say) stays in the game's member list, but the room library has dropped it: its
+members (`sm+0x11C` to `+0x120`, 0x30 bytes each) start with the word a member has at `+8`. Before, the host's game
+waited on such a friend until it joined again.
+
 **A player back after a death.** A dead phantom leaves the game's sessions, so the game never brings its character
 back: on the other games that character stays in its death animation, faded out, and plays none of its moves after.
 So a player back in the world after a death says so (`BACK`): a friend after its respawn or after a load it followed
@@ -769,6 +774,10 @@ the newer generation, and saves as usual.
     message on the host's game, and up to two on the friend's (those at the last emptying).
   - With both players then put in its hall, the fight started on both screens. For the 90 s watched, the Vanguard
     stood in the same place on both games, within half a metre at each check.
+  - A friend that left during the host's load (its own trip at the tutorial's end, the friend 1.5 s ahead, with that
+    trip as it was before the friend went with its host): the host's game still listed it as a member after the
+    load, while the room library had dropped it. Before, the host's hold waited until the friend joined again; with
+    the room check it ended as the host arrived ("the 0 other player(s)").
 - Items for a friend: the area's items and enemy drops (above). Not covered: a drop that an item lot allows only once
   (its flag is read from the host's flags in play), and the scripted pickups (the Demonbrand, the keys) that an
   area's script offers to the host and to players in their own world only, as the boss souls were.

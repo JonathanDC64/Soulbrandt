@@ -1501,13 +1501,25 @@ void sync_read(ppu_context* ctx, uint32_t fn, std::initializer_list<int64_t> arg
     ctx->gpr[3] = 0;
 }
 
-// The other players in the session: the members with a slot (+0x38), as requeue takes them.
+// Whether a member of the game's list is still in the room: the room library's members (sm+0x11C to +0x120, 0x30
+// bytes each) start with the same word as the member's +8. A friend's leave during the host's load (its own trip,
+// Leave co-op as the host warps) leaves its member in the game's list; the room library has dropped it.
+bool in_room(uint32_t sm, uint32_t m)
+{
+    const uint32_t id = vm_read32(m + 8), a = vm_read32(sm + 0x11C), b = vm_read32(sm + 0x120);
+    if (!guest_ok(a) || b < a || b - a > 0x30u * 8) return true;   // (no list to go by: as before)
+    for (uint32_t e = a; e < b; e += 0x30)
+        if (vm_read32(e) == id) return true;
+    return false;
+}
+
+// The other players in the session: the members with a slot (+0x38), as requeue takes them, still in the room.
 int others_in(uint32_t sm)
 {
     const uint32_t msent = rd(sm + kSmMembers + 0xC);
     int n = 0, k = 0;
     for (uint32_t m = guest_ok(msent) ? rd(msent) : msent; m != msent && guest_ok(m) && k < 8; m = rd(m), k++)
-        if ((int32_t)vm_read32(m + 0x38) != -1) n++;
+        if ((int32_t)vm_read32(m + 0x38) != -1 && in_room(sm, m)) n++;
     return n;
 }
 
