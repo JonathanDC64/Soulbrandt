@@ -30,6 +30,7 @@ private:
     void build_menu_buttons();
     void play();
     void show_update();
+    void update_prompts();
 
     bool mEntranceAnimationStarted = false;
     std::vector<std::unique_ptr<Button>> mMenuButtons;
@@ -38,6 +39,8 @@ private:
     Rml::Element* mRoot = nullptr;
     Rml::Element* mVersion = nullptr;
     Rml::Element* mHint = nullptr;
+    Rml::Element* mPrompts = nullptr;
+    std::string mPromptsShown;
 };
 
 }  // namespace ui

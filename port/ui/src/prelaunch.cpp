@@ -9,6 +9,7 @@
 #include "input.hpp"
 #include "modal.hpp"
 #include "mods_window.hpp"
+#include "prompts.hpp"
 #include "settings.hpp"
 #include "menu_shell.hpp"
 #include "trophies_window.hpp"
@@ -27,7 +28,7 @@ const Rml::String kDocumentSource = R"RML(
     <link type="text/rcss" href="res/rml/controls.rcss" />
     <link type="text/rcss" href="res/rml/prelaunch.rcss" />
 </head>
-<body>
+<body class="prelaunch">
     <prelaunch-gradient />
     <prelaunch-vignette />
     <content id="root" open>
@@ -45,6 +46,7 @@ const Rml::String kDocumentSource = R"RML(
         <version-info class="intro-item delay-7">
             <version-label>Version <version-number id="version-text"></version-number></version-label>
         </version-info>
+        <prelaunch-prompts id="prompts" class="intro-item delay-7" />
     </content>
 </body>
 </rml>
@@ -67,6 +69,24 @@ Prelaunch::Prelaunch() : Document(kDocumentSource, false, DocumentScope::Prelaun
 
     mVersion = mDocument->GetElementById("version-text");
     mHint = mDocument->GetElementById("hint-text");
+    mPrompts = mDocument->GetElementById("prompts");
+    // A click on a prompt does what its button does: Open presses the choice with the focus, Quit asks.
+    listen(mPrompts, Rml::EventId::Click, [this](Rml::Event& e) {
+        for (Rml::Element* t = e.GetTargetElement(); t && t != mPrompts; t = t->GetParentNode()) {
+            if (t->GetTagName() != "menu-prompt") continue;
+            const auto key = static_cast<prompts::Key>(t->GetAttribute<int>("data-key", -1));
+            if (key == prompts::Key::Back) {
+                request_quit_confirm();
+            } else if (key == prompts::Key::Confirm) {
+                for (const auto& button : mMenuButtons)
+                    if (Rml::Element* focused = mDocument->GetContext()->GetFocusElement(); button->contains(focused)) {
+                        button->root()->Click();
+                        break;
+                    }
+            }
+            return;
+        }
+    });
 
     listen(mDocument, Rml::EventId::Transitionend, [this](Rml::Event& event) {
         auto* target = event.GetTargetElement();
@@ -182,6 +202,8 @@ void Prelaunch::show_update() {
 
 void Prelaunch::update() {
     if (!mEntranceAnimationStarted && mDocument != nullptr) {
+        // Without animations (DES_UI_NO_ANIM: the tests' pictures, uishots) the screen is at once as it ends.
+        mDocument->SetClass("still", !host::animations_enabled());
         mDocument->SetClass("animate-in", true);
         mEntranceAnimationStarted = true;
     }
@@ -196,8 +218,25 @@ void Prelaunch::update() {
         set_text_content(mHint, Rml::String("In the game, F1 or ") +
                                     input::chord_label(settings::get_int("pad_menu_chord")) + " opens the menu.");
     }
+    update_prompts();
 
     Document::update();
+}
+
+// The prompts for the keys here, as the menus show theirs (a look that draws them: Pause band), drawn again only when
+// they change (the device used last).
+void Prelaunch::update_prompts() {
+    if (mPrompts == nullptr) return;
+    const prompts::Device device = input::menu_device();
+    std::string rml;
+    for (const prompts::Prompt& p : {prompts::Prompt{prompts::Key::Change, "Select"},
+                                     prompts::Prompt{prompts::Key::Confirm, "Open"},
+                                     prompts::Prompt{prompts::Key::Back, "Quit"}})
+        rml += "<menu-prompt data-key=\"" + std::to_string(static_cast<int>(p.key)) + "\">" +
+               menu::glyph_rml(device, p.key) + "<menu-says>" + escape(p.label) + "</menu-says></menu-prompt>";
+    if (rml == mPromptsShown) return;
+    mPromptsShown = rml;
+    mPrompts->SetInnerRML(rml);
 }
 
 bool Prelaunch::focus() {

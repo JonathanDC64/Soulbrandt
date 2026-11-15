@@ -160,6 +160,11 @@ version-info {
     color: var(--color-prelaunch-muted);
 }
 
+/* The prompts for the keys here, for a look that draws them (Pause band). */
+prelaunch-prompts {
+    display: none;
+}
+
 /* Startup animation */
 .intro-item {
     opacity: 0;
@@ -180,3 +185,11 @@ body.animate-in .intro-item {
 .delay-5 { transition: opacity transform 0.3s 0.7s cubic-in-out; }
 .delay-6 { transition: opacity transform 0.3s 0.8s cubic-in-out; }
 .delay-7 { transition: opacity transform 0.3s 0.9s cubic-in-out; }
+
+/* Without animations (prelaunch.cpp): no fade, no rise. */
+body.still,
+body.still content,
+body.still .intro-item,
+body.still #menu-list button.anim-done {
+    transition: none;
+}

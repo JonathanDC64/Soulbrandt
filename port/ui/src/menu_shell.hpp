@@ -2,14 +2,20 @@
 // drawn inside it (menu_page.hpp: Settings), with the prompts for what the keys do now. The same document shows
 // Settings on its own from the start screen and setup (standalone). It replaces the menu bar and the settings window.
 //
-// Its elements, the same in every look (how they look is the look's style sheet, looks.hpp):
-//   body(.entries .page .standalone .hiding .closing .motion, and the page's: .preview .listing .typing .comparing)
-//     menu-entries > menu-entry(.on), menu-close       the F1 menu's entries
-//     menu-frame > menu-slot > menu-slot-entry(.on)    the page's frame: the entries, the one open marked
+// Its elements, the same in every look (how they look is the look's style sheet, looks.hpp; a look hides what it
+// doesn't draw):
+//   body(.entries .page .closed .standalone .hiding .closing .asking .motion, and the page's: .preview .listing
+//        .typing .helping .comparing)                  .asking: a question is up (question.hpp)
+//     menu-entries > menu-end.left(.end), menu-entry(.on), menu-end.right(.end), menu-close
+//                                                      the F1 menu's entries, with arrows at their ends (.end: at the
+//                                                      first or the last)
+//     menu-frame > menu-slot > menu-title, menu-slot-entry(.on)
+//                                                      the page's frame: its title, the entries, the one open marked
 //                  menu-strip                          a line on what has the focus (an entry's, a row's)
 //                  menu-page                           the page's own elements (settings_page.hpp)
-//                  menu-prompts > menu-prompt > menu-glyph > menu-key, menu-says
-//     menu-badge(.before .now)                         Compare's line over the game
+//                  menu-prompts > menu-prompt > menu-glyph > menu-art, menu-key; menu-says
+//                                                      menu-art: the button's picture (button_art.hpp)
+//     menu-badge(.on .before .now)                     Compare's line over the game
 //
 // Back closes one thing at a time: what the page has open, the page (back to the entries), then the menu, which asks
 // about a restart first when restart-only settings changed (menu_model.hpp). Shift, or R3, held hides it all.
@@ -80,10 +86,13 @@ private:
     void close_page();
     void finish_close();
     void choose_entry(int index);
+    // A click on one of a page's entries (the frame's): the page closes and that entry opens, as from the entries.
+    void switch_entry(int index);
     void hiding(bool on);
     void draw();
     void update_safe_area();
     void update_frame_height(bool preview);
+    void update_column();
 
     menu::Model mModel;
     std::unique_ptr<menu::Page> mPage;
@@ -103,13 +112,17 @@ private:
     Rml::Element* mPrompts = nullptr;
     Rml::Element* mBadge = nullptr;
     std::vector<Rml::Element*> mEntryElems;
-    Rml::Element* mEnds[2] = {};  // the entries' ends, left and right: arrows in a look that draws them
+    // The entries' ends, left and right: the buttons that move along them (L1 and R1, Q and E), in a look that draws
+    // them; drawn again when the device used changes.
+    Rml::Element* mEnds[2] = {};
+    std::string mEndsShown;
     std::vector<Rml::Element*> mSlotElems;
     std::string mClassesShown;
     std::string mPromptsShown;
     clock::time_point mBadgeUntil{};
     Insets mSafeArea{};
     float mFrameMax = -1.f;  // the frame's max-height set, in px; -1 = none (the look's sheet)
+    float mSide = -1.f;      // --menu-side set, in px; -1 = none (the look has no column)
 };
 
 }  // namespace ui

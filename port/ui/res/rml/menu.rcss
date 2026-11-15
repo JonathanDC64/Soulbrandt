@@ -48,12 +48,12 @@ menu-entry {
     padding: 0 var(--space-xl);
     line-height: 63dp;
     white-space: nowrap;
-    opacity: 0.35;
+    opacity: 0.55;
     cursor: pointer;
 }
 
 menu-entry:hover {
-    opacity: 0.7;
+    opacity: 0.9;
 }
 
 menu-entry.on {
@@ -140,6 +140,11 @@ menu-slot {
 
 menu-slot-entry {
     white-space: nowrap;
+    cursor: pointer;
+}
+
+menu-slot-entry:hover {
+    color: var(--color-white);
 }
 
 /* The menu's own title, for a look whose band names it (Today's slot lists the entries instead). */
@@ -149,10 +154,36 @@ menu-title {
 
 menu-slot-entry.on {
     color: var(--color-accent);
+    cursor: default;
 }
 
-body.standalone menu-slot {
+/* The page's close button, at the slot's right end: it closes the menu, as the menu bar's did. */
+menu-slot-close {
+    display: block;
+    flex: 0 0 30dp;
+    height: 30dp;
+    margin: 0 -14dp 0 auto;
+    border-radius: 4dp;
+    font-family: var(--font-family-icons);
+    font-weight: normal;
+    font-size: var(--font-size-2xl);
+    letter-spacing: 0;
+    color: rgba(var(--color-text-rgb), 70%);
+    decorator: text("&#xe5cd;" center center);
+    cursor: pointer;
+}
+
+menu-slot-close:hover {
+    color: var(--color-white);
+    background-color: rgba(var(--color-accent-rgb), 24%);
+}
+
+body.standalone menu-slot-entry {
     display: none;
+}
+
+body.standalone menu-slot-entry.on {
+    display: block;
 }
 
 /* The line under a look's band (Today has the help beside the rows instead). */
@@ -243,12 +274,12 @@ menu-tab {
     font-size: 19dp;
     text-transform: uppercase;
     white-space: nowrap;
-    color: rgba(var(--color-accent-rgb), 30%);
+    color: rgba(var(--color-accent-rgb), 55%);
     cursor: pointer;
 }
 
 menu-tab:hover {
-    color: rgba(var(--color-accent-rgb), 70%);
+    color: rgba(var(--color-accent-rgb), 90%);
 }
 
 menu-tab.on {
@@ -283,6 +314,10 @@ menu-heading {
     letter-spacing: 1.9dp;
     text-transform: uppercase;
     color: rgba(var(--color-text-rgb), 64%);
+}
+
+menu-bracket {
+    display: none;
 }
 
 menu-row {
@@ -385,6 +420,11 @@ menu-value menu-tag {
     color: rgba(var(--color-text-rgb), 64%);
 }
 
+menu-row.text menu-value menu-text:empty {
+    flex: 1 1 auto;
+    decorator: text("Not set" #d7d2c3a3 right center);
+}
+
 menu-tag:empty {
     display: none;
 }
@@ -421,10 +461,14 @@ menu-peek menu-arrow {
     display: block;
 }
 
-/* A row that opens something (Change buttons): its chevron, always. */
+/* A row that opens something (Change buttons): its chevron, always, in place of what Enter does. */
 menu-row.action menu-arrow.right {
     display: block;
     opacity: 0.6;
+}
+
+menu-row.action menu-value menu-text {
+    display: none;
 }
 
 menu-row.action.focused menu-arrow.right {
