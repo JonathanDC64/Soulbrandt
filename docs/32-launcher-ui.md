@@ -107,7 +107,7 @@ the file keeps the value chosen.
 | Continue automatically (Game) | `DES_AUTO_CONTINUE` | 0 / 1 | at once until the first level loads (read at each pad poll); from the file it waits for Play on the start screen |
 | Sound (Game) | `AUDIO_MUTE` (inverted) | 0 / 1 | at once (live knob) |
 | UI scale (Interface) | `ui_scale` | 0 = auto (the display's scale, less on a small window), 75, 100, 125, 150 (% of it) | at once |
-| Menu height (Interface) | `ui_menu_height` | 0-100 in steps of 10 (default 30): how far Settings' height goes from its 640 dp (0, Compact) to the window's whole height (100) | at once |
+| Menu height (Interface) | `ui_menu_height` | 0-100 in steps of 10 (default 40): how far Settings' height goes from its 640 dp (0, Compact) to the window's whole height (100) | at once |
 | Start screen (Interface) | `show_start_screen` | 1 / 0 | next start |
 | Menu hint (Interface) | `menu_hint` | 1 / 0 | at once |
 | Trophy pop-ups (Interface) | `trophy_popups` | 1 / 0 (off hides the toast; the unlock is still kept) | at once |
