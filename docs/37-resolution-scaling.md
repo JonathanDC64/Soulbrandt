@@ -428,12 +428,15 @@ across; only the row stopped at 100%.
   640x360, complete, with the HUD and exposure as at 100%. The sun probe was
   not in view there, so the ZPASS change has not been seen live. Vulkan
   runs the same core code but was not run.
-- **Known: a line on the loading screens.** Below 100% the loading screens
-  show a faint dark line down guest x 1024, likely where two pieces of the
-  picture meet: 3-11% darker on one or two columns at 50, 70 and 90%, none
-  at 100% or 200%. It goes away with `RSX_TEX_MIPS=0`: drawn smaller than at
-  1x, the picture also samples its next mip level, whose texels reach past
-  the clamp's half guest pixel. A whole guest pixel removed the column left
-  of the join but not the one right of it. The fix to try is sampling these
-  draws at the level of detail they have at 1x (a mip bias of log2 of the
-  scale on draws that get the clamp), not a wider margin.
+- **The line on the loading screens (fixed in ps3recomp #293).** Below 100%
+  the loading screens showed a faint dark line down guest x 1024, where the
+  picture's two pieces meet: 3% darker at 90%, 8-12% at 70% and 50%, none at
+  100% or more. Drawn smaller than at 1x, the picture also read its texture's
+  next mip level, which reaches past the clamp's half guest pixel
+  (`RSX_TEX_MIPS=0` hid it; a whole guest pixel of margin cleared only one of
+  its two columns). Draws that get the clamp now read their mipmapped
+  textures at the level of detail they have at 1x: a bias of log2 of the
+  scale. `RSX_SCALE_LOD=0` turns it off. HUD and menu text below 100% is a
+  little sharper with it, closer to the 1x look; at 50% its thin strokes are
+  less even. Nothing else changed in four replayed in-game frames, and 100%
+  and 200% are bit-identical.
