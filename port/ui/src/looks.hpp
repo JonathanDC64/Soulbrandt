@@ -16,10 +16,13 @@ struct Look {
     std::string_view label;  // its choice in the Menu look row
     bool released;           // false: offered in developer builds only
     bool helpPane;           // Settings shows the help beside the rows; else a line under the band, and Help opens it
+    bool listBeside;         // a value's list opens beside the value, at its row; else below the row (settings_page.cpp)
+    bool menuHeight;         // Settings' frame is as tall as Interface > Menu height says; else as the sheet says
 };
 
 inline constexpr Look kLooks[] = {
-    {"today", "Today", true, true},
+    {"today", "Today", true, true, false, true},
+    {"band", "Pause band", false, false, true, false},
 };
 
 inline constexpr std::string_view kDefault = "today";

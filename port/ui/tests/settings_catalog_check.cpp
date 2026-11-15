@@ -109,6 +109,7 @@ int stick_default_zone() { return 24; }
 std::vector<Sword> swords() { return {{settings::get("DES_CURSOR_SWORD"), "The default sword"}, {"other", "Another"}}; }
 void apply_scale() {}
 void apply_look() {}
+bool menu_height_used() { return true; }
 void party_size_changed() {}
 std::string update_status() { return "Up to date."; }
 bool update_possible() { return true; }

@@ -137,6 +137,11 @@ menu-slot-entry {
     white-space: nowrap;
 }
 
+/* The menu's own title, for a look whose band names it (Today's slot lists the entries instead). */
+menu-title {
+    display: none;
+}
+
 menu-slot-entry.on {
     color: var(--color-accent);
 }

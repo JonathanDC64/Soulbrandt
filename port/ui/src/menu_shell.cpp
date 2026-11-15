@@ -4,6 +4,7 @@
 #include "button_art.hpp"
 #include "host.hpp"
 #include "input.hpp"
+#include "looks.hpp"
 #include "menu_pages.hpp"
 #include "question.hpp"
 #include "settings.hpp"
@@ -30,7 +31,7 @@ const Rml::String kDocumentSource = R"RML(
 <body>
     <menu-entries id="entries" />
     <menu-frame id="frame">
-        <menu-slot id="slot" />
+        <menu-slot id="slot"><menu-title>Menu</menu-title></menu-slot>
         <menu-strip id="strip" />
         <menu-page id="page" />
         <menu-prompts id="prompts" />
@@ -248,10 +249,10 @@ void MenuShell::draw() {
 // The entries bar spans the window: kept inside the screen's safe area (a TV's, the Deck's), as the menu bar was.
 // The frame's height, Interface > Menu height (ui_menu_height): from the 640 dp it has in a 720p window (0) to all
 // the height the body leaves it (100). RmlUi has no calc(), so it is worked out here, and set again only when it
-// changes. Preview's strip keeps its own height from the look's sheet.
+// changes. Preview's strip, and a look whose frame is sized otherwise (looks.hpp's menuHeight), keep the sheet's.
 void MenuShell::update_frame_height(bool preview) {
     float px = -1.f;
-    if (!preview && mFrame) {
+    if (!preview && mFrame && looks::current().menuHeight) {
         const float base = 640.f * mDocument->GetContext()->GetDensityIndependentPixelRatio();
         const float room = mBody->GetBox().GetSize(Rml::BoxArea::Content).y;
         const int share = std::clamp(settings::get_int("ui_menu_height"), 0, 100);

@@ -75,6 +75,10 @@ void apply_look() {
     looks::apply();
 }
 
+bool menu_height_used() {
+    return looks::current().menuHeight;
+}
+
 void party_size_changed() {
     des::seamless::party_size_changed();
 }

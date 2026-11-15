@@ -144,6 +144,7 @@ void set_px(Rml::Element* e, Rml::PropertyId id, float px) {
 SettingsPage::SettingsPage(Rml::Element* host, menu::PageHost& shell)
     : mHost(host), mShell(shell), mModel(static_cast<int>(catalog::tabs().size())) {
     for (const settings::Def& d : settings::defs()) mOpened[d.key] = settings::get(d.key);
+    mModel.set_help_key(!looks::current().helpPane);  // (and each frame: the look can change while the page shows)
 
     mTabs = append(mHost, "menu-tabs");
     Rml::Element* body = append(mHost, "menu-body");
@@ -532,8 +533,9 @@ void SettingsPage::scroll_to_focus() {
     mRows->SetScrollTop(std::clamp(scroll, 0.f, std::max(0.f, mRows->GetScrollHeight() - view)));
 }
 
-// A list stays inside the rows: one that would run past their bottom opens above its row, or moves up beside its
-// value, and scrolls when it still doesn't fit.
+// A list stays inside the rows. It opens below its row, or beside its value at the row's height in a look that says so
+// (looks.hpp's listBeside); one that would run past the rows' bottom opens above its row (below) or moves up (beside),
+// and scrolls when it still doesn't fit.
 void SettingsPage::place_list() {
     if (!mList || mListRow < 0) return;
     Rml::Element* row = mViews[mListRow].row;
@@ -542,9 +544,10 @@ void SettingsPage::place_list() {
     if (view <= 0.f || h <= 0.f) return;
     const float rowTop = row->GetOffsetTop() - mRows->GetScrollTop();
     const float rowH = row->GetOffsetHeight();
-    float top = rowH + 3.f;
+    const bool beside = looks::current().listBeside;
+    float top = beside ? 0.f : rowH + 3.f;
     if (rowTop + top + h > view - 2.f) {
-        if (rowTop - h - 3.f >= 2.f) top = -h - 3.f;
+        if (!beside && rowTop - h - 3.f >= 2.f) top = -h - 3.f;
         else top = std::max(view - 2.f - h - rowTop, 2.f - rowTop);
     }
     set_px(mList, Rml::PropertyId::Top, top);
