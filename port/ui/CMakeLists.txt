@@ -225,8 +225,9 @@ endif()
 # header). The same on every platform; CI runs it on both (host.yml). Built on demand:
 #   cmake --build <build> --target input_map_check, then input_map_check
 add_executable(input_map_check EXCLUDE_FROM_ALL tests/input_map_check.cpp src/menu_pad.cpp src/menu_input.cpp
-  src/prompts.cpp)
-target_include_directories(input_map_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${rmlui_SOURCE_DIR}/Include)
+  src/prompts.cpp src/button_pages.cpp)
+target_include_directories(input_map_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${rmlui_SOURCE_DIR}/Include
+  ${stb_SOURCE_DIR})
 target_compile_definitions(input_map_check PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
 if(MSVC)
   target_compile_options(input_map_check PRIVATE /EHsc /W3 /wd4100)

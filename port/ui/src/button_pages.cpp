@@ -321,6 +321,9 @@ constexpr Rgba kGloss = rgb(110, 110, 112), kLetter = rgb(178, 176, 178), kShado
 constexpr Rgba kYellow = rgb(236, 226, 112), kDim = rgb(96, 94, 96), kLine = rgb(6, 6, 6);
 constexpr Rgba kXboxA = rgb(96, 178, 84), kXboxB = rgb(210, 72, 66), kXboxX = rgb(78, 132, 210);
 constexpr Rgba kXboxY = rgb(226, 196, 72);
+// PlayStation's shapes, for the menus' prompts only (draw_single): the page keeps the game's own pictures.
+constexpr Rgba kPsCross = rgb(127, 178, 229), kPsCircle = rgb(232, 106, 106), kPsTriangle = rgb(79, 201, 164);
+constexpr Rgba kPsSquare = rgb(217, 149, 201);
 
 // Premultiplied RGBA, 8 bits a channel.
 struct Canvas {
@@ -354,6 +357,13 @@ float sd_rbox(float x, float y, const Box& b, float rt, float rb) {
     r = std::min(r, std::min(hx, hy));
     const float qx = std::fabs(x - b.cx()) - hx + r, qy = std::fabs(y - b.cy()) - hy + r;
     return std::hypot(std::max(qx, 0.f), std::max(qy, 0.f)) + std::min(std::max(qx, qy), 0.f) - r;
+}
+// A line from (ax, ay) to (bx, by), its ends round, `r` either side.
+float sd_segment(float x, float y, float ax, float ay, float bx, float by, float r) {
+    const float px = x - ax, py = y - ay, dx = bx - ax, dy = by - ay;
+    const float len2 = dx * dx + dy * dy;
+    const float t = len2 > 0 ? std::clamp((px * dx + py * dy) / len2, 0.f, 1.f) : 0.f;
+    return std::hypot(px - dx * t, py - dy * t) - r;
 }
 // A triangle: the largest distance to its sides' lines, which is exact at the sides, where the edge is drawn.
 float sd_tri(float x, float y, const float v[3][2]) {
@@ -442,39 +452,46 @@ void arrow(Ctx& c, float cx, float cy, float size, int dir, Rgba color) {
     fill(c.cv, clip, [&](float x, float y) { return sd_tri(x, y, v); }, [&](float, float) { return color; });
 }
 
+// The font's scale for capitals `cap` pixels high.
+float cap_scale(const stbtt_fontinfo* f, float cap) {
+    int x0, y0, x1, y1;
+    stbtt_GetCodepointBox(f, 'H', &x0, &y0, &x1, &y1);
+    return y1 > 0 ? cap / float(y1) : stbtt_ScaleForPixelHeight(f, cap * 1.4f);
+}
+
+// A line of text at scale `sc`: its width (advances and kerning) and its ink's extent above and below the baseline.
+void measure(const stbtt_fontinfo* f, const std::string& s, float sc, float& w, float& top, float& bottom) {
+    w = 0;
+    top = 1e9f;
+    bottom = -1e9f;
+    for (size_t i = 0; i < s.size(); i++) {
+        const int cp = static_cast<unsigned char>(s[i]);
+        int adv, lsb;
+        stbtt_GetCodepointHMetrics(f, cp, &adv, &lsb);
+        int bx0, by0, bx1, by1;
+        stbtt_GetCodepointBitmapBox(f, cp, sc, sc, &bx0, &by0, &bx1, &by1);
+        if (by1 > by0) {
+            top = std::min(top, float(by0));
+            bottom = std::max(bottom, float(by1));
+        }
+        w += float(adv) * sc;
+        if (i + 1 < s.size()) w += float(stbtt_GetCodepointKernAdvance(f, cp, static_cast<unsigned char>(s[i + 1]))) * sc;
+    }
+}
+
 // Text in the box: its capitals `cap` pixels high, narrowed to fit, centred (left-aligned with left = true), on the
 // game's soft shadow.
 void text(Ctx& c, const Box& b, const std::string& s, float cap, Rgba color, bool left = false) {
     if (!c.font || s.empty()) return;
     const stbtt_fontinfo* f = c.font;
-    int x0, y0, x1, y1;
-    stbtt_GetCodepointBox(f, 'H', &x0, &y0, &x1, &y1);
-    float scale = y1 > 0 ? cap / float(y1) : stbtt_ScaleForPixelHeight(f, cap * 1.4f);
+    float scale = cap_scale(f, cap);
     // The width at this scale, and the ink's extent, then narrower if it does not fit.
-    const auto measure = [&](float sc, float& w, float& top, float& bottom) {
-        w = 0;
-        top = 1e9f;
-        bottom = -1e9f;
-        for (size_t i = 0; i < s.size(); i++) {
-            const int cp = static_cast<unsigned char>(s[i]);
-            int adv, lsb;
-            stbtt_GetCodepointHMetrics(f, cp, &adv, &lsb);
-            int bx0, by0, bx1, by1;
-            stbtt_GetCodepointBitmapBox(f, cp, sc, sc, &bx0, &by0, &bx1, &by1);
-            if (by1 > by0) {
-                top = std::min(top, float(by0));
-                bottom = std::max(bottom, float(by1));
-            }
-            w += float(adv) * sc;
-            if (i + 1 < s.size()) w += float(stbtt_GetCodepointKernAdvance(f, cp, static_cast<unsigned char>(s[i + 1]))) * sc;
-        }
-    };
     float w, top, bottom;
-    measure(scale, w, top, bottom);
+    measure(f, s, scale, w, top, bottom);
     const float room = b.w() * (left ? 1.f : 0.84f);
     if (w > room && w > 0) {
         scale *= room / w;
-        measure(scale, w, top, bottom);
+        measure(f, s, scale, w, top, bottom);
     }
     if (top > bottom) return;
     const float base_y = b.cy() - (top + bottom) / 2;   // the ink centred
@@ -512,6 +529,47 @@ void text(Ctx& c, const Box& b, const std::string& s, float cap, Rgba color, boo
 void face(Ctx& c, const Box& b, const char* letter, Rgba color) {
     disc(c, b);
     text(c, b, letter, 0.40f * b.h(), color);
+}
+
+// A shape's outline in `color` on the game's soft shadow (as text() draws letters): sd is the shape's outline, the
+// line drawn `lw` wide along it.
+template <typename Sd>
+void stroke(Ctx& c, const Box& clip, Sd sd, float lw, Rgba color) {
+    for (int pass = 0; pass < 2; pass++) {
+        const float dx = pass ? 0.f : 0.5f * c.u, dy = pass ? 0.f : 0.75f * c.u;
+        const Box at{clip.x0 + dx, clip.y0 + dy, clip.x1 + dx + 1, clip.y1 + dy + 1};
+        fill(c.cv, at, [&](float x, float y) { return std::fabs(sd(x - dx, y - dy)) - lw / 2; },
+             [&](float, float) { return pass ? color : kShadow; });
+    }
+}
+
+// PlayStation's face buttons: the disc with its shape on it, in its colour.
+void ps_face(Ctx& c, const Box& b, int p) {
+    disc(c, b);
+    const float d = std::min(b.w(), b.h()), cx = b.cx(), cy = b.cy(), lw = 0.085f * d;
+    const Box clip = centred(cx, cy, 0.62f * d, 0.62f * d);
+    switch (p) {
+    case kPCross: {
+        const float a = 0.17f * d;
+        stroke(c, clip, [=](float x, float y) {
+            return std::min(sd_segment(x, y, cx - a, cy - a, cx + a, cy + a, 0.f),
+                            sd_segment(x, y, cx - a, cy + a, cx + a, cy - a, 0.f));
+        }, lw, kPsCross);
+        break;
+    }
+    case kPCircle: stroke(c, clip, [=](float x, float y) { return sd_circle(x, y, cx, cy, 0.19f * d); }, lw, kPsCircle); break;
+    case kPSquare: {
+        const Box sq = centred(cx, cy, 0.36f * d, 0.36f * d);
+        stroke(c, clip, [=](float x, float y) { return sd_rbox(x, y, sq, 0.02f * d, 0.02f * d); }, lw, kPsSquare);
+        break;
+    }
+    case kPTriangle: {
+        const float v[3][2] = {{cx, cy - 0.22f * d}, {cx + 0.22f * d, cy + 0.16f * d}, {cx - 0.22f * d, cy + 0.16f * d}};
+        stroke(c, clip, [&](float x, float y) { return sd_tri(x, y, v); }, lw, kPsTriangle);
+        break;
+    }
+    default: break;
+    }
 }
 
 void shoulder(Ctx& c, const Box& b, const char* label, bool trigger) {
@@ -563,6 +621,14 @@ void menu_button(Ctx& c, const Box& b, Kind kind, bool start) {
     if (kind == Kind::Nintendo) {
         bar(cx, cy, 10 * u, 2.4f * u);
         if (start) bar(cx, cy, 2.4f * u, 10 * u);
+    } else if (kind == Kind::PlayStation) {   // Select a flat block, Start a triangle pointing on
+        if (start) {
+            arrow(c, cx + 0.6f * u, cy, 9 * u, 1, kLetter);
+        } else {
+            const Box r = centred(cx, cy, 11 * u, 4.6f * u);
+            fill(c.cv, r, [&](float px, float py) { return sd_rbox(px, py, r, 0.9f * u, 0.9f * u); },
+                 [&](float, float) { return kLetter; });
+        }
     } else if (start) {   // Xbox's Menu: three lines
         for (int i = -1; i <= 1; i++) bar(cx, cy + float(i) * 3.2f * u, 10 * u, 1.8f * u);
     } else {              // Xbox's View: two windows, one over the other
@@ -573,7 +639,9 @@ void menu_button(Ctx& c, const Box& b, Kind kind, bool start) {
         }
     }
     if (b.w() > 1.5f * d) {
-        const char* word = kind == Kind::Nintendo ? (start ? "PLUS" : "MINUS") : (start ? "MENU" : "VIEW");
+        const char* word = kind == Kind::Nintendo ? (start ? "PLUS" : "MINUS")
+                           : kind == Kind::PlayStation ? (start ? "START" : "SELECT")
+                                                       : (start ? "MENU" : "VIEW");
         const Box rest{k.x1 + 0.12f * d, b.y0, b.x1, b.y1};
         text(c, rest, word, 0.44f * d, kLetter, true);
     }
@@ -581,6 +649,18 @@ void menu_button(Ctx& c, const Box& b, Kind kind, bool start) {
 
 // Pad button p (kPadNames) as the device shows it.
 void pad_button(Ctx& c, const Box& b, Kind kind, int p) {
+    if (kind == Kind::PlayStation) {   // the menus' prompts only (draw_single): the page draws none of these
+        switch (p) {
+        case kPCross: case kPCircle: case kPSquare: case kPTriangle: return ps_face(c, b, p);
+        case kPR1: return shoulder(c, b, "R1", false);
+        case kPR2: return shoulder(c, b, "R2", true);
+        case kPL1: return shoulder(c, b, "L1", false);
+        case kPL2: return shoulder(c, b, "L2", true);
+        case kPR3: return stick(c, b, "R3", false);
+        case kPL3: return stick(c, b, "L3", false);
+        default: break;   // the D-pad, Select and Start as below
+        }
+    }
     const bool x = kind == Kind::Xbox;
     // SDL names a Nintendo pad's buttons by their letters (SDL2's default), so A presses Cross as it does on an Xbox
     // pad: the same letters, without the colours.
@@ -1009,6 +1089,70 @@ Image draw(const Page& page, const std::vector<uint8_t>& base, const Spec& spec,
         w = nw;
         h = nh;
     }
+    return out;
+}
+
+// ---- One button on its own ----
+
+namespace {
+
+// A key with a word on it ("Enter"), on a cap as wide as the word needs; a letter, an arrow key, a chord and the mouse
+// keep the page's square.
+bool wide_key(const Single& s) {
+    if (s.kind != Kind::Keyboard || s.key.mod) return false;
+    const int in = s.key.in;
+    if (in >= kMouse && in <= kWheelDown) return false;
+    if (in == kVkUp || in == kVkRight || in == kVkDown || in == kVkLeft) return false;
+    return s.key.label.size() > 1;
+}
+constexpr float kWideCap = 0.36f;   // a wide key's capitals, of its height
+constexpr float kWideEdge = 0.04f;  // its cap's margin, of its height (the page's keys fill 0.92 of the cell)
+
+}  // namespace
+
+float single_ratio(const Single& s, const unsigned char* font) {
+    stbtt_fontinfo info;
+    if (!wide_key(s) || !font || !stbtt_InitFont(&info, font, stbtt_GetFontOffsetForIndex(font, 0))) return 1.f;
+    constexpr float h = 100.f;
+    float w, top, bottom;
+    measure(&info, s.key.label, cap_scale(&info, kWideCap * h), w, top, bottom);
+    // The word with room either side as a letter key has, about a quarter of the height; and never less than text()
+    // needs, which keeps a word in the middle 84 % of the cap, so a long one is not narrowed.
+    const float word = std::max(w + 0.48f * h, w / 0.84f + 0.04f * h);
+    return std::max(1.f, (word + 2 * kWideEdge * h) / h);
+}
+
+Image draw_single(const Single& s, int width, int height, const unsigned char* font) {
+    Image out;
+    if (width <= 0 || height <= 0) return out;
+    Canvas cv;
+    cv.w = width;
+    cv.h = height;
+    cv.px.assign(size_t(width) * size_t(height) * 4, 0);
+    stbtt_fontinfo info;
+    const bool have_font = font && stbtt_InitFont(&info, font, stbtt_GetFontOffsetForIndex(font, 0));
+    const float w = float(width), h = float(height), d = std::min(w, h);
+    Ctx c{cv, have_font ? &info : nullptr, h / 26.f};
+    const Box sq = centred(w / 2, h / 2, d, d);
+    if (s.kind == Kind::Keyboard) {
+        if (wide_key(s)) {
+            const float e = kWideEdge * h;
+            const Box k{e, e, w - e, h - e};
+            cap(c, k, 0.22f * h, 0.22f * h);
+            text(c, k, s.key.label, kWideCap * h, kLetter);
+        } else {
+            key(c, sq, s.key);
+        }
+    } else if (s.pad >= 0 && s.pad < 16) {
+        pad_button(c, sq, s.kind, s.pad);
+    } else {
+        dpad(c, sq, s.dpad);
+    }
+    out.width = uint32_t(width);
+    out.height = uint32_t(height);
+    out.levels = 1;
+    out.rgba = std::move(cv.px);
+    out.premultiplied = true;
     return out;
 }
 

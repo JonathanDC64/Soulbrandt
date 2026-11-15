@@ -1,6 +1,7 @@
 // Written for Demon's Souls. The F1 menu as one document (menu_shell.hpp).
 #include "menu_shell.hpp"
 
+#include "button_art.hpp"
 #include "host.hpp"
 #include "input.hpp"
 #include "menu_pages.hpp"
@@ -63,7 +64,10 @@ namespace menu {
 
 std::string glyph_rml(prompts::Device device, prompts::Key key) {
     const prompts::Glyph g = prompts::glyph(device, key);
-    return "<menu-glyph class=\"" + std::string(g.classes) + "\"><menu-key>" + escape(g.text) + "</menu-key></menu-glyph>";
+    std::string art;
+    for (const prompts::Art& a : g.art) art += button_art::rml(device, a);
+    return "<menu-glyph class=\"" + std::string(g.classes) + "\">" + art + "<menu-key>" + escape(g.text) +
+           "</menu-key></menu-glyph>";
 }
 
 }  // namespace menu
