@@ -123,52 +123,40 @@ body.page.motion menu-frame {
     to { opacity: 1; transform: scale(1); }
 }
 
+/* The slot: in Alpha UI it takes no room, and holds only the page's close button, drawn at the right end of the
+   page's first row (Settings' tabs). The entries are the F1 menu's bar, which Back returns to. A look with a band
+   shows the slot (des.rcss). */
 menu-slot {
-    display: flex;
-    flex: 0 0 34dp;
-    align-items: center;
-    gap: 26dp;
-    padding: 0 22dp;
-    border-bottom-width: 1dp;
-    border-bottom-color: rgba(var(--color-border-rgb), 28%);
-    font-family: var(--font-family-heading);
-    font-weight: bold;
-    font-size: var(--font-size-2xs);
-    letter-spacing: 1.7dp;
-    text-transform: uppercase;
-    color: rgba(var(--color-text-rgb), 64%);
+    display: block;
+    position: relative;
+    flex: 0 0 0;
+    height: 0;
 }
 
 menu-slot-entry {
+    display: none;
     white-space: nowrap;
     cursor: pointer;
 }
 
-menu-slot-entry:hover {
-    color: var(--color-white);
-}
-
-/* The menu's own title, for a look whose band names it (Alpha UI's slot lists the entries instead). */
+/* The menu's own title, for a look whose band names it. */
 menu-title {
     display: none;
 }
 
-menu-slot-entry.on {
-    color: var(--color-accent);
-    cursor: default;
-}
-
-/* The page's close button, at the slot's right end: it closes the menu, as the menu bar's did. */
+/* The page's close button: it closes the menu, as the menu bar's did. Centred on the tabs' row (56 dp). */
 menu-slot-close {
     display: block;
-    flex: 0 0 30dp;
+    position: absolute;
+    top: 13dp;
+    right: 12dp;
+    z-index: 1;
+    width: 30dp;
     height: 30dp;
-    margin: 0 -14dp 0 auto;
     border-radius: 4dp;
     font-family: var(--font-family-icons);
     font-weight: normal;
     font-size: var(--font-size-2xl);
-    letter-spacing: 0;
     color: rgba(var(--color-text-rgb), 70%);
     decorator: text("&#xe5cd;" center center);
     cursor: pointer;
@@ -177,14 +165,6 @@ menu-slot-close {
 menu-slot-close:hover {
     color: var(--color-white);
     background-color: rgba(var(--color-accent-rgb), 24%);
-}
-
-body.standalone menu-slot-entry {
-    display: none;
-}
-
-body.standalone menu-slot-entry.on {
-    display: block;
 }
 
 /* The line under a look's band (Alpha UI has the help beside the rows instead). */
@@ -225,6 +205,11 @@ menu-prompt {
     cursor: pointer;
 }
 
+/* (a prompt without words shares the next one's: L1 R1 Tabs) */
+menu-prompt.joined {
+    margin-right: -14dp;
+}
+
 menu-prompt:hover menu-says {
     color: var(--color-accent);
 }
@@ -247,20 +232,22 @@ menu-glyph menu-key {
     display: none;
 }
 
-/* ---- Settings: its tabs, between the buttons that change them. ---- */
+/* ---- Settings: its tabs, with room at the right for the close button. The buttons that change them are a prompt
+   along the bottom (menu-prompt.tabs); a look that draws them at the tabs' ends shows menu-tab-key and hides that
+   prompt. ---- */
 menu-tabs {
     display: flex;
     flex: 0 0 56dp;
     align-items: center;
     gap: 4dp;
-    padding: 0 14dp;
+    padding: 0 54dp 0 14dp;
     overflow: hidden;
     border-bottom-width: 1dp;
     border-bottom-color: rgba(var(--color-border-rgb), 28%);
 }
 
 menu-tab-key {
-    display: block;
+    display: none;
     flex: 0 0 auto;
     margin: 0 6dp;
 }

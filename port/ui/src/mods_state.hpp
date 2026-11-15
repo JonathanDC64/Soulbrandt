@@ -53,7 +53,8 @@ struct ModsState {
     std::string covered_by(std::size_t i) const;
 };
 
-// What the Mods screens tell a player new to mods, in "Good to know".
-extern const char* const kModsGoodToKnow[4];
+// What the Mods screens tell a player new to mods, in "Good to know". Moving a mod names the buttons of the device the
+// menus show (input::menu_device): L1 and R1, LB and RB, or Page Up and Page Down.
+std::vector<std::string> mods_good_to_know();
 
 }  // namespace ui

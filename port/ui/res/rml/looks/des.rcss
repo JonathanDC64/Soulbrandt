@@ -101,6 +101,7 @@ body.page menu-frame {
    ---- */
 menu-slot {
     display: block;
+    position: static;
     flex: 0 0 104dp;
     height: 104dp;
     padding: 40dp 0 0 var(--menu-side);
@@ -260,8 +261,14 @@ menu-tab.on {
 }
 
 menu-tab-key {
+    display: block;
     margin: 0 4dp;
     cursor: pointer;
+}
+
+/* (the tab buttons are at the tabs' ends: not in the prompts) */
+menu-prompt.tabs {
+    display: none;
 }
 
 menu-tab-key:hover {

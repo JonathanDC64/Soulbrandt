@@ -1,6 +1,8 @@
 // Written for Demon's Souls. The mods folder as the Mods screens show it (mods_state.hpp).
 #include "mods_state.hpp"
 
+#include "input.hpp"
+#include "prompts.hpp"
 #include "report.hpp"
 #include "settings.hpp"
 #include "sound.hpp"
@@ -12,15 +14,23 @@
 
 namespace ui {
 
-const char* const kModsGoodToKnow[4] = {
-    "Mods are made by players. Back up your save before you try one.",
-    "Mods that only change how the game looks or sounds keep online play. Any other mod keeps you offline while "
-    "it's on.",
-    "When two mods change the same thing, the one higher in the list wins. To move a mod, use the arrows on its card, "
-    "or the shoulder buttons (L1 and R1) or Page Up and Page Down.",
-    "Mods made for the PS3 game or for RPCS3 work when they replace the game's files. Very large texture mods can run "
-    "out of memory, as on a PS3.",
-};
+std::vector<std::string> mods_good_to_know() {
+    // (the keyboard's: Page Up and Page Down move a mod on both screens; Q and E only on a look's page)
+    const prompts::Device device = input::menu_device();
+    const std::string buttons = device == prompts::Device::Keyboard
+                                    ? "Page Up and Page Down"
+                                    : std::string(prompts::glyph(device, prompts::Key::PrevTab).text) + " and " +
+                                          std::string(prompts::glyph(device, prompts::Key::NextTab).text);
+    return {
+        "Mods are made by players. Back up your save before you try one.",
+        "Mods that only change how the game looks or sounds keep online play. Any other mod keeps you offline while "
+        "it's on.",
+        "When two mods change the same thing, the one higher in the list wins. To move a mod, use the arrows on its "
+        "card, or " + buttons + ".",
+        "Mods made for the PS3 game or for RPCS3 work when they replace the game's files. Very large texture mods can "
+        "run out of memory, as on a PS3.",
+    };
+}
 
 bool ModsState::fixed() {
     return settings::pinned("DES_MODS") || mods::from_environment();

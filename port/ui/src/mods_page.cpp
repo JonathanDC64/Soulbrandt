@@ -71,7 +71,7 @@ void ModsPage::build() {
     }
     mHelp = append(mPage, "mods-help");
     append_text_element(mHelp, "help-title", "Good to know");
-    for (const char* line : kModsGoodToKnow) append_text_element(mHelp, "help-line", line);
+    for (const std::string& line : mods_good_to_know()) append_text_element(mHelp, "help-line", line);
     Rml::Element* close = append_text_element(mHelp, "mods-button", "Close");
     close->SetClass("close", true);
     mListeners.push_back(std::make_unique<ScopedEventListener>(close, Rml::EventId::Click, [this](Rml::Event&) {

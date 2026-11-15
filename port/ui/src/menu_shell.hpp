@@ -12,13 +12,16 @@
 //                                                      along them, as menu-glyph (.end: at the first or the last)
 //     menu-frame > menu-slot > menu-title, menu-slot-entry(.on), menu-slot-close
 //                                                      the page's frame: its title, the entries (a click switches page),
-//                                                      the one open marked, and a close button
+//                                                      the one open marked, and a close button (Alpha UI: only the
+//                                                      button, at the right of the page's first row)
 //                  menu-strip                          a line on what has the focus (an entry's, a row's)
 //                  menu-page(.under)                   the page's own elements (settings_page.hpp); a page opened
 //                                                      over another (open_over) gets one of its own after it, the
 //                                                      other's .under, and the body .over, the frame's menu-title its
 //                                                      title
-//                  menu-prompts > menu-prompt > menu-glyph > menu-art, menu-key; menu-says
+//                  menu-prompts > menu-prompt(.joined .tabs) > menu-glyph > menu-art, menu-key; menu-says
+//                                                      .joined: shares the next one's words; .tabs: the buttons
+//                                                      that change Settings' tab (prompts::Prompt's kind)
 //                                                      menu-art: the button's picture (button_art.hpp)
 //     menu-badge(.on .before .now)                     Compare's line over the game
 //

@@ -156,12 +156,17 @@ void settings_page() {
 
     // The rows' prompts follow the row.
     m.set_focus(0, rows);
-    check(keys(m.prompts(rows, "Close")) == std::vector<Key>{Key::Move, Key::Change, Key::Confirm, Key::Preview, Key::Back},
-          "a picture choice: Select, Change, List, Preview, Back");
+    check(keys(m.prompts(rows, "Close")) == std::vector<Key>{Key::PrevTab, Key::NextTab, Key::Move, Key::Change,
+                                                             Key::Confirm, Key::Preview, Key::Back},
+          "a picture choice: Tabs, Select, Change, List, Preview, Back");
+    check(m.prompts(rows, "Close")[0].kind == "tabs" && m.prompts(rows, "Close")[1].kind == "tabs" &&
+              m.prompts(rows, "Close")[0].label.empty() && m.prompts(rows, "Close")[1].label == "Tabs",
+          "the tab buttons: one prompt, of kind tabs (for a look that draws them beside the tabs to hide)");
     check(m.prompts(rows, "Close").back().label == "Close", "Back's label is the menu's (Close on its own)");
-    check(m.prompts(rows, "Close")[2].label == "List", "Enter's label is the row's");
+    check(m.prompts(rows, "Close")[4].label == "List", "Enter's label is the row's");
     m.set_focus(2, rows);
-    check(keys(m.prompts(rows, "Back")) == std::vector<Key>{Key::Move, Key::Back}, "an info row: Select, Back");
+    check(keys(m.prompts(rows, "Back")) == std::vector<Key>{Key::PrevTab, Key::NextTab, Key::Move, Key::Back},
+          "an info row: Tabs, Select, Back");
 
     // Help, where the look has no help beside the rows.
     m.set_focus(0, rows);

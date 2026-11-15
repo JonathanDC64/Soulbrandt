@@ -808,9 +808,8 @@ void push_custom_server_notice() {
     ui::push_toast({
         .type = "warning",
         .title = "Playing offline",
-        .content = "The settings name a custom server (" + ui::settings::get("DES_NET_CUSTOM") +
-                   ") that was not chosen on this PC. To play on it, press Custom again in Settings > Network > "
-                   "Server, then restart the game.",
+        .content = "To play on " + ui::settings::get("DES_NET_CUSTOM") +
+                   ", choose Custom again in Settings > Network > Server, then restart.",
         .duration = kCustomServerNoticeDuration,
     });
     std::fprintf(stderr, "[ui] the custom server notice is up\n");
@@ -821,11 +820,8 @@ void push_mods_notice() {
     ui::push_toast({
         .type = "warning",
         .title = "Playing offline: gameplay mods are on",
-        .content = "These mods change how the game plays: " + ui::mods::gameplay_names() +
-                   ". Online play stays off while they are on. To play online, press F1 or " +
-                   ui::input::chord_label(ui::settings::get_int("pad_menu_chord")) +
-                   " for the menu, turn them off in Mods and restart the game. Mods that only change the look can "
-                   "stay on.",
+        .content = "To play online, turn off " + ui::mods::gameplay_names() + " in Mods (F1 or " +
+                   ui::input::chord_label(ui::settings::get_int("pad_menu_chord")) + "), then restart.",
         .duration = kCustomServerNoticeDuration,
     });
     std::fprintf(stderr, "[ui] the gameplay mods notice is up\n");

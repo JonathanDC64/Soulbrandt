@@ -227,7 +227,7 @@ void ModsWindow::build_tab(Rml::Element* content) {
         if (!state->all[i].usable()) list.add_child<ModCard>(state, i);
 
     Rml::String footer = "<mods-footer><footer-title>Good to know</footer-title>";
-    for (const char* line : kModsGoodToKnow) footer += "<footer-line>" + escape(line) + "</footer-line>";
+    for (const std::string& line : mods_good_to_know()) footer += "<footer-line>" + escape(line) + "</footer-line>";
     list.add_rml(footer + "</mods-footer>");
 }
 
