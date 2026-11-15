@@ -32,6 +32,8 @@
 #include "menu_shell.hpp"
 #include "menu_pages.hpp"
 #include "mods_page.hpp"
+#include "players_page.hpp"
+#include "players_state.hpp"
 #include "prelaunch.hpp"
 #include "renderer.hpp"
 #include "report.hpp"
@@ -66,6 +68,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -945,6 +948,52 @@ void open_controls(bool keys, int row, int slot, bool wait, bool help) {
     }
 }
 
+// Made-up players met over the last 14 days (names and keys made up): help both ways, invasions both ways, an Old
+// Monk, one blocked, one reported; more than a page of them.
+std::vector<ps3_net_player> standin_players() {
+    struct P {
+        const char* name;
+        const char* key;
+        const char* met;
+        int host;
+        long long ago;
+        int blocked, reported;
+    };
+    const P list[] = {
+        {"Gray_Wanderer", "a1b2c3d4e5f60718", "help", 1, 7200, 0, 0},
+        {"Ashen_Pilgrim", "0f1e2d3c4b5a6978", "invasion", 1, 30000, 0, 1},
+        {"Marsh_Lantern", "1122334455667788", "help", 0, 90000, 0, 0},
+        {"Quiet_Tide", "99aabbccddeeff00", "monk", 0, 200000, 0, 0},
+        {"Rust_Lark", "5566778899aabbcc", "invasion", 0, 400000, 0, 0},
+        {"Pale_Rook", "deadbeef00112233", "", 0, -1, 1, 0},
+        {"Ember_Sparrow", "0a1b2c3d4e5f6a7b", "help", 1, 800000, 0, 0},
+        {"Old_Hollow", "f0e1d2c3b4a59687", "help", 0, 1000000, 0, 0},
+    };
+    std::vector<ps3_net_player> out;
+    const long long now = static_cast<long long>(std::time(nullptr));
+    for (const P& p : list) {
+        ps3_net_player n{};
+        std::snprintf(n.name, sizeof n.name, "%s", p.name);
+        std::memcpy(n.fingerprint, p.key, std::min(sizeof n.fingerprint, std::strlen(p.key)));
+        std::snprintf(n.met, sizeof n.met, "%s", p.met);
+        n.host = p.host;
+        n.at = p.ago < 0 ? -1 : now - p.ago;
+        n.blocked = p.blocked;
+        n.reported = p.reported;
+        n.reportable = !p.reported;
+        out.push_back(n);
+    }
+    return out;
+}
+
+// Players as Settings opens it (Network > Players you met): the look's own (Alpha UI's window, a page over Settings in
+// a look with looks.hpp's pages), from the made-up list (or offline), the focus on that player.
+void open_players(bool offline, int focus) {
+    ui::players::set_test_list(standin_players(), 14, offline);
+    open_settings_row("Network", "Players you met", ui::menu::Command::Confirm);
+    if (auto* page = dynamic_cast<ui::PlayersPage*>(menu_shell().page())) page->focus_player(focus);
+}
+
 // Settings closed on that tab's row and opened again: it opens where it was left.
 void reopen_settings(const std::string& tab, const std::string& row) {
     ui::SettingsPage* page = open_settings(tab, false);
@@ -1101,6 +1150,7 @@ void close_pages() {
     ui::close_all_documents();
     ui::trophy_set::set_test_source({});
     des::seamless::set_test_status({});
+    ui::players::clear_test_list();
     _putenv_s("DES_MODS_DIR", "");
     ui::SettingsPage::forget_place();  // (Settings opens where it was left: each page starts as at the game's start)
     for (Rml::ElementDocument* d : gDocuments) d->Close();
@@ -1434,6 +1484,8 @@ int main(int argc, char** argv) {
     pages.push_back({"mods", 1280, 720, false, 1.f, false, [] { open_mods(true, "", false); }, {}});
     // Change Buttons as Alpha UI shows it (its window).
     pages.push_back({"controls", 1280, 720, false, 1.f, false, [] { open_controls(false, 0, 0, false, false); }, {}});
+    // Players as Alpha UI shows it (its window), from the made-up list.
+    pages.push_back({"players", 1280, 720, false, 1.f, false, [] { open_players(false, 0); }, {}});
     // Co-op as Alpha UI shows it (its window): not in co-op, and hosting.
     pages.push_back({"coop", 1280, 720, false, 1.f, false, [] { open_coop({}, 0); }, {}});
     pages.push_back({"coop-host", 1280, 720, false, 1.f, false, [] { open_coop(standin_host(), 0); }, {}});
@@ -1491,6 +1543,11 @@ int main(int argc, char** argv) {
                          in_band([] { open_controls(true, 0, 0, false, true); }), {}});
         pages.push_back({"des-controls-restore", 1280, 720, false, 1.f, false,
                          in_band([] { open_controls(false, 16, 0, false, false); }), {}});
+        // Players as a page over Settings: the list's first page, further down (its marks above and below), and offline
+        // (the strip's line, no box).
+        pages.push_back({"des-players", 1280, 720, false, 1.f, false, in_band([] { open_players(false, 0); }), {}});
+        pages.push_back({"des-players-down", 1280, 720, false, 1.f, false, in_band([] { open_players(false, 6); }), {}});
+        pages.push_back({"des-players-offline", 1280, 720, false, 1.f, false, in_band([] { open_players(true, 0); }), {}});
         // Co-op as a page: not in co-op, hosting (the focus on New code), joined (its line in the strip, no box) and
         // a guest whose connection was lost.
         pages.push_back({"des-coop", 1280, 720, false, 1.f, false, in_band([] { open_coop({}, 0); }), {}});
