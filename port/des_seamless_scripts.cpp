@@ -24,6 +24,8 @@
 //   - a boss's soul: a blue phantom may take its own, as the host takes its own;
 //   - the wandering ghosts' sightings are each player's own (local_wander_loops);
 //   - a light wall one player walks through is gone in every player's game (walls_for_watchers);
+//   - a boss that wakes only for the player who walks through its fog wakes for one put in its room too
+//     (standby_in_the_room);
 //   - the room is never locked (LockSession), here or at a kill in global_event.lua, so a friend can always join again;
 //   - the Nexus's timers and checks are each player's own (local_timers), and so is the kneel at a level-up.
 // And from each area's script, the flags that move forward in every player's world (progress_flags), the soul
@@ -417,6 +419,54 @@ int walls_for_watchers(std::string& t)
     return (int)adds.size();
 }
 
+// A boss that wakes only in the game of the player who walks through its fog. Phalanx (1-1) is drawn and can be hit
+// only after PhalanxStandBy, which the fog's handler (OnEvent_110) runs only for the player who walked through (its
+// IsNetMessage() == false branch). In the game's own co-op every player walks in. A friend that joins (or joins
+// again) during the fight arrives beside the leader of the session instead, and stood in the room without Phalanx
+// in its game: its blows did nothing. The fight's start (OnRegionJustIn(<id>, LOCAL_PLAYER or 10000, <room>,
+// "OnEvent_<id>", once), whose handler shows the boss's health bar) fires in the game of each player that arrives in
+// the room, one put there included; it now runs the same stand-by first. A player who walked in runs it twice, which
+// sets the same values again. Today Phalanx's is the only such stand-by (the other bosses' fog handlers have none,
+// and their StandBy_* run for every player). Returns the number of edits.
+int standby_in_the_room(std::string& t)
+{
+    const std::string nl = t.find("\r\n") != std::string::npos ? "\r\n" : "\n";
+    const std::regex fog("OnPlayerActionInRegion(?:Attribute)?\\(\\s*\\d+\\s*,\\s*\\d+\\s*,\\s*\"([A-Za-z_][A-Za-z0-9_]*)\"\\s*,"
+                         "\\s*HELPID_GO_TO_IN");
+    const std::regex walker("if\\s+param:IsNetMessage\\(\\)\\s*==\\s*false\\s+then\\s+([A-Za-z_][A-Za-z0-9_]*)\\(\\s*proxy\\s*,"
+                            "\\s*param\\s*\\)");
+    const std::regex start("OnRegionJustIn\\(\\s*\\d+\\s*,\\s*(?:LOCAL_PLAYER|10000)\\s*,\\s*\\d+\\s*,\\s*\"([A-Za-z_][A-Za-z0-9_]*)\""
+                           "\\s*,\\s*once\\s*\\)");
+    const std::string c = code_of(t);
+    std::set<std::string> fogs, standbys, starts;
+    for (auto it = std::sregex_iterator(c.begin(), c.end(), fog); it != std::sregex_iterator(); ++it)
+        fogs.insert((*it)[1].str());
+    for (const auto& f : fogs) {
+        size_t a, e;
+        if (!func_span(t, f, &a, &e)) continue;
+        const std::string body = code_of(t.substr(a, e - a));
+        for (auto it = std::sregex_iterator(body.begin(), body.end(), walker); it != std::sregex_iterator(); ++it)
+            standbys.insert((*it)[1].str());
+    }
+    if (standbys.empty()) return 0;
+    for (auto it = std::sregex_iterator(c.begin(), c.end(), start); it != std::sregex_iterator(); ++it)
+        starts.insert((*it)[1].str());
+    int n = 0;
+    for (const auto& s : starts) {
+        size_t a, e;
+        if (!func_span(t, s, &a, &e) || code_of(t.substr(a, e - a)).find("SetBossGauge") == std::string::npos) continue;
+        const size_t line = t.find('\n', a);   // the handler's first line
+        if (line == std::string::npos || line >= e) continue;
+        std::string add;
+        for (const auto& sb : standbys)
+            add += "\tif " + sb + " then " + sb + "(proxy, param) end --SEAMLESS: a player in the room without its own walk"
+                   " through the fog (a friend that joined beside its host) gets the boss's stand-by too" + nl;
+        t.insert(line + 1, add);
+        n++;
+    }
+    return n;
+}
+
 // A pickup's "another player did it" branch in its handler: Luafunc_PlaySynchroAnimation(proxy, param, ANIMEID_PICK).
 const std::regex& synchro_branch()
 {
@@ -643,6 +693,8 @@ int edit_area(std::string& t, bool nexus)
     n += local_wander_loops(t);
     // The light walls: one a player walks through is gone in every player's game (walls_for_watchers)
     n += walls_for_watchers(t);
+    // A boss that wakes only for the player who walked through its fog wakes for a player put in its room too
+    n += standby_in_the_room(t);
     // The Archstones: the OnEvent_<id>[_k] handlers that show "Return to the Nexus?" (10010710) or "You can't
     // return during multiplayer." (10010720).
     std::set<std::string> ids;
