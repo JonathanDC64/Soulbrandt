@@ -4,6 +4,7 @@
 #include "prelaunch.hpp"
 
 #include "app.hpp"
+#include "event.hpp"
 #include "host.hpp"
 #include "input.hpp"
 #include "modal.hpp"
@@ -38,6 +39,10 @@ const Rml::String kDocumentSource = R"RML(
             </hero>
             <menu-list id="menu-list" />
         </menu>
+        <update-note id="update-note">
+            <update-mark />
+            <update-text><update-title id="update-title" /><update-line>See what's new, and update</update-line></update-text>
+        </update-note>
         <hint-info class="intro-item delay-6">
             <hint-label id="hint-text" />
         </hint-info>
@@ -137,15 +142,21 @@ void Prelaunch::build_menu_buttons() {
     });
     apply_intro_animation(mMenuButtons.back()->root(), "delay-5");
 
-    // Hidden until the update check finds a newer release (show_update).
-    mUpdateIndex = mMenuButtons.size();
-    mMenuButtons.push_back(std::make_unique<Button>(menuList, "Update"));
-    mMenuButtons.back()->on_pressed([] {
+    // Hidden until the update check finds a newer release (show_update), marked (.update) so it stands out; the note
+    // at the top right (update-note) opens the same.
+    const auto open_update = [] {
         play_sound(kSoundWindowOpen);
         push_document(std::make_unique<UpdateWindow>(
             UpdateWindow::Props{.open = UpdateWindow::Open::Notes, .release = updates::found(),
                                 .overGame = updates::over_game()}));
-    });
+    };
+    mUpdateIndex = mMenuButtons.size();
+    mMenuButtons.push_back(std::make_unique<Button>(menuList, "Update"));
+    mMenuButtons.back()->on_pressed(open_update);
+    mMenuButtons.back()->root()->SetClass("update", true);
+    if (Rml::Element* note = mDocument->GetElementById("update-note"))
+        mUpdateNoteListener = std::make_unique<ScopedEventListener>(note, Rml::EventId::Click,
+                                                                    [open_update](Rml::Event&) { open_update(); });
     mMenuButtons.back()->root()->SetClass("anim-done", true);
     set_display(mMenuButtons.back()->root(), Rml::Style::Display::None);
 
@@ -153,6 +164,8 @@ void Prelaunch::build_menu_buttons() {
     mMenuButtons.back()->on_pressed([] { request_quit_confirm(); });
     apply_intro_animation(mMenuButtons.back()->root(), "delay-5");
 }
+
+Prelaunch::~Prelaunch() = default;
 
 // Play: the game is already running behind this screen; hide it and hand over the input.
 void Prelaunch::play() {
@@ -196,6 +209,9 @@ void Prelaunch::show_update() {
     } else {
         set_display(button.root(), Rml::Style::Display::None);
     }
+    if (Rml::Element* note = mDocument->GetElementById("update-note")) note->SetClass("on", found);
+    if (Rml::Element* title = mDocument->GetElementById("update-title"))
+        set_text_content(title, found ? "Version " + version + " is out" : std::string());
 }
 
 void Prelaunch::update() {
