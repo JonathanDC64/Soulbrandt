@@ -159,6 +159,7 @@ void use_public_address(const std::string& text) {
         return;
     }
     settings::set("DES_SEAMLESS_ADDRESS", ip);
+    settings::now_in_effect("DES_SEAMLESS_ADDRESS");  // (set_public_address applied it: no restart to ask about)
     play_sound(kSoundItemEnable);
     toast("info", ip.empty() ? "The code uses your router's answer again."
                              : "The invite code now uses that address. Copy it again for your friends.");

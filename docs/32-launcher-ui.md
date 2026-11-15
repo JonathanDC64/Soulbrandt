@@ -13,9 +13,20 @@ licences in `port/ui/NOTICE.md`.
   until Play. Esc or Circle on the start screen asks to quit.
 - **In-game menu**: F1 or Esc on the keyboard, or **L3 + R3** on a gamepad
   (Settings > Interface can switch this to Select + Start). It is a bar at
-  the top with **Settings**, **Trophies**, **Report an issue** and **Quit**. Esc, Circle,
-  F1 or Start close it.
-- **Quit** asks first ("Return to the desktop? Progress since the game last
+  the top with **Settings**, **Trophies**, **Mods**, **Co-op**, **Report an
+  issue** and **Quit** (`menu_pages.cpp`'s entries). Esc, Circle, F1 or Start
+  close it.
+- **Restart question**: closing the menu while a restart-only setting has
+  changed since the game started asks first, "Restart the game now?", naming
+  each one by its row with its value ("Start maximized (Off)"). **Restart
+  now** starts the game again past the start screen; **Later**, the answer
+  with the focus, keeps them for the next start, and closing the menu doesn't
+  ask again until something else waits. A setting pinned by the environment
+  never waits.
+- **Questions** (`question.hpp`) put the action first and the safe answer
+  after it, as the game's own do. The safe answer has the focus first, and
+  Esc, Circle or F1 give it.
+- **Quit** asks first ("Quit to the desktop? Progress since the game last
   saved will be lost.") in a blood-red window, then posts WM_CLOSE to the
   game window. The window's close button and Alt+F4 ask the same question
   (the UI consumes their WM_CLOSE). The window closes at once only in a run
@@ -458,10 +469,14 @@ Files:
 - `settings_catalog.cpp`: the settings rows as data (above), with
   `settings_values.cpp` (the rows' values) and `settings_hooks.cpp` (what they
   take from the rest of the UI).
+- `menu_pages.cpp`: the F1 menu's entries and its questions as data.
+  `menu_model.cpp`: its rules (when closing asks about a restart), checked
+  alone by `menu_logic_check`. `question.cpp`: a question asked one way
+  wherever it comes from.
 - `settings_window.cpp`, `prelaunch.cpp`, `menu_bar.cpp`, `overlay.cpp`,
   `prework_modal.cpp`: the documents. `input.cpp`: pad state to UI keys with repeat. The rest is
   Dusklight's framework (document stack, windows, panes, buttons, modals,
-  tabs), unchanged apart from its headers.
+  tabs), unchanged apart from its headers and the modal's first focus.
 - `des_ui` is its own static library linked into des_boot: des_boot's
   compile flags don't change (the lifted chunks don't rebuild). Third-party
   code is built with `/O2` (the port configures with an empty build type).

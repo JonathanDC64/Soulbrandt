@@ -265,6 +265,16 @@ if(MSVC)
   target_compile_options(report_addresses_check PRIVATE /EHsc /W3)
 endif()
 
+# The F1 menu's rules on their own (tests/menu_logic_check.cpp): menu_model.cpp with no RmlUi and no settings, what
+# closing the menu does while settings wait for a restart. The same on every platform; CI runs it on both (host.yml).
+# Built on demand:
+#   cmake --build <build> --target menu_logic_check, then menu_logic_check
+add_executable(menu_logic_check EXCLUDE_FROM_ALL tests/menu_logic_check.cpp src/menu_model.cpp)
+target_include_directories(menu_logic_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+if(MSVC)
+  target_compile_options(menu_logic_check PRIVATE /EHsc /W3)
+endif()
+
 # The first Python's fetch on its own (tests/setup_fetch_check.cpp), the data folder and the free space stubbed: curl
 # and tar against the host's own download and unzip (what Wine and CrossOver get), a stopped download carried on, and
 # the zip reader's refusals. It downloads python.org's embeddable zip three times. Windows only. Built on demand:

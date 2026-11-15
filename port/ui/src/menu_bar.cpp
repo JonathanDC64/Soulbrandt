@@ -1,21 +1,18 @@
 // Adapted from Dusklight (CC0), src/dusk/ui/menu_bar.cpp, by way of FFCCEOT-Recomp. Adapted for Demon's Souls: the
-// menu bar over the game has Settings, Report an issue (FFCCEOT-Recomp's) and Quit.
+// menu bar over the game, a tab for each of menu_pages.hpp's entries.
 #include "menu_bar.hpp"
 
-#include "app.hpp"
-#include "coop_window.hpp"
 #include "host.hpp"
-#include "modal.hpp"
-#include "mods_window.hpp"
-#include "report_ack.hpp"
-#include "settings_window.hpp"
-#include "trophies_window.hpp"
+#include "menu_pages.hpp"
+#include "question.hpp"
 #include "ui.hpp"
-#include "window.hpp"
 
 #include <RmlUi/Core.h>
 
 #include <cmath>
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace ui {
 namespace {
@@ -34,60 +31,13 @@ const Rml::String kDocumentSource = R"RML(
 </rml>
 )RML";
 
-bool sQuitConfirmOpen = false;
-
 }  // namespace
-
-// The Quit tab, the window's close button and the start screen's Quit all ask the same question.
-void request_quit_confirm() {
-    if (sQuitConfirmOpen) {
-        return;
-    }
-    sQuitConfirmOpen = true;
-    const auto dismiss = [](Modal& modal) {
-        sQuitConfirmOpen = false;
-        modal.pop();
-    };
-    push_document(std::make_unique<Modal>(Modal::Props{
-        .title = "Quit Game",
-        .bodyText = "Return to the desktop? Progress since the game last saved will be lost.",
-        .actions =
-            {
-                ModalAction{
-                    .label = "Cancel",
-                    .onPressed =
-                        [dismiss](Modal& modal) {
-                            play_sound(kSoundWindowClose);
-                            dismiss(modal);
-                        },
-                },
-                ModalAction{
-                    .label = "Quit Game",
-                    .onPressed =
-                        [dismiss](Modal& modal) {
-                            play_sound(kSoundClick);
-                            dismiss(modal);
-                            if (app().quit) {
-                                app().quit();
-                            }
-                        },
-                },
-            },
-        .onDismiss = dismiss,
-        .variant = "danger",
-        .icon = "question-mark",
-    }));
-}
 
 MenuBar::MenuBar()
     : Document(kDocumentSource, false, DocumentScope::MenuBar),
       mRoot(mDocument->GetElementById("popup")) {
     mTabBar = std::make_unique<TabBar>(mRoot, TabBar::Props{
-                                                  .onClose =
-                                                      [this] {
-                                                          play_sound(kSoundMenuClose);
-                                                          hide(false);
-                                                      },
+                                                  .onClose = [this] { close_menu(); },
                                                   .autoSelect = false,
                                               });
 
@@ -104,61 +54,26 @@ MenuBar::MenuBar()
 }
 
 void MenuBar::build_tabs() {
-    mTabBar->add_tab("Settings", [this] { push(std::make_unique<SettingsWindow>()); });
+    for (const menu::Entry& entry : menu::entries()) {
+        mTabBar->add_tab(entry.title, [this, &entry] { entry.choose(*this); });
+    }
+}
 
-    mTabBar->add_tab("Trophies", [this] { push(std::make_unique<TrophiesWindow>()); });
+void MenuBar::unselect() {
+    mTabBar->set_active_tab(-1);
+}
 
-    mTabBar->add_tab("Mods", [this] { push(std::make_unique<ModsWindow>()); });
-
-    mTabBar->add_tab("Co-op", [this] {
-        mTabBar->set_active_tab(-1);
-        push(make_coop_window());
-    });
-
-    mTabBar->add_tab("Report an issue", [this] {
-        mTabBar->set_active_tab(-1);
-        const auto dismiss = [](Modal& modal) { modal.pop(); };
-        push(std::make_unique<Modal>(Modal::Props{
-            .title = "Report an Issue",
-            .bodyText = "Opens a new issue on GitHub with the details filled in, and a zip to attach with a "
-                        "screenshot, your PC's details, your settings, what each part of the game was doing, the "
-                        "game's recent messages and your save (your characters and their names), so the problem can "
-                        "be seen where it happened. It has no game files; nothing is sent until you submit the issue. "
-                        "Making it takes a few seconds.",
-            .actions =
-                {
-                    ModalAction{
-                        .label = "Cancel",
-                        .onPressed =
-                            [dismiss](Modal& modal) {
-                                play_sound(kSoundWindowClose);
-                                dismiss(modal);
-                            },
-                    },
-                    ModalAction{
-                        .label = "Report",
-                        .onPressed =
-                            [this, dismiss](Modal& modal) {
-                                play_sound(kSoundClick);
-                                dismiss(modal);
-                                with_zip_ack([this] {  // (the first report on this PC: report_ack.hpp)
-                                    hide(false);
-                                    if (app().report_issue) {
-                                        app().report_issue();
-                                    }
-                                });
-                            },
-                    },
-                },
-            .onDismiss = dismiss,
-            .icon = "question-mark",
-        }));
-    });
-
-    mTabBar->add_tab("Quit", [this] {
-        mTabBar->set_active_tab(-1);
-        request_quit_confirm();
-    });
+void MenuBar::close_menu() {
+    std::vector<std::string> waiting = menu::waiting_for_restart();
+    if (mModel.close(waiting) == menu::Model::Close::Now) {
+        play_sound(kSoundMenuClose);
+        hide(false);
+        return;
+    }
+    ask(menu::restart_question([this, waiting = std::move(waiting)] {
+        mModel.later(waiting);
+        hide(false);
+    }));
 }
 
 void MenuBar::show() {
@@ -222,9 +137,8 @@ bool MenuBar::visible() const {
 }
 
 bool MenuBar::handle_nav_command(Rml::Event& event, NavCommand cmd) {
-    if (cmd == NavCommand::Cancel && visible()) {
-        play_sound(kSoundMenuClose);
-        hide(false);
+    if (visible() && (cmd == NavCommand::Cancel || (cmd == NavCommand::Menu && !game_obscured_below(*this)))) {
+        close_menu();
         return true;
     }
     return Document::handle_nav_command(event, cmd);

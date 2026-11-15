@@ -1,8 +1,9 @@
 // Settings' rows on their own (settings_catalog.cpp, with settings.cpp and settings_values.cpp; settings_hooks.hpp is
 // this file's): every row's setting exists, its choices and numbers are sound, its help is written as the window
 // expects (no "(KEY)" line, no "(original)" in a choice), and each row's text, notes and buttons can be made. For each
-// disc region, the Language section shows its one row (none, and no heading, on the Japanese disc). No window, no
-// game: the defaults only, in a settings file of its own under the system's temporary folder.
+// disc region, the Language section shows its one row (none, and no heading, on the Japanese disc). The restart
+// question (menu_pages.cpp) can name each restart-only setting by its row, with its value as the row shows it. No
+// window, no game: the defaults only, in a settings file of its own under the system's temporary folder.
 //
 // Prints each tab's rows, a line per failure and "settings_catalog_check: N rows, M failed"; exit 1 on a failure.
 // Built on demand: cmake --build <build> --target settings_catalog_check, then settings_catalog_check.
@@ -16,6 +17,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <optional>
 #include <regex>
 #include <set>
 #include <string>
@@ -224,6 +226,38 @@ int check_row(const catalog::TabDesc& tab, const catalog::RowDesc& row) {
     return 1;
 }
 
+// The restart question names what waits for a restart by its row: "Start maximized (Off)". Every restart-only setting
+// has a row to name it by, but those never changed from Settings: the mods (the Mods window's own file now), the
+// co-op host's address (the Co-op window applies it at once) and, outside developer builds, Custom's address (its row,
+// the only way to change it, is in developer builds only). A toggle and a number read as their rows show them, and a
+// change waits for a restart until it is changed back.
+void check_restart_names() {
+    g_where = "restart question";
+    std::set<std::string> elsewhere = {"DES_MODS", "DES_SEAMLESS_ADDRESS"};
+#if !DES_DEV
+    elsewhere.insert("DES_NET_CUSTOM");
+#endif
+    for (const settings::Def& d : settings::defs()) {
+        if (d.apply != settings::Apply::Restart || elsewhere.count(d.key)) continue;
+        check(catalog::shown(d.key).has_value(), std::string("no row names ") + d.key + " (the question would show the key)");
+    }
+    const auto shown = [](const char* key) {
+        const std::optional<catalog::Shown> s = catalog::shown(key);
+        return s ? s->label + " (" + s->value + ")" : std::string("none");
+    };
+    check(settings::restart_pending().empty(), "something waits at the start");
+    settings::set("DES_MAXIMIZED", "0");
+    settings::set("DES_NET_P2P_PORT", "4000");
+    check(shown("DES_MAXIMIZED") == "Start maximized (Off)", "Start maximized reads " + shown("DES_MAXIMIZED"));
+    check(shown("DES_NET_P2P_PORT") == "P2P port (4000)", "P2P port reads " + shown("DES_NET_P2P_PORT"));
+    const std::vector<std::string> waiting = settings::restart_pending();
+    check(waiting == std::vector<std::string>{"DES_MAXIMIZED", "DES_NET_P2P_PORT"},
+        "waiting: " + std::to_string(waiting.size()) + " settings, not the two changed");
+    settings::set("DES_MAXIMIZED", "1");
+    settings::set("DES_NET_P2P_PORT", "3658");
+    check(settings::restart_pending().empty(), "changed back, something still waits");
+}
+
 // The Game tab's Language rows shown on a disc of region r, and its heading.
 void check_region(int r, int rows, bool heading) {
     g_region = r;
@@ -269,6 +303,7 @@ int main() {
         std::printf("%s: %d rows\n", tab.title.c_str(), n);
         rows += n;
     }
+    check_restart_names();
     check_region(0, 1, true);
     check_region(1, 1, true);
     check_region(2, 0, false);

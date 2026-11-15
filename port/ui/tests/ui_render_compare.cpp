@@ -25,6 +25,8 @@
 // --verbose: the first bytes that differ in each frame.
 // Exit code 0: every picture and count the same; 1: one differs; 2: it could not run.
 #include "host.hpp"
+#include "menu_bar.hpp"
+#include "menu_pages.hpp"
 #include "renderer.hpp"
 #include "settings.hpp"
 #include "settings_catalog.hpp"
@@ -53,7 +55,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <functional>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <string>
@@ -867,6 +871,33 @@ void close_pages() {
     gDocuments.clear();
 }
 
+// The F1 menu as F1 opens it (des_ui.cpp's open_menu_bar), and with its Quit question over it. One bar for every page,
+// as in the game: it stays when the pages close (it is permanent), hidden.
+void open_menu(bool quit) {
+    if (ui::Document* bar = ui::find_document(ui::DocumentScope::MenuBar)) bar->show();
+    else ui::push_document(std::make_unique<ui::MenuBar>(), false).show();
+    if (quit) ui::request_quit_confirm();
+}
+
+// The F1 menu with the question its closing asks while two settings wait for a restart. The question's text is made
+// as it is asked, so the settings go back at once, and the scratch settings.ini as it was (or none), for the next run.
+void open_menu_restart() {
+    open_menu(false);
+    const std::filesystem::path ini = std::filesystem::u8path(ui::settings::path());
+    std::ifstream in(ini, std::ios::binary);
+    const bool had = in.good();
+    const std::string before((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    in.close();
+    ui::settings::set("DES_MAXIMIZED", "0");
+    ui::settings::set("DES_NET_P2P_PORT", "4000");
+    ui::ask(ui::menu::restart_question({}));
+    ui::settings::set("DES_MAXIMIZED", "1");
+    ui::settings::set("DES_NET_P2P_PORT", "3658");
+    std::error_code ec;
+    if (had) std::ofstream(ini, std::ios::binary | std::ios::trunc) << before;
+    else std::filesystem::remove(ini, ec);
+}
+
 // The models, drawn as host.cpp draws the sword cursor and the lizard, at fixed times.
 void draw_models(Tee& tee) {
     if (const ui::models::Model* m = ui::models::get("moonlight")) {
@@ -1143,6 +1174,9 @@ int main(int argc, char** argv) {
         p.onStart = [](ui::setup::Request) {};
         ui::push_document(std::make_unique<ui::SetupBeforeWindow>(std::move(p)));
     }, {}});
+    pages.push_back({"menu", 1280, 720, false, 1.f, false, [] { open_menu(false); }, {}});
+    pages.push_back({"menu-quit", 1280, 720, false, 1.f, false, [] { open_menu(true); }, {}});
+    pages.push_back({"menu-restart", 1280, 720, false, 1.f, false, open_menu_restart, {}});
     pages.push_back({"clip", 1280, 720, false, 1.f, false, [] { open_rml(kClipPage); }, {}, true});
     pages.push_back({"filters", 1280, 720, false, 1.f, false, [] { open_rml(kFilterPage); }, {}, true});
     pages.push_back({"filters-odd-size", 1001, 563, false, 1.f, false, [] { open_rml(kFilterPage); }, {}, true});
