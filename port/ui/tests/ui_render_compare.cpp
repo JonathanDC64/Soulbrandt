@@ -920,6 +920,16 @@ void open_settings_row(const std::string& tab, const std::string& row, ui::menu:
     page->command(command, true);
 }
 
+// Settings closed on that tab's row and opened again: it opens where it was left.
+void reopen_settings(const std::string& tab, const std::string& row) {
+    ui::SettingsPage* page = open_settings(tab, false);
+    if (!page || !page->focus_row(row)) {
+        std::fprintf(stderr, "ui_render_compare: no row %s\n", row.c_str());
+        return;
+    }
+    menu_shell().open_settings();  // (the page closes, and Settings opens again)
+}
+
 // The menus in that look (looks.hpp): the ui_look setting, applied as the Menu look row applies it.
 void use_look(std::string_view id) {
     if (ui::settings::get("ui_look") == id) return;
@@ -929,6 +939,7 @@ void use_look(std::string_view id) {
 
 void close_pages() {
     ui::close_all_documents();
+    ui::SettingsPage::forget_place();  // (Settings opens where it was left: each page starts as at the game's start)
     for (Rml::ElementDocument* d : gDocuments) d->Close();
     gDocuments.clear();
 }
@@ -1226,6 +1237,8 @@ int main(int argc, char** argv) {
                      [] { open_settings_row("Picture", "Render resolution", Command::Preview); }, {}});
     pages.push_back({"settings-preview-start", 1280, 720, false, 1.f, false,
                      [] { open_settings_row("Picture", "Render resolution", Command::Preview, true); }, {}});
+    pages.push_back({"settings-reopen", 1280, 720, false, 1.f, false,
+                     [] { reopen_settings("Picture", "Depth of field"); }, {}});
     pages.push_back({"settings-compare", 1280, 720, false, 1.f, false,
                      [] { open_settings_row("Picture", "Render resolution", Command::Compare); }, {}});
     pages.push_back({"settings-tall", 1920, 1200, false, 1.f, false, [] { open_settings("Network", false); }, {}});
@@ -1258,53 +1271,55 @@ int main(int argc, char** argv) {
         open_menu(false);
         ui::with_zip_ack(nullptr);
     }, {}});
-    // Pause band's pages, in a build that offers it (a developer build until it is released, looks.hpp). Every page
-    // opens in the default look; these switch to Pause band first.
-    use_look("band");
-    const bool band = ui::looks::current().id == "band";
+    // DeS UI's pages, in a build that offers it (a developer build until it is released, looks.hpp). Every page
+    // opens in the default look; these switch to DeS UI first.
+    use_look("des");
+    const bool band = ui::looks::current().id == "des";
     use_look(ui::looks::kDefault);
     if (band) {
         const auto in_band = [](std::function<void()> open) {
             return [open = std::move(open)] {
-                use_look("band");
+                use_look("des");
                 open();
             };
         };
-        pages.push_back({"band-menu", 1280, 720, false, 1.f, false, in_band([] { open_menu(false); }), {}});
-        pages.push_back({"band-quit", 1280, 720, false, 1.f, false, in_band([] { open_menu(true); }), {}});
-        pages.push_back({"band-display", 1280, 720, false, 1.f, false, in_band([] { open_settings("Display", false); }), {}});
-        pages.push_back({"band-list", 1280, 720, false, 1.f, false,
+        pages.push_back({"des-menu", 1280, 720, false, 1.f, false, in_band([] { open_menu(false); }), {}});
+        pages.push_back({"des-quit", 1280, 720, false, 1.f, false, in_band([] { open_menu(true); }), {}});
+        pages.push_back({"des-display", 1280, 720, false, 1.f, false, in_band([] { open_settings("Display", false); }), {}});
+        pages.push_back({"des-list", 1280, 720, false, 1.f, false,
                          in_band([] { open_settings_row("Display", "Aspect ratio", Command::Confirm); }), {}});
-        pages.push_back({"band-help", 1280, 720, false, 1.f, false,
+        pages.push_back({"des-help", 1280, 720, false, 1.f, false,
                          in_band([] { open_settings_row("Display", "Display mode", Command::Help); }), {}});
-        pages.push_back({"band-preview", 1280, 720, false, 1.f, false,
+        pages.push_back({"des-preview", 1280, 720, false, 1.f, false,
                          in_band([] { open_settings_row("Picture", "Render resolution", Command::Preview); }), {}});
         // Preview from Settings on its own, as the start screen opens it: the strip without the page's frame.
-        pages.push_back({"band-preview-start", 1280, 720, false, 1.f, false,
+        pages.push_back({"des-preview-start", 1280, 720, false, 1.f, false,
                          in_band([] { open_settings_row("Picture", "Render resolution", Command::Preview, true); }), {}});
-        pages.push_back({"band-compare", 1280, 720, false, 1.f, false,
+        pages.push_back({"des-reopen", 1280, 720, false, 1.f, false,
+                         in_band([] { reopen_settings("Picture", "Depth of field"); }), {}});
+        pages.push_back({"des-compare", 1280, 720, false, 1.f, false,
                          in_band([] { open_settings_row("Picture", "Render resolution", Command::Compare); }), {}});
-        pages.push_back({"band-prelaunch", 1280, 720, false, 1.f, false, in_band([] { open_settings("", true); }), {}});
-        pages.push_back({"band-start", 1280, 720, false, 1.f, false,
+        pages.push_back({"des-prelaunch", 1280, 720, false, 1.f, false, in_band([] { open_settings("", true); }), {}});
+        pages.push_back({"des-start", 1280, 720, false, 1.f, false,
                          in_band([] { ui::push_document(std::make_unique<ui::Prelaunch>()); }), {}});
-        pages.push_back({"band-tall", 1920, 1200, false, 1.f, false, in_band([] { open_settings("Network", false); }), {}});
+        pages.push_back({"des-tall", 1920, 1200, false, 1.f, false, in_band([] { open_settings("Network", false); }), {}});
         // A wide window: the bands span it, their contents and the rows keep to the centred column.
-        pages.push_back({"band-wide", 2560, 1080, false, 1.f, false, in_band([] { open_settings("Display", false); }), {}});
+        pages.push_back({"des-wide", 2560, 1080, false, 1.f, false, in_band([] { open_settings("Display", false); }), {}});
         // Rows that open something (the word in the box) and empty texts (Not set).
-        pages.push_back({"band-network", 1280, 720, false, 1.f, false, in_band([] { open_settings("Network", false); }), {}});
-        // Every tab in a window tall enough for all its rows (band-tab-display, band-tab-game...), to set beside Today's.
+        pages.push_back({"des-network", 1280, 720, false, 1.f, false, in_band([] { open_settings("Network", false); }), {}});
+        // Every tab in a window tall enough for all its rows (des-tab-display, des-tab-game...), to set beside Alpha UI's.
         for (const ui::catalog::TabDesc& t : ui::catalog::tabs()) {
-            std::string name = "band-tab-";
+            std::string name = "des-tab-";
             for (const char c : t.title)
                 name += c == ' ' ? '-' : static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
             pages.push_back({name, 1280, 1240, false, 1.f, false, in_band([title = t.title] { open_settings(title, false); }), {}});
         }
         // A stick's deadzone (Down from the row above it): its picture beside the row. Typing a value in its box.
-        pages.push_back({"band-stick", 1280, 720, false, 1.f, false,
+        pages.push_back({"des-stick", 1280, 720, false, 1.f, false,
                          in_band([] { open_settings_row("Controls", "Vibration", Command::Down); }), {}});
-        pages.push_back({"band-typing", 1280, 720, false, 1.f, false,
+        pages.push_back({"des-typing", 1280, 720, false, 1.f, false,
                          in_band([] { open_settings_row("Network", "Online name", Command::Confirm); }), {}});
-        pages.push_back({"band-report-ack", 1280, 720, false, 1.f, false, in_band([] {
+        pages.push_back({"des-report-ack", 1280, 720, false, 1.f, false, in_band([] {
             open_menu(false);
             ui::with_zip_ack(nullptr);
         }), {}});

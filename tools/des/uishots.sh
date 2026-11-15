@@ -10,7 +10,7 @@
 #   UISHOTS_SCALES    the UI scale setting (ui_scale) per run, in percent
 #                     (default "100 150"; the settings row offers 75 to 150)
 #   UISHOTS_LOOKS     the menu looks (ui_look, a looks.hpp id) per run, e.g.
-#                     "today band" (default: none set, so the default look). A
+#                     "alpha des" (default: none set, so the default look). A
 #                     look the build doesn't offer draws as the default, so one
 #                     not released yet needs a developer build (DES_DEV).
 #   UISHOTS_TABS      settings tabs to shoot (default 8: a developer build's, Developer included)
