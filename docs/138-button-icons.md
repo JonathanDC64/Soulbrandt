@@ -82,7 +82,8 @@ time (`button_pages::draw_single`):
   gives it, so it stays sharp at any UI scale. The look's style sheet sets its height, and its width follows: a key
   with a word on it ("Enter") gets a cap as wide as the word needs.
 - PlayStation's buttons are drawn too, in the same style: ✕, ○, △ and □ in their colours on the dark disc, L1 to R3,
-  Select and Start. The game's page keeps its own pictures; the menus never use them.
+  and Select and Start as a pill with the word on it, as the PS3's own prompts show them. The game's page keeps its
+  own pictures; the menus never use them.
 - Each glyph also carries the button's name as text (`menu-key`). Today's look hides it; a look that draws text
   instead hides the picture.
 
