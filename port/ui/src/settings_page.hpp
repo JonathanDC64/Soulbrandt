@@ -4,7 +4,7 @@
 // picture setting shows on the game, and Compare, held, showing the value the page opened with.
 //
 // The page builds the same elements in every look; how they look is the look's style sheet (looks.hpp):
-//   menu-tabs > menu-glyph, menu-tab(.on)
+//   menu-tabs > menu-tab-key(.prev .next) > menu-glyph, menu-tab(.on)
 //   menu-body > menu-rows > menu-heading, menu-row(.focused .locked .waits .modified .listing)
 //       menu-row > menu-label > menu-mark, menu-name
 //                  menu-value > menu-arrow.left(.end), icon.lock, menu-text, menu-tag, menu-arrow.right(.end)
