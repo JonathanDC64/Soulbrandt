@@ -86,10 +86,9 @@ void start_coop(const std::vector<std::string>& set) {
                        }});
     actions.push_back({.label = "Cancel", .onPressed = close_action});
     push_document(std::make_unique<Modal>(Modal::Props{
-        .title = "Your co-op characters",
-        .bodyRml = "Co-op keeps characters of its own. You can bring one of yours along, this once: co-op gets a "
-                   "copy, and your character here stays as it is. Nothing from co-op comes back to it.<br/><br/>"
-                   "Or start with none, and make a new character in co-op.",
+        .title = "Bring a character to co-op?",
+        .bodyRml = "Co-op gets a copy, and your character here stays as it is. Or start with none, and make one "
+                   "there.",
         .actions = std::move(actions),
         .isVertical = true,
     }));
@@ -97,12 +96,11 @@ void start_coop(const std::vector<std::string>& set) {
 
 void open_host() {
     push_document(std::make_unique<Modal>(Modal::Props{
-        .title = "Host co-op",
-        .bodyRml = "The game starts again on your co-op characters. Then open Co-op again for your invite code, and "
-                   "send it to your friends.<br/><br/>"
-                   "Windows may ask whether the game may use the network: allow it, or your friends can't "
-                   "connect.<br/><br/>"
-                   "Don't post the invite code in public: it holds your internet address.",
+        .title = "Host co-op?",
+        .bodyRml = "The game starts again on your co-op characters. Then send your friends the invite code from "
+                   "Co-op.<br/><br/>"
+                   "If Windows asks about the network, allow it. Keep the code private: it holds your internet "
+                   "address.",
         .actions = {ModalAction{.label = "Cancel", .onPressed = close_action},
                     ModalAction{.label = "Host",
                                 .onPressed = [](Modal&) { start_coop({"DES_SEAMLESS=host", "DES_SEAMLESS_CODE="}); }}},
@@ -123,10 +121,8 @@ void join_with(const std::string& text, const char* if_empty) {
 
 void open_join() {
     push_document(std::make_unique<Modal>(Modal::Props{
-        .title = "Join co-op",
-        .bodyRml = "Copy your friend's invite code (16 letters and digits, like 7KQ2-M9XD-0RTB-4HWE), then choose "
-                   "Paste and join, or type it. The game starts again on your co-op characters, in your friend's "
-                   "world.",
+        .title = "Join co-op?",
+        .bodyRml = "Copy your friend's invite code, then paste it or type it. The game starts again in their world.",
         .actions = {ModalAction{.label = "Cancel", .onPressed = close_action},
                     ModalAction{.label = "Type code",
                                 .onPressed = [](Modal&) {
@@ -210,12 +206,9 @@ void open_public_address() {
                        }});
     actions.push_back({.label = "Cancel", .onPressed = close_action});  // (last, as in every question's list)
     push_document(std::make_unique<Modal>(Modal::Props{
-        .title = "Public address",
-        .bodyRml = "When your router can't open the port by itself, forward port " +
-                   std::to_string(co::status().port) +
-                   " (TCP and UDP) to this PC in your router's settings, then give your public address: the one the "
-                   "internet sees. Your router's status page shows it, or a \"what is my IP\" website.<br/><br/>"
-                   "The invite code is then made from it. The game keeps it for the next time you host." +
+        .title = "Set your public address?",
+        .bodyRml = "If your router can't open port " + std::to_string(co::status().port) +
+                   " (TCP and UDP), forward it to this PC and give the address the internet sees." +
                    (now.empty() ? std::string() : "<br/><br/>Now: " + escape(now)),
         .actions = std::move(actions),
         .isVertical = true,
@@ -225,9 +218,8 @@ void open_public_address() {
 // A new invite code: for a code that went further than meant, or once too many wrong codes spent it.
 void open_new_code() {
     push_document(std::make_unique<Modal>(Modal::Props{
-        .title = "New invite code",
-        .bodyRml = "Your code stops working: friends who haven't joined yet need the new one. Players already here "
-                   "stay.",
+        .title = "Make a new invite code?",
+        .bodyRml = "The old code stops working. Players already here stay.",
         .actions = {ModalAction{.label = "Cancel", .onPressed = close_action},
                     ModalAction{.label = "New code",
                                 .onPressed =
@@ -278,7 +270,7 @@ void open_leaving() {
     co::leave();
     push_document(std::make_unique<LeavingWindow>(Modal::Props{
         .title = "Leaving co-op",
-        .bodyRml = "Going back to your own world. The game saves there, then starts again on your normal characters.",
+        .bodyRml = "Going back to your own world, then to your normal characters.",
         .actions = {ModalAction{.label = "Leave now",
                                 .onPressed = [](Modal&) { leave_now(); }}},
         // Back or Esc doesn't close it: the leave is under way (the session left), and only this window starts the
@@ -290,12 +282,10 @@ void open_leaving() {
 void open_leave() {
     const bool guest = co::status().mode == co::Mode::Join;
     push_document(std::make_unique<Modal>(Modal::Props{
-        .title = "Leave co-op",
-        .bodyRml = guest ? "Your game first takes you back to your own world, where it saves what you did together. "
-                           "Then it starts again on your normal characters. Your co-op characters stay as they are, "
-                           "for the next time."
-                         : "The game starts again on your normal characters. Your co-op characters stay as they are, "
-                           "for the next time.<br/><br/>Your friends go back to their own worlds.",
+        .title = "Leave co-op?",
+        .bodyRml = guest ? "Your game saves in your own world, then starts again on your normal characters."
+                         : "The game starts again on your normal characters. Your friends go back to their own "
+                           "worlds.",
         .actions = {ModalAction{.label = "Cancel", .onPressed = close_action},
                     ModalAction{.label = "Leave",
                                 .onPressed = [guest](Modal& m) {

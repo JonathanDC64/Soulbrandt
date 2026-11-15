@@ -304,8 +304,7 @@ void ControlsPage::press() {
         play_sound(kSoundClick);
         ask(Question{
             .title = "Restore default buttons?",
-            .body = "Every gamepad button goes back to the game's own layout, and the keys and mouse buttons to the "
-                    "Souls layout this port starts with.",
+            .body = "Gamepad buttons and keys go back to their defaults.",
             .answers = {{"Restore",
                             [] {
                                 play_sound(kSoundClick);

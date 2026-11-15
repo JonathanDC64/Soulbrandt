@@ -55,9 +55,8 @@ extern "C" int ps3_net_player_erase(void);
 void ask_erase() {
     push_document(std::make_unique<Modal>(Modal::Props{
         .title = "Delete your data on the server?",
-        .bodyText = "This deletes your name, your characters' online records, your messages and bloodstains, and the "
-                    "rest the online server keeps about you (Privacy note). Online play turns off, so the game goes "
-                    "back to its title screen. It cannot be undone.",
+        .bodyText = "Deletes your name and everything the server keeps about you. Online play turns off. This "
+                    "can't be undone.",
         .actions =
             {
                 ModalAction{.label = "Cancel",

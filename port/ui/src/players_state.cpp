@@ -88,7 +88,7 @@ void open_report(const ps3_net_player& p) {
     };
     push_document(std::make_unique<Modal>(Modal::Props{
         .title = "Report " + name + "?",
-        .bodyRml = "The server's admins see the report, with how and when you met. Why?",
+        .bodyRml = "The server's admins see how and when you met. Why are you reporting them?",
         .actions =
             {
                 reason("Cheating", "cheating"),
@@ -152,15 +152,14 @@ void open_actions(const ps3_net_player& p) {
     const std::string name = text_of(p.name, sizeof p.name);
     std::string body = escape(how_met(p));
     if (!ago(p.at).empty()) body += ", " + escape(ago(p.at));
-    body += ".<br/>Their key: " + escape(key_text(p)) + "<br/><br/>";
-    body += p.blocked ? "Unblock lets you meet them online again."
-                      : "Block: you no longer see each other's summon signs, and neither of you can summon or "
-                        "invade the other. You can unblock them here.";
-    if (p.reported) body += "<br/><br/>You reported them today.";
+    body += ". Key " + escape(key_text(p)) + ".<br/><br/>";
+    body += p.blocked ? "Unblocking lets you meet them online again."
+                      : "Blocked, you can't summon or invade each other.";
+    if (p.reported) body += " You reported them today.";
     const bool blocked = p.blocked != 0;
     const bool reportable = p.reportable != 0;
     push_document(std::make_unique<Modal>(Modal::Props{
-        .title = name,
+        .title = (blocked ? "Unblock or report " : "Block or report ") + name + "?",
         .bodyRml = body,
         .actions =
             {

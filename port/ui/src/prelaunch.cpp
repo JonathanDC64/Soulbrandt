@@ -79,7 +79,7 @@ Prelaunch::Prelaunch() : Document(kDocumentSource, false, DocumentScope::Prelaun
             if (t->GetTagName() != "menu-prompt") continue;
             const auto key = static_cast<prompts::Key>(t->GetAttribute<int>("data-key", -1));
             if (key == prompts::Key::Back) {
-                request_quit_confirm();
+                request_quit_confirm(false);
             } else if (key == prompts::Key::Confirm) {
                 for (const auto& button : mMenuButtons)
                     if (Rml::Element* focused = mDocument->GetContext()->GetFocusElement(); button->contains(focused)) {
@@ -161,7 +161,7 @@ void Prelaunch::build_menu_buttons() {
     set_display(mMenuButtons.back()->root(), Rml::Style::Display::None);
 
     mMenuButtons.push_back(std::make_unique<Button>(menuList, "Quit"));
-    mMenuButtons.back()->on_pressed([] { request_quit_confirm(); });
+    mMenuButtons.back()->on_pressed([] { request_quit_confirm(false); });
     apply_intro_animation(mMenuButtons.back()->root(), "delay-5");
 }
 
@@ -272,7 +272,7 @@ bool Prelaunch::handle_nav_command(Rml::Event& event, NavCommand cmd) {
         direction = -1;
     } else if (cmd == NavCommand::Cancel) {
         // Circle / Escape on the start screen asks to quit, as a desktop program's start screen would.
-        request_quit_confirm();
+        request_quit_confirm(false);
         return true;
     } else {
         return false;

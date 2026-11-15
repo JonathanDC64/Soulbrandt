@@ -117,8 +117,8 @@ std::string update_kept_version() {
 void ask_go_back(const std::string& kept) {
     push_document(std::make_unique<Modal>(Modal::Props{
         .title = "Go back to " + kept + "?",
-        .bodyText = "The game starts again as version " + kept + ", with the game build it had. Your saves and settings "
-                    "stay. Version " + updates::this_version() + " is kept, so you can update to it again.",
+        .bodyText = "The game starts again as " + kept + ". Your saves and settings stay, and " +
+                    updates::this_version() + " is kept.",
         .actions =
             {
                 ModalAction{.label = "Cancel",

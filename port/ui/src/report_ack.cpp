@@ -48,14 +48,12 @@ void with_zip_ack(std::function<void()> then) {
     const auto ticked = std::make_shared<bool>(false);
     const Rml::String where =
         report::no_desktop()
-            ? "The report is saved with a link to the issue page beside it. GitHub can't attach the file for you: "
-              "when you open the link on a PC, drag the report file (.zip) into the form's \"Report file (.zip)\" box."
-            : "The issue page opens in your browser, and the folder with the report file (.zip) opens beside it. "
-              "GitHub can't attach the file for you: drag it into the form's \"Report file (.zip)\" box.";
+            ? "The report is saved with a link to the issue page. On a PC, drag the .zip into the issue's \"Report "
+              "file\" box."
+            : "Drag the .zip from the folder that opens into the issue's \"Report file\" box.";
     auto owned = std::make_unique<Modal>(Modal::Props{
-        .title = "Before you report",
-        .bodyText = where + " The file has the logs needed to find the problem; without it, a report can rarely be "
-                            "solved. This is asked only once.",
+        .title = "Attach the report file?",
+        .bodyText = where + " Without it, a report can rarely be solved.",
         .actions =
             {
                 ModalAction{

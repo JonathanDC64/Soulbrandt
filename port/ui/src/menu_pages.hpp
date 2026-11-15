@@ -34,7 +34,7 @@ const std::vector<Entry>& entries();
 std::unique_ptr<Document> screen_alone(const std::string& entry);
 
 // Asked by Quit, the window's close button and the start screen's Quit.
-Question quit_question();
+Question quit_question(bool played = true);  // played: the game was played (not the start screen)
 
 // What waits for a restart: "KEY=value" for each restart-only setting changed since the game started
 // (settings::restart_pending), in that order. Empty when nothing does.

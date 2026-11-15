@@ -25,8 +25,8 @@
 namespace ui {
 
 // The Quit tab, the window's close button and the start screen's Quit all ask the same question.
-void request_quit_confirm() {
-    ask(menu::quit_question());
+void request_quit_confirm(bool played) {
+    ask(menu::quit_question(played));
 }
 
 namespace menu {
@@ -99,11 +99,8 @@ const std::vector<Entry>& entries() {
             [](MenuShell& menu) {
                 ask({
                     .title = "Report an issue?",
-                    .body = "Opens a new issue on GitHub with the details filled in, and a zip to attach with a "
-                            "screenshot, your PC's details, your settings, what each part of the game was doing, the "
-                            "game's recent messages and your save (your characters and their names), so the problem "
-                            "can be seen where it happened. It has no game files; nothing is sent until you submit the "
-                            "issue. Making it takes a few seconds.",
+                    .body = "Opens a GitHub issue, and makes a zip to attach: a screenshot, your PC's details, "
+                            "your settings, recent messages and your save. Nothing is sent until you submit it.",
                     .answers = {{"Report",
                                     [&menu] {
                                         with_zip_ack([&menu] {  // (the first report on this PC: report_ack.hpp)
@@ -130,10 +127,10 @@ std::unique_ptr<Document> screen_alone(const std::string& entry) {
     return nullptr;
 }
 
-Question quit_question() {
+Question quit_question(bool played) {
     return {
         .title = "Quit to the desktop?",
-        .body = "Progress since the game last saved will be lost.",
+        .body = played ? "Progress since the game last saved will be lost." : "",
         .answers = {{"Quit game",
                         [] {
                             if (app().quit) app().quit();
@@ -151,16 +148,14 @@ std::vector<std::string> waiting_for_restart() {
 }
 
 Question restart_question(std::function<void()> later) {
-    std::vector<std::string> named;  // "Renderer (Vulkan)"
+    std::vector<std::string> named;  // "Renderer"
     for (const std::string& key : settings::restart_pending()) {
         const std::optional<catalog::Shown> s = catalog::shown(key);
-        named.push_back(!s ? key : s->value.empty() ? s->label : s->label + " (" + s->value + ")");
+        named.push_back(s ? s->label : key);
     }
-    const bool one = named.size() == 1;
     return {
         .title = "Restart the game now?",
-        .body = and_list(named) + (one ? " takes" : " take") + " effect when the game starts again. Later keeps " +
-                (one ? "it" : "them") + " for the next start.",
+        .body = and_list(named) + (named.size() == 1 ? " takes" : " take") + " effect after a restart.",
         .answers = {{"Restart now", restart_now}, {"Later", std::move(later)}},
         .safe = 1,
     };
