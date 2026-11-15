@@ -782,7 +782,11 @@ the newer generation, and saves as usual.
 - A friend that leaves during the host's load and joins again isn't placed. The host's game keeps its old member
   through the load (the room library drops it), and the new join stops half way: the friend waits, out of the host's
   world, until the host's session ends. Seen at the tutorial's end before a friend went with its host (11-15); a
-  friend's Leave co-op just as the host travels may do the same (not tried).
+  friend's Leave co-op just as the host travels may do the same (not tried). The room event comes ("left", 0x1102),
+  but the game's member-left handler (0x0053B7F8, from the session's event dispatch 0x0053DFD8) never runs for it
+  (a scratch hook at its entry, 11-15). The old member's name (`+8`) looks freed by then: the friend's new room entry
+  had the same address. A friend whose game closes during the host's load is different: the host's game left its
+  room and opened a new one, with no member kept.
 - The Japanese and Asian discs (with their 1.04 update) play with the others ("Which discs" above). What is checked
   beside the runs:
   - Co-op's rows in `port/regions/BCJS30022.inc` and `BCAS20071.inc` come from `tools/region/region_table.py find`
