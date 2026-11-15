@@ -23,7 +23,9 @@
 //   - A guest's death: a summoned reload instead of the trip home, to where the host last arrived (the area's start
 //     after a trip or a death). It stays in the session. Once it is back in the world it tells the others (BACK),
 //     and each makes its character again, as after a load: the copy that died stays in its death animation.
-//   - The host's death: its respawn is a load like any other, so the guests follow it.
+//   - The host's death: its respawn is a load like any other, so the guests follow it. Its BACK waits on a guest until
+//     the guest's placement has made the host's character: one made while the host's HP there was still 0 starts out
+//     dead, and is made again once that HP is back.
 // The flags: a guest sees the host's world, and keeps its own world apart.
 //   - A phantom's game plays with the host's flags (the join brings them; each summoned reload puts them back from
 //     a copy, +0x20CC). The host sends its flags with each READY (FLGS), so that copy is the host's world as it is
@@ -214,11 +216,14 @@ bool is_player(uint32_t chr)
 // Type 4 draws them as white phantoms: the draw update (0x002DD920) reads the type four times, for the phantom
 // material on or off (0x000D7C58), its kind (0x000D81D0), the draw path (types 3, 4, 10 and 11 take another) and
 // 0x0025D418. The host has these NPCs at types 5 and 9, and so does the friend's own world; the two read alike at all
-// four. At each read a friend gets 9 for an NPC of type 4, so it draws them as the host does. r3 the type read, r31
-// the character.
-void host_npc_type(ppu_context* ctx, co::Mode m)
+// four. At each read a friend gets 9 for an NPC of type 4, so it draws them as the host does. r3 the type read, the
+// character in chr_reg (r31 in the draw update).
+// The face is made once, when the character's draw objects are built (0x002E0E60): a character that isn't of a
+// phantom's type (3, 4, 10, 11) gets one at +0x664, from its own face data. So those NPCs had no face on a friend
+// (11-15 playtest: Thomas and the Crestfallen, a hole where the face goes). That read gets 9 the same way.
+void host_npc_type(ppu_context* ctx, co::Mode m, int chr_reg = 31)
 {
-    if (m == co::Mode::Join && (uint32_t)ctx->gpr[3] == 4 && !is_player((uint32_t)ctx->gpr[31])) ctx->gpr[3] = 9;
+    if (m == co::Mode::Join && (uint32_t)ctx->gpr[3] == 4 && !is_player((uint32_t)ctx->gpr[chr_reg])) ctx->gpr[3] = 9;
 }
 constexpr uint32_t kChrHp = 0x3C4;   // the character's HP (GetHp's read)
 // The scripts' effect ids are behaviours (BehaviorParam, whose +0x14 names the effect: 0x00595B80). 101 is soul form's
@@ -317,6 +322,7 @@ std::deque<HostFlag> sHostFlags;     // FLAGs not yet taken: a guest's from the 
 std::deque<uint32_t> sBack;          // BACKs not yet taken: the player ids
 std::atomic<bool> sDied{false};      // this game's player died in the session since its last BACK
 std::set<uint32_t> sDeadCopies;      // the others' characters seen dead (their game data's HP at 0), tick thread only
+std::set<uint32_t> sBackWaiting;     // BACKs taken that wait for their player's character (make_again), tick thread only
 struct HostFlags {
     uint32_t area = kNoArea;
     std::vector<uint8_t> bytes = std::vector<uint8_t>(kFlagBytes);
@@ -1347,25 +1353,42 @@ void requeue(ppu_context* ctx, uint32_t sm)
 // The character is the one among the others with that player id (+0x498; the vector at the character manager's +0x19C,
 // begin +0x1A0, end +0x1A4, as 0x002945F8 looks one up). Its member is the one whose id is the character's, matched as
 // 0x00297410 does: the character's id made (0x002D0EB0), compared (0x00E2A098), freed (0x00E2A9D8).
-void make_again(ppu_context* ctx, uint32_t sm, uint32_t id)
+// A BACK can also come early, while that player has no character here yet: a guest that followed the host's death
+// load takes the host's BACK as soon as its own load ends, and its placement makes the host's character a moment
+// later. The game data that character is made from (+0x49C) can still hold the HP of the death (+0xC at 0), and a
+// character made then starts out dead: it never plays its moves right (on the guest's screen, the host stuck in a
+// weapon swap, its request (controller +0x284) going 66, 61, 66 for good). So the BACK waits (false): one made with
+// that HP above 0 is kept, one seen dead is made again once that HP is back, as a character made then starts out
+// alive. The same wait covers a character that is there but whose HP here is still 0.
+bool make_again(ppu_context* ctx, uint32_t sm, uint32_t id, bool first)
 {
     const uint32_t man = rd(DES_AT(kChrMan));
-    if (!guest_ok(man)) return;
+    if (!guest_ok(man)) return false;
     const uint32_t me = rd(man + 0x1BC), pb = rd(man + 0x1A0), pe = rd(man + 0x1A4);
-    if (!guest_ok(pb) || pe < pb || pe - pb > 0x40) return;
+    if (!guest_ok(pb) || pe < pb || pe - pb > 0x40) return false;
     uint32_t chr = 0;
     for (uint32_t q = pb; q < pe; q += 4) {
         const uint32_t p = rd(q);
         if (guest_ok(p) && p != me && vm_read32(p + 0x498) == id) chr = p;
     }
-    if (!chr) {   // none here: the placement makes one
-        std::fprintf(stderr, "[coop] player %u is back after its death: no character for it here, the placement makes one\n", id);
-        return;
+    if (!chr) {   // none here yet: the placement makes one
+        if (first)
+            std::fprintf(stderr, "[coop] player %u is back after its death: no character for it here yet; the placement "
+                         "makes one, and it is made again if it starts out dead\n", id);
+        return false;
     }
-    if (!sDeadCopies.erase(chr)) {   // not one seen dead: a new character since (a load's placement made it)
+    const uint32_t gd = rd(chr + 0x49C);
+    const bool alive = !guest_ok(gd) || (int32_t)vm_read32(gd + 0xC) > 0;
+    if (!sDeadCopies.count(chr)) {   // not one seen dead: a new character since (a load's placement made it)
+        if (!alive) return false;    // dead_copies_tick takes it as seen dead
         std::fprintf(stderr, "[coop] player %u is back: its character is a new one already\n", id);
-        return;
+        return true;
     }
+    if (!alive) {   // its game data still says dead: a character made now would start out dead too
+        if (first) std::fprintf(stderr, "[coop] player %u is back after its death: made again once its HP is here\n", id);
+        return false;
+    }
+    sDeadCopies.erase(chr);
     const uint32_t key = sGame.scratch + 0xB00;
     call_addr(ctx, DES_AT(0x002D0EB0u), {key, chr});
     const uint32_t msent = rd(sm + kSmMembers + 0xC);
@@ -1382,12 +1405,14 @@ void make_again(ppu_context* ctx, uint32_t sm, uint32_t id)
     call_addr(ctx, DES_AT(0x00E2A9D8u), {key});
     if (!member || !guest_ok(wsent) || !guest_ok(rd(sm + kSmWaiting))) {
         std::fprintf(stderr, "[coop] player %u is back, but its member isn't here: its character stays\n", id);
-        return;
+        return true;
     }
     call_addr(ctx, DES_AT(0x0029EC08u), {man, chr});
     const bool queued = waits || wait_again(ctx, sm, member);
-    std::fprintf(stderr, "[coop] player %u is back after its death: its character made again%s\n", id,
+    std::fprintf(stderr, "[coop] player %u is back after its death: its character made again%s%s\n", id,
+                 first ? "" : ", once its HP was here",
                  queued ? "" : " (not placed: no node for the waiting list)");
+    return true;
 }
 
 // The others' characters seen dead, each world frame of a session: their game data's (+0x49C) HP (+0xC) at 0. Only
@@ -1907,7 +1932,8 @@ extern "C" void des_seamless_tick(ppu_context* ctx)
     if (m == co::Mode::Host) host_tick(ctx, sm, gm, st, world);
     else guest_tick(ctx, sm, st, world);
     // BACKs: once this game is in the world after its own load (the others' dead characters survive a load, and a
-    // BACK can come while this game follows the same load); dropped out of a session
+    // BACK can come while this game follows the same load); dropped out of a session. One that waits for its player's
+    // character (make_again) is tried again each world frame.
     std::deque<uint32_t> back;
     {
         std::lock_guard<std::mutex> l(sMsgLock);
@@ -1917,7 +1943,12 @@ extern "C" void des_seamless_tick(ppu_context* ctx)
         }
         else if (world && !sGame.in_load) back.swap(sBack);
     }
-    for (const uint32_t id : back) make_again(ctx, sm, id);
+    if (!session) sBackWaiting.clear();
+    else if (world && !sGame.in_load)
+        for (auto it = sBackWaiting.begin(); it != sBackWaiting.end();)
+            it = make_again(ctx, sm, *it, false) ? sBackWaiting.erase(it) : std::next(it);
+    for (const uint32_t id : back)
+        if (!make_again(ctx, sm, id, true)) sBackWaiting.insert(id);
 }
 
 // Whether this guest's own world has flag (world: the one it is in play for). Under sOwn.lock.
@@ -2024,6 +2055,9 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
     case 0x002DDB48u:   // material's kind (0x000D81D0), the draw path's (types 3, 4, 10 and 11 take another),
     case 0x002DDB90u:   // and 0x0025D418's
         host_npc_type(ctx, m);
+        break;
+    case 0x002E1000u:   // a character's draw objects' build (0x002E0E60), after bl 0x0026F378 compared with 4 (r27
+        host_npc_type(ctx, m, 27);   // the character): its face, or none for a phantom's type
         break;
     case 0x002DDAA8u:   // a character's draw update (0x002DD920), after bl 0x0026F378: r3 its type, r31 the character
         // The type picks the draw object's (+0x6A4) phantom material, on or off (0x000D7C58: on for types 1-4, 8, 10,

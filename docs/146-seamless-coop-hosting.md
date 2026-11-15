@@ -79,6 +79,8 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
   one player walks through.
 - **Boss kills keep everyone together:** no rating screen, nobody sent home, and the boss room's walls drop. The
   host's room stays open, during a boss fight and after it, so a friend can always join again.
+- **A friend who joins during a boss fight** fights the boss too. Before, in 1-1, Phalanx wasn't in its game: it
+  saw only the host fighting, and its blows did nothing.
 - **A friend who dies** comes back where the host last arrived (the start of the area) and stays in the session.
   Once it is back, the others see it again, with its rolls, attacks and other moves.
 - **Bloodstains.** A player who dies drops its souls in a bloodstain where it died, a friend too. Only that player
@@ -97,7 +99,8 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
   watches, it goes home (with the game's own message for a lost session) and joins again from there.
 - **Bosses get more health with friends,** as in the original game: half as much again with one friend, double with
   two. Three friends get double too (the original has nothing for three, so a boss had its solo health).
-- **When the host dies,** everyone goes back to the start together.
+- **When the host dies,** everyone goes back to the start together. There the friends see the host's rolls, attacks
+  and other moves again. Before, a friend that was alive could see the host stuck in a weapon swap after that.
 - **Souls from enemies.** Every player gets an enemy's full souls when it dies, whoever killed it. (The original game
   gives a summoned phantom half.)
 - **Progress is everyone's.** A boss killed, or a door, lever, elevator, shortcut, bridge or fog wall opened while
@@ -268,6 +271,14 @@ character that game saw dead (its game data's HP at 0) is made again; one made s
 friend's own respawn sent it: when the friend and the host died within seconds, each game kept the other's dead
 character (the friend unseen on the host's screen, the host stuck in its death animation on the friend's).
 
+A `BACK` can also come before its player has a character on the game that gets it. A friend that followed the host's
+death load gets the host's `BACK` right after its own load, and its placement makes the host's character a moment
+later. That character is made from the game data the friend's game keeps for the host, which can still hold the HP of
+the death (0), and a character made then starts out dead too: it moves, but never plays its moves right (the host
+stuck in a weapon swap on the friend's screen). So a `BACK` that finds no character waits for it. A character made
+with that HP above 0 is kept; one seen dead is made again once that HP is back, and the new one starts out
+alive.
+
 **Messages between the games** go through the room server (`psnr_app_send`, ps3recomp):
 
 | Tag | From | Body | Meaning |
@@ -416,6 +427,11 @@ character (the friend unseen on the host's screen, the host stuck in its death a
 
     Types 5 and 9 read alike at all four. Each read is hooked (0x002DDAA8, 0x002DDADC, 0x002DDB48, 0x002DDB90). On a
     friend, a character of type 4 that isn't a player reads 9, so the friend sees these people as the host does.
+  - **Their faces.** A character's face is made once, when its draw objects are built (US 0x002E0E60). Only a
+    character that isn't of a phantom's type (3, 4, 10, 11) gets one (at `+0x664`), made from its own face data. So
+    on a friend these people had no face: a hole where it goes, with the hair and ears around it (Thomas and the
+    Crestfallen in the Nexus, 11-15). The read compared with 4 there is hooked too (0x002E1000), and on a friend it
+    reads 9 by the same rule. The type kept at `+0x68` is still 4.
   - Until 11-14 the three places were hooked to give a body's mode instead, which made these people the friend's own.
     In 1-1, Ostrava then died in the friend's copy of the world within 20 s of the group reaching him, and his death
     (a network event, `OnCharacterDead(300, 624)`) reached the host's world, so he was gone in both. With the mode
@@ -513,6 +529,15 @@ their first instruction):
   kept the wall itself, so they couldn't pass. The edit makes the same call in the true branch, between
   `NotNetMessage_begin` and `_end`, wherever a handler drops its wall by a direct call to a function with
   `SetColiEnable(..., false)` and has no `LuaCallStart`; only 14291 matches.
+- A boss that wakes only for the player who walks through its fog also wakes for a player put in its room. Phalanx
+  (1-1) is drawn and can be hit only after `PhalanxStandBy`, which the fog's handler (`OnEvent_110`) runs only for
+  the player who walked through (its `param:IsNetMessage() == false` branch). In the game's own
+  co-op every player walks in. A friend that joins during the fight arrives beside the host instead, so Phalanx
+  wasn't in its game. The fight's start (`OnRegionJustIn(<id>, LOCAL_PLAYER, <room>, "OnEvent_<id>", once)`, the
+  handler with `SetBossGauge`) runs in each game whose player arrives in the room, one put there included. It now
+  runs the same stand-by first. For a player who walked in, that is a second run, which sets the same values again.
+  The edit takes the functions a fog's handler (`HELPID_GO_TO_IN`) calls in that branch; only Phalanx's matches
+  (checked on every area's script).
 - The Nexus's timers and checks (`OnKeyTime2`, `OnRegistFunc`) are each player's own. No phantom reaches the Nexus in
   the original game, so its script registers them outside `NotNetMessage_begin` and `_end`, and in a session each one
   is a network event: a step that fires in one game runs in the others too, where it registers the next step again.
@@ -697,7 +722,13 @@ the newer generation, and saves as usual.
     both within 20 s.
   - In the Nexus, the friend got Stockpile Thomas's and the Crestfallen's talk prompts and first lines.
   - The friend saw both as the host did: Thomas plain, and the Crestfallen with the sheen the host's game gives him
-    too.
+    too. Their faces were missing on the friend, though, which these checks didn't catch from where they looked.
+- The people's faces (11-15, scripted, the same saves, the friend joining the host in the Nexus, each person seen
+  from 2 m): before, Thomas had no face on the friend's game, with the wall showing through where it goes, as soon
+  as the friend arrived in the Nexus and again after it died there. With the face's read hooked, Thomas and the
+  Crestfallen (with his sheen) have their faces, both still have type 4, and the friend still gets Thomas's talk
+  prompt. Ostrava's check in 1-1 wasn't run again: the hook changes which draw objects are built, not the stored
+  type.
 - Closing the game window as a friend: the session is lost and nothing from it is saved (the game only saves at
   home).
 - The tutorial's demon (the Vanguard, `m08_01`) offered its soul only outside a session (`ATTR_NOSESSION`; the
@@ -716,6 +747,10 @@ the newer generation, and saves as usual.
   again. A death outside a boss fight comes back within seconds. With the host killed too, half a minute after the
   friend, the host's respawn took the friend along: both at the start, the friend standing with full health. Not
   yet by hand.
+- A friend put in Phalanx's room during the fight (two copies, scripted, the friend fighting by itself): before, the
+  friend had Phalanx's health bar on its screen but no Phalanx and no hoplites, and 40 s of its blows took no health. With the
+  edit, both games draw them, and in 40 s the friend killed 12 of the 38 hoplites in its game. Not yet by hand, and
+  not run on the other discs.
 - The Japanese and Asian discs (with their 1.04 update) play with the others ("Which discs" above). What is checked
   beside the runs:
   - Co-op's rows in `port/regions/BCJS30022.inc` and `BCAS20071.inc` come from `tools/region/region_table.py find`
