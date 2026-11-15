@@ -1221,8 +1221,17 @@ des::seamless::Status standin_guest(bool lost) {
     return s;
 }
 
+// A setting as its row sets it, for a page that shows it: the prompts' buttons (DES_GLYPHS), the UI scale (ui_scale,
+// applied as its row applies it). close_pages puts both back.
+void use_setting(const std::string& key, const std::string& value) {
+    ui::settings::set(key, value);
+    if (key == "ui_scale") ui::apply_scale();
+}
+
 void close_pages() {
     ui::close_all_documents();
+    if (ui::settings::get("DES_GLYPHS") != "auto") ui::settings::set("DES_GLYPHS", "auto");
+    if (ui::settings::get("ui_scale") != "0") use_setting("ui_scale", "0");
     ui::get_toasts().clear();
     ui::updates::set_test_found(nullptr);
     ui::trophy_set::set_test_source({});
@@ -1580,6 +1589,19 @@ int main(int argc, char** argv) {
         open_coop(standin_host(), 2);
         ui::coop::open_public_address();
     }, {}});
+    // Settings worth comparing between the looks, on Settings' Display tab: the prompts as Xbox buttons and as keys,
+    // UI scale 150% on a 1920 x 1080 window, a 2560 x 1440 window at the display's scale, and a 21:9 window.
+    const auto with = [](const char* key, const char* value) {
+        return [key, value] {
+            use_setting(key, value);
+            open_settings("Display", false);
+        };
+    };
+    pages.push_back({"glyphs-xbox", 1280, 720, false, 1.f, false, with("DES_GLYPHS", "xbox"), {}});
+    pages.push_back({"glyphs-keys", 1280, 720, false, 1.f, false, with("DES_GLYPHS", "keyboard"), {}});
+    pages.push_back({"scale-150", 1920, 1080, false, 1.f, false, with("ui_scale", "150"), {}});
+    pages.push_back({"window-1440", 2560, 1440, false, 1.f, false, [] { open_settings("Display", false); }, {}});
+    pages.push_back({"settings-wide", 2560, 1080, false, 1.f, false, [] { open_settings("Display", false); }, {}});
     // Questions over their pages, in their short words: Host, Join, a player's, the start screen's Quit.
     for (const char* which : {"host", "join", "player", "quit"})
         pages.push_back({std::string("ask-") + which, 1280, 720, false, 1.f, false, [which] { open_ask(which); }, {}});
@@ -1602,6 +1624,7 @@ int main(int argc, char** argv) {
         };
         pages.push_back({"des-menu", 1280, 720, false, 1.f, false, in_band([] { open_menu(false); }), {}});
         pages.push_back({"des-quit", 1280, 720, false, 1.f, false, in_band([] { open_menu(true); }), {}});
+        pages.push_back({"des-menu-restart", 1280, 720, false, 1.f, false, in_band(open_menu_restart), {}});
         // Trophies as a page: the top of the list, further down (the list scrolled, its marks above and below), with
         // no set found, and on its own as the start screen opens it.
         pages.push_back({"des-trophies", 1280, 720, false, 1.f, false, in_band([] { open_trophies(true, 1); }), {}});
@@ -1662,6 +1685,12 @@ int main(int argc, char** argv) {
         for (const char* which : {"host", "join", "player", "quit"})
             pages.push_back({std::string("des-ask-") + which, 1280, 720, false, 1.f, false,
                              in_band([which] { open_ask(which); }), {}});
+        // The settings worth comparing (Alpha UI's above): Xbox buttons, keys, UI scale 150%, a 2560 x 1440 window.
+        pages.push_back({"des-glyphs-xbox", 1280, 720, false, 1.f, false, in_band(with("DES_GLYPHS", "xbox")), {}});
+        pages.push_back({"des-glyphs-keys", 1280, 720, false, 1.f, false, in_band(with("DES_GLYPHS", "keyboard")), {}});
+        pages.push_back({"des-scale-150", 1920, 1080, false, 1.f, false, in_band(with("ui_scale", "150")), {}});
+        pages.push_back({"des-window-1440", 2560, 1440, false, 1.f, false,
+                         in_band([] { open_settings("Display", false); }), {}});
         pages.push_back({"des-trophies-start", 1280, 720, false, 1.f, false, in_band([] {
             ui::trophy_set::set_test_source(standin_trophies);
             ui::push_document(ui::menu::screen_alone("Trophies"));
