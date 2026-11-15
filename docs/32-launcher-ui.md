@@ -7,10 +7,14 @@ licences in `port/ui/NOTICE.md`.
 
 ## What it does
 
-- **Start screen** over the game as it boots: "DEMON'S SOULS", a silver
-  rule, *PC port*, then **Play**, **Settings**, **Trophies** and **Quit**. The game's
-  logos and notices run behind it, darkened from the left; it gets no input
-  until Play. Esc or Circle on the start screen asks to quit.
+- **Start screen** over the game as it boots: the port's name over *Demon's
+  Souls on PC*, then **Play**, **Settings**, **Trophies**, **Mods**,
+  **Co-op** and **Quit**. The game's logos and notices run behind it,
+  darkened from the left; it gets no input until Play. Esc or Circle on the
+  start screen asks to quit. When the update check finds a newer version,
+  an **Update to X** choice shows in the accent colour, and a note at the
+  top right says "Version X is out" (a click on it opens the same window),
+  so a new version isn't missed.
 - **In-game menu**: F1 or Esc on the keyboard, or **L3 + R3** on a gamepad
   (Settings > Interface can switch this to Select + Start). It is a bar at
   the top with **Settings**, **Trophies**, **Mods**, **Co-op**, **Report an
@@ -29,9 +33,11 @@ licences in `port/ui/NOTICE.md`.
   never waits.
 - **Questions** (`question.hpp`) put the action first and the safe answer
   after it, as the game's own do. The safe answer has the focus first, and
-  Esc, Circle or F1 give it.
+  Esc, Circle or F1 give it. A question's title is the question itself
+  ("Host co-op?"), and its text a line or two.
 - **Quit** asks first ("Quit to the desktop? Progress since the game last
-  saved will be lost.") in a blood-red window, then posts WM_CLOSE to the
+  saved will be lost.", without the second line on the start screen, where
+  nothing has been played) in a blood-red window, then posts WM_CLOSE to the
   game window. The window's close button and Alt+F4 ask the same question
   (the UI consumes their WM_CLOSE). The window closes at once only in a run
   nobody plays: a tools/des test run, `PAD_FILE` or `EXIT_AFTER_MS`.
@@ -233,6 +239,9 @@ a row of the pad's buttons with what they do.
   and Delete delete, Home/End move the cursor, Enter finishes and Esc goes
   back. The arrows move on the grid.
 
+In DeS UI the keyboard is its question box with small stone keys; the keys
+and the buttons are the same in every look.
+
 The game gets no pad input while the keyboard is up, as with any menu. With
 `DES_UI=0`, or when the UI fails to start, the Windows input box is used, or
 the initial text is given back. `PS3_OSK_TEXT` still answers at once for
@@ -341,8 +350,10 @@ hook in a normal run saves the environment block and starts the log. The
 dialog is the menu's own modal ("The game has crashed", the error, Restart
 game / Report on GitHub / Show details / Close) drawn by the same host
 (host.cpp) on a D3D12 device and swap chain of its own, with the mouse, the
-keyboard or an XInput pad. **Report on GitHub** zips `crash.txt`,
-`system.txt`, `settings.ini` and `des.log` (all redacted) into
+keyboard or an XInput pad. It opens on Report on GitHub, so a report isn't
+missed; a look with pages (DeS UI) lists its four answers as rows.
+**Report on GitHub** zips `crash.txt`, `system.txt`, `settings.ini` and
+`des.log` (all redacted) into
 `reports\crash-<time>.zip`, opens a new issue on
 https://github.com/JonathanDC64/DemonsSoulsRecomp with the title, the error,
 the top of the stack and the system filled in, and shows the zip in
@@ -670,7 +681,12 @@ How it works:
   - `menu-aside`, beside the focused row: its notes and a stick's picture
     (see `helpPane` below);
   - on the start screen (`body.prelaunch`), `prelaunch-prompts`, the prompts
-    for its keys;
+    for its keys, and `update-note` (`.on` once a newer version is found:
+    `update-mark`, `update-title`, `update-line`), with the Update choice
+    marked `.update`;
+  - in a note over the game (`overlay.cpp`), `toast-mark`, its status mark,
+    with the note's type as its class (`warning`, `info`, or `done` for a
+    plain note);
   - in the report question, `tick-label` and `tick-value`, the tick's line
     and its state in words (No, Yes);
   - `list-more.up` and `.down` (`.on` while there is more that way), where a
