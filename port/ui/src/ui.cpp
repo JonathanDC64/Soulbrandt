@@ -3,6 +3,7 @@
 
 #include "host.hpp"
 #include "input.hpp"
+#include "looks.hpp"
 #include "prelaunch.hpp"
 #include "settings.hpp"
 #include "window.hpp"
@@ -37,6 +38,7 @@ bool initialize() noexcept {
         return false;
     }
     apply_scale();
+    looks::apply();
     sInitialized = true;
     return true;
 }

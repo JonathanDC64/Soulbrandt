@@ -213,7 +213,7 @@ select-button.group-button icon {
     display: inline-block;
 }
 
-/* A setting set from outside (pinned: settings_window.cpp): a lock just before its value, the row dimmed. */
+/* A setting set from outside (pinned: settings_page.cpp): a lock just before its value, the row dimmed. */
 select-button.locked icon {
     display: inline-block;
     margin-left: auto;

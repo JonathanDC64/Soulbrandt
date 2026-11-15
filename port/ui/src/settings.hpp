@@ -59,6 +59,12 @@ void set(std::string_view key, const std::string& value);
 // value each frame, des_ui.cpp's sync_fullscreen.)
 void store(std::string_view key, const std::string& value);
 
+// Tries a value of a setting applied at once (Apply::Live), not pinned: applied and shown by get() until end_try or a
+// set() of it, and never saved (Settings' Compare shows the value the menu opened with, held). False, and nothing
+// tried, for any other setting.
+bool try_value(std::string_view key, const std::string& value);
+void end_try(std::string_view key);  // the stored value again, applied
+
 // The variable was set in the environment when the game started (not by settings.ini): it wins over the file.
 bool pinned(std::string_view key);
 std::string pinned_value(std::string_view key);

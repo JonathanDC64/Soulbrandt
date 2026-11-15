@@ -5,6 +5,7 @@
 // FFCCEOT-Recomp's host.cpp (GL3 in an SDL window).
 #include "host.hpp"
 
+#include "button_art.hpp"
 #include "mouse.hpp"
 #include "portable.hpp"
 #include "renderer.hpp"
@@ -39,15 +40,24 @@ void log_message(Rml::Log::Type type, const Rml::String& message) {
     if (type <= Rml::Log::LT_WARNING) std::fprintf(stderr, "[ui] %s\n", message.c_str());
 }
 
+std::string normalize(const std::string& path);
+
 // add_png's images, by source.
 std::mutex sPngLock;
 std::map<std::string, std::vector<uint8_t>, std::less<>> sPngs;
 
+// An image by source: add_png's, else one of the UI's own (res/img, embedded), by its path from a style sheet.
 bool find_png(const Rml::String& source, std::vector<unsigned char>& file) {
-    std::lock_guard<std::mutex> lock(sPngLock);
-    const auto it = sPngs.find(source);
-    if (it == sPngs.end()) return false;
-    file = it->second;
+    {
+        std::lock_guard<std::mutex> lock(sPngLock);
+        if (const auto it = sPngs.find(source); it != sPngs.end()) {
+            file = it->second;
+            return true;
+        }
+    }
+    const Asset* a = find_asset(normalize(source));
+    if (!a) return false;
+    file.assign(a->data, a->data + a->size);
     return true;
 }
 
@@ -406,6 +416,7 @@ bool init(void* d3d12_device, void* d3d12_queue, void* hwnd, int width, int heig
         return false;
     }
     load_fonts();
+    button_art::install();
     s.rml = Rml::CreateContext("main", {std::max(width, 1), std::max(height, 1)});
     if (!s.rml) {
         shutdown();
@@ -542,6 +553,7 @@ bool init(const std::function<std::unique_ptr<Renderer>(ImageSource images)>& ma
         return false;
     }
     load_fonts();
+    button_art::install();
     s.rml = Rml::CreateContext("main", {std::max(width, 1), std::max(height, 1)});
     if (!s.rml) {
         shutdown();
