@@ -92,7 +92,7 @@ MenuShell::MenuShell(bool standalone, DocumentScope scope)
     mBadge = mDocument->GetElementById("badge");
 
     const std::vector<menu::Entry>& entries = menu::entries();
-    // The ends of the entries (a look's: Today shows none): the buttons that move along them, dim at the first or last;
+    // The ends of the entries (a look's: Alpha UI shows none): the buttons that move along them, dim at the first or last;
     // a click moves one way.
     const auto end = [this](int side) {
         Rml::Element* e = append(mEntries, "menu-end");
@@ -116,7 +116,7 @@ MenuShell::MenuShell(bool standalone, DocumentScope scope)
     mEnds[1] = end(1);
     Rml::Element* close = append(mEntries, "menu-close");
     listen(close, Rml::EventId::Click, [this](Rml::Event&) { close_menu(); });
-    // A page's frame closes the menu too, as the menu bar's close button did (a look that draws it: Today).
+    // A page's frame closes the menu too, as the menu bar's close button did (a look that draws it: Alpha UI).
     Rml::Element* slotClose = append(mSlot, "menu-slot-close");
     listen(slotClose, Rml::EventId::Click, [this](Rml::Event&) {
         if (mModel.level() == menu::Model::Level::Page) close_menu();

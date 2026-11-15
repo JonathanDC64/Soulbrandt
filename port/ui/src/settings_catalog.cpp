@@ -113,7 +113,7 @@ constexpr Credit kCredits[] = {
     {"Dusklight", "The start screen, menu bar and settings windows are adapted from its interface code.", "CC0",
      "https://github.com/TwilitRealm/dusklight"},
     {"Cinzel and Alegreya Sans", "The fonts of the menus.", "SIL Open Font Licence 1.1", "https://fonts.google.com"},
-    {"Old Standard TT", "The Pause band look's text.", "SIL Open Font Licence 1.1",
+    {"Old Standard TT", "The DeS UI look's text.", "SIL Open Font Licence 1.1",
      "https://fonts.google.com/specimen/Old+Standard+TT"},
     {"Material Symbols", "The icons of the menus.", "Apache-2.0", "https://fonts.google.com/icons"},
     {"Mbed TLS", "The secure connection to the online server.", "Apache-2.0",

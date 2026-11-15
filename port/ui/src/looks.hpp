@@ -21,11 +21,11 @@ struct Look {
 };
 
 inline constexpr Look kLooks[] = {
-    {"today", "Today", true, true, false, true},
-    {"band", "Pause band", false, false, true, false},
+    {"alpha", "Alpha UI", true, true, false, true},
+    {"des", "DeS UI", false, false, true, false},
 };
 
-inline constexpr std::string_view kDefault = "today";
+inline constexpr std::string_view kDefault = "alpha";
 
 // A developer build offers every look; a release, the released ones.
 constexpr bool offered(const Look& look) {

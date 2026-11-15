@@ -160,7 +160,7 @@ version-info {
     color: var(--color-prelaunch-muted);
 }
 
-/* The prompts for the keys here, for a look that draws them (Pause band). */
+/* The prompts for the keys here, for a look that draws them (DeS UI). */
 prelaunch-prompts {
     display: none;
 }

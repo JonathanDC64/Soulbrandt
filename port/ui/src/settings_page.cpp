@@ -413,7 +413,7 @@ void SettingsPage::place_aside() {
     set_px(mAside, Rml::PropertyId::Top, top);
 }
 
-// A look that joins a section's heading to its rows with a line down their side (Pause band's bracket) gets the line's
+// A look that joins a section's heading to its rows with a line down their side (DeS UI's bracket) gets the line's
 // length here, from the heading's top to the foot of the section's last row as laid out, as the look sizes its rows.
 void SettingsPage::update_brackets() {
     for (Bracket& b : mBrackets) {
