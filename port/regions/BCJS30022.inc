@@ -168,6 +168,7 @@ DES_REGION_ADDR(0x003DBBB0, 0x003D9EA0)  /* call */
 DES_REGION_ADDR(0x003E2DF0, 0x003E10E0)  /* hook des_sun_gate */
 DES_REGION_ADDR(0x003E6330, 0x003E4620)  /* hook des_sun_gate */
 DES_REGION_ADDR(0x003E6518, 0x003E4808)  /* hook des_sun_gate */
+DES_REGION_ADDR(0x004117E4, 0x0040FAD4)  /* hook des_coop_hook: after RecvGlobalQwc's online blend (a friend plays in the host's world tendency) */
 DES_REGION_ADDR(0x00419670, 0x00417960)  /* call des_seamless_game (by address): the own bloodstain shown (ParamInitialize's type 0 path) */
 DES_REGION_ADDR(0x00419DCC, 0x004180BC)  /* hook des_coop_hook: after a load's world swap of the flags (a guest's own world kept) */
 DES_REGION_ADDR(0x00439358, 0x00437648)  /* call des_seamless_game (by address) */
@@ -184,6 +185,7 @@ DES_REGION_ADDR(0x0044A368, 0x00448658)  /* call des_seamless_game (by address) 
 DES_REGION_ADDR(0x0044C6F0, 0x0044A9E0)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x0044C780, 0x0044AA70)  /* hook des_coop_hook: the end of WarpNextStageKick (a guest going home loads its own area) */
 DES_REGION_ADDR(0x00451430, 0x0044F720)  /* call */
+DES_REGION_ADDR(0x00467628, 0x00465918)  /* hook des_coop_hook: a script event's name */
 DES_REGION_ADDR(0x004C9638, 0x004C7928)  /* hook des_coop_hook: the talk check after bl 0x0026F378 (a friend can talk to the NPCs) */
 DES_REGION_ADDR(0x004C9C5C, 0x004C7F4C)  /* hook des_coop_hook: the talk check after bl 0x0026F378 (a friend can talk to the NPCs) */
 DES_REGION_ADDR(0x005086F8, 0x005069E8)  /* hook des_coop_hook: the event flags' set (progress kept for every player) */
@@ -212,6 +214,7 @@ DES_REGION_ADDR(0x005F7254, 0x005F8474)  /* hook des_cut_cam */
 DES_REGION_ADDR(0x005F72EC, 0x005F850C)  /* hook des_cut_cam */
 DES_REGION_ADDR(0x005F7394, 0x005F85B4)  /* hook des_cut_cam */
 DES_REGION_ADDR(0x005F743C, 0x005F865C)  /* hook des_cut_cam */
+DES_REGION_ADDR(0x00609338, 0x0060A558)  /* hook des_coop_hook: a cutscene's copy of a character set up (its glow and colour) */
 DES_REGION_ADDR(0x006A2E8C, 0x006A3F74)  /* hook des_noise_rate */
 DES_REGION_ADDR(0x006A3990, 0x006A4A78)  /* hook des_noise_rate */
 DES_REGION_ADDR(0x00718D84, 0x00719E6C)  /* hook des_hud_canvas */

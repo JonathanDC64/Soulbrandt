@@ -130,7 +130,10 @@ float4 main(PS_IN i) : SV_Target { return t0.Sample(s_clamp, i.uv); }
 )";
 
 // The finished UI onto an FP16 scRGB back buffer (set_hdr): decoded, scaled to the game's paper white, premultiplied
-// again for the blend.
+// again for the blend. Behind the UI an HDR picture can be several times brighter than its white, so a see-through
+// panel that dims an SDR picture to a tenth lets a bright sky shine through. The panel lets through the square of what
+// it lets through in SDR (a tenth becomes a hundredth); where the UI is clear or solid nothing changes, and the UI's
+// own colours are as they were.
 const char kPsHdrOut[] = DES_UI_HLSL_COMMON R"(
 cbuffer Hdr : register(b1) { float m_scale; float m_srgb; float2 m_pad; };
 float4 main(PS_IN i) : SV_Target {
@@ -138,7 +141,7 @@ float4 main(PS_IN i) : SV_Target {
     if (c.a <= 0.0) return float4(0.0, 0.0, 0.0, 0.0);
     float3 u = saturate(c.rgb / c.a);
     float3 l = m_srgb > 0.5 ? (u <= 0.04045 ? u / 12.92 : pow((u + 0.055) / 1.055, 2.4)) : pow(u, 2.2);
-    return float4(l * m_scale * c.a, c.a);
+    return float4(l * m_scale * c.a, 1.0 - (1.0 - c.a) * (1.0 - c.a));
 }
 )";
 
