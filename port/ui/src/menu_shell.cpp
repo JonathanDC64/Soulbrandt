@@ -140,6 +140,10 @@ MenuShell::MenuShell(bool standalone, DocumentScope scope)
 MenuShell::~MenuShell() {
     if (mPage) mPage->closing();
     mPage.reset();
+    while (!mUnder.empty()) {
+        mUnder.back().page->closing();
+        mUnder.pop_back();
+    }
 }
 
 bool MenuShell::handle_nav_command(Rml::Event&, NavCommand) {
@@ -241,6 +245,7 @@ void MenuShell::draw() {
     if (host::animations_enabled()) classes += " motion";
     if (mPage && level == Level::Page)
         if (const std::string own = mPage->classes(); !own.empty()) classes += " " + own;
+    if (!mUnder.empty() && level == Level::Page) classes += " over";
     if (classes != mClassesShown) {
         mClassesShown = classes;
         mBody->SetClassNames(classes);
@@ -255,6 +260,12 @@ void MenuShell::draw() {
     const bool first = mEntry <= 0, last = mEntry + 1 >= static_cast<int>(mEntryElems.size());
     if (mEnds[0]->IsClassSet("end") != first) mEnds[0]->SetClass("end", first);
     if (mEnds[1]->IsClassSet("end") != last) mEnds[1]->SetClass("end", last);
+
+    // A page over another names itself in the frame (its entry's name is the page under it).
+    if (const std::string title = !mUnder.empty() && mPage ? mPage->title() : "Menu"; title != mTitleShown) {
+        mTitleShown = title;
+        if (Rml::Element* t = mSlot->GetFirstChild()) set_text_content(t, title);
+    }
 
     std::string strip;
     if (level == Level::Entries && mEntry >= 0 && mEntry < static_cast<int>(menu::entries().size()))
@@ -410,6 +421,11 @@ void MenuShell::command(menu::Command c, bool down) {
 
 void MenuShell::back() {
     if (mPage && mModel.level() == menu::Model::Level::Page && mPage->back()) return;
+    if (!mUnder.empty() && mModel.level() == menu::Model::Level::Page) {
+        close_over();
+        play_sound(kSoundWindowClose);
+        return;
+    }
     if (mModel.standalone()) {
         close_menu();
         return;
@@ -424,9 +440,38 @@ void MenuShell::back() {
 
 void MenuShell::close_page() {
     badge("", "");
+    while (!mUnder.empty()) close_over();
     if (mPage) mPage->closing();
     mPage.reset();
     clear_children(mPageHost);
+}
+
+void MenuShell::open_over(const PageMaker& make) {
+    if (!mPage || mModel.level() != menu::Model::Level::Page) return;
+    mPage->release();
+    mPage->hidden();
+    badge("", "");
+    Rml::ElementPtr made = mDocument->CreateElement("menu-page");
+    Rml::Element* host = mPageHost->GetParentNode()->InsertBefore(std::move(made), mPageHost->GetNextSibling());
+    mPageHost->SetClass("under", true);
+    mUnder.push_back({std::move(mPage), mPageHost});
+    mPageHost = host;
+    mPage = make(mPageHost, *this);
+    play_sound(kSoundWindowOpen);
+    draw();
+}
+
+void MenuShell::close_over() {
+    if (mUnder.empty()) return;
+    if (mPage) mPage->closing();
+    mPage.reset();
+    Rml::Element* gone = mPageHost;
+    mPageHost = mUnder.back().host;
+    mPage = std::move(mUnder.back().page);
+    mUnder.pop_back();
+    gone->GetParentNode()->RemoveChild(gone);
+    mPageHost->SetClass("under", false);
+    draw();
 }
 
 void MenuShell::close_menu() {

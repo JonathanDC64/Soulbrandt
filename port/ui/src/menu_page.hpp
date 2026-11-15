@@ -6,15 +6,25 @@
 #include "menu_input.hpp"
 #include "prompts.hpp"
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
+
+namespace Rml {
+class Element;
+}
 
 namespace ui {
 class Document;
 }
 
 namespace ui::menu {
+
+class Page;
+class PageHost;
+// Makes a page in the element given, for the menu given.
+using PageMaker = std::function<std::unique_ptr<Page>(Rml::Element* host, PageHost& shell)>;
 
 // What a page asks of the menu around it.
 class PageHost {
@@ -25,6 +35,9 @@ public:
     virtual void badge(const std::string& text, const std::string& kind) = 0;
     // Another document over the menu (Controls, the HUD editor); the menu shows again when it closes.
     virtual void push(std::unique_ptr<Document> document) = 0;
+    // Another page in the menu's frame, over this one (Change Buttons over Settings, in a look with looks.hpp's
+    // pages): Back closes it, and this one shows again as it was. This page is told it is hidden() first.
+    virtual void open_over(const PageMaker& make) = 0;
 };
 
 class Page {

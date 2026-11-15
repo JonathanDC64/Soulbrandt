@@ -5,6 +5,7 @@
 
 #include "button.hpp"
 #include "component.hpp"
+#include "controls_page.hpp"
 #include "controls_window.hpp"
 #include "event.hpp"
 #include "hud_editor.hpp"
@@ -735,6 +736,12 @@ void SettingsPage::open(const RowDesc& row) {
         mShell.push(std::make_unique<HudEditor>());
         break;
     case Opens::Controls:
+        if (looks::current().pages) {
+            mShell.open_over([](Rml::Element* host, menu::PageHost& shell) -> std::unique_ptr<menu::Page> {
+                return std::make_unique<ControlsPage>(host, shell);
+            });
+            break;
+        }
         play_sound(kSoundClick);
         mShell.push(std::make_unique<ControlsWindow>());
         break;

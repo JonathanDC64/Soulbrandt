@@ -358,7 +358,7 @@ std::vector<TabDesc> make_tabs() {
                 "The forward attack is the kick, or with a weapon held in both hands that weapon's forward attack."
                 "<br/><br/>Forward + attack: push the left stick forward as you attack, as in the original.<br/><br/>"
                 "Own key: attacking never does it. "
-                "The Forward attack key in Change Buttons, Keyboard and mouse, does it instead; with no key set, "
+                "The Kick (own key) row in Change Buttons, Keyboard and mouse, does it instead; with no key set, "
                 "there's no forward attack. A gamepad has no such button yet.<br/><br/>Only your own moves change; "
                 "other players see them as usual."),
             info("Keyboard and mouse", "WASD, mouse, Space",
