@@ -211,9 +211,11 @@ std::vector<TabDesc> make_tabs() {
     tabs.push_back({"Picture", {
         {"Sharpness", {
             preview(choice("Render resolution", "RSX_SCALE",
-                {{"100", "100% (1280 × 720)", true}, {"150", "150% (1920 × 1080)"},
-                    {"200", "200% (2560 × 1440)"}, {"300", "300% (3840 × 2160)"}},
-                "Draws the game sharper. Higher costs more GPU time.")),
+                {{"50", "50% (640 × 360)"}, {"60", "60% (768 × 432)"}, {"70", "70% (896 × 504)"},
+                    {"80", "80% (1024 × 576)"}, {"90", "90% (1152 × 648)"}, {"100", "100% (1280 × 720)", true},
+                    {"150", "150% (1920 × 1080)"}, {"200", "200% (2560 × 1440)"}, {"300", "300% (3840 × 2160)"}},
+                "Above 100% draws the game sharper and costs more GPU time. Below 100% costs less, for handhelds and "
+                "slower graphics cards, but the picture and the HUD are softer.")),
             preview(choice("Scaling filter", "RSX_OUTFILTER", {{"0", "Bilinear"}, {"1", "Sharp"}},
                 "How the picture is fitted to the window. Sharp is cleaner, most of all with a high Render "
                 "resolution.")),
