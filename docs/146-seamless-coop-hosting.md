@@ -99,7 +99,8 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
   watches, it goes home (with the game's own message for a lost session) and joins again from there.
 - **Bosses get more health with friends,** as in the original game: half as much again with one friend, double with
   two. Three friends get double too (the original has nothing for three, so a boss had its solo health).
-- **When the host dies,** everyone goes back to the start together.
+- **When the host dies,** everyone goes back to the start together. There the friends see the host's rolls, attacks
+  and other moves again. Before, a friend that was alive could see the host stuck in a weapon swap after that.
 - **Souls from enemies.** Every player gets an enemy's full souls when it dies, whoever killed it. (The original game
   gives a summoned phantom half.)
 - **Progress is everyone's.** A boss killed, or a door, lever, elevator, shortcut, bridge or fog wall opened while
@@ -269,6 +270,14 @@ player's id is there), so a `BACK` waits until the game that gets it is in the w
 character that game saw dead (its game data's HP at 0) is made again; one made since is left alone. Before, only a
 friend's own respawn sent it: when the friend and the host died within seconds, each game kept the other's dead
 character (the friend unseen on the host's screen, the host stuck in its death animation on the friend's).
+
+A `BACK` can also come before its player has a character on the game that gets it. A friend that followed the host's
+death load gets the host's `BACK` right after its own load, and its placement makes the host's character a moment
+later. That character is made from the game data the friend's game keeps for the host, which can still hold the HP of
+the death (0), and a character made then starts out dead too: it moves, but never plays its moves right (the host
+stuck in a weapon swap on the friend's screen). So a `BACK` that finds no character waits for it. A character made
+with that HP above 0 is kept; one seen dead is made again once that HP is back, and the new one starts out
+alive.
 
 **Messages between the games** go through the room server (`psnr_app_send`, ps3recomp):
 
