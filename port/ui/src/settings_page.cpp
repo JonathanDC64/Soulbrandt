@@ -200,6 +200,7 @@ void SettingsPage::build_tab() {
     compare(false);
     mRowListeners.clear();
     mViews.clear();
+    mBrackets.clear();
     mList = nullptr;
     mListRow = -1;
     mItemElems.clear();
@@ -226,10 +227,12 @@ void SettingsPage::build_tab() {
     const catalog::TabDesc& tab = catalog::tabs()[mBuiltTab];
     for (const catalog::SectionDesc& s : tab.sections) {
         bool heading = !s.title.empty() && (!s.when || s.when());
+        const size_t bracket = mBrackets.size();
         for (const RowDesc& r : s.rows) {
             if (r.when && !r.when()) continue;
             if (heading) {
-                append_text_element(mRows, "menu-heading", s.title);
+                Rml::Element* h = append_text_element(mRows, "menu-heading", s.title);
+                mBrackets.push_back(Bracket{.heading = h, .line = append(h, "menu-bracket")});
                 heading = false;
             }
             RowView v;
@@ -248,6 +251,7 @@ void SettingsPage::build_tab() {
             v.tag = append(v.value, "menu-tag");
             v.right = append(v.value, "menu-arrow");
             v.right->SetClass("right", true);
+            if (bracket < mBrackets.size()) mBrackets[bracket].last = v.row;
             if (const auto* info = std::get_if<catalog::InfoRow>(&r.kind); info && !info->everyFrame) v.info = info->value();
             const int index = static_cast<int>(mViews.size());
             mRowListeners.push_back(std::make_unique<ScopedEventListener>(v.row, Rml::EventId::Click, [this, index](Rml::Event& e) {
@@ -329,8 +333,21 @@ void SettingsPage::update() {
     update_list();
     update_help();
     update_peek();
+    update_brackets();
     scroll_to_focus();
     place_list();
+}
+
+// A look that joins a section's heading to its rows with a line down their side (Pause band's bracket) gets the line's
+// length here, from the heading's top to the foot of the section's last row as laid out, as the look sizes its rows.
+void SettingsPage::update_brackets() {
+    for (Bracket& b : mBrackets) {
+        if (b.last == nullptr) continue;
+        const float span = std::round(b.last->GetOffsetTop() + b.last->GetOffsetHeight() - b.heading->GetOffsetTop());
+        if (span <= 0.f || span == b.span) continue;
+        b.span = span;
+        set_px(b.line, Rml::PropertyId::Height, span);
+    }
 }
 
 void SettingsPage::update_tabs() {
@@ -368,6 +385,7 @@ void SettingsPage::update_rows() {
         set_class(v.right, "end", value.last);
         set_text_content(v.text, value.text);
         set_text_content(v.tag, value.original ? "(original)" : "");
+        set_class(v.value, "tagged", value.original);
         if (v.fill && value.fill >= 0.f && value.fill != v.fillShown) {
             v.fillShown = value.fill;
             v.fill->SetProperty(Rml::PropertyId::Width, Rml::Property(value.fill * 100.f, Rml::Unit::PERCENT));
@@ -501,6 +519,7 @@ void SettingsPage::update_peek() {
     const rows::Value v = rows::value(*row);
     set_text_content(mPeekValue, v.text);
     set_text_content(mPeekTag, v.original ? "(original)" : "");
+    set_class(mPeekTag->GetParentNode(), "tagged", v.original);
     set_class(mPeekLeft, "end", v.first);
     set_class(mPeekRight, "end", v.last);
     set_text_content(mPeekLine, brief(*row));

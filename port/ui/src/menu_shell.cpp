@@ -15,7 +15,9 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace ui {
@@ -90,7 +92,8 @@ MenuShell::MenuShell(bool standalone, DocumentScope scope)
     mBadge = mDocument->GetElementById("badge");
 
     const std::vector<menu::Entry>& entries = menu::entries();
-    // The arrows at the entries' ends (a look's: Today shows none), dim at the first or last; a click moves one way.
+    // The ends of the entries (a look's: Today shows none): the buttons that move along them, dim at the first or last;
+    // a click moves one way.
     const auto end = [this](int side) {
         Rml::Element* e = append(mEntries, "menu-end");
         e->SetClass(side ? "right" : "left", true);
@@ -108,10 +111,16 @@ MenuShell::MenuShell(bool standalone, DocumentScope scope)
         });
         Rml::Element* s = append_text_element(mSlot, "menu-slot-entry", entries[i].title);
         mSlotElems.push_back(s);
+        listen(s, Rml::EventId::Click, [this, i](Rml::Event&) { switch_entry(static_cast<int>(i)); });
     }
     mEnds[1] = end(1);
     Rml::Element* close = append(mEntries, "menu-close");
     listen(close, Rml::EventId::Click, [this](Rml::Event&) { close_menu(); });
+    // A page's frame closes the menu too, as the menu bar's close button did (a look that draws it: Today).
+    Rml::Element* slotClose = append(mSlot, "menu-slot-close");
+    listen(slotClose, Rml::EventId::Click, [this](Rml::Event&) {
+        if (mModel.level() == menu::Model::Level::Page) close_menu();
+    });
 
     listen(Rml::EventId::Keydown, [this](Rml::Event& e) { on_key(e, true); });
     listen(Rml::EventId::Keyup, [this](Rml::Event& e) { on_key(e, false); });
@@ -205,6 +214,7 @@ void MenuShell::update() {
         if (mPage) mPage->release();
     }
     update_safe_area();
+    update_column();
     if (mPage && mModel.level() == menu::Model::Level::Page) mPage->update();
     if (mBadgeUntil != clock::time_point{} && clock::now() >= mBadgeUntil) badge("", "");
     draw();
@@ -251,6 +261,13 @@ void MenuShell::draw() {
     else if (level == Level::Page && mPage)
         list = mPage->prompts(mModel.standalone() ? "Close" : "Back");
     const prompts::Device device = input::menu_device();
+    if (const std::string ends = menu::glyph_rml(device, prompts::Key::PrevTab) +
+                                 menu::glyph_rml(device, prompts::Key::NextTab);
+        ends != mEndsShown) {
+        mEndsShown = ends;
+        mEnds[0]->SetInnerRML(menu::glyph_rml(device, prompts::Key::PrevTab));
+        mEnds[1]->SetInnerRML(menu::glyph_rml(device, prompts::Key::NextTab));
+    }
     std::string rml;
     for (const prompts::Prompt& p : list)
         rml += "<menu-prompt data-key=\"" + std::to_string(static_cast<int>(p.key)) + "\">" +
@@ -290,6 +307,31 @@ void MenuShell::update_safe_area() {
     mSafeArea = sides;
     mEntries->SetProperty(Rml::PropertyId::PaddingRight, Rml::Property(sides.right, Rml::Unit::PX));
     mEntries->SetProperty(Rml::PropertyId::PaddingLeft, Rml::Property(sides.left, Rml::Unit::PX));
+}
+
+// A look that keeps its contents in a centred column names the column's width (its sheet's --menu-column on the body,
+// in dp or px); the room left each side of it in the window is --menu-side, for the sheet to pad its bands with. RmlUi
+// has no calc(), so it is worked out here, and set again only when it changes.
+void MenuShell::update_column() {
+    float side = -1.f;
+    if (const Rml::Property* column = mBody->GetProperty("--menu-column")) {
+        const std::string text = column->ToString();
+        char* end = nullptr;
+        const float n = std::strtof(text.c_str(), &end);
+        if (end != text.c_str()) {
+            const float ratio = std::string_view(end).starts_with("dp")
+                                    ? mDocument->GetContext()->GetDensityIndependentPixelRatio()
+                                    : 1.f;
+            const float width = static_cast<float>(mDocument->GetContext()->GetDimensions().x);  // (the bands span it)
+            side = std::max(0.f, std::round((width - n * ratio) / 2.f));
+        }
+    }
+    if (side == mSide) return;
+    mSide = side;
+    if (side < 0.f)
+        mBody->RemoveProperty("--menu-side");
+    else
+        mBody->SetProperty("--menu-side", std::to_string(static_cast<int>(side)) + "px");
 }
 
 void MenuShell::on_key(Rml::Event& event, bool down) {
@@ -406,6 +448,12 @@ void MenuShell::dismiss() {
 void MenuShell::finish_close() {
     mModel.closed();
     hide(false);
+}
+
+void MenuShell::switch_entry(int index) {
+    if (mModel.level() != menu::Model::Level::Page || index == mEntry) return;
+    if (mModel.back() == menu::Model::Back::ToEntries) close_page();
+    choose_entry(index);
 }
 
 void MenuShell::choose_entry(int index) {

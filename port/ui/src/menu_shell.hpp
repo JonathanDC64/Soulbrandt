@@ -80,10 +80,13 @@ private:
     void close_page();
     void finish_close();
     void choose_entry(int index);
+    // A click on one of a page's entries (the frame's): the page closes and that entry opens, as from the entries.
+    void switch_entry(int index);
     void hiding(bool on);
     void draw();
     void update_safe_area();
     void update_frame_height(bool preview);
+    void update_column();
 
     menu::Model mModel;
     std::unique_ptr<menu::Page> mPage;
@@ -103,13 +106,17 @@ private:
     Rml::Element* mPrompts = nullptr;
     Rml::Element* mBadge = nullptr;
     std::vector<Rml::Element*> mEntryElems;
-    Rml::Element* mEnds[2] = {};  // the entries' ends, left and right: arrows in a look that draws them
+    // The entries' ends, left and right: the buttons that move along them (L1 and R1, Q and E), in a look that draws
+    // them; drawn again when the device used changes.
+    Rml::Element* mEnds[2] = {};
+    std::string mEndsShown;
     std::vector<Rml::Element*> mSlotElems;
     std::string mClassesShown;
     std::string mPromptsShown;
     clock::time_point mBadgeUntil{};
     Insets mSafeArea{};
     float mFrameMax = -1.f;  // the frame's max-height set, in px; -1 = none (the look's sheet)
+    float mSide = -1.f;      // --menu-side set, in px; -1 = none (the look has no column)
 };
 
 }  // namespace ui
