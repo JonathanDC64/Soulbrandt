@@ -506,6 +506,8 @@ Files:
   Settings, a passive view of `settings_model.cpp` (the tab, the focus on
   each tab, the list, the typing and the preview, and the prompts for each)
   and of `settings_rows.cpp` (each row's value and list from the catalogue).
+  While the game runs, Settings opens where it was left, from the F1 menu,
+  the start screen or setup alike: the tab, and each tab's row, by its label.
   `menu_logic_check` checks both models alone. Both files list the elements
   they build, the same in every look, and the classes their state sets;
   `menu.rcss` is how Alpha UI draws them.

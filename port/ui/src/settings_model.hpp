@@ -33,6 +33,7 @@ public:
 
     int tab() const { return mTab; }
     int focus() const { return mFocus[mTab]; }
+    int focus_on(int tab) const { return mFocus[tab]; }  // the row a tab has the focus on, shown or not
     Mode mode() const { return mMode; }
     int cursor() const { return mCursor; }  // the list's
 

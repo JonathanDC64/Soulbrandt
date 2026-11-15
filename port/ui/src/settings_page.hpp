@@ -56,6 +56,8 @@ public:
     // For the tests (ui_render_compare): the tab of that title shown, the focus on the row with that label.
     bool show_tab(const std::string& title);
     bool focus_row(const std::string& label);
+    // Settings opens on its first tab and rows again, as at the game's start (each test page starts the same way).
+    static void forget_place();
 
 private:
     struct RowView {
@@ -119,6 +121,9 @@ private:
     std::vector<std::unique_ptr<ScopedEventListener>> mRowListeners;  // the tab built's (its rows, the list)
     int mBuiltTab = -1;
     int mScrolledFocus = -1;
+    // Where Settings was left (closing), per tab: the label of the row to put the focus on as the tab is first built;
+    // "" once done, or for its first row.
+    std::vector<std::string> mPlaceRows;
     prompts::Device mGlyphDevice = prompts::Device::Keyboard;
     bool mGlyphsDrawn = false;
 
