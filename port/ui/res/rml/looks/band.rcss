@@ -104,10 +104,6 @@ menu-slot {
     color: var(--band-tan-light);
 }
 
-body.standalone menu-slot {
-    display: block;
-}
-
 menu-slot-entry,
 menu-title,
 menu-slot-close {
