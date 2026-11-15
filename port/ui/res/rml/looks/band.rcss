@@ -282,7 +282,7 @@ menu-page {
 /* The rows' scroll bar: a thin line just right of the value boxes (the rows end there; the body runs on for the help
    Today shows beside them). */
 menu-rows {
-    flex: 0 0 960dp;
+    flex: 0 0 1032dp;
 }
 
 menu-rows scrollbarvertical,
@@ -313,7 +313,7 @@ body.entries menu-page {
 menu-body {
     flex: 1 1 auto;
     align-self: center;
-    width: 1192dp;
+    width: 1152dp;
 }
 
 menu-rows {
@@ -328,7 +328,7 @@ menu-help {
    no height of its own, so its first row sits beside it. */
 menu-heading {
     position: relative;
-    width: 236dp;
+    width: 186dp;
     height: 34dp;
     margin: 14dp 0 -34dp;
     padding: 6dp 12dp 0 0;
@@ -360,7 +360,7 @@ menu-bracket {
 
 menu-row {
     height: 34dp;
-    margin: 0 0 4dp 250dp;
+    margin: 0 0 4dp 200dp;
     padding: 0;
     gap: 12dp;
     border-width: 0;
@@ -374,7 +374,7 @@ menu-row.focused {
 }
 
 menu-label {
-    flex: 0 0 300dp;
+    flex: 0 0 370dp;
     height: 34dp;
     padding: 0 0 0 4dp;
     border-top-width: 1dp;
@@ -386,7 +386,7 @@ menu-label {
     font-family: Old Standard TT;
     font-weight: normal;
     font-size: 21dp;
-    letter-spacing: 0.6dp;
+    letter-spacing: 0.3dp;
     text-transform: none;
     color: var(--band-tan);
 }
@@ -459,19 +459,29 @@ menu-row.waits menu-mark {
 }
 
 menu-value {
-    flex: 0 0 380dp;
+    flex: 0 0 370dp;
     height: 32dp;
     padding: 0 6dp;
     justify-content: space-between;
     decorator: ninepatch(band-box, band-box-inner, 5dp);
     font-size: 21dp;
-    letter-spacing: 0.6dp;
+    letter-spacing: 0.3dp;
     color: var(--band-tan);
 }
 
+/* (positioned, so they draw over the number's fill, which is; too long for the box, it ends in an ellipsis) */
 menu-value menu-text {
+    position: relative;
     flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
     text-align: center;
+}
+
+menu-value menu-arrow,
+menu-value icon {
+    position: relative;
 }
 
 menu-row.modified menu-value menu-text {
@@ -479,20 +489,19 @@ menu-row.modified menu-value menu-text {
     color: var(--band-tan-light);
 }
 
-/* The tag at the box's right end, clear of the value: a tagged value keeps the same room on both sides, so it stays
-   in the middle of the box. */
+/* The tag just past the box's right end, so the value keeps the whole box and its middle (a list or the aside opening
+   there covers it). */
 menu-value menu-tag {
     position: absolute;
-    right: 26dp;
+    left: 100%;
+    right: auto;
     top: 0;
+    margin-left: 10dp;
     line-height: 32dp;
     font-size: 14dp;
     letter-spacing: 0;
+    white-space: nowrap;
     color: var(--band-tan-muted);
-}
-
-menu-value.tagged menu-text {
-    padding: 0 62dp;
 }
 
 /* An empty text (Custom server, Online name): what that means, in the tag's colour. */
@@ -570,7 +579,7 @@ menu-value input {
 /* ---- A value's list: beside its box (looks.hpp's listBeside), in the same box, the cursor on a blood bar. (On its
    row: the start screen's list of choices is a menu-list too.) ---- */
 menu-row menu-list {
-    left: 704dp;
+    left: 764dp;
     right: auto;
     width: 240dp;
     padding: 5dp 3dp;
@@ -614,6 +623,76 @@ menu-item.disabled:hover {
 
 menu-item.disabled.cursor {
     decorator: linear-gradient(#4a2422, #3a1c1b);
+}
+
+/* ---- Beside the focused row (settings_page.cpp's aside), where its list opens: why it is as it is now and a stick's
+   picture, in the list's box. It lies past the rows' scroll box, so it isn't clipped by it (the page keeps it inside
+   the rows' height). ---- */
+menu-row menu-aside {
+    display: block;
+    position: absolute;
+    left: 764dp;
+    top: 0;
+    z-index: 5;
+    clip: none;
+    width: 240dp;
+    padding: 12dp 14dp;
+    decorator: ninepatch(band-box, band-box-inner, 5dp);
+    font-family: Old Standard TT;
+    font-weight: normal;
+    font-size: 16dp;
+    line-height: 22dp;
+    text-transform: none;
+    color: var(--band-tan);
+    cursor: default;
+}
+
+body.helping menu-aside {
+    display: none;
+}
+
+menu-aside menu-notes status-badge,
+menu-helpbox menu-notes status-badge {
+    display: block;
+    margin-bottom: 8dp;
+    font-size: 16dp;
+    line-height: 22dp;
+    color: var(--band-tan);
+}
+
+menu-aside menu-notes status-badge.warning,
+menu-helpbox menu-notes status-badge.warning {
+    color: var(--band-amber);
+}
+
+menu-aside stick-preview {
+    flex-direction: column;
+    align-items: center;
+    gap: 10dp;
+    margin: 0;
+}
+
+stick-ring {
+    border-color: var(--band-bracket);
+}
+
+stick-zone {
+    border-color: rgba(200, 170, 140, 50%);
+    background-color: rgba(200, 170, 140, 12%);
+}
+
+stick-dot {
+    background-color: var(--band-tan-light);
+}
+
+stick-dot.game {
+    background-color: var(--band-amber);
+}
+
+stick-legend {
+    font-size: 15dp;
+    line-height: 21dp;
+    color: var(--band-tan);
 }
 
 /* ---- Help (H, View, Select): the whole help in a box over the rows. ---- */
@@ -758,7 +837,7 @@ menu-peek-row {
 
 menu-peek-row menu-name {
     display: block;
-    width: 300dp;
+    width: 370dp;
     height: 34dp;
     padding-left: 24dp;
     line-height: 32dp;
@@ -773,7 +852,7 @@ menu-peek-row menu-name {
 }
 
 menu-peek-row menu-value {
-    flex: 0 0 380dp;
+    flex: 0 0 370dp;
     min-width: 0;
     border-radius: 0;
     background-color: transparent;
@@ -783,8 +862,8 @@ menu-peek-row menu-value {
 menu-peek-prev,
 menu-peek-next {
     position: absolute;
-    left: 720dp;
-    width: 400dp;
+    left: 850dp;
+    width: 300dp;
     margin-left: var(--menu-side);
     font-size: 14dp;
     color: var(--band-tan-muted);

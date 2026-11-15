@@ -113,6 +113,8 @@ constexpr Credit kCredits[] = {
     {"Dusklight", "The start screen, menu bar and settings windows are adapted from its interface code.", "CC0",
      "https://github.com/TwilitRealm/dusklight"},
     {"Cinzel and Alegreya Sans", "The fonts of the menus.", "SIL Open Font Licence 1.1", "https://fonts.google.com"},
+    {"Old Standard TT", "The Pause band look's text.", "SIL Open Font Licence 1.1",
+     "https://fonts.google.com/specimen/Old+Standard+TT"},
     {"Material Symbols", "The icons of the menus.", "Apache-2.0", "https://fonts.google.com/icons"},
     {"Mbed TLS", "The secure connection to the online server.", "Apache-2.0",
      "https://www.trustedfirmware.org/projects/mbed-tls/"},
@@ -122,8 +124,9 @@ constexpr Credit kCredits[] = {
     {"RPCS3", "A behavioural reference for the PS3 system libraries. No RPCS3 code is copied.", "", ""},
 };
 
+// Its licence as its value (a reference without one: none of its code is in this program).
 RowDesc credit_row(const Credit& c) {
-    RowDesc row = info(c.name, "", c.use);
+    RowDesc row = info(c.name, c.licence[0] ? c.licence : "Reference", c.use);
     if (c.licence[0]) row.footnote = "Licence: " + escape(c.licence);
     if (c.url[0])
         row.buttons = [url = c.url] {
