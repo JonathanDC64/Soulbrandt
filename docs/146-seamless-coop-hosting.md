@@ -67,6 +67,10 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
   back in body form, as it does alone. A friend stays a blue phantom. In body form it can't be used, as in the game.
 - **Friends follow the host.** When the host travels (an Archstone, the Nexus, a death), its friends go too: one
   loading screen, then they stand beside the host again.
+- **The tutorial's trips are the host's too.** At the end of each part of the tutorial, and when the dragon god ends
+  it, a friend goes on with its host: one that gets there first waits there for the host. A friend killed by the
+  Vanguard comes back where it fell; when the host dies there, the group goes to the Nexus. Before, a friend whose game
+  got there first left co-op, and its join back stalled.
 - **Archstones:** the host can use them during co-op, and the group travels with it. A friend still gets "You can't
   return during multiplayer.", at the Nexus's stones too. No multiplayer wall closes the way back to an Archstone
   (in 1-2, the Phalanx room's wall to 1-2), so the host is never shut in with the Archstone after a death.
@@ -518,9 +522,24 @@ their first instruction):
   its room (`UnLockSession` is an empty function): the original ends the session after a boss. A locked host's game
   kicks every new join (the member handler at `0x0053D8C0`, then `KickoutRoomMember`). A friend that follows the host
   keeps its place in the room, so it never mattered there. A friend back from a trip of its own needs a new join: at
-  the tutorial's end each game takes its own player to the Nexus, and the host, still in its locked room, kicked the
-  friend's joins. (The friend's game then kept leaving the room it was kicked from, and the runtime took down each
+  the tutorial's end each game took its own player to the Nexus (now a friend goes with its host, see the next item),
+  and the host, still in its locked room, kicked the friend's joins. (The friend's game then kept leaving the room it was kicked from, and the runtime took down each
   room it joined after that; fixed in ps3recomp, see "A friend kicked out of the room" below.)
+- No trip of a friend's own: each `proxy:WarpNextStage(...);` in an area's script (not the Nexus's, whose stones have
+  their own check above) runs only when `proxy:IsSession() == false or proxy:IsClient() == false`. In the game's own
+  co-op such a trip ends a client's session: at the area's teardown, a client that didn't ask for a summoned reload
+  leaves (docs/145). The tutorial's trips are each player's own:
+  - at the end of `m08_00` and `m08_01` the player who got there goes on (`m08_01`'s 14241: "only the PC that
+    arrived");
+  - the dragon god's cutscene (`m08_02`'s region 2412, event 14350) plays in every game, whoever stepped in, and each
+    then runs the same trip to the Nexus (`OnEvent_14381_3`);
+  - a death in `m08_01` takes the player to the Nexus (`m08_01Death`, then `OnEvent_14300_3`, which revives it first).
+
+  A friend whose game got there first (one that skipped the cutscene, say) left the session at its own trip, went to
+  its own Nexus, and joined again. Its leave reached the host during the host's own load, and that join then stalled
+  (see "Not done yet"). Now the friend waits, and the host's trip takes it along as a follow. A friend's death in
+  `m08_01` leaves it revived where it fell. The levels' other trips are the boss Archstones' back to the Nexus, which
+  a friend can't start in a session.
 - The light walls a player walks through (press Cross, a walk, then the wall is gone) are gone in every player's game.
   In the other games the wall's handler plays the walk on the walker's character and marks the wall passed
   (`Luafunc_PlaySynchroAnimation`'s true branch, then a return). The areas made for sessions drop the wall for them
@@ -751,6 +770,19 @@ the newer generation, and saves as usual.
   friend had Phalanx's health bar on its screen but no Phalanx and no hoplites, and 40 s of its blows took no health. With the
   edit, both games draw them, and in 40 s the friend killed 12 of the 38 hoplites in its game. Not yet by hand, and
   not run on the other discs.
+- The tutorial's trips with a friend (11-15, two copies, scripted, the pinned tutorial save, god mode on the friend):
+  - The dragon god's end, both players in `m08_02` and put into its region (2412), the friend 1.5 s before the host.
+    Before, the friend's game ran its own trip to the Nexus first and left the session; its join back then stalled
+    (as in the user's session). With the change, the friend followed the host's load, and in the Nexus each game had
+    the other as a member. With the host 1.5 s first, the friend followed before the change too.
+  - A friend killed in `m08_01`: it came back where it fell and stayed in the session. The host, killed next, went
+    straight to the Nexus, and the friend followed.
+
+  Not yet by hand, and not run on the other discs.
+- A friend that leaves during the host's load and joins again isn't placed. The host's game keeps its old member
+  through the load (the room library drops it), and the new join stops half way: the friend waits, out of the host's
+  world, until the host's session ends. Seen at the tutorial's end before a friend went with its host (11-15); a
+  friend's Leave co-op just as the host travels may do the same (not tried).
 - The Japanese and Asian discs (with their 1.04 update) play with the others ("Which discs" above). What is checked
   beside the runs:
   - Co-op's rows in `port/regions/BCJS30022.inc` and `BCAS20071.inc` come from `tools/region/region_table.py find`
