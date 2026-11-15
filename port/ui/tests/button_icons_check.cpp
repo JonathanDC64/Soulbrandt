@@ -279,6 +279,27 @@ int main(int argc, char** argv) {
     check(ni.width == 512 && ni.levels == 10, "drawn at 1x: 512x512 and 10 levels");
     check(bp::describe(bp::normalized(nin)) == "Nintendo x1 triangle=cross cross=triangle", "PAD_MAP in the page's name");
 
+    // The Steam Deck: every cell drawn, Xbox's letters without their colours (no green A on Cross's cell).
+    bp::Spec deck = xn;
+    deck.kind = bp::Kind::SteamDeck;
+    const bp::Spec dn = bp::normalized(deck);
+    check(bp::describe(dn) == "Steam Deck x2", "the Steam Deck's page named");
+    const bp::Image di = bp::draw(page, base, dn, font.empty() ? nullptr : font.data());
+    all = di.width == 1024 && di.levels == 11;
+    for (const bp::Cell& c : page.cells) all = all && cell_alpha(di, c, 2) > 200;
+    check(all, "the Steam Deck: every button cell drawn at 2x");
+    if (const bp::Cell* cr = cell_of(page, bp::kCross)) {
+        int green = -255, deck_green = -255;
+        for (int y = cr->y * 2; y < (cr->y + cr->h) * 2; y++)
+            for (int x = cr->x * 2; x < (cr->x + cr->w) * 2; x++) {
+                const uint8_t* p = at(xi, uint32_t(x), uint32_t(y));
+                const uint8_t* q = at(di, uint32_t(x), uint32_t(y));
+                green = std::max(green, int(p[1]) - int(p[0]));
+                deck_green = std::max(deck_green, int(q[1]) - int(q[0]));
+            }
+        check(green > 40 && deck_green < 12, "Cross: Xbox's green A, the Steam Deck's grey A");
+    }
+
     // PlayStation with Triangle and Cross swapped: the game's own pictures change places, the rest stays.
     check(bp::untouched(bp::normalized(ps)) && !bp::untouched(xn), "PlayStation with no button moved: nothing drawn");
     bp::Spec psm = ps;
@@ -382,7 +403,7 @@ int main(int argc, char** argv) {
     {
         constexpr int kH = 48;
         bool all = true;
-        for (bp::Kind kind : {bp::Kind::PlayStation, bp::Kind::Xbox, bp::Kind::Nintendo}) {
+        for (bp::Kind kind : {bp::Kind::PlayStation, bp::Kind::Xbox, bp::Kind::Nintendo, bp::Kind::SteamDeck}) {
             sheet.emplace_back();
             for (int p = -1; p < 16; p++) {
                 const bp::Single s{kind, p, p < 0 ? 5u : 0u, {}};
@@ -461,7 +482,7 @@ int main(int argc, char** argv) {
         const struct {
             const char* name;
             const bp::Image* im;
-        } out[] = {{"xbox_2x.png", &xi}, {"nintendo_1x.png", &ni}, {"keyboard_4x.png", &ki}};
+        } out[] = {{"xbox_2x.png", &xi}, {"nintendo_1x.png", &ni}, {"keyboard_4x.png", &ki}, {"steamdeck_2x.png", &di}};
         for (const auto& o : out) {
             const std::string path = std::string(png) + "/" + o.name;
             // The top of the page, where the cells are: 128 rows of the game's at the page's scale.

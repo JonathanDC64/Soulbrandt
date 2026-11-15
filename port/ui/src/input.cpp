@@ -14,6 +14,9 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 namespace ui::input {
 namespace {
@@ -168,7 +171,25 @@ void note_device(int device) noexcept {
 }
 
 prompts::Device menu_device() {
-    return prompts::resolve(settings::get("DES_GLYPHS"), sDevice ? sDevice : sGameDevice);
+    return prompts::resolve(settings::get("DES_GLYPHS"), sDevice ? sDevice : sGameDevice, on_steam_deck());
+}
+
+bool on_steam_deck() noexcept {
+    static const bool deck = [] {
+        if (const char* e = std::getenv("SteamDeck"); e && std::strcmp(e, "1") == 0) return true;
+#if defined(__linux__)
+        bool valve = false;
+        if (FILE* f = std::fopen("/sys/class/dmi/id/sys_vendor", "r")) {
+            char vendor[8] = {};
+            valve = std::fread(vendor, 1, 5, f) == 5 && std::memcmp(vendor, "Valve", 5) == 0;
+            std::fclose(f);
+        }
+        return valve;
+#else
+        return false;
+#endif
+    }();
+    return deck;
 }
 
 PadSupport pad_support() noexcept {

@@ -1,7 +1,7 @@
 // Written for Demon's Souls. The menus' prompts: which button does what, shown along the bottom ("✕: Open",
 // "○: Back"). Here the buttons each device has for each prompt, as data; a page lists its prompts (Prompt), and the
 // look's style sheet draws them. The buttons follow the game's own prompts (button_pages.cpp): a Nintendo pad reads
-// A B X Y as an Xbox pad does, as SDL names its buttons.
+// A B X Y as an Xbox pad does, as SDL names its buttons, and so does a Steam Deck.
 #pragma once
 
 #include <string>
@@ -9,7 +9,7 @@
 
 namespace ui::prompts {
 
-enum class Device { Keyboard, PlayStation, Xbox, Nintendo };
+enum class Device { Keyboard, PlayStation, Xbox, Nintendo, SteamDeck };
 
 // What a prompt asks for. Compare and Hide are held.
 enum class Key { Move, Change, Confirm, Back, Preview, Help, Compare, Hide, PrevTab, NextTab, Count };
@@ -39,8 +39,10 @@ struct Prompt {
 };
 
 // The device the prompts show: the Button icons row's choice (DES_GLYPHS: auto, playstation, xbox, nintendo,
-// keyboard), or with auto the one used last (cellPad's PAD_GLYPH_*: 1 the keyboard and mouse, 3 Xbox, 4 Nintendo;
-// anything else is the game's own, PlayStation), as the game's prompts choose (button_icons.cpp).
-Device resolve(std::string_view glyphs, int used) noexcept;
+// steamdeck, keyboard), or with auto the one used last (cellPad's PAD_GLYPH_*: 1 the keyboard and mouse, 3 Xbox,
+// 4 Nintendo; anything else is the game's own, PlayStation), as the game's prompts choose (button_icons.cpp). On a
+// Steam Deck (deck: input.hpp's on_steam_deck), auto shows an Xbox pad as the Deck: its own controls reach the game as
+// one, through Steam Input or SDL.
+Device resolve(std::string_view glyphs, int used, bool deck = false) noexcept;
 
 }  // namespace ui::prompts

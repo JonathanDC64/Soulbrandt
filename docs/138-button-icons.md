@@ -14,6 +14,9 @@ buttons. They now show the buttons of the controller the player used last, or th
 - **Xbox**: A B X Y in their usual colours, LB RB LT RT, LS RS, View and Menu.
 - **Nintendo**: the same letters in grey (SDL names a Nintendo pad's buttons by their letters, so A is Cross), L R
   ZL ZR, Minus and Plus.
+- **Steam Deck**: A B X Y where Xbox has them, in grey like the Deck's own; L1 R1 as slim bumpers, L2 R2 as triggers
+  with a round top, L3 R3 as sticks with a ring around the top, and View and Menu on small square keys. Drawn here in
+  the game's style, like the others; none of Valve's art is used. On a Steam Deck, Automatic shows these.
 - **Keyboard and mouse**: the keys set in Settings > Controls (E, Space, Esc...), the mouse with the button in use
   lit, arrow keys, WASD for moving and the mouse for the camera. A chord (Shift + left button) shows a small Shift key
   on the mouse.
@@ -37,7 +40,12 @@ PlayStation pad with Circle and Cross swapped, the prompt for Circle shows ×. T
 4. **The device.** cellPad records the last device used on port 0 and its kind (`cellPad_host_glyph_device`,
    `pad_glyph.h`): XInput is Xbox; DualShock 4 and DualSense over HID are PlayStation; SDL gives the kind (PS3, PS4,
    PS5, Switch Pro, Joy-Con, else Xbox). The port checks it each frame and the settings twice a second. A change has
-   the renderer ask again.
+   the renderer ask again. On a Steam Deck, Automatic shows an Xbox-type pad as the Deck, since the Deck's own
+   controls reach the game as one (through Steam Input, or SDL). The port knows a Deck by its firmware's maker
+   (`/sys/class/dmi/id/sys_vendor` is "Valve", as cellPad's PAD_KEYBOARD_WITH_PAD default reads it) or by Steam's
+   `SteamDeck=1`, which also reaches the Windows program under Proton (`input.cpp`, `on_steam_deck`). A PlayStation or
+   Nintendo pad on a Deck keeps its own icons. An Xbox pad on a docked Deck shows the Deck's; the row's Xbox choice
+   brings Xbox's back.
 5. **The sprites.** Three button pictures are not text: the HUD's item slot (□), its magic slot (□) and the message
    window's ○. They come from two textures of `menu/menu.tpf`, Menu08 and Menu00, which the port reads the same way
    (by name and size; the cells are where the menu's layout puts them, the same on the US and European discs). They
@@ -101,7 +109,7 @@ time (`button_pages::draw_single`):
 
 ## Knobs
 
-- DES_GLYPHS: auto (default), playstation, xbox, nintendo, keyboard. Read live from the environment, then
+- DES_GLYPHS: auto (default), playstation, xbox, nintendo, steamdeck, keyboard. Read live from the environment, then
   settings.ini.
 - PAD_GLYPH_LOG=1 (ps3recomp): log each change of the device.
 
