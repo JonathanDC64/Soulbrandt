@@ -1181,6 +1181,22 @@ void open_coop(const des::seamless::Status& s, int focus) {
     if (auto* page = dynamic_cast<ui::CoopPage*>(menu_shell().page())) page->focus_action(focus);
 }
 
+// A question as it is asked over its page: Host or Join over Co-op (not in co-op), a player's over Players, Quit over
+// the start screen (nothing played there, so no lost-progress line).
+void open_ask(const std::string& which) {
+    if (which == "host" || which == "join") {
+        open_coop({}, which == "host" ? 0 : 1);
+        if (which == "host") ui::coop::open_host();
+        else ui::coop::open_join();
+    } else if (which == "player") {
+        open_players(false, 0);
+        ui::players::open_actions(standin_players().front());
+    } else if (which == "quit") {
+        ui::push_document(std::make_unique<ui::Prelaunch>());
+        ui::request_quit_confirm(false);
+    }
+}
+
 // A made-up host: its router answered, two of four players in and one waiting; the codes are made up.
 des::seamless::Status standin_host() {
     des::seamless::Status s;
@@ -1564,6 +1580,9 @@ int main(int argc, char** argv) {
         open_coop(standin_host(), 2);
         ui::coop::open_public_address();
     }, {}});
+    // Questions over their pages, in their short words: Host, Join, a player's, the start screen's Quit.
+    for (const char* which : {"host", "join", "player", "quit"})
+        pages.push_back({std::string("ask-") + which, 1280, 720, false, 1.f, false, [which] { open_ask(which); }, {}});
     // The question before a first report, its tick not yet ticked (the scratch data folder has no answer kept).
     pages.push_back({"report-ack", 1280, 720, false, 1.f, false, [] {
         open_menu(false);
@@ -1640,6 +1659,9 @@ int main(int argc, char** argv) {
             open_coop(standin_host(), 2);
             ui::coop::open_public_address();
         }), {}});
+        for (const char* which : {"host", "join", "player", "quit"})
+            pages.push_back({std::string("des-ask-") + which, 1280, 720, false, 1.f, false,
+                             in_band([which] { open_ask(which); }), {}});
         pages.push_back({"des-trophies-start", 1280, 720, false, 1.f, false, in_band([] {
             ui::trophy_set::set_test_source(standin_trophies);
             ui::push_document(ui::menu::screen_alone("Trophies"));
