@@ -1286,6 +1286,18 @@ int main(int argc, char** argv) {
         pages.push_back({"band-wide", 2560, 1080, false, 1.f, false, in_band([] { open_settings("Display", false); }), {}});
         // Rows that open something (the word in the box) and empty texts (Not set).
         pages.push_back({"band-network", 1280, 720, false, 1.f, false, in_band([] { open_settings("Network", false); }), {}});
+        // Every tab in a window tall enough for all its rows (band-tab-display, band-tab-game...), to set beside Today's.
+        for (const ui::catalog::TabDesc& t : ui::catalog::tabs()) {
+            std::string name = "band-tab-";
+            for (const char c : t.title)
+                name += c == ' ' ? '-' : static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            pages.push_back({name, 1280, 1240, false, 1.f, false, in_band([title = t.title] { open_settings(title, false); }), {}});
+        }
+        // A stick's deadzone (Down from the row above it): its picture beside the row. Typing a value in its box.
+        pages.push_back({"band-stick", 1280, 720, false, 1.f, false,
+                         in_band([] { open_settings_row("Controls", "Vibration", Command::Down); }), {}});
+        pages.push_back({"band-typing", 1280, 720, false, 1.f, false,
+                         in_band([] { open_settings_row("Network", "Online name", Command::Confirm); }), {}});
         pages.push_back({"band-report-ack", 1280, 720, false, 1.f, false, in_band([] {
             open_menu(false);
             ui::with_zip_ack(nullptr);
