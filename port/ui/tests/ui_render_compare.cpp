@@ -1210,6 +1210,7 @@ int main(int argc, char** argv) {
                      [] { open_settings_row("Picture", "Render resolution", Command::Preview); }, {}});
     pages.push_back({"settings-compare", 1280, 720, false, 1.f, false,
                      [] { open_settings_row("Picture", "Render resolution", Command::Compare); }, {}});
+    pages.push_back({"settings-tall", 1920, 1200, false, 1.f, false, [] { open_settings("Network", false); }, {}});
     pages.push_back({"settings-typing", 1280, 720, false, 1.f, false,
                      [] { open_settings_row("Network", "Online name", Command::Confirm); }, {}});
     pages.push_back({"setup-start", 1280, 720, false, 1.f, false, [] {
