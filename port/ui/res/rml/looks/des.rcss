@@ -2495,6 +2495,103 @@ body.page.motion players-page {
     animation: 0.17s linear-in-out des-page-in;
 }
 
+/* ---- The on-screen keyboard (osk_window.hpp): the question box, the text in a value box, the keys small stone keys
+   in the PS3 keyboard's rows, the one with the focus on blood; the same keys and buttons as Alpha UI's. ---- */
+window.modal.osk {
+    max-width: 760dp;
+    background-color: #030303;
+}
+
+window.modal.osk osk-field {
+    align-items: center;
+    padding: 6dp 16dp;
+    border-width: 0;
+    background-color: transparent;
+    decorator: ninepatch(des-box, des-box-inner, 5dp);
+}
+
+window.modal.osk osk-text {
+    font-family: Old Standard TT;
+    font-size: 26dp;
+    line-height: 36dp;
+    color: var(--des-tan-light);
+}
+
+window.modal.osk osk-caret {
+    background-color: var(--des-tan-light);
+}
+
+window.modal.osk osk-count {
+    font-family: Old Standard TT;
+    font-size: 15dp;
+    color: var(--des-tan-muted);
+    opacity: 1;
+}
+
+window.modal.osk osk-keys,
+window.modal.osk osk-row {
+    gap: 5dp;
+}
+
+window.modal.osk button.osk-key {
+    height: 38dp;
+    padding: 0;
+    border-width: 0;
+    border-top-width: 1dp;
+    border-top-color: #4f4d46;
+    border-bottom-width: 1dp;
+    border-bottom-color: #141414;
+    border-radius: 0;
+    box-shadow: none;
+    background-color: #2c2c2b;
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#333331, #262626);
+    font-family: Old Standard TT;
+    font-size: 19dp;
+    line-height: 36dp;
+    text-transform: none;
+    color: var(--des-tan);
+}
+
+window.modal.osk button.osk-key.osk-wide,
+window.modal.osk button.osk-key.osk-space {
+    font-size: 14dp;
+    letter-spacing: 0.5dp;
+    text-transform: uppercase;
+}
+
+window.modal.osk button.osk-key:hover {
+    border-top-color: var(--des-hover-edge);
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#4c4a45, #393835);
+    color: var(--des-tan-light);
+}
+
+window.modal.osk button.osk-key:focus-visible {
+    border-top-color: var(--des-blood-edge);
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#853432, #6a2524);
+    color: var(--des-tan-light);
+}
+
+window.modal.osk osk-hints {
+    font-family: Old Standard TT;
+    font-size: 15dp;
+    color: var(--des-tan);
+}
+
+window.modal.osk osk-pill {
+    border-color: #4d4a42;
+    border-radius: 0;
+    font-size: 12dp;
+    opacity: 1;
+    color: var(--des-tan-muted);
+}
+
+window.modal.osk osk-hint {
+    font-family: Old Standard TT;
+    font-size: 15dp;
+    color: var(--des-tan-muted);
+    opacity: 1;
+}
+
 /* ---- Notes over the game (overlay.hpp's toasts): a small stone bar at the top right, as the game's own notes, its
    mark at the left in its status colour (a trophy's picture in a dark tile); it slides in from the right, linear, as
    the menu's pages do. The menu hint sits low in the middle, as a prompt does. ---- */
