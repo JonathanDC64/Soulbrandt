@@ -26,6 +26,7 @@
 // Exit code 0: every picture and count the same; 1: one differs; 2: it could not run.
 #include "controls_page.hpp"
 #include "coop_page.hpp"
+#include "crash_dialog.hpp"
 #include "coop_window.hpp"
 #include "host.hpp"
 #include "looks.hpp"
@@ -994,6 +995,16 @@ void open_players(bool offline, int focus) {
     if (auto* page = dynamic_cast<ui::PlayersPage*>(menu_shell().page())) page->focus_player(focus);
 }
 
+// The crash window as the crash dialog shows it (1024 x 640), for a made-up crash; its buttons do nothing here.
+void open_crash() {
+    static const ui::crash_dialog::Content content{
+        .what = "access violation writing 0000000000000000",
+        .details = "made up for the test",
+    };
+    static const ui::crash_dialog::Actions actions{};
+    ui::crash_dialog::push_window(content, actions, {});
+}
+
 // Settings closed on that tab's row and opened again: it opens where it was left.
 void reopen_settings(const std::string& tab, const std::string& row) {
     ui::SettingsPage* page = open_settings(tab, false);
@@ -1484,6 +1495,8 @@ int main(int argc, char** argv) {
     pages.push_back({"mods", 1280, 720, false, 1.f, false, [] { open_mods(true, "", false); }, {}});
     // Change Buttons as Alpha UI shows it (its window).
     pages.push_back({"controls", 1280, 720, false, 1.f, false, [] { open_controls(false, 0, 0, false, false); }, {}});
+    // The crash window, at its own size.
+    pages.push_back({"crash", 1024, 640, false, 1.f, false, open_crash, {}});
     // Players as Alpha UI shows it (its window), from the made-up list.
     pages.push_back({"players", 1280, 720, false, 1.f, false, [] { open_players(false, 0); }, {}});
     // Co-op as Alpha UI shows it (its window): not in co-op, and hosting.
@@ -1543,6 +1556,8 @@ int main(int argc, char** argv) {
                          in_band([] { open_controls(true, 0, 0, false, true); }), {}});
         pages.push_back({"des-controls-restore", 1280, 720, false, 1.f, false,
                          in_band([] { open_controls(false, 16, 0, false, false); }), {}});
+        // The crash window, its red mark kept, the focus on Report on GitHub.
+        pages.push_back({"des-crash", 1024, 640, false, 1.f, false, in_band(open_crash), {}});
         // Players as a page over Settings: the list's first page, further down (its marks above and below), and offline
         // (the strip's line, no box).
         pages.push_back({"des-players", 1280, 720, false, 1.f, false, in_band([] { open_players(false, 0); }), {}});
