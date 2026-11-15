@@ -26,6 +26,7 @@
 // Exit code 0: every picture and count the same; 1: one differs; 2: it could not run.
 #include "controls_page.hpp"
 #include "coop_page.hpp"
+#include "coop_window.hpp"
 #include "host.hpp"
 #include "looks.hpp"
 #include "menu_shell.hpp"
@@ -1436,6 +1437,11 @@ int main(int argc, char** argv) {
     // Co-op as Alpha UI shows it (its window): not in co-op, and hosting.
     pages.push_back({"coop", 1280, 720, false, 1.f, false, [] { open_coop({}, 0); }, {}});
     pages.push_back({"coop-host", 1280, 720, false, 1.f, false, [] { open_coop(standin_host(), 0); }, {}});
+    // A question with named answers: Public address, over the host's Co-op.
+    pages.push_back({"coop-address", 1280, 720, false, 1.f, false, [] {
+        open_coop(standin_host(), 2);
+        ui::coop::open_public_address();
+    }, {}});
     // The question before a first report, its tick not yet ticked (the scratch data folder has no answer kept).
     pages.push_back({"report-ack", 1280, 720, false, 1.f, false, [] {
         open_menu(false);
@@ -1493,6 +1499,11 @@ int main(int argc, char** argv) {
                          in_band([] { open_coop(standin_guest(false), 0); }), {}});
         pages.push_back({"des-coop-lost", 1280, 720, false, 1.f, false,
                          in_band([] { open_coop(standin_guest(true), 0); }), {}});
+        // A question with named answers, as rows, Cancel under them: Public address, over the host's page.
+        pages.push_back({"des-coop-address", 1280, 720, false, 1.f, false, in_band([] {
+            open_coop(standin_host(), 2);
+            ui::coop::open_public_address();
+        }), {}});
         pages.push_back({"des-trophies-start", 1280, 720, false, 1.f, false, in_band([] {
             ui::trophy_set::set_test_source(standin_trophies);
             ui::push_document(ui::menu::screen_alone("Trophies"));
