@@ -528,6 +528,38 @@ class FetchTest(unittest.TestCase):
                     fetch.fetch(self.entry(blob, sha256="0" * 64), d, allow_http=True)
                 self.assertEqual(os.listdir(d), [])
 
+    def test_failure_says_where_a_copy_goes(self):
+        """A download's failure carries its address and where a copy of the player's own goes (issue #544), and
+        whether the server's certificate was refused: by Python's check with no other way to try, or by Windows'
+        own too (curl exit 35 or 60). Not for a failure through curl of another kind."""
+        blob = _zip([("a.txt", b"q" * 3000)])
+        with tempfile.TemporaryDirectory() as d:     # served, but not the pinned file
+            e = self.entry(blob, sha256="0" * 64)
+            with self.assertRaises(fetch.FetchError) as cm:
+                fetch.fetch(e, d, allow_http=True)
+            self.assertEqual((cm.exception.url, cm.exception.archive, cm.exception.certificate),
+                             (e["url"], fetch.archive_path(e, Path(d)), False))
+        cert = urllib.error.URLError(ssl.SSLCertVerificationError(1, "unable to get local issuer certificate"))
+
+        def refuse(*a, **k):
+            raise cert
+
+        with mock.patch.object(fetch.urllib.request, "urlopen", refuse):
+            with tempfile.TemporaryDirectory() as d, mock.patch.object(fetch, "windows_curl", lambda: None):
+                with self.assertRaises(fetch.FetchError) as cm:
+                    fetch.fetch(self.entry(blob), d, allow_http=True)
+                self.assertTrue(cm.exception.certificate)
+            for rc, refused in ((60, True), (35, True), (28, False)):
+                with tempfile.TemporaryDirectory() as d, \
+                        mock.patch.object(fetch, "windows_curl", lambda: Path("curl.exe")), \
+                        mock.patch.object(fetch, "_run_curl", lambda args, watch=None, rc=rc: (rc, b"", "schannel")):
+                    e = self.entry(blob)
+                    with self.assertRaises(fetch.FetchError) as cm:
+                        fetch.fetch(e, d, allow_http=True)
+                    self.assertIn(f"curl exit {rc}", str(cm.exception))
+                    self.assertEqual((cm.exception.certificate, cm.exception.archive),
+                                     (refused, fetch.archive_path(e, Path(d))))
+
     def test_curl_get(self):
         if not fetch.windows_curl():
             self.skipTest("no Windows curl here")

@@ -8,16 +8,19 @@ import io
 import os
 import re
 import shutil
+import ssl
 import sys
 import tempfile
 import unittest
+import urllib.error
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from des_setup import compile as compile_step, fetch, journal, lift, pipeline, protocol  # noqa: E402
 from test_lift import PPU_STEPS, REAL, FakeTree  # noqa: E402
-from test_setup import EBOOT_ELF, LIBSRE, SDAT_DEC, GameTree  # noqa: E402
+from test_setup import EBOOT_ELF, LIBSRE, SDAT_DEC, GameTree, _zip, sha  # noqa: E402
 
 PHASES = ["check", "fetch", "stage", "lift"]
 UI = REAL / "port" / "ui" / "src"
@@ -455,6 +458,68 @@ class LocalCompilerTest(unittest.TestCase):
                     os.environ[k] = v
         self.assertEqual(rc, 0, lines)
         self.assertIn("@step fetch skip", lines)
+
+
+class DownloadFailedTest(unittest.TestCase):
+    """A download that does not finish (issue #544): the failed page's sentence and the lines under it say how to
+    download the file yourself, and a copy put there is checked, then used. A refused certificate is named, since the
+    connection itself works then."""
+    OWN = "A download did not finish. You can also download the file yourself, as the lines below say."
+
+    def setUp(self):
+        self.s = Setup()
+        self._free = pipeline.free_bytes
+        pipeline.free_bytes = lambda p: 1 << 50
+        self.blob = _zip([("bin/clang.exe", b"clang")])
+        self.e = {"name": compile_step.LLVM_ENTRY, "version": "0", "url": "https://example.invalid/llvm.zip",
+                  "size": len(self.blob), "sha256": sha(self.blob)}
+        self.archive = fetch.archive_path(self.e, self.s.data / "downloads")
+
+    def tearDown(self):
+        pipeline.free_bytes = self._free
+        self.s.close()
+
+    def run_refused(self, err=None):
+        """A run whose download fails with `err` (no connection by default), with no Windows curl to try."""
+        err = err or urllib.error.URLError(ConnectionRefusedError("refused"))
+
+        def refuse(*a, **k):
+            raise err
+
+        with mock.patch.object(fetch.urllib.request, "urlopen", refuse), \
+                mock.patch.object(fetch, "windows_curl", lambda: None):
+            return self.s.run(manifest={"tools": [self.e]}, phases=["check", "fetch"])
+
+    def test_says_how_to_download_it_yourself(self):
+        rc, lines = self.run_refused()
+        self.assertEqual(rc, 1)
+        self.assertIn(f"@error download fetch {self.OWN}", lines)
+        at = lines.index(f"FIX  or download it yourself: {self.e['url']}")
+        self.assertTrue(lines[at - 1].startswith("FIX  llvm"), lines[at - 1])
+        self.assertEqual(lines[at + 1], f"FIX  then put it in {self.archive.parent}, named {self.archive.name}, and "
+                                        "try again: setup checks it before it uses it")
+        self.archive.write_bytes(self.blob)           # the player's own copy: checked and used, with no download
+        rc, lines = self.run_refused()
+        self.assertEqual(rc, 0, lines)
+        self.assertTrue(fetch.unpacked(self.e, self.s.data / "tools"))
+
+    def test_a_wrong_copy_is_not_used(self):
+        self.archive.parent.mkdir(parents=True)
+        self.archive.write_bytes(b"x" * len(self.blob))
+        rc, lines = self.run_refused()
+        self.assertEqual(rc, 1)
+        self.assertIn(f"@error download fetch {self.OWN}", lines)
+        self.assertFalse(self.archive.exists())
+        self.assertFalse(fetch.unpacked(self.e, self.s.data / "tools"))
+
+    def test_refused_certificate_is_named(self):
+        rc, lines = self.run_refused(urllib.error.URLError(ssl.SSLCertVerificationError(
+            1, "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate")))
+        self.assertEqual(rc, 1)
+        self.assertIn("@error download fetch A download did not finish: this PC did not accept the certificate of the "
+                      "server it comes from. An antivirus that checks secure connections, or a wrong date or time on "
+                      "this PC, can cause that. You can also download the file yourself, as the lines below say.",
+                      lines)
 
 
 class EmitterTest(unittest.TestCase):
