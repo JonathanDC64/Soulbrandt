@@ -2,6 +2,7 @@
 // with the chord rule (menu_pad.hpp), each key's command for the F1 menu and its pages (menu_input.hpp), what is held,
 // and the prompts' buttons for each device (prompts.hpp). No window, no pads: frames of button states in, keys out.
 // Prints a line per failure and "input_map_check: N checks, M failed"; exit 1 on a failure.
+#include "button_pages.hpp"
 #include "input.hpp"
 #include "menu_input.hpp"
 #include "menu_pad.hpp"
@@ -176,6 +177,35 @@ void check_prompts() {
     check(ui::prompts::glyph(Device::Nintendo, Key::Confirm).text == "A", "Nintendo: A, as SDL names it");
     check(ui::prompts::glyph(Device::Keyboard, Key::Hide).text == "Shift", "the keyboard hides with Shift");
     check(ui::prompts::glyph(Device::Xbox, Key::Help).text == "View", "Xbox's Help is View");
+
+    // Each button's picture (button_art.hpp): a pad's name one of cellPad's buttons or the D-pad, the keyboard's keys.
+    using ui::prompts::Art;
+    for (int d = 0; d < 4; d++)
+        for (int k = 0; k < int(Key::Count); k++) {
+            const ui::prompts::Glyph g = ui::prompts::glyph(Device(d), Key(k));
+            const std::string what = "device " + std::to_string(d) + " key " + std::to_string(k);
+            check(g.art[0].is != Art::Is::None, what + " has a picture");
+            for (const Art& a : g.art) {
+                if (a.is == Art::Is::None) continue;
+                if (Device(d) == Device::Keyboard) {
+                    check(a.is == Art::Is::Key && a.code > 0, what + ": a key");
+                } else if (a.is == Art::Is::Button) {
+                    bool known = false;
+                    for (const char* name : ui::button_pages::kPadNames) known = known || a.name == name;
+                    check(known, what + ": one of cellPad's buttons");
+                } else {
+                    check(a.is == Art::Is::Dpad && a.code > 0 && a.code < 16, what + ": the D-pad");
+                }
+            }
+        }
+    const auto art = [](Device d, Key k, int i) { return ui::prompts::glyph(d, k).art[i]; };
+    check(art(Device::Keyboard, Key::Move, 1).is == Art::Is::Key && art(Device::Keyboard, Key::Move, 1).name.empty(),
+          "the keyboard's Move: two arrow keys");
+    check(art(Device::Keyboard, Key::Confirm, 0).name == "Enter", "Enter's cap");
+    check(art(Device::Xbox, Key::Confirm, 0).name == "cross" && art(Device::Nintendo, Key::Confirm, 0).name == "cross",
+          "A is where Cross is, on an Xbox pad and a Nintendo pad");
+    check(art(Device::PlayStation, Key::Change, 0).is == Art::Is::Dpad && art(Device::PlayStation, Key::Change, 0).code == 10,
+          "Change: the D-pad's left and right");
 
     // The device: the Button icons row first, then what was used last (PAD_GLYPH_*).
     check(ui::prompts::resolve("xbox", 1) == Device::Xbox, "Button icons: Xbox, whatever was used");

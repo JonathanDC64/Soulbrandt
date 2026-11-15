@@ -103,6 +103,7 @@ std::string describe(const Spec& s);
 struct Image {
     uint32_t width = 0, height = 0, levels = 0;
     std::vector<uint8_t> rgba;
+    bool premultiplied = false;   // draw_single's are
 };
 struct Source {
     const Page* page;
@@ -110,5 +111,22 @@ struct Source {
 };
 Image draw(const Page& page, const std::vector<uint8_t>& base, const Spec& spec, const unsigned char* font,
            const std::vector<Source>& pictures = {});
+
+// ---- One button on its own: the menus' prompts (button_art.cpp) ----
+
+// What one picture shows: a pad's button, the D-pad with some of its ways lit, or a key. PlayStation's buttons are
+// drawn here too, in the page's style: on the page the game's own pictures stay, and the menus never use the game's.
+struct Single {
+    Kind kind = Kind::PlayStation;
+    int pad = -1;        // a pad's button (kPadNames index); -1 with a pad's kind: the D-pad
+    unsigned dpad = 0;   // the D-pad's ways lit: bit 0 up, 1 right, 2 down, 3 left
+    Key key;             // Kind::Keyboard: the key or mouse button (its in and label)
+    bool operator==(const Single&) const = default;
+};
+// Its width over its height: 1, or more for a key whose name needs a wider cap ("Enter").
+float single_ratio(const Single& s, const unsigned char* font);
+// The picture `width` x `height` pixels: a key's cap fills the width, anything else sits in a square at its middle.
+// One level, RGBA with premultiplied alpha (as RmlUi's textures are; draw's are straight).
+Image draw_single(const Single& s, int width, int height, const unsigned char* font);
 
 }  // namespace ui::button_pages

@@ -5,6 +5,7 @@
 // FFCCEOT-Recomp's host.cpp (GL3 in an SDL window).
 #include "host.hpp"
 
+#include "button_art.hpp"
 #include "mouse.hpp"
 #include "portable.hpp"
 #include "renderer.hpp"
@@ -415,6 +416,7 @@ bool init(void* d3d12_device, void* d3d12_queue, void* hwnd, int width, int heig
         return false;
     }
     load_fonts();
+    button_art::install();
     s.rml = Rml::CreateContext("main", {std::max(width, 1), std::max(height, 1)});
     if (!s.rml) {
         shutdown();
@@ -551,6 +553,7 @@ bool init(const std::function<std::unique_ptr<Renderer>(ImageSource images)>& ma
         return false;
     }
     load_fonts();
+    button_art::install();
     s.rml = Rml::CreateContext("main", {std::max(width, 1), std::max(height, 1)});
     if (!s.rml) {
         shutdown();
