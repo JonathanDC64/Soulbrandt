@@ -56,13 +56,25 @@ changed a setting would send no settings at all.
 `ps3_diag_report(out, seconds)` writes, in one go, what the debug console's
 `stat`, `cpu`, `waits`, `threads`, `spu`, `spuhist` and `knobs` would show:
 
-- frames so far, the time since the last one, the last HLE call;
+- frames so far (one a flip, with the flip requests beside them), the time
+  since the last one, the last HLE call;
 - every guest thread: cia, lr, r3, the last syscall (r11, by name), and the
   HLE call it is inside;
 - SPU program runs per lifted image;
-- CPU per host thread over the sample window, with the hot function;
+- what the FIFO thread did in the window: waiting for the game's commands,
+  waiting for the GPU to finish work, presenting, getting the window's next
+  image, and the batches it drew. Only the portable renderer counts these;
+  today's D3D12 renderer says it doesn't;
+- CPU per host thread over the sample window, with the hot function. On Linux
+  it is each thread's time on a CPU and its time ready to run but waiting for
+  one, from the kernel's counts, with the threads named after the guest's
+  threads, SPU groups, the RSX thread, the vblank clock and the sound mixer;
 - the calls each guest thread finished in that window;
 - the host threads; the last 60 SPU history events; the knobs that are set.
+
+Reports made before ps3recomp #291 count a frame twice when the frame rate
+holds steady at its cap (120 at a 60 cap), so read their `game.txt` rates
+with that in mind.
 
 These are names, counters and addresses only. It never reads guest memory.
 
