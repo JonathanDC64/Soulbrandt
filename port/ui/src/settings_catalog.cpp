@@ -11,6 +11,7 @@
 #include "../../des_dev_marker.h"
 #endif
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <initializer_list>
@@ -547,6 +548,15 @@ std::vector<TabDesc> make_tabs() {
             own_setting({.label = "Menu look", .key = "ui_look",
                 .kind = ChoiceRow{.choices = std::move(looks), .changed = hooks::apply_look},
                 .help = "How these menus look. Every look has the same menus and rows."})),
+        own_setting({.label = "Menu height", .key = "ui_menu_height",
+            .kind = NumberRow{.min = 0, .max = 100, .step = 10,
+                .get = [] { return std::clamp(s::get_int("ui_menu_height"), 0, 100); },
+                .set = [](int v) { s::set("ui_menu_height", std::to_string(v)); },
+                .format = [](int v) {
+                    return v == 0 ? std::string("Compact") : v == 100 ? std::string("Whole window") : std::to_string(v) + "%";
+                }},
+            .help = "How tall Settings is in a large window: from Compact, its height in a 720p window, to the "
+                    "window's whole height. Taller shows more rows before they scroll."}),
         own_setting(toggle("Start screen", "show_start_screen",
             "Shows Play, Settings and Quit when the game starts. Off goes straight to the game.")),
         own_setting(toggle("Menu hint", "menu_hint", "After Play, a note says how to open this menu.")),
