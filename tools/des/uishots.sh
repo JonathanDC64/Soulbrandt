@@ -9,12 +9,17 @@
 #            players, setup
 #   UISHOTS_SCALES    the UI scale setting (ui_scale) per run, in percent
 #                     (default "100 150"; the settings row offers 75 to 150)
+#   UISHOTS_LOOKS     the menu looks (ui_look, a looks.hpp id) per run, e.g.
+#                     "today band" (default: none set, so the default look). A
+#                     look the build doesn't offer draws as the default, so one
+#                     not released yet needs a developer build (DES_DEV).
 #   UISHOTS_TABS      settings tabs to shoot (default 8: a developer build's, Developer included)
 #   UISHOTS_SECS      the most a run may take (default 150)
 #   DES_EXE           the build (default port/build/des_boot.exe), as desrun.sh
-# Shots go to $DES_SCRATCH/uishots/<tag>/<screen>_<scale>[_tabN].png (BMP when
-# Python has no PIL). The window is the game's 1280x720, so a run can't try
-# other window shapes or DPIs (DES_UI_DPI only counts in a bigger window).
+# Shots go to $DES_SCRATCH/uishots/<tag>/<screen>_[<look>_]<scale>[_tabN].png
+# (BMP when Python has no PIL; <look>_ only with UISHOTS_LOOKS). The window is
+# the game's 1280x720, so a run can't try other window shapes or DPIs
+# (DES_UI_DPI only counts in a bigger window).
 # Each run uses a scratch settings file and data folder, so the player's
 # settings, saves and trophies are never read or written.
 #
@@ -28,6 +33,7 @@ cd "$DES_ROOT" || exit 1
 TAG="${1:?usage: uishots.sh <tag> [screen ...]}"; shift
 SCREENS=("$@"); [ ${#SCREENS[@]} -gt 0 ] || SCREENS=(settings)
 SCALES="${UISHOTS_SCALES:-100 150}"
+LOOKS="${UISHOTS_LOOKS:-}"
 TABS="${UISHOTS_TABS:-8}"
 SECS="${UISHOTS_SECS:-150}"
 OUT="$DES_SCRATCH/uishots/$TAG"
@@ -47,13 +53,14 @@ bmp_done() {
   [ -n "$want" ] && [ -n "$have" ] && [ "$have" -ge "$want" ]
 }
 
-# shoot <screen> <scale>: one run, its shots into $OUT.
+# shoot <screen> <scale> [look]: one run, its shots into $OUT.
 shoot() {
-  local screen="$1" scale="$2" name run shots="" keys="" last f i
-  name="${screen}_${scale}"
+  local screen="$1" scale="$2" look="${3:-}" name run shots="" keys="" last f i
+  name="${screen}_${look:+${look}_}${scale}"
   run="$DES_SCRATCH/uishots_run/$name"
   rm -rf "$run"; mkdir -p "$run/data" "$run/saves"
   printf 'ui_scale=%s\n' "$scale" > "$run/settings.ini"
+  [ -n "$look" ] && printf 'ui_look=%s\n' "$look" >> "$run/settings.ini"
   if [ "$screen" = settings ]; then
     for ((i = 0; i < TABS; i++)); do
       f=$((240 + i * 40))
@@ -83,10 +90,16 @@ shoot() {
          "$(w "$f")" "$(w "$OUT/$(basename "${f%.bmp}").png")" 2>/dev/null; then :
     else cp "$f" "$OUT/"; fi
   done
-  echo "uishots: $name: $(ls "$OUT" | grep -c "^$name") shot(s)"
+  echo "uishots: $name: $(ls "$OUT" | grep -cE "^${name}(_tab[0-9]+)?\.") shot(s)"
 }
 
 for screen in "${SCREENS[@]}"; do
-  for v in $SCALES; do shoot "$screen" "$v"; done
+  for v in $SCALES; do
+    if [ -n "$LOOKS" ]; then
+      for l in $LOOKS; do shoot "$screen" "$v" "$l"; done
+    else
+      shoot "$screen" "$v"
+    fi
+  done
 done
 echo "uishots: $OUT"
