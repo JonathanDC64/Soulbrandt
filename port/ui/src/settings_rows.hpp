@@ -15,7 +15,7 @@ using catalog::RowDesc;
 
 // The value a row shows.
 struct Value {
-    std::string text;       // "Vulkan", "On", "60 fps", "Custom (90)"
+    std::string text;       // "Vulkan", "On", "60 fps", "Custom (90)"; an action's "Open" or "Delete"
     bool original = false;  // the game's own choice, shown with "(original)"
     bool first = false;     // Left can't go further (the first choice, Off, the smallest number)
     bool last = false;      // nor Right

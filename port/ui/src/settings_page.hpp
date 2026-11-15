@@ -5,9 +5,10 @@
 //
 // The page builds the same elements in every look; how they look is the look's style sheet (looks.hpp):
 //   menu-tabs > menu-tab-key(.prev .next) > menu-glyph, menu-tab(.on)
-//   menu-body > menu-rows > menu-heading, menu-row(.focused .locked .waits .modified .listing)
+//   menu-body > menu-rows > menu-heading > menu-bracket (a line as long as the section, for a look that draws it)
+//               menu-rows > menu-row(.focused .locked .waits .modified .listing)
 //       menu-row > menu-label > menu-mark, menu-name
-//                  menu-value > menu-gauge > menu-fill (a number's share of its range, for a look that draws it),
+//                  menu-value(.tagged: its tag shows) > menu-gauge > menu-fill (a number's share of its range, for a look that draws it),
 //                               menu-arrow.left(.end), icon.lock, menu-text, menu-tag, menu-arrow.right(.end)
 //                  menu-list > menu-item(.cursor .now .disabled) > menu-text, menu-tag
 //       menu-row's kind: .choice .toggle .number .text .info .action
@@ -76,6 +77,7 @@ private:
     void update_list();
     void update_help();
     void update_peek();
+    void update_brackets();
     void scroll_to_focus();
     void place_list();
     void listen(Rml::Element* element, Rml::EventId event, std::function<void(Rml::Event&)> callback);
@@ -99,6 +101,14 @@ private:
     Rml::Element* mPeek = nullptr;
     std::vector<Rml::Element*> mTabElems;
     std::vector<RowView> mViews;
+    // Each section's heading, its bracket line and the section's last row (update_brackets).
+    struct Bracket {
+        Rml::Element* heading = nullptr;
+        Rml::Element* line = nullptr;
+        Rml::Element* last = nullptr;
+        float span = -1.f;
+    };
+    std::vector<Bracket> mBrackets;
     std::vector<menu::RowFacts> mFacts;
     std::vector<std::unique_ptr<ScopedEventListener>> mTabListeners;  // the page's own (tabs)
     std::vector<std::unique_ptr<ScopedEventListener>> mRowListeners;  // the tab built's (its rows, the list)

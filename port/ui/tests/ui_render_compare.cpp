@@ -28,7 +28,10 @@
 #include "looks.hpp"
 #include "menu_shell.hpp"
 #include "menu_pages.hpp"
+#include "prelaunch.hpp"
 #include "renderer.hpp"
+#include "report.hpp"
+#include "report_ack.hpp"
 #include "settings.hpp"
 #include "settings_catalog.hpp"
 #include "settings_page.hpp"
@@ -1091,6 +1094,8 @@ int main(int argc, char** argv) {
         std::filesystem::create_directories(vk_dir / "vk", ec);
     }
     _putenv_s("DES_DATA_DIR", (scratch / "data").string().c_str());
+    // (and to report.hpp's data folder, which may have been looked up before main: the player's own then)
+    ui::report::set_data_dir(scratch / "data");
     _putenv_s("DES_SETTINGS", (scratch / "settings.ini").string().c_str());
     _putenv_s("DES_SETUP_DATA", (scratch / "setup").string().c_str());
     _putenv_s("PS3_NO_USER_INPUT", "1");
@@ -1211,6 +1216,8 @@ int main(int argc, char** argv) {
         pages.push_back({name, 1280, 720, false, 1.f, false, [title = t.title] { open_settings(title, false); }, {}});
     }
     pages.push_back({"settings-prelaunch", 1280, 720, false, 1.f, false, [] { open_settings("", true); }, {}});
+    // The start screen over the game, its first choice with the focus.
+    pages.push_back({"start", 1280, 720, false, 1.f, false, [] { ui::push_document(std::make_unique<ui::Prelaunch>()); }, {}});
     using ui::menu::Command;
     pages.push_back({"settings-list", 1280, 720, false, 1.f, false,
                      [] { open_settings_row("Display", "Aspect ratio", Command::Confirm); }, {}});
@@ -1243,6 +1250,11 @@ int main(int argc, char** argv) {
     pages.push_back({"menu", 1280, 720, false, 1.f, false, [] { open_menu(false); }, {}});
     pages.push_back({"menu-quit", 1280, 720, false, 1.f, false, [] { open_menu(true); }, {}});
     pages.push_back({"menu-restart", 1280, 720, false, 1.f, false, open_menu_restart, {}});
+    // The question before a first report, its tick not yet ticked (the scratch data folder has no answer kept).
+    pages.push_back({"report-ack", 1280, 720, false, 1.f, false, [] {
+        open_menu(false);
+        ui::with_zip_ack(nullptr);
+    }, {}});
     // Pause band's pages, in a build that offers it (a developer build until it is released, looks.hpp). Every page
     // opens in the default look; these switch to Pause band first.
     use_look("band");
@@ -1267,7 +1279,17 @@ int main(int argc, char** argv) {
         pages.push_back({"band-compare", 1280, 720, false, 1.f, false,
                          in_band([] { open_settings_row("Picture", "Render resolution", Command::Compare); }), {}});
         pages.push_back({"band-prelaunch", 1280, 720, false, 1.f, false, in_band([] { open_settings("", true); }), {}});
+        pages.push_back({"band-start", 1280, 720, false, 1.f, false,
+                         in_band([] { ui::push_document(std::make_unique<ui::Prelaunch>()); }), {}});
         pages.push_back({"band-tall", 1920, 1200, false, 1.f, false, in_band([] { open_settings("Network", false); }), {}});
+        // A wide window: the bands span it, their contents and the rows keep to the centred column.
+        pages.push_back({"band-wide", 2560, 1080, false, 1.f, false, in_band([] { open_settings("Display", false); }), {}});
+        // Rows that open something (the word in the box) and empty texts (Not set).
+        pages.push_back({"band-network", 1280, 720, false, 1.f, false, in_band([] { open_settings("Network", false); }), {}});
+        pages.push_back({"band-report-ack", 1280, 720, false, 1.f, false, in_band([] {
+            open_menu(false);
+            ui::with_zip_ack(nullptr);
+        }), {}});
     }
     pages.push_back({"clip", 1280, 720, false, 1.f, false, [] { open_rml(kClipPage); }, {}, true});
     pages.push_back({"look-primitives", 1280, 720, false, 1.f, false, [] { open_rml(kLookPage); }, {}});
