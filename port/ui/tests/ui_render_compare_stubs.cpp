@@ -74,15 +74,20 @@ void des_prework_skip(void) {}
 
 }  // extern "C"
 
-// Seamless co-op (des_seamless.cpp, des_seamless_save.cpp): off, never started.
+// Seamless co-op (des_seamless.cpp, des_seamless_save.cpp): off, never started; or as a page set it
+// (set_test_status: ui_render_compare's Co-op pages, a made-up host or guest).
 namespace des::seamless {
-Mode mode() { return Mode::Off; }
+namespace {
+Status gTestStatus;
+}
+void set_test_status(const Status& s) { gTestStatus = s; }
+Mode mode() { return gTestStatus.mode; }
 bool start(const std::string&, std::string* why) {
     if (why) *why = "not in ui_render_compare";
     return false;
 }
 void held(const std::string&) {}
-Status status() { return {}; }
+Status status() { return gTestStatus; }
 void party_size_changed() {}
 std::string set_public_address(const std::string&, std::string*) { return "not in ui_render_compare"; }
 std::string new_code() { return "not in ui_render_compare"; }

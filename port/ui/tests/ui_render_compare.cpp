@@ -24,6 +24,7 @@
 // --page: only the pages whose names hold NAME. --probe: one pixel's bytes in each frame, from every renderer.
 // --verbose: the first bytes that differ in each frame.
 // Exit code 0: every picture and count the same; 1: one differs; 2: it could not run.
+#include "coop_page.hpp"
 #include "host.hpp"
 #include "looks.hpp"
 #include "menu_shell.hpp"
@@ -46,6 +47,8 @@
 #include "gpu_shader.h"
 #include "gpu_vt_cmd.h"
 #include "ui_render_compare_hooks.h"
+
+#include "../../des_seamless.h"
 
 #include <RmlUi/Core.h>
 
@@ -73,6 +76,10 @@
 // settings.cpp and report.cpp set variables through the game's getenv cache (boot_main.cpp); here, the process's.
 extern "C" void ps3_setenv(const char* name, const char* value) {
     _putenv_s(name, value ? value : "");
+}
+
+namespace des::seamless {
+void set_test_status(const Status& s);  // ui_render_compare_stubs.cpp: what status() and mode() give
 }
 
 namespace {
@@ -1041,9 +1048,44 @@ void open_mods(bool any, const std::string& focus, bool help) {
     }
 }
 
+// Co-op as the F1 menu opens it, with co-op as that made-up status: the look's own (Alpha UI's window, a page in a
+// look with looks.hpp's pages), the focus on that action.
+void open_coop(const des::seamless::Status& s, int focus) {
+    des::seamless::set_test_status(s);
+    open_menu(false);
+    for (size_t i = 0; i < ui::menu::entries().size(); i++)
+        if (ui::menu::entries()[i].title == "Co-op") ui::menu::entries()[i].choose(menu_shell());
+    if (auto* page = dynamic_cast<ui::CoopPage*>(menu_shell().page())) page->focus_action(focus);
+}
+
+// A made-up host: its router answered, two of four players in and one waiting; the codes are made up.
+des::seamless::Status standin_host() {
+    des::seamless::Status s;
+    s.mode = des::seamless::Mode::Host;
+    s.started = true;
+    s.code = "7KQ2-M9XD-0RTB-4HWE";
+    s.lan_code = "4H2K-PL7Q-ZZ81-C0DE";
+    s.router = "Your router opened port 3658 for co-op.";
+    s.router_done = s.router_ok = true;
+    s.port = 3658;
+    s.players = 2;
+    s.waiting = 1;
+    return s;
+}
+
+// A made-up guest, connected (or its connection lost).
+des::seamless::Status standin_guest(bool lost) {
+    des::seamless::Status s;
+    s.mode = des::seamless::Mode::Join;
+    s.started = true;
+    s.link = lost ? des::seamless::Status::Link::Lost : des::seamless::Status::Link::Connected;
+    return s;
+}
+
 void close_pages() {
     ui::close_all_documents();
     ui::trophy_set::set_test_source({});
+    des::seamless::set_test_status({});
     _putenv_s("DES_MODS_DIR", "");
     ui::SettingsPage::forget_place();  // (Settings opens where it was left: each page starts as at the game's start)
     for (Rml::ElementDocument* d : gDocuments) d->Close();
@@ -1375,6 +1417,9 @@ int main(int argc, char** argv) {
     // Trophies and Mods, as Alpha UI shows them (their windows).
     pages.push_back({"trophies", 1280, 720, false, 1.f, false, [] { open_trophies(true, 1); }, {}});
     pages.push_back({"mods", 1280, 720, false, 1.f, false, [] { open_mods(true, "", false); }, {}});
+    // Co-op as Alpha UI shows it (its window): not in co-op, and hosting.
+    pages.push_back({"coop", 1280, 720, false, 1.f, false, [] { open_coop({}, 0); }, {}});
+    pages.push_back({"coop-host", 1280, 720, false, 1.f, false, [] { open_coop(standin_host(), 0); }, {}});
     // The question before a first report, its tick not yet ticked (the scratch data folder has no answer kept).
     pages.push_back({"report-ack", 1280, 720, false, 1.f, false, [] {
         open_menu(false);
@@ -1412,6 +1457,14 @@ int main(int argc, char** argv) {
                          in_band([] { open_mods(true, "Texture pack 2", false); }), {}});
         pages.push_back({"des-mods-help", 1280, 720, false, 1.f, false, in_band([] { open_mods(true, "", true); }), {}});
         pages.push_back({"des-mods-empty", 1280, 720, false, 1.f, false, in_band([] { open_mods(false, "", false); }), {}});
+        // Co-op as a page: not in co-op, hosting (the focus on New code), joined (its line in the strip, no box) and
+        // a guest whose connection was lost.
+        pages.push_back({"des-coop", 1280, 720, false, 1.f, false, in_band([] { open_coop({}, 0); }), {}});
+        pages.push_back({"des-coop-host", 1280, 720, false, 1.f, false, in_band([] { open_coop(standin_host(), 1); }), {}});
+        pages.push_back({"des-coop-join", 1280, 720, false, 1.f, false,
+                         in_band([] { open_coop(standin_guest(false), 0); }), {}});
+        pages.push_back({"des-coop-lost", 1280, 720, false, 1.f, false,
+                         in_band([] { open_coop(standin_guest(true), 0); }), {}});
         pages.push_back({"des-trophies-start", 1280, 720, false, 1.f, false, in_band([] {
             ui::trophy_set::set_test_source(standin_trophies);
             ui::push_document(ui::menu::screen_alone("Trophies"));
