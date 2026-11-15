@@ -437,6 +437,60 @@ class ApplyTest(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertIn("no earlier version", out[-2])
 
+    def test_save_in_a_program_folder_stops_the_update(self):
+        # Issue #528: gamedata dragged onto the program folder below it. The update stops before it downloads or
+        # moves anything, and says where the save is; once it is moved out, the update goes through.
+        save = self.install / "docs/gamedata/dev_hdd0/home/00000001/savedata/S/PARAM.SFO"
+        save.parent.mkdir(parents=True)
+        save.write_bytes(b"sfo")
+        rc, out = self.run_cmd(update.apply, "0.1.0", "0.2.0")
+        self.assertEqual(rc, 1)
+        self.assertTrue(out[-2].startswith("@error busy - "), out)
+        self.assertIn(str(Path("docs/gamedata")), out[-2])
+        self.assertEqual((self.install / EXE).read_bytes(), b"exe 0.1.0")
+        self.assertEqual(save.read_bytes(), b"sfo")
+        self.assertFalse((self.install / update.PREVIOUS).exists())
+        self.assertFalse(list((self.data / "downloads").glob("DemonsSoulsRecomp-*")))
+        os.replace(self.install / "docs/gamedata", self.install / "gamedata-found")
+        rc, out = self.run_cmd(update.apply, "0.1.0", "0.2.0")
+        self.assertEqual(rc, 0, out)
+        self.player_files_kept()
+
+    def test_save_in_previous_stops_the_next_change(self):
+        # A save that went aside with the kept version: the next update would delete .previous, so it stops, and so
+        # does going back, until the save is moved out.
+        rc, out = self.run_cmd(update.apply, "0.1.0", "0.2.0")
+        self.assertEqual(rc, 0, out)
+        trophy = self.install / update.PREVIOUS / "0.1.0/docs/gamedata/trophies/NPWR01249.json"
+        trophy.parent.mkdir(parents=True)
+        trophy.write_bytes(b"{}")
+        self.serve("0.3.0", program("0.3.0"))
+        rc, out = self.run_cmd(update.apply, "0.2.0", "0.3.0")
+        self.assertEqual(rc, 1)
+        self.assertTrue(out[-2].startswith("@error busy - "), out)
+        self.assertIn(str(Path(update.PREVIOUS, "0.1.0", "docs", "gamedata")), out[-2])
+        self.assertEqual((self.install / EXE).read_bytes(), b"exe 0.2.0")
+        self.assertEqual(trophy.read_bytes(), b"{}")
+        rc, out = self.run_cmd(update.back, "0.2.0")
+        self.assertEqual(rc, 1)
+        self.assertTrue(out[-2].startswith("@error busy - "), out)
+        self.assertEqual((self.install / EXE).read_bytes(), b"exe 0.2.0")
+        self.assertEqual(update.kept_version(self.install), "0.1.0")
+
+    def test_saves_inside(self):
+        root = Path(self.tmp.name) / "look"
+        for rel in ("a/GameData/dev_hdd0/home/00000001/savedata/S/PARAM.SFO",  # (one hit: the topmost)
+                    "b/BLES00932DEMONSS005/PARAM.SFO",                        # (a save folder alone)
+                    "c/savedata/x.bin", "d/trophies/npwr00881.json",
+                    "e/tools/des_setup/__pycache__/update.cpython-312.pyc", "e/licenses/LICENSE.txt"):
+            (root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (root / rel).write_bytes(b"x")
+        found = [p.relative_to(root).as_posix() for p in update.saves_inside(root)]
+        self.assertEqual(found, ["a/GameData", "b/BLES00932DEMONSS005/PARAM.SFO", "c/savedata",
+                                 "d/trophies/npwr00881.json"])
+        self.assertEqual(update.saves_inside(root / "e"), [])
+        self.assertEqual(update.saves_inside(root / "missing"), [])
+
 
 class ManifestTest(unittest.TestCase):
     def test_lists_itself(self):
