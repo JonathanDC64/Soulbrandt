@@ -344,6 +344,26 @@ std::string body(const co::Status& s) {
     return b;
 }
 
+// Copy code: the invite code on the clipboard (the one for the player's own network while the router hasn't answered).
+void copy_code_now() {
+    const co::Status now = co::status();
+    const std::string code = !now.code.empty() ? now.code : now.lan_code;
+    if (code.empty()) {
+        toast("warning", "There is no code yet: the router hasn't answered.");
+        return;
+    }
+    if (auto* sys = Rml::GetSystemInterface()) sys->SetClipboardText(code);
+    play_sound(kSoundItemEnable);
+    toast("info", now.code.empty() ? "Copied the code for players on your own network: it doesn't work over the "
+                                     "internet."
+                                   : "Copied. Send it to your friends, not in public.");
+}
+
+bool no_code_now() {
+    const co::Status now = co::status();
+    return now.code.empty() && now.lan_code.empty();
+}
+
 class CoopWindow final : public Modal {
 public:
     explicit CoopWindow(Props props) : Modal(std::move(props)) {}
@@ -380,25 +400,8 @@ std::unique_ptr<Modal> make_coop_window() {
     } else {
         if (s.mode == co::Mode::Host)
             actions.push_back({.label = "Copy code",
-                               .onPressed =
-                                   [](Modal&) {
-                                       const co::Status now = co::status();
-                                       const std::string code = !now.code.empty() ? now.code : now.lan_code;
-                                       if (code.empty()) {
-                                           toast("warning", "There is no code yet: the router hasn't answered.");
-                                           return;
-                                       }
-                                       if (auto* sys = Rml::GetSystemInterface()) sys->SetClipboardText(code);
-                                       play_sound(kSoundItemEnable);
-                                       toast("info", now.code.empty()
-                                                         ? "Copied the code for players on your own network: it "
-                                                           "doesn't work over the internet."
-                                                         : "Copied. Send it to your friends, not in public.");
-                                   },
-                               .isDisabled = [] {
-                                   const co::Status now = co::status();
-                                   return now.code.empty() && now.lan_code.empty();
-                               }});
+                               .onPressed = [](Modal&) { copy_code_now(); },
+                               .isDisabled = [] { return no_code_now(); }});
         if (s.mode == co::Mode::Host) {
             actions.push_back({.label = "New code", .onPressed = [](Modal&) { open_new_code(); }});
             actions.push_back({.label = "Public address", .onPressed = [](Modal&) { open_public_address(); }});
@@ -411,5 +414,29 @@ std::unique_ptr<Modal> make_coop_window() {
         .actions = std::move(actions),
     });
 }
+
+namespace coop {
+void open_host() {
+    ui::open_host();
+}
+void open_join() {
+    ui::open_join();
+}
+void copy_code() {
+    copy_code_now();
+}
+bool no_code() {
+    return no_code_now();
+}
+void open_new_code() {
+    ui::open_new_code();
+}
+void open_public_address() {
+    ui::open_public_address();
+}
+void open_leave() {
+    ui::open_leave();
+}
+}  // namespace coop
 
 }  // namespace ui

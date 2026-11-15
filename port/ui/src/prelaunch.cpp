@@ -4,7 +4,6 @@
 #include "prelaunch.hpp"
 
 #include "app.hpp"
-#include "coop_window.hpp"
 #include "host.hpp"
 #include "input.hpp"
 #include "modal.hpp"
@@ -134,7 +133,7 @@ void Prelaunch::build_menu_buttons() {
     mMenuButtons.push_back(std::make_unique<Button>(menuList, "Co-op"));
     mMenuButtons.back()->on_pressed([this] {
         play_sound(kSoundWindowOpen);
-        push(make_coop_window());
+        push(menu::screen_alone("Co-op"));
     });
     apply_intro_animation(mMenuButtons.back()->root(), "delay-5");
 

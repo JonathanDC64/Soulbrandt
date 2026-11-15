@@ -676,7 +676,7 @@ How it works:
   - `list-more.up` and `.down` (`.on` while there is more that way), where a
     list goes on past its box;
   - a page of the F1 menu's own (see `pages` below) lists its elements in
-    its header (`trophies_page.hpp`, `mods_page.hpp`);
+    its header (`trophies_page.hpp`, `mods_page.hpp`, `coop_page.hpp`);
   - status has colour, and nothing else: `--des-ok`, `--des-warn`,
     `--des-error` and `--des-info` in DeS UI, from the HUD's bars.
 - **The column.** A look that keeps its contents in a centred column sets
@@ -706,8 +706,8 @@ How it works:
     sets that height inline, which a sheet can't override, so a look that
     sizes the frame itself turns this off and the row is hidden.
   - `pages`: the F1 menu's other screens open as pages in its frame, as
-    Settings does (Trophies and Mods so far: `trophies_page.cpp`,
-    `mods_page.cpp`). Without it they
+    Settings does (Trophies, Mods and Co-op so far: `trophies_page.cpp`,
+    `mods_page.cpp`, `coop_page.cpp`). Without it they
     open as their own windows, as Alpha UI keeps them. The start screen
     opens them the same way, alone in the frame (`menu::screen_alone`).
 - **Alpha UI** is the documents' own sheets as they are (for the F1 menu and
