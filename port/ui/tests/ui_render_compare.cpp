@@ -33,6 +33,7 @@
 #include "menu_shell.hpp"
 #include "menu_pages.hpp"
 #include "mods_page.hpp"
+#include "overlay.hpp"
 #include "players_page.hpp"
 #include "players_state.hpp"
 #include "prelaunch.hpp"
@@ -1005,6 +1006,35 @@ void open_crash() {
     ui::crash_dialog::push_window(content, actions, {});
 }
 
+// A note over the game (overlay.hpp's toasts) as the overlay shows it, over nothing else: a warning, an outcome (a
+// plain note), an info, a trophy, or the menu hint. The words are the port's own kinds of note; the trophy made up.
+void open_note(const std::string& kind) {
+    ui::push_document(std::make_unique<ui::Overlay>(), true, true);
+    if (kind == "hint") {
+        ui::show_menu_notification();
+        return;
+    }
+    ui::Toast t{.duration = std::chrono::seconds(60)};
+    if (kind == "warning") {
+        t.type = "warning";
+        t.title = "Mods";
+        t.content = "Texture pack 2 holds two versions: keep one, then refresh the list.";
+    } else if (kind == "info") {
+        t.type = "info";
+        t.title = "Co-op";
+        t.content = "Copied. Send it to your friends, not in public.";
+    } else if (kind == "done") {
+        t.title = "Players";
+        t.content = "Gray_Wanderer is blocked.";
+    } else {
+        t.type = "trophy";
+        t.title = "<toast-title>Trophy unlocked</toast-title><grade class=\"gold\"><icon class=\"trophy\"/>Gold</grade>";
+        t.content = "<trophy-name>Every trophy</trophy-name>";
+        t.icon = "<icon class=\"trophy\"/>";
+    }
+    ui::push_toast(std::move(t));
+}
+
 // Settings closed on that tab's row and opened again: it opens where it was left.
 void reopen_settings(const std::string& tab, const std::string& row) {
     ui::SettingsPage* page = open_settings(tab, false);
@@ -1159,6 +1189,7 @@ des::seamless::Status standin_guest(bool lost) {
 
 void close_pages() {
     ui::close_all_documents();
+    ui::get_toasts().clear();
     ui::trophy_set::set_test_source({});
     des::seamless::set_test_status({});
     ui::players::clear_test_list();
@@ -1495,6 +1526,9 @@ int main(int argc, char** argv) {
     pages.push_back({"mods", 1280, 720, false, 1.f, false, [] { open_mods(true, "", false); }, {}});
     // Change Buttons as Alpha UI shows it (its window).
     pages.push_back({"controls", 1280, 720, false, 1.f, false, [] { open_controls(false, 0, 0, false, false); }, {}});
+    // Notes over the game: a warning, a trophy, and the menu hint.
+    for (const char* kind : {"warning", "trophy", "hint"})
+        pages.push_back({std::string("note-") + kind, 1280, 720, false, 1.f, false, [kind] { open_note(kind); }, {}});
     // The crash window, at its own size.
     pages.push_back({"crash", 1024, 640, false, 1.f, false, open_crash, {}});
     // Players as Alpha UI shows it (its window), from the made-up list.
@@ -1556,6 +1590,10 @@ int main(int argc, char** argv) {
                          in_band([] { open_controls(true, 0, 0, false, true); }), {}});
         pages.push_back({"des-controls-restore", 1280, 720, false, 1.f, false,
                          in_band([] { open_controls(false, 16, 0, false, false); }), {}});
+        // Notes over the game as stone bars, each kind's mark in its colour; the menu hint low in the middle.
+        for (const char* kind : {"warning", "done", "info", "trophy", "hint"})
+            pages.push_back({std::string("des-note-") + kind, 1280, 720, false, 1.f, false,
+                             in_band([kind] { open_note(kind); }), {}});
         // The crash window, its red mark kept, the focus on Report on GitHub.
         pages.push_back({"des-crash", 1024, 640, false, 1.f, false, in_band(open_crash), {}});
         // Players as a page over Settings: the list's first page, further down (its marks above and below), and offline
