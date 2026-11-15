@@ -132,6 +132,11 @@ DES_REGION_ADDR(0x002A6C60, 0x002A7A38)  /* return address in 0x002A6AA8 */
 DES_REGION_ADDR(0x002A6C70, 0x002A7A48)  /* return address in 0x002A6AA8 */
 DES_REGION_ADDR(0x002A6CA8, 0x002A7A80)  /* return address in 0x002A6AA8 */
 DES_REGION_ADDR(0x002B2984, 0x002B375C)  /* hook des_coop_hook: a corpse's drop add after lwz r9,0x8C(r9) (a friend gets drops too) */
+DES_REGION_ADDR(0x002C9600, 0x002CA3D8)  /* hook des_coop_hook: message 0x26's read (an area character's place, from the host), held after a load */
+DES_REGION_ADDR(0x002C96A8, 0x002CA480)  /* hook des_coop_hook: message 0x26's read in its loop (the same) */
+DES_REGION_ADDR(0x002C9740, 0x002CA518)  /* hook des_coop_hook: message 4's read (the area characters' states, from the host), held after a load */
+DES_REGION_ADDR(0x002C98C4, 0x002CA69C)  /* hook des_coop_hook: message 0x21's read (the area characters' states, from a member), held after a load */
+DES_REGION_ADDR(0x002C9AEC, 0x002CA8C4)  /* hook des_coop_hook: message 3's read (the area characters' places, from a member), held after a load */
 DES_REGION_ADDR(0x002D0EB0, 0x002D1C88)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x002D8978, 0x002D9750)  /* call */
 DES_REGION_ADDR(0x002DD368, 0x002DE140)  /* call kUseGoods */
@@ -193,10 +198,13 @@ DES_REGION_ADDR(0x005086F8, 0x005094F0)  /* hook des_coop_hook: the event flags'
 DES_REGION_ADDR(0x00508820, 0x00509618)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00508C00, 0x005099F8)  /* hook des_coop_hook: a guest's join fills its flag copies (its own world's flags kept) */
 DES_REGION_ADDR(0x0052C2D8, 0x0052D0D0)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00532108, 0x00532F00)  /* call des_seamless_game (by address): a member's P2P message read */
+DES_REGION_ADDR(0x00532358, 0x00533148)  /* call des_seamless_game (by address): the host's P2P message read */
 DES_REGION_ADDR(0x0053B31C, 0x0053C10C)  /* hook des_coop_hook: the session's leave */
 DES_REGION_ADDR(0x0053CFE8, 0x0053DDD8)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x0053EA2C, 0x0053F81C)  /* hook des_coop_hook: the session's check of a joined guest (a friend joins in either form) */
 DES_REGION_ADDR(0x00540D90, 0x00541B80)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00541B78, 0x00542968)  /* call des_seamless_game (by address): a connection's P2P message read */
 DES_REGION_ADDR(0x0054E8C0, 0x0054F6B0)  /* hook des_net_show */
 DES_REGION_ADDR(0x0054E8F8, 0x0054F6E8)  /* hook des_net_show */
 DES_REGION_ADDR(0x0054E934, 0x0054F724)  /* hook des_net_grade_poll */

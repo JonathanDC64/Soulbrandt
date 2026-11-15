@@ -101,6 +101,9 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
   two. Three friends get double too (the original has nothing for three, so a boss had its solo health).
 - **When the host dies,** everyone goes back to the start together. There the friends see the host's rolls, attacks
   and other moves again. Before, a friend that was alive could see the host stuck in a weapon swap after that.
+- **Enemies stay where they belong after a load.** Before, an enemy that stood near a player as the group moved to
+  another area could move the new area's enemy with the same number to its place. In the tutorial that put the
+  Vanguard outside its hall: it fell, and "The Demon Was Destroyed" showed before anyone saw it.
 - **Souls from enemies.** Every player gets an enemy's full souls when it dies, whoever killed it. (The original game
   gives a summoned phantom half.)
 - **Progress is everyone's.** A boss killed, or a door, lever, elevator, shortcut, bridge or fog wall opened while
@@ -260,6 +263,28 @@ game's own join does.
 
 **The host keeps its session.** The game's leaves on a load are skipped on the host. Its session ends with co-op.
 
+**The old area's enemy places.** The game keeps tables of the area's characters' states, by their number in the
+area's list (`chr+0x70`). It fills them from the other players' messages:
+- P2P 3 and 0x21 from each member: places and facings (at a table's `+8`), and states (`+0xC`);
+- P2P 4 and 0x26 from the session's host: states (`+0x10`), and places and facings.
+
+Each connection keeps a queue of each message, and a member's are read only while this game has a character for
+that player (0x00532108). The game's own sessions end with the area. A seamless session doesn't, and after a load the
+others' characters are placed as soon as this game arrives. So what another player sent from the old area before its
+own load was read into the new area's tables, onto the character with the same number.
+
+In the tutorial (11-15), `m08_00`'s no. 4, an enemy 16 m from the Archstone, put `m08_01`'s no. 4, the Vanguard, at
+its place, outside the hall. It fell from there when its logic woke (a player in its hall), and the game showed "The
+Demon Was Destroyed". This needs a player near an enemy of the old area as the load starts, which is why it doesn't
+happen every time.
+
+So from the start of each host load (on the host, its own start; on a friend, its follow), what the five reads of
+these messages get is dropped (hooks after 0x002C9AEC, 0x002C98C4, 0x002C9740, 0x002C9600, 0x002C96A8). This lasts
+until each other player in the session has said it arrived for that load (`HERE`). Then every connection's queues of
+the four are emptied once more, at the next read, on the readers' thread. A `HERE` (through the room server) is sent
+once its sender's load has ended, so what that player sent from the old area (peer to peer) left a load's time
+before it.
+
 **A player back after a death.** A dead phantom leaves the game's sessions, so the game never brings its character
 back: on the other games that character stays in its death animation, faded out, and plays none of its moves after.
 So a player back in the world after a death says so (`BACK`): a friend after its respawn or after a load it followed
@@ -289,6 +314,7 @@ alive.
 | `REDY` | host | load count, area, where it arrived and where it stands (each with its facing), its area's dead characters | after each load, every 2 s, and when asked |
 | `HER?` | friend | none | send a `REDY` now (a friend's respawn) |
 | `BACK` | any | its player id | back in the world after a death: make its character again |
+| `HERE` | any | the host's load count | in the world after that load: the area's syncs from this player are current again |
 | `FLGS` | host | area, offset, up to 1,000 bytes of its event flags | the host's flags, in three parts, before each `REDY` |
 | `FLAG` | host | flag, area | a progress flag was set in the host's world |
 | `FLAG` | friend | flag, area | the Archstones' seal was opened by this friend: the host's world takes it |
@@ -735,6 +761,14 @@ the newer generation, and saves as usual.
   game has no co-op there), so with a friend nobody got it. Its prompt is now offered with or without a session, to
   each player, like the other bosses'. Checked on the script (both of its registrations change, and only those); not
   yet in the game. (An earlier note here called it the final area's soul: `m08` is the tutorial.)
+- The Vanguard after the load into its area (11-15, two copies, scripted, the pinned tutorial save, god mode). Both
+  players stood by `m08_00`'s Archstone, then the host loaded `m08_01`:
+  - Before, the Vanguard was put at (99.3, -0.2, -21.9), outside its hall, on the host's screen in one run and on
+    the friend's in another.
+  - With the change, in three runs it stayed home (0.3, 19.2, -102.7) on both screens. Each run dropped one old
+    message on the host's game, and up to two on the friend's (those at the last emptying).
+  - With both players then put in its hall, the fight started on both screens. For the 90 s watched, the Vanguard
+    stood in the same place on both games, within half a metre at each check.
 - Items for a friend: the area's items and enemy drops (above). Not covered: a drop that an item lot allows only once
   (its flag is read from the host's flags in play), and the scripted pickups (the Demonbrand, the keys) that an
   area's script offers to the host and to players in their own world only, as the boss souls were.

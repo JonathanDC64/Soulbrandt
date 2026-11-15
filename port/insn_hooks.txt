@@ -273,6 +273,11 @@
 0x004C9C5C=des_coop_hook   # bl 0x0026F378 (the player's type) in the talk check 0x004C9C18: the same
 0x0025CB6C=des_coop_hook   # lwz r9,0x8C(r9) in the area items' add 0x0025CAE8 (the player's type for this area): a friend gets the items too
 0x0025CC34=des_coop_hook   # bl 0x005087C8 (the item's taken flag, r14) in the same add: a friend sees each item as its own world has it
+0x002C9AEC=des_coop_hook   # bl 0x00532108 (message 3: the area characters' places, from a member) in 0x002C9A18: held after a load until the others are in the area
+0x002C98C4=des_coop_hook   # bl 0x00532108 (message 0x21: the area characters' states, from a member) in 0x002C9818: the same
+0x002C9740=des_coop_hook   # bl 0x00532358 (message 4: the area characters' states, from the host) in 0x002C96C0: the same
+0x002C9600=des_coop_hook   # bl 0x00532358 (message 0x26: an area character's place, from the host) in 0x002C9358: the same
+0x002C96A8=des_coop_hook   # bl 0x00532358 in 0x002C9358's loop (message 0x26): the same
 0x002B2984=des_coop_hook   # lwz r9,0x8C(r9) in a corpse's drop add 0x002B2900: a friend gets drops from dead enemies too
 0x0053EA2C=des_coop_hook   # lwz r0,0x8C(r9) in the session update 0x0053E578's check of a joined guest (state 6): one in body form (0) leaves; a friend joins in either form
 0x0043E4E0=des_coop_hook   # mr r3,r4 at the start of SetTextEffect's native (r3: the text's type): a friend's revival waits for its "The Demon Was Destroyed"
