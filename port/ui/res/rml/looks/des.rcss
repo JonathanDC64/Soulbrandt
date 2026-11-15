@@ -962,6 +962,16 @@ window.modal modal-header icon {
     display: none;
 }
 
+/* The crash window keeps its red mark (questions have none): the HUD's health red, a status colour. */
+window.modal modal-header icon.error {
+    display: inline-block;
+    width: 24dp;
+    height: 24dp;
+    margin-right: 10dp;
+    font-size: 24dp;
+    color: var(--des-error);
+}
+
 window.modal modal-title,
 window.modal.danger modal-title {
     font-family: Old Standard TT;
