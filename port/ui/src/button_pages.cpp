@@ -1096,30 +1096,34 @@ Image draw(const Page& page, const std::vector<uint8_t>& base, const Spec& spec,
 
 namespace {
 
-// A key with a word on it ("Enter"), on a cap as wide as the word needs; a letter, an arrow key, a chord and the mouse
-// keep the page's square.
-bool wide_key(const Single& s) {
-    if (s.kind != Kind::Keyboard || s.key.mod) return false;
+// The word on a wide picture, or none: a key with a word on it ("Enter"), on a cap as wide as the word needs; and
+// PlayStation's Select and Start, a pill with the word on it as the PS3's own prompts draw them. A letter, an arrow
+// key, a chord, the mouse and every other button keep the page's square.
+std::string wide_word(const Single& s) {
+    if (s.kind == Kind::PlayStation) return s.pad == kPSelect ? "SELECT" : s.pad == kPStart ? "START" : "";
+    if (s.kind != Kind::Keyboard || s.key.mod) return "";
     const int in = s.key.in;
-    if (in >= kMouse && in <= kWheelDown) return false;
-    if (in == kVkUp || in == kVkRight || in == kVkDown || in == kVkLeft) return false;
-    return s.key.label.size() > 1;
+    if (in >= kMouse && in <= kWheelDown) return "";
+    if (in == kVkUp || in == kVkRight || in == kVkDown || in == kVkLeft) return "";
+    return s.key.label.size() > 1 ? s.key.label : "";
 }
-constexpr float kWideCap = 0.36f;   // a wide key's capitals, of its height
-constexpr float kWideEdge = 0.04f;  // its cap's margin, of its height (the page's keys fill 0.92 of the cell)
+// Its capitals, of the height: a key's word, or a pill's smaller capitals.
+float wide_cap(const Single& s) { return s.kind == Kind::Keyboard ? 0.36f : 0.28f; }
+constexpr float kWideEdge = 0.04f;  // the cap's margin, of its height (the page's keys fill 0.92 of the cell)
 
 }  // namespace
 
 float single_ratio(const Single& s, const unsigned char* font) {
     stbtt_fontinfo info;
-    if (!wide_key(s) || !font || !stbtt_InitFont(&info, font, stbtt_GetFontOffsetForIndex(font, 0))) return 1.f;
+    const std::string word = wide_word(s);
+    if (word.empty() || !font || !stbtt_InitFont(&info, font, stbtt_GetFontOffsetForIndex(font, 0))) return 1.f;
     constexpr float h = 100.f;
     float w, top, bottom;
-    measure(&info, s.key.label, cap_scale(&info, kWideCap * h), w, top, bottom);
+    measure(&info, word, cap_scale(&info, wide_cap(s) * h), w, top, bottom);
     // The word with room either side as a letter key has, about a quarter of the height; and never less than text()
     // needs, which keeps a word in the middle 84 % of the cap, so a long one is not narrowed.
-    const float word = std::max(w + 0.48f * h, w / 0.84f + 0.04f * h);
-    return std::max(1.f, (word + 2 * kWideEdge * h) / h);
+    const float room = std::max(w + 0.48f * h, w / 0.84f + 0.04f * h);
+    return std::max(1.f, (room + 2 * kWideEdge * h) / h);
 }
 
 Image draw_single(const Single& s, int width, int height, const unsigned char* font) {
@@ -1134,15 +1138,14 @@ Image draw_single(const Single& s, int width, int height, const unsigned char* f
     const float w = float(width), h = float(height), d = std::min(w, h);
     Ctx c{cv, have_font ? &info : nullptr, h / 26.f};
     const Box sq = centred(w / 2, h / 2, d, d);
-    if (s.kind == Kind::Keyboard) {
-        if (wide_key(s)) {
-            const float e = kWideEdge * h;
-            const Box k{e, e, w - e, h - e};
-            cap(c, k, 0.22f * h, 0.22f * h);
-            text(c, k, s.key.label, kWideCap * h, kLetter);
-        } else {
-            key(c, sq, s.key);
-        }
+    if (const std::string word = wide_word(s); !word.empty()) {
+        const float e = kWideEdge * h;
+        const Box k{e, e, w - e, h - e};
+        const float r = s.kind == Kind::Keyboard ? 0.22f * h : k.h() / 2;   // a key's corners, or a pill's round ends
+        cap(c, k, r, r);
+        text(c, k, word, wide_cap(s) * h, kLetter);
+    } else if (s.kind == Kind::Keyboard) {
+        key(c, sq, s.key);
     } else if (s.pad >= 0 && s.pad < 16) {
         pad_button(c, sq, s.kind, s.pad);
     } else {

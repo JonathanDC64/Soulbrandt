@@ -387,12 +387,18 @@ int main(int argc, char** argv) {
             for (int p = -1; p < 16; p++) {
                 const bp::Single s{kind, p, p < 0 ? 5u : 0u, {}};
                 sheet.back().push_back(s);
-                const bp::Image im = bp::draw_single(s, kH, kH, letters);
-                all = all && im.width == kH && im.height == kH && im.levels == 1 && im.premultiplied &&
-                      at(im, kH / 2, kH / 2)[3] > 200 && at(im, 1, 1)[3] == 0 && bp::single_ratio(s, letters) == 1.f;
+                // PlayStation's Select and Start: a pill with the word on it; every other button square.
+                const bool pill = kind == bp::Kind::PlayStation && (p == 0 || p == 3);
+                const float ratio = bp::single_ratio(s, letters);
+                const int w = int(std::lround(float(kH) * ratio));
+                const bp::Image im = bp::draw_single(s, w, kH, letters);
+                all = all && im.width == uint32_t(w) && im.height == kH && im.levels == 1 && im.premultiplied &&
+                      at(im, uint32_t(w / 2), kH / 2)[3] > 200 && at(im, 1, 1)[3] == 0 &&
+                      (pill ? !letters || ratio > 1.5f : ratio == 1.f);
             }
         }
-        check(all, "every pad button drawn on its own at its size, opaque in the middle, square");
+        check(all, "every pad button drawn on its own at its size, opaque in the middle; PlayStation's Select and "
+                   "Start wide pills, the rest square");
         // The most of `f` over a picture's pixels: PlayStation's shapes in their colours.
         const auto most = [&](int pad, auto f) {
             const bp::Image im = bp::draw_single({bp::Kind::PlayStation, pad, 0, {}}, kH, kH, letters);
