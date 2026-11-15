@@ -3,8 +3,8 @@
    Another look changes what it needs in its own sheet (looks.hpp). Colours and fonts from theme.rcss.
 
    The body's classes say what shows: entries (the F1 menu's bar), page (a page in its frame), closed, standalone
-   (Settings from the start screen or setup), preview, listing, typing, comparing, hiding (Shift or R3 held), motion
-   (the transitions; off for the tests' pictures). */
+   (Settings from the start screen or setup), preview, listing, typing, comparing, hiding (Shift or R3 held), asking (a
+   question is up), motion (the transitions; off for the tests' pictures). */
 body {
     display: flex;
     width: 100%;
@@ -61,6 +61,11 @@ menu-entry.on {
     border-bottom-width: 2dp;
     border-bottom-color: var(--color-accent);
     font-effect: glow(0dp 4dp 0dp 4dp black);
+}
+
+/* The arrows at the entries' ends, for a look that draws them. */
+menu-end {
+    display: none;
 }
 
 menu-close {
@@ -137,11 +142,21 @@ menu-slot-entry {
     white-space: nowrap;
 }
 
+/* The menu's own title, for a look whose band names it (Today's slot lists the entries instead). */
+menu-title {
+    display: none;
+}
+
 menu-slot-entry.on {
     color: var(--color-accent);
 }
 
 body.standalone menu-slot {
+    display: none;
+}
+
+/* The line under a look's band (Today has the help beside the rows instead). */
+menu-strip {
     display: none;
 }
 
@@ -371,6 +386,11 @@ menu-value menu-tag {
 }
 
 menu-tag:empty {
+    display: none;
+}
+
+/* A number's share of its range, for a look that draws it. */
+menu-gauge {
     display: none;
 }
 

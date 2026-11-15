@@ -163,6 +163,29 @@ void settings_page() {
     m.set_focus(2, rows);
     check(keys(m.prompts(rows, "Back")) == std::vector<Key>{Key::Move, Key::Back}, "an info row: Select, Back");
 
+    // Help, where the look has no help beside the rows.
+    m.set_focus(0, rows);
+    check(!m.help(rows) && m.mode() == Mode::Rows, "no Help key where the help is beside the rows");
+    check(keys(m.prompts(rows, "Back")).back() == Key::Back &&
+              keys(m.prompts(rows, "Back")).end()[-2] == Key::Preview,
+          "and no Help prompt");
+    m.set_help_key(true);
+    check(keys(m.prompts(rows, "Back")).end()[-2] == Key::Help, "a look with a strip: Help before Back");
+    check(m.help(rows) && m.mode() == Mode::Help, "Help opens the row's help");
+    check(!m.move(1, rows) && m.focus() == 0, "Up and Down with the help open: nothing");
+    check(m.enter(rows) == Action::None && !m.preview(rows), "nor Enter or Preview");
+    check(keys(m.prompts(rows, "Back")) == std::vector<Key>{Key::Back}, "the help's prompt: Close");
+    check(m.help(rows) && m.mode() == Mode::Rows, "Help again closes it");
+    m.help(rows);
+    check(m.back() && m.mode() == Mode::Rows, "Back closes it");
+    m.enter(rows);
+    check(!m.help(rows) && m.mode() == Mode::List, "no Help over a list");
+    m.back();
+    m.help(rows);
+    m.set_help_key(false);
+    m.rows_changed(rows);
+    check(m.mode() == Mode::Rows, "the look changed to one with the help beside the rows: the box closes");
+
     // Rows that come or go.
     m.set_focus(5, rows);
     const std::vector<RowFacts> shorter(rows.begin(), rows.begin() + 3);

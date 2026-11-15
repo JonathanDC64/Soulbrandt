@@ -62,11 +62,15 @@ void restart_now() {
 
 const std::vector<Entry>& entries() {
     static const std::vector<Entry> sEntries = {
-        {"Settings", [](MenuShell& menu) { menu.open_settings(); }},
-        {"Trophies", [](MenuShell& menu) { menu.open(std::make_unique<TrophiesWindow>()); }},
-        {"Mods", [](MenuShell& menu) { menu.open(std::make_unique<ModsWindow>()); }},
-        {"Co-op", [](MenuShell& menu) { menu.open(make_coop_window()); }},
-        {"Report an issue",
+        {"Settings", "Change how the game looks, sounds and plays.",
+            [](MenuShell& menu) { menu.open_settings(); }},
+        {"Trophies", "See the trophies you have earned, and the ones still to find.",
+            [](MenuShell& menu) { menu.open(std::make_unique<TrophiesWindow>()); }},
+        {"Mods", "Turn mods on or off, and choose the order they load in.",
+            [](MenuShell& menu) { menu.open(std::make_unique<ModsWindow>()); }},
+        {"Co-op", "Play through the game with up to three friends.",
+            [](MenuShell& menu) { menu.open(make_coop_window()); }},
+        {"Report an issue", "Make a report of a problem, with what the game was doing.",
             [](MenuShell& menu) {
                 ask({
                     .title = "Report an issue?",
@@ -86,7 +90,7 @@ const std::vector<Entry>& entries() {
                     .safe = 1,
                 });
             }},
-        {"Quit", [](MenuShell&) { request_quit_confirm(); }},
+        {"Quit", "Close the game and return to the desktop.", [](MenuShell&) { request_quit_confirm(); }},
     };
     return sEntries;
 }

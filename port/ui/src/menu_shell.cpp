@@ -4,6 +4,7 @@
 #include "button_art.hpp"
 #include "host.hpp"
 #include "input.hpp"
+#include "looks.hpp"
 #include "menu_pages.hpp"
 #include "question.hpp"
 #include "settings.hpp"
@@ -30,7 +31,8 @@ const Rml::String kDocumentSource = R"RML(
 <body>
     <menu-entries id="entries" />
     <menu-frame id="frame">
-        <menu-slot id="slot" />
+        <menu-slot id="slot"><menu-title>Menu</menu-title></menu-slot>
+        <menu-strip id="strip" />
         <menu-page id="page" />
         <menu-prompts id="prompts" />
     </menu-frame>
@@ -82,11 +84,22 @@ MenuShell::MenuShell(bool standalone, DocumentScope scope)
     mEntries = mDocument->GetElementById("entries");
     mFrame = mDocument->GetElementById("frame");
     mSlot = mDocument->GetElementById("slot");
+    mStrip = mDocument->GetElementById("strip");
     mPageHost = mDocument->GetElementById("page");
     mPrompts = mDocument->GetElementById("prompts");
     mBadge = mDocument->GetElementById("badge");
 
     const std::vector<menu::Entry>& entries = menu::entries();
+    // The arrows at the entries' ends (a look's: Today shows none), dim at the first or last; a click moves one way.
+    const auto end = [this](int side) {
+        Rml::Element* e = append(mEntries, "menu-end");
+        e->SetClass(side ? "right" : "left", true);
+        listen(e, Rml::EventId::Click, [this, side](Rml::Event&) {
+            if (mModel.level() == menu::Model::Level::Entries) command(side ? menu::Command::Right : menu::Command::Left, true);
+        });
+        return e;
+    };
+    mEnds[0] = end(0);
     for (size_t i = 0; i < entries.size(); i++) {
         Rml::Element* e = append_text_element(mEntries, "menu-entry", entries[i].title);
         mEntryElems.push_back(e);
@@ -96,6 +109,7 @@ MenuShell::MenuShell(bool standalone, DocumentScope scope)
         Rml::Element* s = append_text_element(mSlot, "menu-slot-entry", entries[i].title);
         mSlotElems.push_back(s);
     }
+    mEnds[1] = end(1);
     Rml::Element* close = append(mEntries, "menu-close");
     listen(close, Rml::EventId::Click, [this](Rml::Event&) { close_menu(); });
 
@@ -204,6 +218,7 @@ void MenuShell::draw() {
     if (mModel.standalone()) classes += " standalone";
     if (mHiding) classes += " hiding";
     if (mClosing) classes += " closing";
+    if (asking()) classes += " asking";
     if (host::animations_enabled()) classes += " motion";
     if (mPage && level == Level::Page)
         if (const std::string own = mPage->classes(); !own.empty()) classes += " " + own;
@@ -218,6 +233,16 @@ void MenuShell::draw() {
         if (mEntryElems[i]->IsClassSet("on") != on) mEntryElems[i]->SetClass("on", on);
         if (mSlotElems[i]->IsClassSet("on") != on) mSlotElems[i]->SetClass("on", on);
     }
+    const bool first = mEntry <= 0, last = mEntry + 1 >= static_cast<int>(mEntryElems.size());
+    if (mEnds[0]->IsClassSet("end") != first) mEnds[0]->SetClass("end", first);
+    if (mEnds[1]->IsClassSet("end") != last) mEnds[1]->SetClass("end", last);
+
+    std::string strip;
+    if (level == Level::Entries && mEntry >= 0 && mEntry < static_cast<int>(menu::entries().size()))
+        strip = menu::entries()[mEntry].brief;
+    else if (level == Level::Page && mPage)
+        strip = mPage->strip();
+    set_text_content(mStrip, strip);
 
     // The prompts for what the keys do now, drawn again only when they change.
     std::vector<prompts::Prompt> list;
@@ -239,10 +264,10 @@ void MenuShell::draw() {
 // The entries bar spans the window: kept inside the screen's safe area (a TV's, the Deck's), as the menu bar was.
 // The frame's height, Interface > Menu height (ui_menu_height): from the 640 dp it has in a 720p window (0) to all
 // the height the body leaves it (100). RmlUi has no calc(), so it is worked out here, and set again only when it
-// changes. Preview's strip keeps its own height from the look's sheet.
+// changes. Preview's strip, and a look whose frame is sized otherwise (looks.hpp's menuHeight), keep the sheet's.
 void MenuShell::update_frame_height(bool preview) {
     float px = -1.f;
-    if (!preview && mFrame) {
+    if (!preview && mFrame && looks::current().menuHeight) {
         const float base = 640.f * mDocument->GetContext()->GetDensityIndependentPixelRatio();
         const float room = mBody->GetBox().GetSize(Rml::BoxArea::Content).y;
         const int share = std::clamp(settings::get_int("ui_menu_height"), 0, 100);

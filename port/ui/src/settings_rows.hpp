@@ -19,6 +19,7 @@ struct Value {
     bool original = false;  // the game's own choice, shown with "(original)"
     bool first = false;     // Left can't go further (the first choice, Off, the smallest number)
     bool last = false;      // nor Right
+    float fill = -1.f;      // a number: how far it is from its least (0) to its most (1); -1 for any other row
 };
 Value value(const RowDesc& row);
 

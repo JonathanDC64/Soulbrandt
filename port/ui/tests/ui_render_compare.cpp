@@ -25,6 +25,7 @@
 // --verbose: the first bytes that differ in each frame.
 // Exit code 0: every picture and count the same; 1: one differs; 2: it could not run.
 #include "host.hpp"
+#include "looks.hpp"
 #include "menu_shell.hpp"
 #include "menu_pages.hpp"
 #include "renderer.hpp"
@@ -915,6 +916,13 @@ void open_settings_row(const std::string& tab, const std::string& row, ui::menu:
     page->command(command, true);
 }
 
+// The menus in that look (looks.hpp): the ui_look setting, applied as the Menu look row applies it.
+void use_look(std::string_view id) {
+    if (ui::settings::get("ui_look") == id) return;
+    ui::settings::set("ui_look", std::string(id));
+    ui::looks::apply();
+}
+
 void close_pages() {
     ui::close_all_documents();
     for (Rml::ElementDocument* d : gDocuments) d->Close();
@@ -1235,6 +1243,32 @@ int main(int argc, char** argv) {
     pages.push_back({"menu", 1280, 720, false, 1.f, false, [] { open_menu(false); }, {}});
     pages.push_back({"menu-quit", 1280, 720, false, 1.f, false, [] { open_menu(true); }, {}});
     pages.push_back({"menu-restart", 1280, 720, false, 1.f, false, open_menu_restart, {}});
+    // Pause band's pages, in a build that offers it (a developer build until it is released, looks.hpp). Every page
+    // opens in the default look; these switch to Pause band first.
+    use_look("band");
+    const bool band = ui::looks::current().id == "band";
+    use_look(ui::looks::kDefault);
+    if (band) {
+        const auto in_band = [](std::function<void()> open) {
+            return [open = std::move(open)] {
+                use_look("band");
+                open();
+            };
+        };
+        pages.push_back({"band-menu", 1280, 720, false, 1.f, false, in_band([] { open_menu(false); }), {}});
+        pages.push_back({"band-quit", 1280, 720, false, 1.f, false, in_band([] { open_menu(true); }), {}});
+        pages.push_back({"band-display", 1280, 720, false, 1.f, false, in_band([] { open_settings("Display", false); }), {}});
+        pages.push_back({"band-list", 1280, 720, false, 1.f, false,
+                         in_band([] { open_settings_row("Display", "Aspect ratio", Command::Confirm); }), {}});
+        pages.push_back({"band-help", 1280, 720, false, 1.f, false,
+                         in_band([] { open_settings_row("Display", "Display mode", Command::Help); }), {}});
+        pages.push_back({"band-preview", 1280, 720, false, 1.f, false,
+                         in_band([] { open_settings_row("Picture", "Render resolution", Command::Preview); }), {}});
+        pages.push_back({"band-compare", 1280, 720, false, 1.f, false,
+                         in_band([] { open_settings_row("Picture", "Render resolution", Command::Compare); }), {}});
+        pages.push_back({"band-prelaunch", 1280, 720, false, 1.f, false, in_band([] { open_settings("", true); }), {}});
+        pages.push_back({"band-tall", 1920, 1200, false, 1.f, false, in_band([] { open_settings("Network", false); }), {}});
+    }
     pages.push_back({"clip", 1280, 720, false, 1.f, false, [] { open_rml(kClipPage); }, {}, true});
     pages.push_back({"look-primitives", 1280, 720, false, 1.f, false, [] { open_rml(kLookPage); }, {}});
     pages.push_back({"filters", 1280, 720, false, 1.f, false, [] { open_rml(kFilterPage); }, {}, true});
@@ -1290,6 +1324,7 @@ int main(int argc, char** argv) {
         unsigned long long before[URC_RENDERERS][URC_COUNT];
         std::memcpy(before, g_urc_count, sizeof before);
         const int mismatches = tee->mismatches;
+        use_look(ui::looks::kDefault);
         p.open();
         tee->before_end = p.draws;
         uint64_t diff[kRenderers] = {}, drawn = 0, changed[kRenderers] = {};

@@ -3,7 +3,7 @@
 // No RmlUi and no settings: the page (settings_page.cpp) gives it what each row can do now (RowFacts, from
 // settings_rows.hpp), so tests/menu_logic_check.cpp runs it alone.
 //
-// Back closes one thing at a time: the list, the typing or the preview, then the page.
+// Back closes one thing at a time: the list, the typing, the preview or the help, then the page.
 #pragma once
 
 #include "prompts.hpp"
@@ -27,7 +27,7 @@ struct RowFacts {
 
 class SettingsModel {
 public:
-    enum class Mode { Rows, List, Edit, Preview };
+    enum class Mode { Rows, List, Edit, Preview, Help };
 
     explicit SettingsModel(int tabs);
 
@@ -59,7 +59,13 @@ public:
     // Preview on the row with the focus: whether it opened (only on a row it can show).
     bool preview(std::span<const RowFacts> rows);
 
-    // Back: closes what is open (the list, the typing, the preview). False when nothing is: the page goes back.
+    // Help on the row with the focus: its whole help opens, or closes again. Only where the look has no help beside
+    // the rows (set_help_key): whether it opened or closed.
+    void set_help_key(bool on) { mHelpKey = on; }
+    bool help(std::span<const RowFacts> rows);
+
+    // Back: closes what is open (the list, the typing, the preview, the help). False when nothing is: the page goes
+    // back.
     bool back();
 
     // The prompts for now, in the order shown. back: Back's label ("Back", "Close").
@@ -73,6 +79,7 @@ private:
     std::vector<int> mFocus;
     Mode mMode = Mode::Rows;
     int mCursor = 0;
+    bool mHelpKey = false;
 };
 
 }  // namespace ui::menu

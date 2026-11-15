@@ -27,4 +27,7 @@ struct Question {
 // second press of Quit), or with no answers.
 bool ask(Question question);
 
+// True while a question asked here is up (the menus' body has the class asking: a look may hide its prompts).
+bool asking();
+
 }  // namespace ui
