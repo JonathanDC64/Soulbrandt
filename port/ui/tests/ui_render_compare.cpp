@@ -28,6 +28,7 @@
 #include "looks.hpp"
 #include "menu_shell.hpp"
 #include "menu_pages.hpp"
+#include "mods_page.hpp"
 #include "prelaunch.hpp"
 #include "renderer.hpp"
 #include "report.hpp"
@@ -998,9 +999,52 @@ void open_trophies(bool set, int focus) {
     if (auto* page = dynamic_cast<ui::TrophiesPage*>(menu_shell().page())) page->focus_trophy(focus);
 }
 
+// A stand-in mods folder for the Mods pages (made-up mods of a file or two each, nothing of the game's), made again
+// beside the scratch data folder: three look mods on (two with the same file), a gameplay mod off, a download with
+// two versions in it, and loose files with no game folder. Or an empty one. DES_MODS_DIR points the screens at it.
+void standin_mods(bool any) {
+    const std::filesystem::path data = std::getenv("DES_DATA_DIR") ? std::getenv("DES_DATA_DIR") : "";
+    const std::filesystem::path dir = data.parent_path() / (any ? "mods-standin" : "mods-empty");
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+    std::filesystem::create_directories(dir, ec);
+    const auto put = [&](const char* rel) {
+        const std::filesystem::path p = dir / std::filesystem::u8path(rel);
+        std::filesystem::create_directories(p.parent_path(), ec);
+        std::ofstream(p, std::ios::binary) << "stand-in";
+    };
+    if (any) {
+        put("Clearer text/font/menu_font.ccm");
+        put("Warmer torchlight/sfx/frpg_sfxbnd_m02.ffxbnd");
+        put("Darker nights/sfx/frpg_sfxbnd_m02.ffxbnd");
+        put("Darker nights/param/drawparam/m02_drawparam.parambnd");
+        put("Harder enemies/param/gameparam/gameparam.parambnd");
+        put("Texture pack 2/1080p/menu/menu_tex.tpf");
+        put("Texture pack 2/4K/menu/menu_tex.tpf");
+        put("Old menu font/oldfont.ccm");
+        std::ofstream(dir / "load_order.txt", std::ios::binary)
+            << "on Clearer text\non Warmer torchlight\non Darker nights\noff Harder enemies\n";
+    }
+    _putenv_s("DES_MODS_DIR", dir.string().c_str());
+}
+
+// Mods as the F1 menu opens it, from the stand-in folder: the look's own (Alpha UI's window, a page in a look with
+// looks.hpp's pages), the focus on the mod of that name, or Good to know open.
+void open_mods(bool any, const std::string& focus, bool help) {
+    standin_mods(any);
+    open_menu(false);
+    for (size_t i = 0; i < ui::menu::entries().size(); i++)
+        if (ui::menu::entries()[i].title == "Mods") ui::menu::entries()[i].choose(menu_shell());
+    if (auto* page = dynamic_cast<ui::ModsPage*>(menu_shell().page())) {
+        if (!focus.empty()) page->focus_mod(focus);
+        if (help) page->open_help();
+    }
+}
+
 void close_pages() {
     ui::close_all_documents();
     ui::trophy_set::set_test_source({});
+    _putenv_s("DES_MODS_DIR", "");
     ui::SettingsPage::forget_place();  // (Settings opens where it was left: each page starts as at the game's start)
     for (Rml::ElementDocument* d : gDocuments) d->Close();
     gDocuments.clear();
@@ -1328,8 +1372,9 @@ int main(int argc, char** argv) {
     pages.push_back({"menu", 1280, 720, false, 1.f, false, [] { open_menu(false); }, {}});
     pages.push_back({"menu-quit", 1280, 720, false, 1.f, false, [] { open_menu(true); }, {}});
     pages.push_back({"menu-restart", 1280, 720, false, 1.f, false, open_menu_restart, {}});
-    // Trophies, as Alpha UI shows it (its window).
+    // Trophies and Mods, as Alpha UI shows them (their windows).
     pages.push_back({"trophies", 1280, 720, false, 1.f, false, [] { open_trophies(true, 1); }, {}});
+    pages.push_back({"mods", 1280, 720, false, 1.f, false, [] { open_mods(true, "", false); }, {}});
     // The question before a first report, its tick not yet ticked (the scratch data folder has no answer kept).
     pages.push_back({"report-ack", 1280, 720, false, 1.f, false, [] {
         open_menu(false);
@@ -1360,6 +1405,13 @@ int main(int argc, char** argv) {
             open_trophies(true, 1);
             _putenv_s("DES_TROPHY_HIDDEN", "");
         }), {}});
+        // Mods as a page: a mod some of whose files another gives (its arrows to move it), a folder that needs
+        // attention, Good to know, and no mods yet.
+        pages.push_back({"des-mods", 1280, 720, false, 1.f, false, in_band([] { open_mods(true, "Darker nights", false); }), {}});
+        pages.push_back({"des-mods-attention", 1280, 720, false, 1.f, false,
+                         in_band([] { open_mods(true, "Texture pack 2", false); }), {}});
+        pages.push_back({"des-mods-help", 1280, 720, false, 1.f, false, in_band([] { open_mods(true, "", true); }), {}});
+        pages.push_back({"des-mods-empty", 1280, 720, false, 1.f, false, in_band([] { open_mods(false, "", false); }), {}});
         pages.push_back({"des-trophies-start", 1280, 720, false, 1.f, false, in_band([] {
             ui::trophy_set::set_test_source(standin_trophies);
             ui::push_document(ui::menu::screen_alone("Trophies"));
