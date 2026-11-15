@@ -37,6 +37,8 @@
 #include "settings_page.hpp"
 #include "setup_screens.hpp"
 #include "souls_model.hpp"
+#include "trophies_page.hpp"
+#include "trophy_set.hpp"
 #include "ui.hpp"
 
 #include "gpu.h"
@@ -937,8 +939,68 @@ void use_look(std::string_view id) {
     ui::looks::apply();
 }
 
+// A stand-in trophy set for the Trophies pages (the test has no disc): made-up trophies, none of the game's, with no
+// icons, so each shows its grade's cup. Fixed unlock times; the dates are drawn in the PC's time zone.
+bool standin_trophies(sceNpTrophySnapshot& s) {
+    struct T {
+        unsigned grade;
+        bool unlocked;
+        const char* name;
+        const char* detail;
+    };
+    static const T kSet[] = {
+        {1, false, "Every trophy", "Earn every other trophy."},
+        {2, false, "Return to slumber", "See the end of the game."},
+        {2, false, "Every demon's soul", "Hold the soul of every demon at once."},
+        {2, true, "The Nexus restored", "Clear the first area of every archstone."},
+        {3, true, "Pure white", "Raise your character tendency to pure white."},
+        {3, false, "Pure black", "Lower your character tendency to pure black."},
+        {3, true, "A world in white", "Raise a world's tendency to pure white."},
+        {4, true, "First steps", "Leave the Nexus for the first time."},
+        {4, true, "Keeper of the flame", "Speak with the Maiden in Black."},
+        {4, false, "Smith's apprentice", "Have a weapon reinforced to its limit."},
+        {4, true, "A friend in need", "Help another player defeat a demon."},
+        {4, false, "Hunter of the dark", "Defeat an invader in your own world."},
+        {4, true, "Spell weaver", "Learn every kind of spell once."},
+        {4, false, "Collector", "Own every ring."},
+    };
+    s = sceNpTrophySnapshot{};
+    std::snprintf(s.title, sizeof s.title, "%s", "Demon's Souls");
+    s.count = static_cast<unsigned>(std::size(kSet));
+    for (unsigned i = 0; i < s.count; i++) {
+        sceNpTrophySnapshotEntry& e = s.trophies[i];
+        e.trophyId = static_cast<int>(i);
+        e.grade = kSet[i].grade;
+        e.unlocked = kSet[i].unlocked;
+        e.unix_time = e.unlocked ? 1794253620ull + i * 86400ull : 0;
+        std::snprintf(e.name, sizeof e.name, "%s", kSet[i].name);
+        std::snprintf(e.detail, sizeof e.detail, "%s", kSet[i].detail);
+        s.per_grade[e.grade]++;
+        if (e.unlocked) {
+            s.unlocked++;
+            s.unlocked_per_grade[e.grade]++;
+        }
+    }
+    s.percent = static_cast<int>(100 * s.unlocked / s.count);
+    return true;
+}
+
+void open_menu(bool quit);
+
+// Trophies as the F1 menu opens it, from the stand-in set (or no set): the look's own (Alpha UI's window, a page in a
+// look with looks.hpp's pages), with the focus on that trophy.
+void open_trophies(bool set, int focus) {
+    if (set) ui::trophy_set::set_test_source(standin_trophies);
+    else ui::trophy_set::set_test_source([](sceNpTrophySnapshot&) { return false; });
+    open_menu(false);
+    for (size_t i = 0; i < ui::menu::entries().size(); i++)
+        if (ui::menu::entries()[i].title == "Trophies") ui::menu::entries()[i].choose(menu_shell());
+    if (auto* page = dynamic_cast<ui::TrophiesPage*>(menu_shell().page())) page->focus_trophy(focus);
+}
+
 void close_pages() {
     ui::close_all_documents();
+    ui::trophy_set::set_test_source({});
     ui::SettingsPage::forget_place();  // (Settings opens where it was left: each page starts as at the game's start)
     for (Rml::ElementDocument* d : gDocuments) d->Close();
     gDocuments.clear();
@@ -1266,6 +1328,8 @@ int main(int argc, char** argv) {
     pages.push_back({"menu", 1280, 720, false, 1.f, false, [] { open_menu(false); }, {}});
     pages.push_back({"menu-quit", 1280, 720, false, 1.f, false, [] { open_menu(true); }, {}});
     pages.push_back({"menu-restart", 1280, 720, false, 1.f, false, open_menu_restart, {}});
+    // Trophies, as Alpha UI shows it (its window).
+    pages.push_back({"trophies", 1280, 720, false, 1.f, false, [] { open_trophies(true, 1); }, {}});
     // The question before a first report, its tick not yet ticked (the scratch data folder has no answer kept).
     pages.push_back({"report-ack", 1280, 720, false, 1.f, false, [] {
         open_menu(false);
@@ -1285,6 +1349,21 @@ int main(int argc, char** argv) {
         };
         pages.push_back({"des-menu", 1280, 720, false, 1.f, false, in_band([] { open_menu(false); }), {}});
         pages.push_back({"des-quit", 1280, 720, false, 1.f, false, in_band([] { open_menu(true); }), {}});
+        // Trophies as a page: the top of the list, further down (the list scrolled, its marks above and below), with
+        // no set found, and on its own as the start screen opens it.
+        pages.push_back({"des-trophies", 1280, 720, false, 1.f, false, in_band([] { open_trophies(true, 1); }), {}});
+        pages.push_back({"des-trophies-down", 1280, 720, false, 1.f, false, in_band([] { open_trophies(true, 9); }), {}});
+        pages.push_back({"des-trophies-none", 1280, 720, false, 1.f, false, in_band([] { open_trophies(false, 0); }), {}});
+        // Two of them hidden (DES_TROPHY_HIDDEN, the test knob), the focus on one still locked: "Hidden trophy".
+        pages.push_back({"des-trophies-hidden", 1280, 720, false, 1.f, false, in_band([] {
+            _putenv_s("DES_TROPHY_HIDDEN", "1,4");
+            open_trophies(true, 1);
+            _putenv_s("DES_TROPHY_HIDDEN", "");
+        }), {}});
+        pages.push_back({"des-trophies-start", 1280, 720, false, 1.f, false, in_band([] {
+            ui::trophy_set::set_test_source(standin_trophies);
+            ui::push_document(ui::menu::screen_alone("Trophies"));
+        }), {}});
         pages.push_back({"des-display", 1280, 720, false, 1.f, false, in_band([] { open_settings("Display", false); }), {}});
         pages.push_back({"des-list", 1280, 720, false, 1.f, false,
                          in_band([] { open_settings_row("Display", "Aspect ratio", Command::Confirm); }), {}});
