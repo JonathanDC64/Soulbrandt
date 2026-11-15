@@ -13,6 +13,7 @@
 #include "looks.hpp"
 #include "menu_shell.hpp"
 #include "modal.hpp"
+#include "players_page.hpp"
 #include "players_window.hpp"
 #include "privacy_window.hpp"
 #include "settings.hpp"
@@ -746,6 +747,12 @@ void SettingsPage::open(const RowDesc& row) {
         mShell.push(std::make_unique<ControlsWindow>());
         break;
     case Opens::Players:
+        if (looks::current().pages) {
+            mShell.open_over([](Rml::Element* host, menu::PageHost& shell) -> std::unique_ptr<menu::Page> {
+                return std::make_unique<PlayersPage>(host, shell);
+            });
+            break;
+        }
         play_sound(kSoundClick);
         mShell.push(std::make_unique<PlayersWindow>());
         break;

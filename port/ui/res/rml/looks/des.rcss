@@ -2258,6 +2258,180 @@ controls-restore.locked {
     color: var(--des-locked);
 }
 
+/* ---- Players (players_page.hpp): six players at a time in a framed box at the column's left, as Trophies' rows: a
+   mark for how you met in a dark tile, with an arrow in its corner for which way; the name, how, and when. ---- */
+players-page {
+    display: flex;
+    flex: 1 1 0dp;
+    align-self: center;
+    width: 1152dp;
+    min-height: 0;
+    padding: 8dp 0 6dp;
+    font-family: Old Standard TT;
+    font-weight: normal;
+    color: var(--des-tan);
+}
+
+players-box {
+    display: block;
+    position: relative;
+    flex: 0 0 744dp;
+    align-self: flex-start;
+    padding: 6dp 6dp 6dp 8dp;
+    border-width: 1dp;
+    border-color: #4d4a42;
+    background-color: rgba(0, 0, 0, 62%);
+}
+
+players-page.none players-box {
+    display: none;
+}
+
+player-item {
+    display: none;
+}
+
+player-item.shown {
+    display: flex;
+    align-items: center;
+    height: 73dp;
+    gap: 16dp;
+    padding: 0 14dp 0 10dp;
+    border-top-width: 1dp;
+    border-top-color: transparent;
+    border-bottom-width: 1dp;
+    border-bottom-color: #2c2a27;
+    cursor: pointer;
+}
+
+player-item.shown:hover {
+    border-top-color: var(--des-hover-edge);
+    background-color: rgba(255, 255, 255, 5%);
+}
+
+player-item.focused {
+    border-top-color: var(--des-blood-edge);
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#853432, #6a2524);
+}
+
+body.motion player-item.focused {
+    animation: 1.1s linear-in-out infinite alternate des-breathe;
+}
+
+player-tile {
+    display: block;
+    position: relative;
+    flex: 0 0 56dp;
+    height: 56dp;
+    border-width: 1dp;
+    border-color: #3d3b35;
+    background-color: #0d0d0c;
+}
+
+player-tile icon {
+    position: absolute;
+    left: 11dp;
+    top: 11dp;
+    width: 32dp;
+    height: 32dp;
+    font-size: 32dp;
+    color: var(--des-tan);
+}
+
+player-tile icon.way {
+    left: auto;
+    top: auto;
+    right: 2dp;
+    bottom: 2dp;
+    width: 16dp;
+    height: 16dp;
+    font-size: 16dp;
+    color: var(--des-tan-light);
+}
+
+player-item.blocked player-tile icon {
+    color: var(--des-locked);
+}
+
+players-page icon.met-help {
+    decorator: text("&#xe3e4;" center center);  /* flare: a summon sign */
+}
+
+players-page icon.met-invasion {
+    decorator: text("&#xf889;" center center);  /* swords */
+}
+
+players-page icon.met-monk {
+    decorator: text("&#xef55;" center center);  /* local_fire_department */
+}
+
+players-page icon.met-blocked {
+    decorator: text("&#xe14b;" center center);  /* block */
+}
+
+players-page icon.way.in {
+    decorator: text("&#xe0b5;" center center);  /* call_received: into your world */
+}
+
+players-page icon.way.out {
+    decorator: text("&#xe0b2;" center center);  /* call_made: out to theirs */
+}
+
+player-words {
+    display: block;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+player-name,
+player-how {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+player-name {
+    font-size: 21dp;
+    line-height: 27dp;
+    letter-spacing: 0.3dp;
+    color: var(--des-tan-light);
+}
+
+player-item.blocked player-name {
+    color: var(--des-tan-muted);
+}
+
+player-tag {
+    margin-left: 10dp;
+    font-size: 14dp;
+    letter-spacing: 0;
+    color: var(--des-amber);
+}
+
+player-how {
+    font-size: 16dp;
+    line-height: 22dp;
+    letter-spacing: 0.4dp;
+    color: var(--des-tan-muted);
+}
+
+player-item.focused player-how {
+    color: var(--des-tan);
+}
+
+player-ago {
+    display: block;
+    flex: 0 0 auto;
+    font-size: 16dp;
+    letter-spacing: 0.4dp;
+    color: var(--des-tan);
+}
+
+body.page.motion players-page {
+    animation: 0.17s linear-in-out des-page-in;
+}
+
 /* ---- Motion (body.motion), the game's: the band and its lines drop in from the top edge when the menu opens (once:
    opening a page keeps them), a page slides in from the left, and on closing the band and its lines go back up the
    same way, in the F1 menu's shape (the page is already closed). ---- */

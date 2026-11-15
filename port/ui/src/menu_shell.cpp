@@ -416,7 +416,14 @@ void MenuShell::command(menu::Command c, bool down) {
         }
         return;
     }
-    if (mPage && mModel.level() == Level::Page) mPage->command(c, true);
+    if (mPage && mModel.level() == Level::Page && !mPage->command(c, true) && !mUnder.empty() &&
+        (c == Command::PrevTab || c == Command::NextTab)) {
+        // A page over another with no tabs of its own (Players over Settings, whose tabs its band shows): the band's
+        // buttons go back to the page under it and move its tab.
+        close_over();
+        play_sound(kSoundWindowClose);
+        if (mPage) mPage->command(c, true);
+    }
 }
 
 void MenuShell::back() {

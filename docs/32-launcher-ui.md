@@ -677,7 +677,7 @@ How it works:
     list goes on past its box;
   - a page of the F1 menu's own (see `pages` below) lists its elements in
     its header (`trophies_page.hpp`, `mods_page.hpp`, `coop_page.hpp`,
-    `controls_page.hpp`);
+    `controls_page.hpp`, `players_page.hpp`);
   - status has colour, and nothing else: `--des-ok`, `--des-warn`,
     `--des-error` and `--des-info` in DeS UI, from the HUD's bars.
 - **The column.** A look that keeps its contents in a centred column sets
@@ -708,9 +708,12 @@ How it works:
     sizes the frame itself turns this off and the row is hidden.
   - `pages`: the F1 menu's other screens open as pages in its frame, as
     Settings does (Trophies, Mods and Co-op so far: `trophies_page.cpp`,
-    `mods_page.cpp`, `coop_page.cpp`), and Settings' Change Buttons opens
-    as a page over Settings (`controls_page.cpp`, through the shell's
-    `open_over`; Back goes back to Settings as it was). Without it they
+    `mods_page.cpp`, `coop_page.cpp`), and Settings' Change Buttons and
+    Players you met open as pages over Settings (`controls_page.cpp`,
+    `players_page.cpp`, through the shell's `open_over`; Back goes back to
+    Settings as it was). A page over another with no tabs of its own
+    (Players) shows the tabs of the page under it, and the band's buttons go
+    back to that page and move its tab. Without it they
     open as their own windows, as Alpha UI keeps them. The start screen
     opens them the same way, alone in the frame (`menu::screen_alone`).
 - **Alpha UI** is the documents' own sheets as they are (for the F1 menu and
