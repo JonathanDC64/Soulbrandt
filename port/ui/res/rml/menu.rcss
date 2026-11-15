@@ -182,59 +182,23 @@ menu-prompt:hover menu-says {
     color: var(--color-accent);
 }
 
-/* A button as the device in use shows it (prompts.hpp): a key's cap, a face button's circle, a shoulder's tab. */
+/* A button as the device in use shows it (prompts.hpp): its picture, drawn the way the game's prompts look
+   (menu-art, button_art.hpp: its width follows its height; two side by side for the keyboard's arrows). Its name,
+   menu-key, is there for a look that draws text instead. */
 menu-glyph {
-    display: inline-block;
-    min-width: 28dp;
-    height: 25dp;
-    padding: 0 7dp;
-    border-width: 1dp;
-    border-color: rgba(var(--color-text-rgb), 55%);
-    border-radius: 4dp;
-    font-family: var(--font-family-body);
-    font-weight: normal;
-    font-size: var(--font-size-sm);
-    line-height: 23dp;
-    letter-spacing: 0;
-    text-align: center;
-    text-transform: none;
-    color: var(--color-accent);
+    display: flex;
+    align-items: center;
+    gap: 2dp;
 }
 
-menu-glyph.face {
-    width: 25dp;
-    min-width: 25dp;
-    padding: 0;
-    border-width: 1.5dp;
-    border-radius: 12.5dp;
-    font-weight: bold;
+menu-glyph menu-art {
+    display: block;
+    height: 26dp;
 }
 
-menu-glyph.xbox-a { color: #73c063; border-color: #73c063; }
-menu-glyph.xbox-b { color: #dc6553; border-color: #dc6553; }
-menu-glyph.xbox-x { color: #649ade; border-color: #649ade; }
-menu-glyph.xbox-y { color: #e2c044; border-color: #e2c044; }
-
-/* The PlayStation shapes from the icon font (the text fonts have no ✕ or ○). */
-menu-glyph.ps-cross,
-menu-glyph.ps-circle,
-menu-glyph.ps-triangle,
-menu-glyph.ps-square {
-    font-family: var(--font-family-icons);
-    font-size: 17dp;
-}
-
-menu-glyph.ps-cross menu-key,
-menu-glyph.ps-circle menu-key,
-menu-glyph.ps-triangle menu-key,
-menu-glyph.ps-square menu-key {
+menu-glyph menu-key {
     display: none;
 }
-
-menu-glyph.ps-cross { decorator: text("&#xe5cd;" center center); color: #7fb2e5; border-color: #7fb2e5; }
-menu-glyph.ps-circle { decorator: text("&#xe836;" center center); color: #e86a6a; border-color: #e86a6a; }
-menu-glyph.ps-triangle { decorator: text("&#xe86b;" center center); color: #4fc9a4; border-color: #4fc9a4; }
-menu-glyph.ps-square { decorator: text("&#xe3c6;" center center); color: #d995c9; border-color: #d995c9; }
 
 /* ---- Settings: its tabs, between the buttons that change them. ---- */
 menu-tabs {
@@ -252,6 +216,11 @@ menu-tab-key {
     display: block;
     flex: 0 0 auto;
     margin: 0 6dp;
+}
+
+/* A shoulder button fills less of its picture than a face button: larger beside the tabs than in the prompts. */
+menu-tab-key menu-art {
+    height: 36dp;
 }
 
 menu-tab {

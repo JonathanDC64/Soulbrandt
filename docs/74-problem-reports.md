@@ -31,6 +31,8 @@ Code:
 | `runtime.txt` | the runtime's snapshot (below), sampled over 2 s |
 | `des.log` | the first 120 lines of the log and its last 512 KB |
 | `des.prev.log` | the end of the previous run's log, when that run was in the last 24 h: a freeze or crash the player restarted after |
+| `coop.log` | this run's co-op log (below), whole up to its last 4 MB, when the run had co-op |
+| `coop.prev.log` | the co-op log before it, when it is from the last 24 h: a session the player restarted after |
 | `save/<folder>/...` | the player's save (`report::save_files`): each save folder in the game's save root (`PS3_SAVEDATA_ROOT`, else `gamedata/dev_hdd0/home/00000001/savedata`, as `cellSaveData.c` finds it). Every file except the folder's two pictures (`ICON0.PNG`, `PIC1.PNG`: the game's art, and a save loads without them) and a file the runtime is still writing (`.<name>.tmp`). If the game saved while it was read, it is read again, up to twice, half a second apart. At most 8 MB a file and 32 MB in all; a Demon's Souls save is ten 256 KB files |
 
 To load a reported save, put its folder in a save root of its own and start
@@ -39,7 +41,9 @@ any other save if the game's load screen wants them.
 
 The crash and hang dialog's **Report on GitHub** zips `crash.txt`,
 `hang.txt` or `graphics-lost.txt`, `system.txt`, `settings.ini`, `environment.txt` (the game's
-command line, saved with the report), `des.log` and the save (as above; its
+command line, saved with the report), `des.log`, `coop.log` (the game writes
+the co-op log's start and last 2 MB beside the report as `<report>.coop.log`,
+when the run had co-op) and the save (as above; its
 line is in the issue's System block). The dialog runs as a
 process of its own and reads no settings. So the game keeps
 `logs\settings.txt` up to date: the same listing as above, written at
@@ -65,6 +69,39 @@ These are names, counters and addresses only. It never reads guest memory.
 The hang watchdog also writes one snapshot to the log after 10 s without a
 new frame (`PS3_FREEZE_SNAPSHOT=<s>`, 0 = off), between `[freeze]` lines. So
 even a log from a game the player killed shows where it stopped.
+
+### The co-op log (2026-11-14)
+
+A co-op session's story is a few lines a minute among thousands in `des.log`,
+and a report keeps only that log's start and end: a playtest's report lost
+the middle of an evening, where the problems were. So the log's tee threads
+(the ones that write `des.log`) also copy each co-op line into
+`logs\coop.log`, with the time it was printed in front (UTC, to the
+millisecond, so that the host's and a friend's logs line up). The date is a
+line of its own at the start and when it changes. The lines are the ones that
+start with `[coop]`, `[psnr`, `[sceNpMatching2]`, `[sceNp]`, `[upnp]`,
+`[sys_net]` or `[report]`: the port's co-op lines, the rooms, matching, the
+network, the router and the reports made meanwhile.
+
+- The game's threads do nothing more: the tee threads pick the lines out of
+  what they read anyway. A line cut between two reads waits for its end.
+- It is made at the run's first co-op line, so a run without co-op leaves the
+  last session's file as it was. The one before it is kept as
+  `coop.prev.log`. Another copy of the game running at the same time writes
+  `coop.<process>.log`, as it writes `des.<process>.log`.
+- It stops at 32 MB, with a note (`des.log` goes on).
+- What co-op adds to it (`des_seamless_game.cpp`):
+  - each change of the session's state (none, opening a room, host, joining,
+    client, leaving), with the members as the room library and the game count
+    them, and the room's timer (55 s when a room opens, -1 once a member is
+    in, 10 s after one left; the room is left when it runs out);
+  - the game's own session events, by name: `OnRoomTimeOut`,
+    `OnRoomDisappeared`, `OnIrregularLeaveSession`, `OnLeave_Limit`, the
+    kicks and the failed joins. The game raises them through one function
+    (`0x00467628`, with the name in r4) that calls `global_event.lua`'s
+    handler of that name; a hook there logs the names with a session word in
+    them. Before this, a host that left its room for one of these showed
+    nothing in the log but the room's leave request.
 
 ## When the game freezes
 

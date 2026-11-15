@@ -71,6 +71,21 @@ Drawing them in code instead, because:
 No model, download or new dependency is needed. The look comes from colours measured on the game's own page. A model
 could still help design a future icon, but its output would need redrawing as shapes.
 
+## The menus' prompts use the same art
+
+The F1 menu and Settings show their prompts and the L1 and R1 beside the tabs with these pictures, one button at a
+time (`button_pages::draw_single`):
+
+- `prompts.cpp` names each prompt's picture as data: a pad's button by its cellPad name, the D-pad with some ways lit,
+  or a key with its cap.
+- `button_art.cpp` is the `<menu-art>` element that shows it. It draws the picture at the pixel size the layout
+  gives it, so it stays sharp at any UI scale. The look's style sheet sets its height, and its width follows: a key
+  with a word on it ("Enter") gets a cap as wide as the word needs.
+- PlayStation's buttons are drawn too, in the same style: ✕, ○, △ and □ in their colours on the dark disc, L1 to R3,
+  Select and Start. The game's page keeps its own pictures; the menus never use them.
+- Each glyph also carries the button's name as text (`menu-key`). Today's look hides it; a look that draws text
+  instead hides the picture.
+
 ## Limits and next steps
 
 - **Wide key names.** A key's name is drawn inside a square cap, so "Space" is small. Wider cells would mean changing
@@ -93,6 +108,9 @@ could still help design a future icon, but its output would need redrawing as sh
 
 - ps3recomp `test_pad_glyph`: the rules for the last device used (presses, drift, triggers, ties, a pad unplugged).
 - ps3recomp `test_rsx_texture_override`: the table of hooks (shapes, replacing, removing, a full table).
+- `button_icons_check` also draws the menus' single buttons: every pad button for each pad, PlayStation's shapes in
+  their colours, and key caps as wide as their word. `--png` writes them as `singles.png`. `input_map_check` checks
+  that every prompt has a picture, for each device.
 - `port/ui/tests/button_icons_check.cpp` (target `button_icons_check`): a made-up code map and texture pack read, the
   page decoded and drawn for each device at 1x, 2x and 4x, every cell drawn, the rest of the page kept. Then a made-up
   menu pack: its two sprite pages found by name and size (not a third texture), drawn at 2x at most, and the item

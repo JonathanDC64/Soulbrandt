@@ -30,7 +30,8 @@ namespace ui {
 class SettingsPage;
 
 namespace menu {
-// A button as prompts and tab bars show it: <menu-glyph class="face ps-cross"><menu-key>✕</menu-key></menu-glyph>.
+// A button as prompts and tab bars show it: its picture and its name, the look drawing one of them
+// (<menu-glyph class="face ps-cross"><menu-art device="playstation" button="cross"/><menu-key>✕</menu-key></menu-glyph>).
 std::string glyph_rml(prompts::Device device, prompts::Key key);
 }  // namespace menu
 

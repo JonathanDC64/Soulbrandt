@@ -6,21 +6,41 @@ namespace {
 
 constexpr int kKeys = static_cast<int>(Key::Count);
 
-// A row per device (Device's order), a button per prompt (Key's order).
+constexpr Art button(std::string_view name) { return {Art::Is::Button, name, 0}; }
+constexpr Art dpad(int ways) { return {Art::Is::Dpad, {}, ways}; }
+constexpr Art key(int vk, std::string_view cap = {}) { return {Art::Is::Key, cap, vk}; }
+constexpr int kUpDown = 1 | 4, kLeftRight = 2 | 8;   // the D-pad's ways (Art::code)
+
+// The virtual-key codes of the menus' keys (menu_input.cpp's map: the same keys on every platform).
+constexpr int kVkEnter = 0x0D, kVkShift = 0x10, kVkEsc = 0x1B;
+constexpr int kVkLeft = 0x25, kVkUp = 0x26, kVkRight = 0x27, kVkDown = 0x28;
+
+// A row per device (Device's order), a button per prompt (Key's order). The pads' pictures name the same buttons (a
+// pad draws its own letters on them: Cross is A on an Xbox pad and on a Nintendo pad, as SDL names it).
 constexpr Glyph kGlyphs[4][kKeys] = {
     // Keyboard
-    {{"↑ ↓", "arrows up-down"}, {"← →", "arrows left-right"}, {"Enter", "key"}, {"Esc", "key"}, {"P", "key"}, {"H", "key"},
-     {"C", "key"}, {"Shift", "key"}, {"Q", "key"}, {"E", "key"}},
+    {{"↑ ↓", "arrows up-down", {key(kVkUp), key(kVkDown)}},
+     {"← →", "arrows left-right", {key(kVkLeft), key(kVkRight)}},
+     {"Enter", "key", {key(kVkEnter, "Enter")}}, {"Esc", "key", {key(kVkEsc, "Esc")}},
+     {"P", "key", {key('P', "P")}}, {"H", "key", {key('H', "H")}}, {"C", "key", {key('C', "C")}},
+     {"Shift", "key", {key(kVkShift, "Shift")}}, {"Q", "key", {key('Q', "Q")}}, {"E", "key", {key('E', "E")}}},
     // PlayStation
-    {{"↑ ↓", "arrows up-down"}, {"← →", "arrows left-right"}, {"✕", "face ps-cross"}, {"○", "face ps-circle"},
-     {"△", "face ps-triangle"}, {"SELECT", "system"}, {"□", "face ps-square"}, {"R3", "stick"},
-     {"L1", "shoulder"}, {"R1", "shoulder"}},
+    {{"↑ ↓", "arrows up-down", {dpad(kUpDown)}}, {"← →", "arrows left-right", {dpad(kLeftRight)}},
+     {"✕", "face ps-cross", {button("cross")}}, {"○", "face ps-circle", {button("circle")}},
+     {"△", "face ps-triangle", {button("triangle")}}, {"SELECT", "system", {button("select")}},
+     {"□", "face ps-square", {button("square")}}, {"R3", "stick", {button("r3")}},
+     {"L1", "shoulder", {button("l1")}}, {"R1", "shoulder", {button("r1")}}},
     // Xbox
-    {{"↑ ↓", "arrows up-down"}, {"← →", "arrows left-right"}, {"A", "face xbox-a"}, {"B", "face xbox-b"}, {"Y", "face xbox-y"},
-     {"View", "system"}, {"X", "face xbox-x"}, {"RS", "stick"}, {"LB", "shoulder"}, {"RB", "shoulder"}},
+    {{"↑ ↓", "arrows up-down", {dpad(kUpDown)}}, {"← →", "arrows left-right", {dpad(kLeftRight)}},
+     {"A", "face xbox-a", {button("cross")}}, {"B", "face xbox-b", {button("circle")}},
+     {"Y", "face xbox-y", {button("triangle")}}, {"View", "system", {button("select")}},
+     {"X", "face xbox-x", {button("square")}}, {"RS", "stick", {button("r3")}},
+     {"LB", "shoulder", {button("l1")}}, {"RB", "shoulder", {button("r1")}}},
     // Nintendo
-    {{"↑ ↓", "arrows up-down"}, {"← →", "arrows left-right"}, {"A", "face"}, {"B", "face"}, {"Y", "face"}, {"−", "system"},
-     {"X", "face"}, {"RS", "stick"}, {"L", "shoulder"}, {"R", "shoulder"}},
+    {{"↑ ↓", "arrows up-down", {dpad(kUpDown)}}, {"← →", "arrows left-right", {dpad(kLeftRight)}},
+     {"A", "face", {button("cross")}}, {"B", "face", {button("circle")}}, {"Y", "face", {button("triangle")}},
+     {"−", "system", {button("select")}}, {"X", "face", {button("square")}}, {"RS", "stick", {button("r3")}},
+     {"L", "shoulder", {button("l1")}}, {"R", "shoulder", {button("r1")}}},
 };
 
 }  // namespace
