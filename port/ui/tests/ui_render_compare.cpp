@@ -892,7 +892,7 @@ ui::MenuShell& menu_shell() {
 
 // Settings on the tab of that title (settings_catalog.hpp's), or as it opens (""): in the F1 menu as its entry opens
 // it, or on its own as the start screen opens it (prelaunch).
-void open_settings(const std::string& tab, bool prelaunch) {
+ui::SettingsPage* open_settings(const std::string& tab, bool prelaunch) {
     ui::MenuShell* shell = nullptr;
     if (prelaunch) {
         shell = &static_cast<ui::MenuShell&>(
@@ -905,13 +905,14 @@ void open_settings(const std::string& tab, bool prelaunch) {
     ui::SettingsPage* page = shell->settings_page();
     if (!page) std::fprintf(stderr, "ui_render_compare: Settings did not open\n");
     else if (!tab.empty() && !page->show_tab(tab)) std::fprintf(stderr, "ui_render_compare: no tab %s\n", tab.c_str());
+    return page;
 }
 
-// Settings in the F1 menu on that tab with the focus on that row, and a key pressed there: Enter (its list, or typing),
-// Preview, Compare held.
-void open_settings_row(const std::string& tab, const std::string& row, ui::menu::Command command) {
-    open_settings(tab, false);
-    ui::SettingsPage* page = menu_shell().settings_page();
+// Settings in the F1 menu (or on its own, as the start screen opens it) on that tab with the focus on that row, and a
+// key pressed there: Enter (its list, or typing), Preview, Compare held.
+void open_settings_row(const std::string& tab, const std::string& row, ui::menu::Command command,
+                       bool prelaunch = false) {
+    ui::SettingsPage* page = open_settings(tab, prelaunch);
     if (!page || !page->focus_row(row)) {
         std::fprintf(stderr, "ui_render_compare: no row %s\n", row.c_str());
         return;
@@ -1223,6 +1224,8 @@ int main(int argc, char** argv) {
                      [] { open_settings_row("Display", "Aspect ratio", Command::Confirm); }, {}});
     pages.push_back({"settings-preview", 1280, 720, false, 1.f, false,
                      [] { open_settings_row("Picture", "Render resolution", Command::Preview); }, {}});
+    pages.push_back({"settings-preview-start", 1280, 720, false, 1.f, false,
+                     [] { open_settings_row("Picture", "Render resolution", Command::Preview, true); }, {}});
     pages.push_back({"settings-compare", 1280, 720, false, 1.f, false,
                      [] { open_settings_row("Picture", "Render resolution", Command::Compare); }, {}});
     pages.push_back({"settings-tall", 1920, 1200, false, 1.f, false, [] { open_settings("Network", false); }, {}});
@@ -1276,6 +1279,9 @@ int main(int argc, char** argv) {
                          in_band([] { open_settings_row("Display", "Display mode", Command::Help); }), {}});
         pages.push_back({"band-preview", 1280, 720, false, 1.f, false,
                          in_band([] { open_settings_row("Picture", "Render resolution", Command::Preview); }), {}});
+        // Preview from Settings on its own, as the start screen opens it: the strip without the page's frame.
+        pages.push_back({"band-preview-start", 1280, 720, false, 1.f, false,
+                         in_band([] { open_settings_row("Picture", "Render resolution", Command::Preview, true); }), {}});
         pages.push_back({"band-compare", 1280, 720, false, 1.f, false,
                          in_band([] { open_settings_row("Picture", "Render resolution", Command::Compare); }), {}});
         pages.push_back({"band-prelaunch", 1280, 720, false, 1.f, false, in_band([] { open_settings("", true); }), {}});
