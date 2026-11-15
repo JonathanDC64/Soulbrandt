@@ -24,6 +24,7 @@
 // --page: only the pages whose names hold NAME. --probe: one pixel's bytes in each frame, from every renderer.
 // --verbose: the first bytes that differ in each frame.
 // Exit code 0: every picture and count the same; 1: one differs; 2: it could not run.
+#include "controls_page.hpp"
 #include "coop_page.hpp"
 #include "host.hpp"
 #include "looks.hpp"
@@ -930,6 +931,19 @@ void open_settings_row(const std::string& tab, const std::string& row, ui::menu:
     page->command(command, true);
 }
 
+// Change Buttons as Settings opens it (Controls > Change Buttons): the look's own (Alpha UI's window, a page over
+// Settings in a look with looks.hpp's pages), on the keys or the gamepad, the focus on that row (the count of rows:
+// Restore) and input, waiting for that row's input, or with Help open.
+void open_controls(bool keys, int row, int slot, bool wait, bool help) {
+    open_settings_row("Controls", "Change Buttons", ui::menu::Command::Confirm);
+    if (auto* page = dynamic_cast<ui::ControlsPage*>(menu_shell().page())) {
+        page->show_keys(keys);
+        page->focus(row, slot);
+        if (wait) page->wait();
+        if (help) page->open_help();
+    }
+}
+
 // Settings closed on that tab's row and opened again: it opens where it was left.
 void reopen_settings(const std::string& tab, const std::string& row) {
     ui::SettingsPage* page = open_settings(tab, false);
@@ -1417,6 +1431,8 @@ int main(int argc, char** argv) {
     // Trophies and Mods, as Alpha UI shows them (their windows).
     pages.push_back({"trophies", 1280, 720, false, 1.f, false, [] { open_trophies(true, 1); }, {}});
     pages.push_back({"mods", 1280, 720, false, 1.f, false, [] { open_mods(true, "", false); }, {}});
+    // Change Buttons as Alpha UI shows it (its window).
+    pages.push_back({"controls", 1280, 720, false, 1.f, false, [] { open_controls(false, 0, 0, false, false); }, {}});
     // Co-op as Alpha UI shows it (its window): not in co-op, and hosting.
     pages.push_back({"coop", 1280, 720, false, 1.f, false, [] { open_coop({}, 0); }, {}});
     pages.push_back({"coop-host", 1280, 720, false, 1.f, false, [] { open_coop(standin_host(), 0); }, {}});
@@ -1457,6 +1473,18 @@ int main(int argc, char** argv) {
                          in_band([] { open_mods(true, "Texture pack 2", false); }), {}});
         pages.push_back({"des-mods-help", 1280, 720, false, 1.f, false, in_band([] { open_mods(true, "", true); }), {}});
         pages.push_back({"des-mods-empty", 1280, 720, false, 1.f, false, in_band([] { open_mods(false, "", false); }), {}});
+        // Change Buttons as a page over Settings: the gamepad, the keys (the second box of Attack chosen), the keys
+        // waiting for Lock on's first input, Help, and Restore at the end of the gamepad's rows.
+        pages.push_back({"des-controls", 1280, 720, false, 1.f, false,
+                         in_band([] { open_controls(false, 0, 0, false, false); }), {}});
+        pages.push_back({"des-controls-keys", 1280, 720, false, 1.f, false,
+                         in_band([] { open_controls(true, 7, 1, false, false); }), {}});
+        pages.push_back({"des-controls-wait", 1280, 720, false, 1.f, false,
+                         in_band([] { open_controls(true, 12, 0, true, false); }), {}});
+        pages.push_back({"des-controls-help", 1280, 720, false, 1.f, false,
+                         in_band([] { open_controls(true, 0, 0, false, true); }), {}});
+        pages.push_back({"des-controls-restore", 1280, 720, false, 1.f, false,
+                         in_band([] { open_controls(false, 16, 0, false, false); }), {}});
         // Co-op as a page: not in co-op, hosting (the focus on New code), joined (its line in the strip, no box) and
         // a guest whose connection was lost.
         pages.push_back({"des-coop", 1280, 720, false, 1.f, false, in_band([] { open_coop({}, 0); }), {}});
