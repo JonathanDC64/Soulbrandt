@@ -5,10 +5,12 @@
 #include "input.hpp"
 #include "menu_pages.hpp"
 #include "question.hpp"
+#include "settings.hpp"
 #include "settings_page.hpp"
 
 #include <RmlUi/Core.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <string>
@@ -74,6 +76,7 @@ MenuShell::MenuShell(bool standalone, DocumentScope scope)
     : Document(kDocumentSource, false, scope), mModel(standalone) {
     mBody = mDocument;
     mEntries = mDocument->GetElementById("entries");
+    mFrame = mDocument->GetElementById("frame");
     mSlot = mDocument->GetElementById("slot");
     mPageHost = mDocument->GetElementById("page");
     mPrompts = mDocument->GetElementById("prompts");
@@ -204,6 +207,7 @@ void MenuShell::draw() {
         mClassesShown = classes;
         mBody->SetClassNames(classes);
     }
+    update_frame_height((" " + classes + " ").find(" preview ") != std::string::npos);
 
     for (size_t i = 0; i < mEntryElems.size(); i++) {
         const bool on = static_cast<int>(i) == mEntry;
@@ -229,6 +233,25 @@ void MenuShell::draw() {
 }
 
 // The entries bar spans the window: kept inside the screen's safe area (a TV's, the Deck's), as the menu bar was.
+// The frame's height, Interface > Menu height (ui_menu_height): from the 640 dp it has in a 720p window (0) to all
+// the height the body leaves it (100). RmlUi has no calc(), so it is worked out here, and set again only when it
+// changes. Preview's strip keeps its own height from the look's sheet.
+void MenuShell::update_frame_height(bool preview) {
+    float px = -1.f;
+    if (!preview && mFrame) {
+        const float base = 640.f * mDocument->GetContext()->GetDensityIndependentPixelRatio();
+        const float room = mBody->GetBox().GetSize(Rml::BoxArea::Content).y;
+        const int share = std::clamp(settings::get_int("ui_menu_height"), 0, 100);
+        px = room <= base ? base : std::round(base + (room - base) * static_cast<float>(share) / 100.f);
+    }
+    if (px == mFrameMax || !mFrame) return;
+    mFrameMax = px;
+    if (px < 0.f)
+        mFrame->RemoveProperty("max-height");
+    else
+        mFrame->SetProperty("max-height", std::to_string(static_cast<int>(px)) + "px");
+}
+
 void MenuShell::update_safe_area() {
     Rml::Context* context = mDocument->GetContext();
     if (!context) return;

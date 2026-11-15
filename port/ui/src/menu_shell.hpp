@@ -81,6 +81,7 @@ private:
     void hiding(bool on);
     void draw();
     void update_safe_area();
+    void update_frame_height(bool preview);
 
     menu::Model mModel;
     std::unique_ptr<menu::Page> mPage;
@@ -93,6 +94,7 @@ private:
     unsigned mReleases = 0;
     Rml::Element* mBody = nullptr;
     Rml::Element* mEntries = nullptr;
+    Rml::Element* mFrame = nullptr;
     Rml::Element* mSlot = nullptr;
     Rml::Element* mPageHost = nullptr;
     Rml::Element* mPrompts = nullptr;
@@ -103,6 +105,7 @@ private:
     std::string mPromptsShown;
     clock::time_point mBadgeUntil{};
     Insets mSafeArea{};
+    float mFrameMax = -1.f;  // the frame's max-height set, in px; -1 = none (the look's sheet)
 };
 
 }  // namespace ui

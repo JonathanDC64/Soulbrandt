@@ -84,15 +84,17 @@ menu-close:hover {
     background-color: rgba(var(--color-accent-rgb), 24%);
 }
 
-/* ---- A page's frame: the entries (the one open marked), the page, the prompts. It takes the window's whole height,
-   so a taller window shows more rows before they scroll; its width stops at a line's comfortable length. (A box-shadow
-   here has no offset: RmlUi draws a box with an offset shadow off its place.) ---- */
+/* ---- A page's frame: the entries (the one open marked), the page, the prompts. Its height in a larger window is
+   Interface > Menu height, which the shell sets as its max-height (menu_shell.cpp); 640 dp until then. Its width stops
+   at a line's comfortable length. (A box-shadow here has no offset: RmlUi draws a box with an offset shadow off its
+   place.) ---- */
 menu-frame {
     display: none;
     flex-flow: column;
     width: 100%;
     height: 100%;
     max-width: 1152dp;
+    max-height: 640dp;
     margin: auto;
     overflow: hidden;
     border-width: 1dp;

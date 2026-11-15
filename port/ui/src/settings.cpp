@@ -123,6 +123,7 @@ constexpr Def kDefs[] = {
     {"DES_DISCORD", "1", Apply::Live},         // discord_presence.cpp: the Discord status; "0" = none
     {"ui_scale", "0", Apply::UiOnly},          // 0 = Auto, else percent
     {"ui_look", "today", Apply::UiOnly},       // the menus' look: a looks.hpp id
+    {"ui_menu_height", "30", Apply::UiOnly},   // menu_shell.cpp: Settings' height, 0 = 640 dp ... 100 = the window's
     {"show_start_screen", "1", Apply::UiOnly},
     {"update_check", "1", Apply::UiOnly},      // updates.hpp: look for a newer release at each start (docs/105)
     {"update_skip", "", Apply::UiOnly},        // the release the player chose to skip ("Skip this version")
