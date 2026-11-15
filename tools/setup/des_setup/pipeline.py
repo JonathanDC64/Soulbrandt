@@ -651,6 +651,25 @@ def _fetch(data, emit, total, manifest, cc=None, ld=None) -> bool:
     return did
 
 
+def _download_failed(e, emit) -> str:
+    """A download that did not finish (a fetch.FetchError): its lines in setup's log, the last of which the failed
+    page shows, and the page's sentence, after which the host says to check the connection and try again (docs/88
+    section 6). The lines say how to download the file yourself, which fetch.fetch then checks and uses. The sentence
+    says so when the server's certificate was refused, since the connection itself works then (issue #544)."""
+    emit.text(f"FIX  {e}")
+    if e.archive:
+        a = Path(e.archive)
+        emit.text(f"FIX  or download it yourself: {e.url}")
+        emit.text(f"FIX  then put it in {a.parent}, named {a.name}, and try again: setup checks it before it uses it")
+    s = "A download did not finish."
+    if e.certificate:
+        s = ("A download did not finish: this PC did not accept the certificate of the server it comes from. An "
+             "antivirus that checks secure connections, or a wrong date or time on this PC, can cause that.")
+    if e.archive:
+        s += " You can also download the file yourself, as the lines below say."
+    return s
+
+
 def _compile(data, jr, jobs, progress, libsre, cc=None, ld=None, memory=None):
     """The compile phase (compile.py): the downloaded compiler, unpacked by the fetch phase, or a developer's.
     libsre: with the lifted libsre (the check found a good libsre.prx). memory(short): the screens' hint that closing
@@ -929,8 +948,7 @@ def _run(data, req, app, jobs, check_only, emit, src, table, manifest, phases, c
         emit.done("ok")
         return 0
     except fetch.FetchError as e:
-        emit.text(f"FIX  {e}")
-        emit.error("download", phase, "A download did not finish.")
+        emit.error("download", phase, _download_failed(e, emit))
     except rpcs3.UnlockFailed as e:
         emit.text(f"FIX  {e.message}")
         if e.log:

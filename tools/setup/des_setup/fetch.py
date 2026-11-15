@@ -3,7 +3,9 @@
 toolchain.json names each tool at one exact version: its URL, size and
 SHA-256. An entry without a SHA-256 is not pinned yet and is refused, so
 nothing unchecked is ever used. Downloads resume from where they stopped
-(HTTP Range), go to a .part file and are renamed only once they match.
+(HTTP Range), go to a .part file and are renamed only once they match. A
+copy the player downloaded themselves, under the archive's name in the same
+folder, is checked the same way and used (setup's failed page says so).
 Archives (.zip, and on Linux .tar.xz and .tar.gz, docs/87) are unpacked into a
 folder of their own, refusing any entry that would land outside it and any
 link.
@@ -31,7 +33,14 @@ CHUNK = 1 << 20
 
 
 class FetchError(RuntimeError):
-    pass
+    """A tool's download or unpacking that did not finish. A download's also has where it comes from (`url`) and where
+    setup keeps it (`archive`): a copy the player downloads themselves and puts there is checked and used as setup's
+    own (issue #544). `certificate`: the server's certificate was refused, by Python's check and by Windows' own when
+    that was tried."""
+
+    def __init__(self, message, url=None, archive=None, certificate=False):
+        super().__init__(message)
+        self.url, self.archive, self.certificate = url, archive, certificate
 
 
 # ---- Windows' own TLS, for a server whose certificate Python's check doesn't accept ----
@@ -131,8 +140,10 @@ def _curl_fetch(curl, e: dict, part: Path, progress, timeout, allow_http):
         if rc == 33 and not again:   # (curl's "cannot resume": the server ignored the range; start over once)
             part.unlink(missing_ok=True)
             continue
+        # (35: the secure connection did not start, which is how Windows' TLS reports a revocation check it could not
+        # make; 60: the certificate refused)
         raise FetchError(f"{e['name']}: the download through Windows' curl stopped (curl exit {rc}"
-                         + (f": {err}" if err else "") + "); it resumes next time")
+                         + (f": {err}" if err else "") + "); it resumes next time", certificate=rc in (35, 60))
 
 
 def load_manifest(path=None) -> dict:
@@ -185,6 +196,10 @@ def fetch(e: dict, cache, progress=None, allow_http=False, timeout=60, note=None
             return final
         final.unlink()                      # a stale or damaged copy
     part = final.with_name(final.name + ".part")
+
+    def failed(message, certificate=False):
+        return FetchError(message, e["url"], final, certificate)
+
     done = part.stat().st_size if part.is_file() else 0
     if done > e["size"]:
         part.unlink()
@@ -205,24 +220,28 @@ def fetch(e: dict, cache, progress=None, allow_http=False, timeout=60, note=None
                         f.write(b)
                         done += len(b)
                         if done > e["size"]:
-                            raise FetchError(f"{e['name']}: the download is larger than the manifest says")
+                            raise failed(f"{e['name']}: the download is larger than the manifest says")
                         if progress:
                             progress(done, e["size"])
         except OSError as err:
             curl = windows_curl() if cert_failed(err) else None
             if not curl:
-                raise FetchError(f"{e['name']}: the download stopped ({err}); it resumes next time") from err
+                raise failed(f"{e['name']}: the download stopped ({err}); it resumes next time",
+                             cert_failed(err)) from err
             if note:
                 note(f"note {e['name']}: Python's check did not accept the server's certificate "
                      f"({getattr(err, 'reason', err)}); downloading through Windows' own curl, which checks it as "
                      "Windows does")
-            _curl_fetch(curl, e, part, progress, timeout, allow_http)
+            try:
+                _curl_fetch(curl, e, part, progress, timeout, allow_http)
+            except FetchError as ce:
+                raise failed(str(ce), ce.certificate) from ce
     if not part.is_file() or part.stat().st_size != e["size"]:
-        raise FetchError(f"{e['name']}: the download is incomplete; it resumes next time")
+        raise failed(f"{e['name']}: the download is incomplete; it resumes next time")
     got = _sha256(part)
     if got != e["sha256"]:
         part.unlink()
-        raise FetchError(f"{e['name']}: the download does not match its pinned SHA-256 (got {got}); deleted")
+        raise failed(f"{e['name']}: the download does not match its pinned SHA-256 (got {got}); deleted")
     os.replace(part, final)
     return final
 
