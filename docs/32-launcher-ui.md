@@ -13,17 +13,32 @@ licences in `port/ui/NOTICE.md`.
   until Play. Esc or Circle on the start screen asks to quit.
 - **In-game menu**: F1 or Esc on the keyboard, or **L3 + R3** on a gamepad
   (Settings > Interface can switch this to Select + Start). It is a bar at
-  the top with **Settings**, **Trophies**, **Report an issue** and **Quit**. Esc, Circle,
-  F1 or Start close it.
-- **Quit** asks first ("Return to the desktop? Progress since the game last
+  the top with **Settings**, **Trophies**, **Mods**, **Co-op**, **Report an
+  issue** and **Quit** (`menu_pages.cpp`'s entries). Esc, Circle, F1 or Start
+  close it.
+- **Restart question**: closing the menu while a restart-only setting has
+  changed since the game started asks first, "Restart the game now?", naming
+  each one by its row with its value ("Start maximized (Off)"). **Restart
+  now** starts the game again past the start screen; **Later**, the answer
+  with the focus, keeps them for the next start, and closing the menu doesn't
+  ask again until something else waits. A setting pinned by the environment
+  never waits.
+- **Questions** (`question.hpp`) put the action first and the safe answer
+  after it, as the game's own do. The safe answer has the focus first, and
+  Esc, Circle or F1 give it.
+- **Quit** asks first ("Quit to the desktop? Progress since the game last
   saved will be lost.") in a blood-red window, then posts WM_CLOSE to the
   game window. The window's close button and Alt+F4 ask the same question
   (the UI consumes their WM_CLOSE). The window closes at once only in a run
   nobody plays: a tools/des test run, `PAD_FILE` or `EXIT_AFTER_MS`.
-- **Settings**: tabs Display, Game, Controls, Interface, About, the left
-  pane showing the value, the right pane showing the choices and help. Rows
-  that only apply at the next start say so. A row whose option was set in
-  the environment shows that value, can't be changed, and its help says why.
+- **Settings**: tabs Display, Picture, Game, Controls, Network, Interface
+  and About (and Developer in a developer build), the left pane showing the
+  value, the right pane showing the choices and help. Display has the
+  window, HDR and the frame rate; Picture the render resolution ("150%
+  (1920 × 1080)"), the filtering and the effects. Rows that only apply at
+  the next start say so. A row whose option was set in the environment
+  shows that value with a lock before it, dimmed, can't be changed, and its
+  help says why.
 - **Trophies** (`trophies_window.cpp`, docs/44 section 5.4): the trophy set's
   summary (unlocked n of 38, the percentage, the count per grade) over a list
   of every trophy: its icon (dimmed while locked), name, description, grade,
@@ -421,6 +436,14 @@ Files:
 - `des_ui.cpp`: `des_ui_early_init()` (called first in
   `ps3_title_options_init`, des_options.cpp), the overlay hooks, the input
   queue, gamepad reads, the input hold, the debug knobs.
+- `menu_pad.cpp`: a pad's buttons as the menus' keys. Triangle, Square,
+  Select and R3 press P, C, H and Shift; a button of the menu chord does its
+  own thing only alone (R3 stops hiding once L3 joins it; with Select + Start
+  as the chord, Select's Help is a tap, given as it comes up). `menu_input.cpp`:
+  each key's command in the F1 menu and its pages (Preview, Help, Compare and
+  Hide among them, the last two held), and `prompts.cpp` the buttons the
+  prompts show for each device, following the Button icons row. All three
+  are checked alone by `input_map_check`.
 - `host.cpp`: RmlUi's system and file interfaces (the embedded files),
   fonts, scale, the images given to `add_png`, the BMP screenshot, and the
   renderer (`renderer.hpp`): `render_d3d12.cpp`, or on Windows
@@ -446,10 +469,14 @@ Files:
 - `settings_catalog.cpp`: the settings rows as data (above), with
   `settings_values.cpp` (the rows' values) and `settings_hooks.cpp` (what they
   take from the rest of the UI).
+- `menu_pages.cpp`: the F1 menu's entries and its questions as data.
+  `menu_model.cpp`: its rules (when closing asks about a restart), checked
+  alone by `menu_logic_check`. `question.cpp`: a question asked one way
+  wherever it comes from.
 - `settings_window.cpp`, `prelaunch.cpp`, `menu_bar.cpp`, `overlay.cpp`,
   `prework_modal.cpp`: the documents. `input.cpp`: pad state to UI keys with repeat. The rest is
   Dusklight's framework (document stack, windows, panes, buttons, modals,
-  tabs), unchanged apart from its headers.
+  tabs), unchanged apart from its headers and the modal's first focus.
 - `des_ui` is its own static library linked into des_boot: des_boot's
   compile flags don't change (the lifted chunks don't rebuild). Third-party
   code is built with `/O2` (the port configures with an empty build type).

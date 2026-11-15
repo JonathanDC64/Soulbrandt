@@ -220,6 +220,18 @@ if(MSVC)
   target_compile_options(setup_folder_check PRIVATE /EHsc /W3 /wd4100)
 endif()
 
+# The menus' keys on their own (tests/input_map_check.cpp): a pad's buttons as keys with the menu chord's rule, each
+# key's command in the F1 menu, what is held, and the prompts' buttons for each device. RmlUi's key names only (a
+# header). The same on every platform; CI runs it on both (host.yml). Built on demand:
+#   cmake --build <build> --target input_map_check, then input_map_check
+add_executable(input_map_check EXCLUDE_FROM_ALL tests/input_map_check.cpp src/menu_pad.cpp src/menu_input.cpp
+  src/prompts.cpp)
+target_include_directories(input_map_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${rmlui_SOURCE_DIR}/Include)
+target_compile_definitions(input_map_check PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
+if(MSVC)
+  target_compile_options(input_map_check PRIVATE /EHsc /W3 /wd4100)
+endif()
+
 # mods.cpp on its own (tests/mods_check.cpp): mod folders found, read and sorted into look and gameplay mods, and
 # PS3_VFS_MODS from the mods that are on (docs/143), in made-up folders under the system's temporary folder. The same
 # on every platform; CI runs it on both (host.yml). Built on demand:
@@ -274,6 +286,16 @@ add_executable(report_addresses_check EXCLUDE_FROM_ALL tests/report_addresses_ch
 target_include_directories(report_addresses_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 if(MSVC)
   target_compile_options(report_addresses_check PRIVATE /EHsc /W3)
+endif()
+
+# The F1 menu's rules on their own (tests/menu_logic_check.cpp): menu_model.cpp with no RmlUi and no settings, what
+# closing the menu does while settings wait for a restart. The same on every platform; CI runs it on both (host.yml).
+# Built on demand:
+#   cmake --build <build> --target menu_logic_check, then menu_logic_check
+add_executable(menu_logic_check EXCLUDE_FROM_ALL tests/menu_logic_check.cpp src/menu_model.cpp)
+target_include_directories(menu_logic_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+if(MSVC)
+  target_compile_options(menu_logic_check PRIVATE /EHsc /W3)
 endif()
 
 # The first Python's fetch on its own (tests/setup_fetch_check.cpp), the data folder and the free space stubbed: curl

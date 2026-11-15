@@ -66,7 +66,10 @@ void poll() {
     if (ps3_net_erase_result(&ok, &kept, text, sizeof text)) {
         if (ok) {
             settings::net_off("Off: your data on the server was deleted");
-            if (!settings::pinned("DES_ONLINE")) settings::set("DES_ONLINE", "0");
+            if (!settings::pinned("DES_ONLINE")) {
+                settings::set("DES_ONLINE", "0");
+                settings::now_in_effect("DES_ONLINE");  // (this run is offline already: no restart to ask about)
+            }
         }
         keep(ok ? Kind::Done : Kind::Refusal,
              ok ? std::string(text) + " Online play is off now; turning it on again starts a new record." : text);

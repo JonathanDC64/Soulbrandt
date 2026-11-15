@@ -137,82 +137,100 @@ std::vector<TabDesc> make_tabs() {
     using Opens = ActionRow::Opens;
     std::vector<TabDesc> tabs;
 
-    tabs.push_back({"Display", {{"", {
+    tabs.push_back({"Display", {
+        {"Window", {
 #ifdef _WIN32
-        choice("Display mode", "DES_FULLSCREEN",
-            {{"0", "Window"}, {"1", "Borderless fullscreen"}, {"2", "Exclusive fullscreen"}},
-            "Borderless fills the display the window is on. Exclusive gives the game the display to itself, which can "
-            "make switching to other programs slower. Alt+Enter also switches to and from a window."),
+            choice("Display mode", "DES_FULLSCREEN",
+                {{"0", "Window"}, {"1", "Borderless fullscreen"}, {"2", "Exclusive fullscreen"}},
+                "Borderless fills the display the window is on. Exclusive gives the game the display to itself, "
+                "which can make switching to other programs slower. Alt+Enter also switches to and from a window."),
 #else
-        choice("Display mode", "DES_FULLSCREEN", {{"0", "Window"}, {"1", "Borderless fullscreen"}},
-            "Borderless fills the display the window is on. Alt+Enter also switches between the two."),
+            choice("Display mode", "DES_FULLSCREEN", {{"0", "Window"}, {"1", "Borderless fullscreen"}},
+                "Borderless fills the display the window is on. Alt+Enter also switches between the two."),
 #endif
-        toggle("Start maximized", "DES_MAXIMIZED",
-            "The window opens maximized, and comes back maximized from Fullscreen."),
+            toggle("Start maximized", "DES_MAXIMIZED",
+                "The window opens maximized, and comes back maximized from Fullscreen."),
 #if DES_RSX_VULKAN  // (with a runtime that has the Vulkan renderer: port/CMakeLists.txt)
-        choice("Renderer", "RSX_BACKEND", {{"d3d12", "D3D12"}, {"vulkan", "Vulkan"}},
-            "Vulkan or D3D12. On GeForce GTX 10 series and older cards, Vulkan is the default. Restart to apply."),
+            choice("Renderer", "RSX_BACKEND", {{"d3d12", "D3D12"}, {"vulkan", "Vulkan"}},
+                "Vulkan or D3D12. On GeForce GTX 10 series and older cards, Vulkan is the default. Restart to apply."),
 #endif
-        choice("Aspect ratio", "DES_ASPECT",
-            {{"", "16:9", true}, {"16:10", "16:10 (Steam Deck)"}, {"2560:1080", "21:9 (2560x1080)"},
-                {"3440:1440", "21:9 (3440x1440)"}, {"3840:1600", "21:9 (3840x1600)"}, {"32:9", "32:9"},
-                {"auto", "Match the display"}},
-            "The shape of the picture. Wider shows more at the sides, 16:10 more above and below. Raise Render "
-            "resolution to keep a wide picture sharp."),
-        choice("Render resolution", "RSX_SCALE",
-            {{"100", "100%", true}, {"150", "150%"}, {"200", "200%"}, {"300", "300%"}},
-            "Draws the game sharper: 150% is 1080p, 200% 1440p, 300% 4K. Higher costs more GPU time."),
-        choice("Scaling filter", "RSX_OUTFILTER", {{"0", "Bilinear"}, {"1", "Sharp"}},
-            "How the picture is fitted to the window. Sharp is cleaner, most of all with a high Render resolution."),
-        choice("HDR", "RSX_HDR", {{"0", "Off", true}, {"1", "On"}},
-            "Brighter lights and sky on an HDR display. Turn on HDR in Windows first. Turn off RTX HDR and Auto HDR "
-            "for the game when this is on."),
-        choice("HDR brightness", "RSX_HDR_WHITE",
-            {{"0", "Windows' setting"}, {"100", "100 nits"}, {"150", "150 nits"}, {"200", "200 nits"},
-                {"250", "250 nits"}, {"300", "300 nits"}, {"400", "400 nits"}},
-            "How bright white is with HDR on. Lower leaves more room for the highlights."),
-        choice("HDR peak", "RSX_HDR_PEAK",
-            {{"0", "The display's"}, {"400", "400 nits"}, {"600", "600 nits"}, {"1000", "1000 nits"},
-                {"1500", "1500 nits"}},
-            "The brightest the highlights get with HDR on. The display's own figure suits most."),
-        choice("HDR shadows", "RSX_HDR_GAMMA", {{"0", "Gamma 2.2 (darker)"}, {"1", "sRGB (lighter)"}},
-            "How dark areas look with HDR on. Gamma 2.2 matches a TV."),
-        choice("Texture filtering", "RSX_TEXFILTER",
-            {{"0", "Original"}, {"1", "Nearest"}, {"2", "Bilinear"}, {"3", "Trilinear"}},
-            "How textures are smoothed. Original uses the game's choice. Nearest looks pixelated; Trilinear is the "
-            "smoothest."),
-        choice("Anisotropic filtering", "RSX_ANISO",
-            {{"0", "Original (4x)"}, {"1", "Off"}, {"2", "2x"}, {"4", "4x"}, {"8", "8x"}, {"16", "16x"}},
-            "Keeps floors and walls sharp into the distance. Original is the game's own, 4x on most surfaces."),
-        choice("Mipmaps", "RSX_TEX_MIPS", {{"1", "On", true}, {"0", "Off"}},
-            "Smaller copies of each texture for distant surfaces, as on the PS3. Off draws them at full size, "
-            "so they shimmer."),
-        choice("Anti-aliasing", "RSX_AA", {{"0", "Off", true}, {"1", "FXAA"}, {"2", "SMAA"}},
-            "Smooths jagged edges and keeps the HUD sharp. FXAA softens textures a little; SMAA keeps them sharper "
-            "and costs a little more."),
-        toggle("Depth of field", "DES_DOF", "The game's blur on distant scenery. Off keeps it sharp."),
-        {.label = "Frame rate", .key = "DES_FPS",
-            .kind = ChoiceRow{
-                .choices = with_values(s::kFpsValues,
-                    {{"30 fps", true}, {"30 fps, real frame time"}, {"60 fps"}, {"120 fps"}, {"144 fps"},
-                        {"165 fps"}, {"240 fps"}, {"Unlocked"}}),
-                .custom = ChoiceRow::Custom{"Custom", [] { return std::to_string(s::fps_custom()); }}},
-            .help = "The game's frame rate. 30 fps (original) is the PS3's. \"Real frame time\" is also 30 but copes "
-                    "better when a frame runs late. Unlocked has no cap. Above 60 fps is less tested."},
-        {.label = "Custom frame rate", .key = "DES_FPS",
-            .kind = NumberRow{.min = s::kFpsMin, .max = s::kFpsMax, .suffix = " fps", .get = s::fps_custom,
-                .set = s::set_fps_custom, .modified = s::fps_is_custom},
-            .help = "Your own frame rate, 30 to 500. Setting it picks Custom in Frame rate."},
-        choice("Cutscene frame rate", "DES_CUTFPS", {{"0", "30 fps", true}, {"1", "Same as Frame rate"}},
-            "Cutscenes judder above 30 fps, so by default they play at 30. Same as Frame rate keeps your frame "
-            "rate and smooths their camera."),
-        choice("V-sync", "DES_VSYNC", {{"1", "On"}, {"even", "Even frames"}, {"vrr", "G-Sync / FreeSync"}, {"0", "Off"}},
-            "On waits for the display's refresh. Even frames keeps every frame on screen equally long, for smooth "
-            "motion, and moves the frame rate to one your display fits (60 becomes 72 at 144 Hz). G-Sync / FreeSync "
-            "needs a display with it, turned on in your graphics driver too. Off can tear, but shows more fps than "
-            "the refresh rate."),
-        toggle("Motion blur", "DES_MOTION_BLUR", "The game's blur when the camera moves."),
-    }}}});
+            choice("Aspect ratio", "DES_ASPECT",
+                {{"", "16:9", true}, {"16:10", "16:10 (Steam Deck)"}, {"2560:1080", "21:9 (2560 × 1080)"},
+                    {"3440:1440", "21:9 (3440 × 1440)"}, {"3840:1600", "21:9 (3840 × 1600)"}, {"32:9", "32:9"},
+                    {"auto", "Match the display"}},
+                "The shape of the picture. Wider shows more at the sides, 16:10 more above and below. Raise Render "
+                "resolution to keep a wide picture sharp."),
+        }},
+        {"HDR", {
+            choice("HDR", "RSX_HDR", {{"0", "Off", true}, {"1", "On"}},
+                "Brighter lights and sky on an HDR display. Turn on HDR in Windows first. Turn off RTX HDR and Auto "
+                "HDR for the game when this is on."),
+            choice("HDR brightness", "RSX_HDR_WHITE",
+                {{"0", "Windows' setting"}, {"100", "100 nits"}, {"150", "150 nits"}, {"200", "200 nits"},
+                    {"250", "250 nits"}, {"300", "300 nits"}, {"400", "400 nits"}},
+                "How bright white is with HDR on. Lower leaves more room for the highlights."),
+            choice("HDR peak", "RSX_HDR_PEAK",
+                {{"0", "The display's"}, {"400", "400 nits"}, {"600", "600 nits"}, {"1000", "1000 nits"},
+                    {"1500", "1500 nits"}},
+                "The brightest the highlights get with HDR on. The display's own figure suits most."),
+            choice("HDR shadows", "RSX_HDR_GAMMA", {{"0", "Gamma 2.2 (darker)"}, {"1", "sRGB (lighter)"}},
+                "How dark areas look with HDR on. Gamma 2.2 matches a TV."),
+        }},
+        {"Frame rate", {
+            {.label = "Frame rate", .key = "DES_FPS",
+                .kind = ChoiceRow{
+                    .choices = with_values(s::kFpsValues,
+                        {{"30 fps", true}, {"30 fps, real frame time"}, {"60 fps"}, {"120 fps"}, {"144 fps"},
+                            {"165 fps"}, {"240 fps"}, {"Unlocked"}}),
+                    .custom = ChoiceRow::Custom{"Custom", [] { return std::to_string(s::fps_custom()); }}},
+                .help = "The game's frame rate. 30 fps (original) is the PS3's. \"Real frame time\" is also 30 but "
+                        "copes better when a frame runs late. Unlocked has no cap. Above 60 fps is less tested."},
+            {.label = "Custom frame rate", .key = "DES_FPS",
+                .kind = NumberRow{.min = s::kFpsMin, .max = s::kFpsMax, .suffix = " fps", .get = s::fps_custom,
+                    .set = s::set_fps_custom, .modified = s::fps_is_custom},
+                .help = "Your own frame rate, 30 to 500. Setting it picks Custom in Frame rate."},
+            choice("Cutscene frame rate", "DES_CUTFPS", {{"0", "30 fps", true}, {"1", "Same as Frame rate"}},
+                "Cutscenes judder above 30 fps, so by default they play at 30. Same as Frame rate keeps your frame "
+                "rate and smooths their camera."),
+            choice("V-sync", "DES_VSYNC",
+                {{"1", "On"}, {"even", "Even frames"}, {"vrr", "G-Sync / FreeSync"}, {"0", "Off"}},
+                "On waits for the display's refresh. Even frames keeps every frame on screen equally long, for smooth "
+                "motion, and moves the frame rate to one your display fits (60 becomes 72 at 144 Hz). G-Sync / "
+                "FreeSync needs a display with it, turned on in your graphics driver too. Off can tear, but shows more "
+                "fps than the refresh rate."),
+        }},
+    }});
+
+    tabs.push_back({"Picture", {
+        {"Sharpness", {
+            choice("Render resolution", "RSX_SCALE",
+                {{"100", "100% (1280 × 720)", true}, {"150", "150% (1920 × 1080)"},
+                    {"200", "200% (2560 × 1440)"}, {"300", "300% (3840 × 2160)"}},
+                "Draws the game sharper. Higher costs more GPU time."),
+            choice("Scaling filter", "RSX_OUTFILTER", {{"0", "Bilinear"}, {"1", "Sharp"}},
+                "How the picture is fitted to the window. Sharp is cleaner, most of all with a high Render "
+                "resolution."),
+            choice("Anti-aliasing", "RSX_AA", {{"0", "Off", true}, {"1", "FXAA"}, {"2", "SMAA"}},
+                "Smooths jagged edges and keeps the HUD sharp. FXAA softens textures a little; SMAA keeps them sharper "
+                "and costs a little more."),
+        }},
+        {"Textures", {
+            choice("Texture filtering", "RSX_TEXFILTER",
+                {{"0", "Original"}, {"1", "Nearest"}, {"2", "Bilinear"}, {"3", "Trilinear"}},
+                "How textures are smoothed. Original uses the game's choice. Nearest looks pixelated; Trilinear is the "
+                "smoothest."),
+            choice("Anisotropic filtering", "RSX_ANISO",
+                {{"0", "Original (4x)"}, {"1", "Off"}, {"2", "2x"}, {"4", "4x"}, {"8", "8x"}, {"16", "16x"}},
+                "Keeps floors and walls sharp into the distance. Original is the game's own, 4x on most surfaces."),
+            choice("Mipmaps", "RSX_TEX_MIPS", {{"1", "On", true}, {"0", "Off"}},
+                "Smaller copies of each texture for distant surfaces, as on the PS3. Off draws them at full size, "
+                "so they shimmer."),
+        }},
+        {"Effects", {
+            toggle("Depth of field", "DES_DOF", "The game's blur on distant scenery. Off keeps it sharp."),
+            toggle("Motion blur", "DES_MOTION_BLUR", "The game's blur when the camera moves."),
+        }},
+    }});
 
     const auto region_is = [](int r) { return [r] { return hooks::region() == r; }; };
     tabs.push_back({"Game", {
@@ -639,6 +657,39 @@ std::string help_with_key(const RowDesc& row) {
     std::string help = row.help();
     if (!row.key.empty() && !(row.flags & kHideKey)) help += "<br/><br/>(" + row.key + ")";
     return help;
+}
+
+namespace {
+
+std::string shown_value(const ChoiceRow& kind, const std::string& value) {
+    const std::string v = value.empty() && !kind.blank.empty() ? kind.blank : value;
+    for (const Choice& c : kind.live ? kind.live(value) : kind.choices)
+        if (c.value == v) return c.label;
+    return "Custom (" + value + ")";
+}
+std::string shown_value(const ToggleRow& kind, const std::string& value) {
+    return (value == "1") != kind.inverted ? "On" : "Off";
+}
+std::string shown_value(const NumberRow& kind, const std::string& value) {
+    if (!kind.get) return value;
+    const int n = kind.get();
+    return kind.format ? kind.format(n) : std::to_string(n) + kind.suffix;
+}
+std::string shown_value(const auto&, const std::string& value) {  // text, and the rest
+    return value;
+}
+
+}  // namespace
+
+std::optional<Shown> shown(std::string_view key) {
+    const RowDesc* found = nullptr;
+    for (const TabDesc& tab : tabs())
+        for (const SectionDesc& section : tab.sections)
+            for (const RowDesc& row : section.rows)
+                if (row.key == key && (!found || (found->when && !found->when()))) found = &row;
+    if (!found) return std::nullopt;
+    const std::string value = settings::get(key);
+    return Shown{found->label, std::visit([&](const auto& kind) { return shown_value(kind, value); }, found->kind)};
 }
 
 }  // namespace ui::catalog

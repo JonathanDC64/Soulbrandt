@@ -371,6 +371,14 @@ jobs:
           cmake --build build/host --target mods_check
           build/host/ui/mods_check.exe
 
+      # The menus' keys on their own (port/ui/tests/input_map_check.cpp): a pad's buttons as keys with the menu
+      # chord's rule, each key's command in the F1 menu, what is held, the prompts' buttons. Linux runs it below.
+      - name: The menus' keys
+        shell: bash
+        run: |
+          cmake --build build/host --target input_map_check
+          build/host/ui/input_map_check.exe
+
       # The Discord status's connection on its own (port/ui/tests/discord_check.cpp): frames, JSON, and an exchange
       # with a stand-in for Discord on a pipe of the test's own (docs/137). Linux runs it below on a Unix socket.
       - name: The Discord status's connection
@@ -385,6 +393,14 @@ jobs:
         run: |
           cmake --build build/host --target report_addresses_check
           build/host/ui/report_addresses_check.exe
+
+      # The F1 menu's rules on their own (port/ui/tests/menu_logic_check.cpp): what closing it does while settings
+      # wait for a restart. Linux runs it below.
+      - name: The F1 menu's rules
+        shell: bash
+        run: |
+          cmake --build build/host --target menu_logic_check
+          build/host/ui/menu_logic_check.exe
 
       # The button icons' pages on their own (port/ui/tests/button_icons_check.cpp): made-up font and menu files read,
       # decoded and drawn for each device, PlayStation's moved buttons too (docs/138). No game data.
@@ -896,6 +912,12 @@ jobs:
           cmake --build build/host --target mods_check
           build/host/ui/mods_check
 
+      # The menus' keys, as on Windows above.
+      - name: The menus' keys
+        run: |
+          cmake --build build/host --target input_map_check
+          build/host/ui/input_map_check
+
       # The Discord status's connection, as on Windows above: on a Unix socket.
       - name: The Discord status's connection
         run: |
@@ -907,6 +929,12 @@ jobs:
         run: |
           cmake --build build/host --target report_addresses_check
           build/host/ui/report_addresses_check
+
+      # The F1 menu's rules, as on Windows above.
+      - name: The F1 menu's rules
+        run: |
+          cmake --build build/host --target menu_logic_check
+          build/host/ui/menu_logic_check
 
       # The button icons' pages, as on Windows above.
       - name: The button icons' pages

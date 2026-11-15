@@ -25,8 +25,11 @@
 // --verbose: the first bytes that differ in each frame.
 // Exit code 0: every picture and count the same; 1: one differs; 2: it could not run.
 #include "host.hpp"
+#include "menu_bar.hpp"
+#include "menu_pages.hpp"
 #include "renderer.hpp"
 #include "settings.hpp"
+#include "settings_catalog.hpp"
 #include "settings_window.hpp"
 #include "setup_screens.hpp"
 #include "souls_model.hpp"
@@ -45,13 +48,16 @@
 #include <dxgi1_6.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <functional>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <string>
@@ -874,15 +880,49 @@ void open_rml(const char* rml) {
     }
 }
 
-void open_settings(int tab, bool prelaunch) {
+// Settings on the tab of that title (settings_catalog.hpp's), or as it opens ("").
+void open_settings(const std::string& tab, bool prelaunch) {
     auto& w = static_cast<ui::SettingsWindow&>(ui::push_document(std::make_unique<ui::SettingsWindow>(prelaunch)));
-    if (tab > 0 && !w.set_active_tab(tab)) std::fprintf(stderr, "ui_render_compare: no tab %d\n", tab);  // (0: open)
+    const std::vector<ui::catalog::TabDesc>& tabs = ui::catalog::tabs();
+    for (size_t i = 0; i < tabs.size(); i++)
+        if (tabs[i].title == tab) {
+            if (i > 0) w.set_active_tab(static_cast<int>(i));
+            return;
+        }
+    if (!tab.empty()) std::fprintf(stderr, "ui_render_compare: no tab %s\n", tab.c_str());
 }
 
 void close_pages() {
     ui::close_all_documents();
     for (Rml::ElementDocument* d : gDocuments) d->Close();
     gDocuments.clear();
+}
+
+// The F1 menu as F1 opens it (des_ui.cpp's open_menu_bar), and with its Quit question over it. One bar for every page,
+// as in the game: it stays when the pages close (it is permanent), hidden.
+void open_menu(bool quit) {
+    if (ui::Document* bar = ui::find_document(ui::DocumentScope::MenuBar)) bar->show();
+    else ui::push_document(std::make_unique<ui::MenuBar>(), false).show();
+    if (quit) ui::request_quit_confirm();
+}
+
+// The F1 menu with the question its closing asks while two settings wait for a restart. The question's text is made
+// as it is asked, so the settings go back at once, and the scratch settings.ini as it was (or none), for the next run.
+void open_menu_restart() {
+    open_menu(false);
+    const std::filesystem::path ini = std::filesystem::u8path(ui::settings::path());
+    std::ifstream in(ini, std::ios::binary);
+    const bool had = in.good();
+    const std::string before((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    in.close();
+    ui::settings::set("DES_MAXIMIZED", "0");
+    ui::settings::set("DES_NET_P2P_PORT", "4000");
+    ui::ask(ui::menu::restart_question({}));
+    ui::settings::set("DES_MAXIMIZED", "1");
+    ui::settings::set("DES_NET_P2P_PORT", "3658");
+    std::error_code ec;
+    if (had) std::ofstream(ini, std::ios::binary | std::ios::trunc) << before;
+    else std::filesystem::remove(ini, ec);
 }
 
 // The models, drawn as host.cpp draws the sword cursor and the lizard, at fixed times.
@@ -1134,9 +1174,14 @@ int main(int argc, char** argv) {
     ui::host::add_png("compare:image", image.data(), image.size());
 
     std::vector<Page> pages;
-    const char* const kTabs[] = {"display", "game", "controls", "network", "interface", "about"};
-    for (int t = 0; t < 6; t++) pages.push_back({std::string("settings-") + kTabs[t], 1280, 720, false, 1.f, false, [t] { open_settings(t, false); }, {}});
-    pages.push_back({"settings-prelaunch", 1280, 720, false, 1.f, false, [] { open_settings(0, true); }, {}});
+    // A page for each of Settings' tabs: settings-display, settings-game...
+    for (const ui::catalog::TabDesc& t : ui::catalog::tabs()) {
+        std::string name = "settings-";
+        for (const char c : t.title)
+            name += c == ' ' ? '-' : static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        pages.push_back({name, 1280, 720, false, 1.f, false, [title = t.title] { open_settings(title, false); }, {}});
+    }
+    pages.push_back({"settings-prelaunch", 1280, 720, false, 1.f, false, [] { open_settings("", true); }, {}});
     pages.push_back({"setup-start", 1280, 720, false, 1.f, false, [] {
         ui::push_document(std::make_unique<ui::SetupStartWindow>(ui::SetupStartWindow::Props{}));
     }, {}});
@@ -1156,11 +1201,14 @@ int main(int argc, char** argv) {
         p.onStart = [](ui::setup::Request) {};
         ui::push_document(std::make_unique<ui::SetupBeforeWindow>(std::move(p)));
     }, {}});
+    pages.push_back({"menu", 1280, 720, false, 1.f, false, [] { open_menu(false); }, {}});
+    pages.push_back({"menu-quit", 1280, 720, false, 1.f, false, [] { open_menu(true); }, {}});
+    pages.push_back({"menu-restart", 1280, 720, false, 1.f, false, open_menu_restart, {}});
     pages.push_back({"clip", 1280, 720, false, 1.f, false, [] { open_rml(kClipPage); }, {}, true});
     pages.push_back({"look-primitives", 1280, 720, false, 1.f, false, [] { open_rml(kLookPage); }, {}});
     pages.push_back({"filters", 1280, 720, false, 1.f, false, [] { open_rml(kFilterPage); }, {}, true});
     pages.push_back({"filters-odd-size", 1001, 563, false, 1.f, false, [] { open_rml(kFilterPage); }, {}, true});
-    pages.push_back({"hdr-settings", 1280, 720, true, 2.5f, true, [] { open_settings(4, false); }, {}});
+    pages.push_back({"hdr-settings", 1280, 720, true, 2.5f, true, [] { open_settings("Interface", false); }, {}});
     pages.push_back({"hdr-filters", 1280, 720, true, 1.8f, false, [] { open_rml(kFilterPage); }, {}, true});
     pages.push_back({"hdr-clip", 1280, 720, true, 3.0f, true, [] { open_rml(kClipPage); }, {}, true});
     if (models) {
