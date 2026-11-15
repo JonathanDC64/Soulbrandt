@@ -363,6 +363,14 @@ jobs:
           cmake --build build/host --target mods_check
           build/host/ui/mods_check.exe
 
+      # The menus' keys on their own (port/ui/tests/input_map_check.cpp): a pad's buttons as keys with the menu
+      # chord's rule, each key's command in the F1 menu, what is held, the prompts' buttons. Linux runs it below.
+      - name: The menus' keys
+        shell: bash
+        run: |
+          cmake --build build/host --target input_map_check
+          build/host/ui/input_map_check.exe
+
       # The Discord status's connection on its own (port/ui/tests/discord_check.cpp): frames, JSON, and an exchange
       # with a stand-in for Discord on a pipe of the test's own (docs/137). Linux runs it below on a Unix socket.
       - name: The Discord status's connection
@@ -881,6 +889,12 @@ jobs:
         run: |
           cmake --build build/host --target mods_check
           build/host/ui/mods_check
+
+      # The menus' keys, as on Windows above.
+      - name: The menus' keys
+        run: |
+          cmake --build build/host --target input_map_check
+          build/host/ui/input_map_check
 
       # The Discord status's connection, as on Windows above: on a Unix socket.
       - name: The Discord status's connection

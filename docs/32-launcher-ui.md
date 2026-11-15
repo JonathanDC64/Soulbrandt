@@ -425,6 +425,14 @@ Files:
 - `des_ui.cpp`: `des_ui_early_init()` (called first in
   `ps3_title_options_init`, des_options.cpp), the overlay hooks, the input
   queue, gamepad reads, the input hold, the debug knobs.
+- `menu_pad.cpp`: a pad's buttons as the menus' keys. Triangle, Square,
+  Select and R3 press P, C, H and Shift; a button of the menu chord does its
+  own thing only alone (R3 stops hiding once L3 joins it; with Select + Start
+  as the chord, Select's Help is a tap, given as it comes up). `menu_input.cpp`:
+  each key's command in the F1 menu and its pages (Preview, Help, Compare and
+  Hide among them, the last two held), and `prompts.cpp` the buttons the
+  prompts show for each device, following the Button icons row. All three
+  are checked alone by `input_map_check`.
 - `host.cpp`: RmlUi's system and file interfaces (the embedded files),
   fonts, scale, the images given to `add_png`, the BMP screenshot, and the
   renderer (`renderer.hpp`): `render_d3d12.cpp`, or on Windows

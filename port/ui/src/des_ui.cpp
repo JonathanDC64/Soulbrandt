@@ -108,6 +108,7 @@ typedef struct {  // as pad_hid_sony.h has it, field for field: the poll fills a
 static_assert(sizeof(PadHidSonyState) == 10, "pad_hid_sony.h's PadHidSonyState");
 int pad_hid_sony_poll(PadHidSonyState* out, int max);
 int cellPad_host_pads_on(void);  // cellPad.h: 0 while the game ignores the pads (PAD_FOCUS_ONLY in the background)
+int cellPad_host_glyph_device(void);  // cellPad.h: what the game was last used with (PAD_GLYPH_*, pad_glyph.h)
 int cellPad_host_controller(int i, char* id, int idn, char* name, int namen);  // cellPad.h: the i-th port's pad
 
 typedef struct CellOskDialogHost {  // cellOskDialog.h: the game's on-screen keyboard, shown by the UI
@@ -503,6 +504,7 @@ ui::input::PadState read_pads(bool& neutral) {
     neutral = true;
     if (ui::settings::no_user_input()) return pad;  // PS3_NO_USER_INPUT: no pad of the user's is read
     if (!cellPad_host_pads_on()) return pad;         // PAD_FOCUS_ONLY, with the window in the background
+    pad.glyph = cellPad_host_glyph_device();          // (the menus' prompts: input.hpp's menu_device)
     const PadOnly only = pad_only();
     read_xinput(pad, neutral, only);
     PadHidSonyState hid[4];
@@ -577,6 +579,13 @@ void open_menu_bar() {
         ui::play_sound(ui::kSoundMenuOpen);
         bar->show();
     }
+}
+
+// The menu chord pressed over the game: the menus' prompts show the device that pressed it (a pad, or the keyboard
+// standing in for one).
+void open_menu_from_chord() {
+    ui::input::note_device(cellPad_host_glyph_device());
+    open_menu_bar();
 }
 
 // The keyboard as the game opens it (cellOskDialog_set_host), for DES_UI_OPEN=osk and the OSK test key.
@@ -704,6 +713,7 @@ void process_queue() {
                 ui::input::capture_key(e.a);
                 break;
             }
+            ui::input::note_device(1);  // (the keyboard: the menus' prompts)
             if (is_menu_key(WPARAM(e.a)) && !ui::any_document_visible()) {
                 open_menu_bar();
                 break;
@@ -728,6 +738,7 @@ void process_queue() {
             break;
         case InputEvent::MouseDown:
             if (ui::input::binding_capture()) break;  // a mouse button for a binding (controls_window.cpp reads it)
+            ui::input::note_device(1);
             ctx->ProcessMouseButtonDown(e.a, e.mods);
             break;
         case InputEvent::MouseUp:
@@ -739,6 +750,7 @@ void process_queue() {
                 ui::input::capture_wheel(e.wheel < 0.0f ? 1 : -1);
                 break;
             }
+            ui::input::note_device(1);
             ctx->ProcessMouseWheel(Rml::Vector2f(0.0f, e.wheel), e.mods);
             break;
         case InputEvent::Leave:
@@ -1111,7 +1123,7 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
         // Waking: what is held now is not a press (the chord, or the key that opened the menu, is handled here).
         sActive = true;
         ui::input::reset_input_state();
-        if (chordEdge) open_menu_bar();
+        if (chordEdge) open_menu_from_chord();
     }
     if (sHangNotice.exchange(false)) push_hang_notice();
     if (sCustomServerNotice.exchange(false)) push_custom_server_notice();
@@ -1142,7 +1154,7 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
             sPadIdle = true;
             ui::input::reset_input_state();  // what is held now is not a press when a document opens
         }
-        if (chordEdge) open_menu_bar();
+        if (chordEdge) open_menu_from_chord();
     }
     if (ui::OskWindow* osk = ui::active_osk()) osk->on_pad(pad.buttons);
     ui::trophies::drain();
