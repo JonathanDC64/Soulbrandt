@@ -1010,8 +1010,10 @@ void open_crash() {
 
 // A note over the game (overlay.hpp's toasts) as the overlay shows it, over nothing else: a warning, an outcome (a
 // plain note), an info, a trophy, or the menu hint. The words are the port's own kinds of note; the trophy made up.
+ui::Document* gNoteOverlay = nullptr;  // the note pages' overlay: passive, so close_all_documents leaves it up
+
 void open_note(const std::string& kind) {
-    ui::push_document(std::make_unique<ui::Overlay>(), true, true);
+    gNoteOverlay = &ui::push_document(std::make_unique<ui::Overlay>(), true, true);
     if (kind == "hint") {
         ui::show_menu_notification();
         return;
@@ -1230,6 +1232,8 @@ void use_setting(const std::string& key, const std::string& value) {
 
 void close_pages() {
     ui::close_all_documents();
+    if (gNoteOverlay) gNoteOverlay->force_hide(true);  // (a passive document: the next update removes it)
+    gNoteOverlay = nullptr;
     if (ui::settings::get("DES_GLYPHS") != "auto") ui::settings::set("DES_GLYPHS", "auto");
     if (ui::settings::get("ui_scale") != "0") use_setting("ui_scale", "0");
     ui::get_toasts().clear();
