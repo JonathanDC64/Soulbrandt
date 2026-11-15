@@ -34,4 +34,8 @@ struct Actions {
 // that long.
 bool show(const Content& content, const Actions& actions);
 
+// The dialog's window over whatever shows (show's, and ui_render_compare's): the crash's, the hang's or the lost
+// device's, its focus on Report on GitHub. `closed` when it closes the dialog; content and actions must outlive it.
+void push_window(const Content& content, const Actions& actions, std::function<void()> closed);
+
 }  // namespace ui::crash_dialog

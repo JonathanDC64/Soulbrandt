@@ -185,6 +185,13 @@ const Release& found() {
     return check().found;
 }
 
+void set_test_found(const Release* release) {
+    Check& c = check();
+    c.running = false;
+    c.state = release ? State::Found : State::Off;
+    c.found = release ? *release : Release{};
+}
+
 bool skipped() {
     return !check().found.version.empty() && settings::get("update_skip") == check().found.version;
 }

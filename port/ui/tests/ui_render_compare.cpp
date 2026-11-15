@@ -24,10 +24,19 @@
 // --page: only the pages whose names hold NAME. --probe: one pixel's bytes in each frame, from every renderer.
 // --verbose: the first bytes that differ in each frame.
 // Exit code 0: every picture and count the same; 1: one differs; 2: it could not run.
+#include "controls_page.hpp"
+#include "coop_page.hpp"
+#include "crash_dialog.hpp"
+#include "coop_window.hpp"
 #include "host.hpp"
 #include "looks.hpp"
 #include "menu_shell.hpp"
 #include "menu_pages.hpp"
+#include "mods_page.hpp"
+#include "osk_window.hpp"
+#include "overlay.hpp"
+#include "players_page.hpp"
+#include "players_state.hpp"
 #include "prelaunch.hpp"
 #include "renderer.hpp"
 #include "report.hpp"
@@ -37,12 +46,17 @@
 #include "settings_page.hpp"
 #include "setup_screens.hpp"
 #include "souls_model.hpp"
+#include "trophies_page.hpp"
+#include "trophy_set.hpp"
 #include "ui.hpp"
+#include "updates.hpp"
 
 #include "gpu.h"
 #include "gpu_shader.h"
 #include "gpu_vt_cmd.h"
 #include "ui_render_compare_hooks.h"
+
+#include "../../des_seamless.h"
 
 #include <RmlUi/Core.h>
 
@@ -58,6 +72,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -70,6 +85,10 @@
 // settings.cpp and report.cpp set variables through the game's getenv cache (boot_main.cpp); here, the process's.
 extern "C" void ps3_setenv(const char* name, const char* value) {
     _putenv_s(name, value ? value : "");
+}
+
+namespace des::seamless {
+void set_test_status(const Status& s);  // ui_render_compare_stubs.cpp: what status() and mode() give
 }
 
 namespace {
@@ -920,6 +939,122 @@ void open_settings_row(const std::string& tab, const std::string& row, ui::menu:
     page->command(command, true);
 }
 
+// Change Buttons as Settings opens it (Controls > Change Buttons): the look's own (Alpha UI's window, a page over
+// Settings in a look with looks.hpp's pages), on the keys or the gamepad, the focus on that row (the count of rows:
+// Restore) and input, waiting for that row's input, or with Help open.
+void open_controls(bool keys, int row, int slot, bool wait, bool help) {
+    open_settings_row("Controls", "Change Buttons", ui::menu::Command::Confirm);
+    if (auto* page = dynamic_cast<ui::ControlsPage*>(menu_shell().page())) {
+        page->show_keys(keys);
+        page->focus(row, slot);
+        if (wait) page->wait();
+        if (help) page->open_help();
+    }
+}
+
+// Made-up players met over the last 14 days (names and keys made up): help both ways, invasions both ways, an Old
+// Monk, one blocked, one reported; more than a page of them.
+std::vector<ps3_net_player> standin_players() {
+    struct P {
+        const char* name;
+        const char* key;
+        const char* met;
+        int host;
+        long long ago;
+        int blocked, reported;
+    };
+    const P list[] = {
+        {"Gray_Wanderer", "a1b2c3d4e5f60718", "help", 1, 7200, 0, 0},
+        {"Ashen_Pilgrim", "0f1e2d3c4b5a6978", "invasion", 1, 30000, 0, 1},
+        {"Marsh_Lantern", "1122334455667788", "help", 0, 90000, 0, 0},
+        {"Quiet_Tide", "99aabbccddeeff00", "monk", 0, 200000, 0, 0},
+        {"Rust_Lark", "5566778899aabbcc", "invasion", 0, 400000, 0, 0},
+        {"Pale_Rook", "deadbeef00112233", "", 0, -1, 1, 0},
+        {"Ember_Sparrow", "0a1b2c3d4e5f6a7b", "help", 1, 800000, 0, 0},
+        {"Old_Hollow", "f0e1d2c3b4a59687", "help", 0, 1000000, 0, 0},
+    };
+    std::vector<ps3_net_player> out;
+    const long long now = static_cast<long long>(std::time(nullptr));
+    for (const P& p : list) {
+        ps3_net_player n{};
+        std::snprintf(n.name, sizeof n.name, "%s", p.name);
+        std::memcpy(n.fingerprint, p.key, std::min(sizeof n.fingerprint, std::strlen(p.key)));
+        std::snprintf(n.met, sizeof n.met, "%s", p.met);
+        n.host = p.host;
+        n.at = p.ago < 0 ? -1 : now - p.ago;
+        n.blocked = p.blocked;
+        n.reported = p.reported;
+        n.reportable = !p.reported;
+        out.push_back(n);
+    }
+    return out;
+}
+
+// Players as Settings opens it (Network > Players you met): the look's own (Alpha UI's window, a page over Settings in
+// a look with looks.hpp's pages), from the made-up list (or offline), the focus on that player.
+void open_players(bool offline, int focus) {
+    ui::players::set_test_list(standin_players(), 14, offline);
+    open_settings_row("Network", "Players you met", ui::menu::Command::Confirm);
+    if (auto* page = dynamic_cast<ui::PlayersPage*>(menu_shell().page())) page->focus_player(focus);
+}
+
+// The crash window as the crash dialog shows it (1024 x 640), for a made-up crash; its buttons do nothing here.
+void open_crash() {
+    static const ui::crash_dialog::Content content{
+        .what = "access violation writing 0000000000000000",
+        .details = "made up for the test",
+    };
+    static const ui::crash_dialog::Actions actions{};
+    ui::crash_dialog::push_window(content, actions, {});
+}
+
+// A note over the game (overlay.hpp's toasts) as the overlay shows it, over nothing else: a warning, an outcome (a
+// plain note), an info, a trophy, or the menu hint. The words are the port's own kinds of note; the trophy made up.
+ui::Document* gNoteOverlay = nullptr;  // the note pages' overlay: passive, so close_all_documents leaves it up
+
+void open_note(const std::string& kind) {
+    gNoteOverlay = &ui::push_document(std::make_unique<ui::Overlay>(), true, true);
+    if (kind == "hint") {
+        ui::show_menu_notification();
+        return;
+    }
+    ui::Toast t{.duration = std::chrono::seconds(60)};
+    if (kind == "warning") {
+        t.type = "warning";
+        t.title = "Mods";
+        t.content = "Texture pack 2 holds two versions: keep one, then refresh the list.";
+    } else if (kind == "info") {
+        t.type = "info";
+        t.title = "Co-op";
+        t.content = "Copied. Send it to your friends, not in public.";
+    } else if (kind == "done") {
+        t.title = "Players";
+        t.content = "Gray_Wanderer is blocked.";
+    } else {
+        t.type = "trophy";
+        t.title = "<toast-title>Trophy unlocked</toast-title><grade class=\"gold\"><icon class=\"trophy\"/>Gold</grade>";
+        t.content = "<trophy-name>Every trophy</trophy-name>";
+        t.icon = "<icon class=\"trophy\"/>";
+    }
+    ui::push_toast(std::move(t));
+}
+
+// The on-screen keyboard as the game opens it (cellOskDialog), or Co-op's Public address: a prompt, a made-up address.
+void open_osk() {
+    ui::push_document(std::make_unique<ui::OskWindow>(ui::OskWindow::Props{
+        .prompt = "Your public address, like 203.0.113.7",
+        .text = u"203.0.113.7",
+        .limit = 15,
+    }));
+}
+
+// The start screen with a new version found (a made-up 0.9.0).
+void open_start_update() {
+    static const ui::updates::Release release{.version = "0.9.0", .notes = {"Made up for the test."}};
+    ui::updates::set_test_found(&release);
+    ui::push_document(std::make_unique<ui::Prelaunch>());
+}
+
 // Settings closed on that tab's row and opened again: it opens where it was left.
 void reopen_settings(const std::string& tab, const std::string& row) {
     ui::SettingsPage* page = open_settings(tab, false);
@@ -937,8 +1072,176 @@ void use_look(std::string_view id) {
     ui::looks::apply();
 }
 
+// A stand-in trophy set for the Trophies pages (the test has no disc): made-up trophies, none of the game's, with no
+// icons, so each shows its grade's cup. Fixed unlock times; the dates are drawn in the PC's time zone.
+bool standin_trophies(sceNpTrophySnapshot& s) {
+    struct T {
+        unsigned grade;
+        bool unlocked;
+        const char* name;
+        const char* detail;
+    };
+    static const T kSet[] = {
+        {1, false, "Every trophy", "Earn every other trophy."},
+        {2, false, "Return to slumber", "See the end of the game."},
+        {2, false, "Every demon's soul", "Hold the soul of every demon at once."},
+        {2, true, "The Nexus restored", "Clear the first area of every archstone."},
+        {3, true, "Pure white", "Raise your character tendency to pure white."},
+        {3, false, "Pure black", "Lower your character tendency to pure black."},
+        {3, true, "A world in white", "Raise a world's tendency to pure white."},
+        {4, true, "First steps", "Leave the Nexus for the first time."},
+        {4, true, "Keeper of the flame", "Speak with the Maiden in Black."},
+        {4, false, "Smith's apprentice", "Have a weapon reinforced to its limit."},
+        {4, true, "A friend in need", "Help another player defeat a demon."},
+        {4, false, "Hunter of the dark", "Defeat an invader in your own world."},
+        {4, true, "Spell weaver", "Learn every kind of spell once."},
+        {4, false, "Collector", "Own every ring."},
+    };
+    s = sceNpTrophySnapshot{};
+    std::snprintf(s.title, sizeof s.title, "%s", "Demon's Souls");
+    s.count = static_cast<unsigned>(std::size(kSet));
+    for (unsigned i = 0; i < s.count; i++) {
+        sceNpTrophySnapshotEntry& e = s.trophies[i];
+        e.trophyId = static_cast<int>(i);
+        e.grade = kSet[i].grade;
+        e.unlocked = kSet[i].unlocked;
+        e.unix_time = e.unlocked ? 1794253620ull + i * 86400ull : 0;
+        std::snprintf(e.name, sizeof e.name, "%s", kSet[i].name);
+        std::snprintf(e.detail, sizeof e.detail, "%s", kSet[i].detail);
+        s.per_grade[e.grade]++;
+        if (e.unlocked) {
+            s.unlocked++;
+            s.unlocked_per_grade[e.grade]++;
+        }
+    }
+    s.percent = static_cast<int>(100 * s.unlocked / s.count);
+    return true;
+}
+
+void open_menu(bool quit);
+
+// Trophies as the F1 menu opens it, from the stand-in set (or no set): the look's own (Alpha UI's window, a page in a
+// look with looks.hpp's pages), with the focus on that trophy.
+void open_trophies(bool set, int focus) {
+    if (set) ui::trophy_set::set_test_source(standin_trophies);
+    else ui::trophy_set::set_test_source([](sceNpTrophySnapshot&) { return false; });
+    open_menu(false);
+    for (size_t i = 0; i < ui::menu::entries().size(); i++)
+        if (ui::menu::entries()[i].title == "Trophies") ui::menu::entries()[i].choose(menu_shell());
+    if (auto* page = dynamic_cast<ui::TrophiesPage*>(menu_shell().page())) page->focus_trophy(focus);
+}
+
+// A stand-in mods folder for the Mods pages (made-up mods of a file or two each, nothing of the game's), made again
+// beside the scratch data folder: three look mods on (two with the same file), a gameplay mod off, a download with
+// two versions in it, and loose files with no game folder. Or an empty one. DES_MODS_DIR points the screens at it.
+void standin_mods(bool any) {
+    const std::filesystem::path data = std::getenv("DES_DATA_DIR") ? std::getenv("DES_DATA_DIR") : "";
+    const std::filesystem::path dir = data.parent_path() / (any ? "mods-standin" : "mods-empty");
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+    std::filesystem::create_directories(dir, ec);
+    const auto put = [&](const char* rel) {
+        const std::filesystem::path p = dir / std::filesystem::u8path(rel);
+        std::filesystem::create_directories(p.parent_path(), ec);
+        std::ofstream(p, std::ios::binary) << "stand-in";
+    };
+    if (any) {
+        put("Clearer text/font/menu_font.ccm");
+        put("Warmer torchlight/sfx/frpg_sfxbnd_m02.ffxbnd");
+        put("Darker nights/sfx/frpg_sfxbnd_m02.ffxbnd");
+        put("Darker nights/param/drawparam/m02_drawparam.parambnd");
+        put("Harder enemies/param/gameparam/gameparam.parambnd");
+        put("Texture pack 2/1080p/menu/menu_tex.tpf");
+        put("Texture pack 2/4K/menu/menu_tex.tpf");
+        put("Old menu font/oldfont.ccm");
+        std::ofstream(dir / "load_order.txt", std::ios::binary)
+            << "on Clearer text\non Warmer torchlight\non Darker nights\noff Harder enemies\n";
+    }
+    _putenv_s("DES_MODS_DIR", dir.string().c_str());
+}
+
+// Mods as the F1 menu opens it, from the stand-in folder: the look's own (Alpha UI's window, a page in a look with
+// looks.hpp's pages), the focus on the mod of that name, or Good to know open.
+void open_mods(bool any, const std::string& focus, bool help) {
+    standin_mods(any);
+    open_menu(false);
+    for (size_t i = 0; i < ui::menu::entries().size(); i++)
+        if (ui::menu::entries()[i].title == "Mods") ui::menu::entries()[i].choose(menu_shell());
+    if (auto* page = dynamic_cast<ui::ModsPage*>(menu_shell().page())) {
+        if (!focus.empty()) page->focus_mod(focus);
+        if (help) page->open_help();
+    }
+}
+
+// Co-op as the F1 menu opens it, with co-op as that made-up status: the look's own (Alpha UI's window, a page in a
+// look with looks.hpp's pages), the focus on that action.
+void open_coop(const des::seamless::Status& s, int focus) {
+    des::seamless::set_test_status(s);
+    open_menu(false);
+    for (size_t i = 0; i < ui::menu::entries().size(); i++)
+        if (ui::menu::entries()[i].title == "Co-op") ui::menu::entries()[i].choose(menu_shell());
+    if (auto* page = dynamic_cast<ui::CoopPage*>(menu_shell().page())) page->focus_action(focus);
+}
+
+// A question as it is asked over its page: Host or Join over Co-op (not in co-op), a player's over Players, Quit over
+// the start screen (nothing played there, so no lost-progress line).
+void open_ask(const std::string& which) {
+    if (which == "host" || which == "join") {
+        open_coop({}, which == "host" ? 0 : 1);
+        if (which == "host") ui::coop::open_host();
+        else ui::coop::open_join();
+    } else if (which == "player") {
+        open_players(false, 0);
+        ui::players::open_actions(standin_players().front());
+    } else if (which == "quit") {
+        ui::push_document(std::make_unique<ui::Prelaunch>());
+        ui::request_quit_confirm(false);
+    }
+}
+
+// A made-up host: its router answered, two of four players in and one waiting; the codes are made up.
+des::seamless::Status standin_host() {
+    des::seamless::Status s;
+    s.mode = des::seamless::Mode::Host;
+    s.started = true;
+    s.code = "7KQ2-M9XD-0RTB-4HWE";
+    s.lan_code = "4H2K-PL7Q-ZZ81-C0DE";
+    s.router = "Your router opened port 3658 for co-op.";
+    s.router_done = s.router_ok = true;
+    s.port = 3658;
+    s.players = 2;
+    s.waiting = 1;
+    return s;
+}
+
+// A made-up guest, connected (or its connection lost).
+des::seamless::Status standin_guest(bool lost) {
+    des::seamless::Status s;
+    s.mode = des::seamless::Mode::Join;
+    s.started = true;
+    s.link = lost ? des::seamless::Status::Link::Lost : des::seamless::Status::Link::Connected;
+    return s;
+}
+
+// A setting as its row sets it, for a page that shows it: the prompts' buttons (DES_GLYPHS), the UI scale (ui_scale,
+// applied as its row applies it). close_pages puts both back.
+void use_setting(const std::string& key, const std::string& value) {
+    ui::settings::set(key, value);
+    if (key == "ui_scale") ui::apply_scale();
+}
+
 void close_pages() {
     ui::close_all_documents();
+    if (gNoteOverlay) gNoteOverlay->force_hide(true);  // (a passive document: the next update removes it)
+    gNoteOverlay = nullptr;
+    if (ui::settings::get("DES_GLYPHS") != "auto") ui::settings::set("DES_GLYPHS", "auto");
+    if (ui::settings::get("ui_scale") != "0") use_setting("ui_scale", "0");
+    ui::get_toasts().clear();
+    ui::updates::set_test_found(nullptr);
+    ui::trophy_set::set_test_source({});
+    des::seamless::set_test_status({});
+    ui::players::clear_test_list();
+    _putenv_s("DES_MODS_DIR", "");
     ui::SettingsPage::forget_place();  // (Settings opens where it was left: each page starts as at the game's start)
     for (Rml::ElementDocument* d : gDocuments) d->Close();
     gDocuments.clear();
@@ -1266,6 +1569,46 @@ int main(int argc, char** argv) {
     pages.push_back({"menu", 1280, 720, false, 1.f, false, [] { open_menu(false); }, {}});
     pages.push_back({"menu-quit", 1280, 720, false, 1.f, false, [] { open_menu(true); }, {}});
     pages.push_back({"menu-restart", 1280, 720, false, 1.f, false, open_menu_restart, {}});
+    // Trophies and Mods, as Alpha UI shows them (their windows).
+    pages.push_back({"trophies", 1280, 720, false, 1.f, false, [] { open_trophies(true, 1); }, {}});
+    pages.push_back({"mods", 1280, 720, false, 1.f, false, [] { open_mods(true, "", false); }, {}});
+    // Change Buttons as Alpha UI shows it (its window).
+    pages.push_back({"controls", 1280, 720, false, 1.f, false, [] { open_controls(false, 0, 0, false, false); }, {}});
+    // Notes over the game: a warning, a trophy, and the menu hint.
+    for (const char* kind : {"warning", "trophy", "hint"})
+        pages.push_back({std::string("note-") + kind, 1280, 720, false, 1.f, false, [kind] { open_note(kind); }, {}});
+    // The start screen with a new version found: its note and the Update choice stand out.
+    pages.push_back({"start-update", 1280, 720, false, 1.f, false, open_start_update, {}});
+    // The on-screen keyboard.
+    pages.push_back({"osk", 1280, 720, false, 1.f, false, open_osk, {}});
+    // The crash window, at its own size.
+    pages.push_back({"crash", 1024, 640, false, 1.f, false, open_crash, {}});
+    // Players as Alpha UI shows it (its window), from the made-up list.
+    pages.push_back({"players", 1280, 720, false, 1.f, false, [] { open_players(false, 0); }, {}});
+    // Co-op as Alpha UI shows it (its window): not in co-op, and hosting.
+    pages.push_back({"coop", 1280, 720, false, 1.f, false, [] { open_coop({}, 0); }, {}});
+    pages.push_back({"coop-host", 1280, 720, false, 1.f, false, [] { open_coop(standin_host(), 0); }, {}});
+    // A question with named answers: Public address, over the host's Co-op.
+    pages.push_back({"coop-address", 1280, 720, false, 1.f, false, [] {
+        open_coop(standin_host(), 2);
+        ui::coop::open_public_address();
+    }, {}});
+    // Settings worth comparing between the looks, on Settings' Display tab: the prompts as Xbox buttons and as keys,
+    // UI scale 150% on a 1920 x 1080 window, a 2560 x 1440 window at the display's scale, and a 21:9 window.
+    const auto with = [](const char* key, const char* value) {
+        return [key, value] {
+            use_setting(key, value);
+            open_settings("Display", false);
+        };
+    };
+    pages.push_back({"glyphs-xbox", 1280, 720, false, 1.f, false, with("DES_GLYPHS", "xbox"), {}});
+    pages.push_back({"glyphs-keys", 1280, 720, false, 1.f, false, with("DES_GLYPHS", "keyboard"), {}});
+    pages.push_back({"scale-150", 1920, 1080, false, 1.f, false, with("ui_scale", "150"), {}});
+    pages.push_back({"window-1440", 2560, 1440, false, 1.f, false, [] { open_settings("Display", false); }, {}});
+    pages.push_back({"settings-wide", 2560, 1080, false, 1.f, false, [] { open_settings("Display", false); }, {}});
+    // Questions over their pages, in their short words: Host, Join, a player's, the start screen's Quit.
+    for (const char* which : {"host", "join", "player", "quit"})
+        pages.push_back({std::string("ask-") + which, 1280, 720, false, 1.f, false, [which] { open_ask(which); }, {}});
     // The question before a first report, its tick not yet ticked (the scratch data folder has no answer kept).
     pages.push_back({"report-ack", 1280, 720, false, 1.f, false, [] {
         open_menu(false);
@@ -1285,6 +1628,77 @@ int main(int argc, char** argv) {
         };
         pages.push_back({"des-menu", 1280, 720, false, 1.f, false, in_band([] { open_menu(false); }), {}});
         pages.push_back({"des-quit", 1280, 720, false, 1.f, false, in_band([] { open_menu(true); }), {}});
+        pages.push_back({"des-menu-restart", 1280, 720, false, 1.f, false, in_band(open_menu_restart), {}});
+        // Trophies as a page: the top of the list, further down (the list scrolled, its marks above and below), with
+        // no set found, and on its own as the start screen opens it.
+        pages.push_back({"des-trophies", 1280, 720, false, 1.f, false, in_band([] { open_trophies(true, 1); }), {}});
+        pages.push_back({"des-trophies-down", 1280, 720, false, 1.f, false, in_band([] { open_trophies(true, 9); }), {}});
+        pages.push_back({"des-trophies-none", 1280, 720, false, 1.f, false, in_band([] { open_trophies(false, 0); }), {}});
+        // Two of them hidden (DES_TROPHY_HIDDEN, the test knob), the focus on one still locked: "Hidden trophy".
+        pages.push_back({"des-trophies-hidden", 1280, 720, false, 1.f, false, in_band([] {
+            _putenv_s("DES_TROPHY_HIDDEN", "1,4");
+            open_trophies(true, 1);
+            _putenv_s("DES_TROPHY_HIDDEN", "");
+        }), {}});
+        // Mods as a page: a mod some of whose files another gives (its arrows to move it), a folder that needs
+        // attention, Good to know, and no mods yet.
+        pages.push_back({"des-mods", 1280, 720, false, 1.f, false, in_band([] { open_mods(true, "Darker nights", false); }), {}});
+        pages.push_back({"des-mods-attention", 1280, 720, false, 1.f, false,
+                         in_band([] { open_mods(true, "Texture pack 2", false); }), {}});
+        pages.push_back({"des-mods-help", 1280, 720, false, 1.f, false, in_band([] { open_mods(true, "", true); }), {}});
+        pages.push_back({"des-mods-empty", 1280, 720, false, 1.f, false, in_band([] { open_mods(false, "", false); }), {}});
+        // Change Buttons as a page over Settings: the gamepad, the keys (the second box of Attack chosen), the keys
+        // waiting for Lock on's first input, Help, and Restore at the end of the gamepad's rows.
+        pages.push_back({"des-controls", 1280, 720, false, 1.f, false,
+                         in_band([] { open_controls(false, 0, 0, false, false); }), {}});
+        pages.push_back({"des-controls-keys", 1280, 720, false, 1.f, false,
+                         in_band([] { open_controls(true, 7, 1, false, false); }), {}});
+        pages.push_back({"des-controls-wait", 1280, 720, false, 1.f, false,
+                         in_band([] { open_controls(true, 12, 0, true, false); }), {}});
+        pages.push_back({"des-controls-help", 1280, 720, false, 1.f, false,
+                         in_band([] { open_controls(true, 0, 0, false, true); }), {}});
+        pages.push_back({"des-controls-restore", 1280, 720, false, 1.f, false,
+                         in_band([] { open_controls(false, 16, 0, false, false); }), {}});
+        // Notes over the game as stone bars, each kind's mark in its colour; the menu hint low in the middle.
+        for (const char* kind : {"warning", "done", "info", "trophy", "hint"})
+            pages.push_back({std::string("des-note-") + kind, 1280, 720, false, 1.f, false,
+                             in_band([kind] { open_note(kind); }), {}});
+        pages.push_back({"des-start-update", 1280, 720, false, 1.f, false, in_band(open_start_update), {}});
+        // The on-screen keyboard: the question box with small stone keys, every key and button of Alpha UI's.
+        pages.push_back({"des-osk", 1280, 720, false, 1.f, false, in_band(open_osk), {}});
+        // The crash window, its red mark kept, the focus on Report on GitHub.
+        pages.push_back({"des-crash", 1024, 640, false, 1.f, false, in_band(open_crash), {}});
+        // Players as a page over Settings: the list's first page, further down (its marks above and below), and offline
+        // (the strip's line, no box).
+        pages.push_back({"des-players", 1280, 720, false, 1.f, false, in_band([] { open_players(false, 0); }), {}});
+        pages.push_back({"des-players-down", 1280, 720, false, 1.f, false, in_band([] { open_players(false, 6); }), {}});
+        pages.push_back({"des-players-offline", 1280, 720, false, 1.f, false, in_band([] { open_players(true, 0); }), {}});
+        // Co-op as a page: not in co-op, hosting (the focus on New code), joined (its line in the strip, no box) and
+        // a guest whose connection was lost.
+        pages.push_back({"des-coop", 1280, 720, false, 1.f, false, in_band([] { open_coop({}, 0); }), {}});
+        pages.push_back({"des-coop-host", 1280, 720, false, 1.f, false, in_band([] { open_coop(standin_host(), 1); }), {}});
+        pages.push_back({"des-coop-join", 1280, 720, false, 1.f, false,
+                         in_band([] { open_coop(standin_guest(false), 0); }), {}});
+        pages.push_back({"des-coop-lost", 1280, 720, false, 1.f, false,
+                         in_band([] { open_coop(standin_guest(true), 0); }), {}});
+        // A question with named answers, as rows, Cancel under them: Public address, over the host's page.
+        pages.push_back({"des-coop-address", 1280, 720, false, 1.f, false, in_band([] {
+            open_coop(standin_host(), 2);
+            ui::coop::open_public_address();
+        }), {}});
+        for (const char* which : {"host", "join", "player", "quit"})
+            pages.push_back({std::string("des-ask-") + which, 1280, 720, false, 1.f, false,
+                             in_band([which] { open_ask(which); }), {}});
+        // The settings worth comparing (Alpha UI's above): Xbox buttons, keys, UI scale 150%, a 2560 x 1440 window.
+        pages.push_back({"des-glyphs-xbox", 1280, 720, false, 1.f, false, in_band(with("DES_GLYPHS", "xbox")), {}});
+        pages.push_back({"des-glyphs-keys", 1280, 720, false, 1.f, false, in_band(with("DES_GLYPHS", "keyboard")), {}});
+        pages.push_back({"des-scale-150", 1920, 1080, false, 1.f, false, in_band(with("ui_scale", "150")), {}});
+        pages.push_back({"des-window-1440", 2560, 1440, false, 1.f, false,
+                         in_band([] { open_settings("Display", false); }), {}});
+        pages.push_back({"des-trophies-start", 1280, 720, false, 1.f, false, in_band([] {
+            ui::trophy_set::set_test_source(standin_trophies);
+            ui::push_document(ui::menu::screen_alone("Trophies"));
+        }), {}});
         pages.push_back({"des-display", 1280, 720, false, 1.f, false, in_band([] { open_settings("Display", false); }), {}});
         pages.push_back({"des-list", 1280, 720, false, 1.f, false,
                          in_band([] { open_settings_row("Display", "Aspect ratio", Command::Confirm); }), {}});

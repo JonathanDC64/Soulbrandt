@@ -12,4 +12,16 @@ namespace ui {
 
 std::unique_ptr<Modal> make_coop_window();
 
+// What the window's buttons do, for the Co-op page (coop_page.hpp, a look's): each opens the window's question for it,
+// or (copy_code) puts the invite code on the clipboard; no_code: there is none to copy yet.
+namespace coop {
+void open_host();
+void open_join();
+void copy_code();
+bool no_code();
+void open_new_code();
+void open_public_address();
+void open_leave();
+}  // namespace coop
+
 }  // namespace ui

@@ -105,7 +105,7 @@ void push_toast(Toast toast) noexcept;
 
 // Asks "Quit?" in a window of its own (the menu's Quit tab, the start screen's Quit and the window's close button).
 // Does nothing if it is already asking.
-void request_quit_confirm();
+void request_quit_confirm(bool played = true);  // played: false on the start screen, where nothing can be lost
 std::deque<Toast>& get_toasts() noexcept;
 // A line from the online server (its banners) for the thin bar at the top of the screen, which shows them one at a
 // time, the oldest first. Plain text, never markup.

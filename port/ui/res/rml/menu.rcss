@@ -200,6 +200,11 @@ menu-page {
     overflow: hidden;
 }
 
+/* A page with another opened over it (menu_shell.hpp's open_over): kept as it is, hidden, until that one closes. */
+menu-page.under {
+    display: none;
+}
+
 menu-prompts {
     display: flex;
     flex: 0 0 46dp;

@@ -40,6 +40,14 @@
     to { opacity: 0.82; }
 }
 
+/* What waits for the player (Change Buttons' box while it waits for the input): it holds, dips and comes back. */
+@keyframes des-blink {
+    0% { opacity: 1; }
+    40% { opacity: 1; }
+    70% { opacity: 0.4; }
+    100% { opacity: 1; }
+}
+
 body {
     --menu-column: 1152dp;
     --menu-side: 64dp;
@@ -52,6 +60,12 @@ body {
     --des-amber-light: #ffd27a;
     --des-hover-edge: #8a7c66;
     --des-locked: #7d7264;
+    /* Status, and nothing else, has colour (docs/148, widened by decision 21): the HUD's stamina, health and magic
+       bars, and the amber of the arrows. */
+    --des-ok: #6e9d4c;
+    --des-warn: #e0a63c;
+    --des-error: #c4433b;
+    --des-info: #5b8fd6;
 }
 
 /* ---- The frame: the whole window (Interface > Menu height is Alpha UI's: looks.hpp). ---- */
@@ -110,7 +124,13 @@ menu-slot-close {
     display: none;
 }
 
-menu-slot-entry.on {
+/* A page over another (Change Buttons over Settings) names itself in the slot, in the entry's place. */
+body.over menu-slot-entry.on {
+    display: none;
+}
+
+menu-slot-entry.on,
+body.over menu-title {
     display: block;
     width: 400dp;
     height: 44dp;
@@ -786,6 +806,11 @@ menu-prompt:hover {
     background-color: rgba(255, 255, 255, 10%);
 }
 
+/* (a prompt without words shares the next one's: L1 R1 Scroll) */
+menu-prompt.joined {
+    margin-right: -16dp;
+}
+
 menu-prompt:hover menu-says {
     color: var(--des-tan-light);
 }
@@ -937,6 +962,16 @@ window.modal modal-header icon {
     display: none;
 }
 
+/* The crash window keeps its red mark (questions have none): the HUD's health red, a status colour. */
+window.modal modal-header icon.error {
+    display: inline-block;
+    width: 24dp;
+    height: 24dp;
+    margin-right: 10dp;
+    font-size: 24dp;
+    color: var(--des-error);
+}
+
 window.modal modal-title,
 window.modal.danger modal-title {
     font-family: Old Standard TT;
@@ -991,6 +1026,40 @@ window.modal button.modal-btn:not(:disabled):focus-visible {
     box-shadow: none;
     decorator: image(/res/img/grain.png repeat left top), linear-gradient(#853432, #6a2524);
     color: var(--des-tan-light);
+}
+
+/* A question with named answers (Report a player, Public address, Your co-op characters): the answers as rows, as the
+   game's lists, and the last, Cancel, as the small stone button under them. */
+window.modal modal-actions.vertical {
+    flex-flow: column;
+    align-items: stretch;
+    gap: 6dp;
+    padding-top: 12dp;
+}
+
+window.modal modal-actions.vertical button.modal-btn {
+    flex: 0 0 38dp;
+    height: 38dp;
+    padding: 0 14dp;
+    font-size: 21dp;
+    line-height: 36dp;
+    letter-spacing: 0.3dp;
+    text-align: left;
+    text-transform: none;
+}
+
+window.modal modal-actions.vertical button.modal-btn:last-child {
+    flex: 0 0 34dp;
+    align-self: center;
+    width: 200dp;
+    height: 34dp;
+    margin-top: 18dp;
+    padding: 0;
+    font-size: 17dp;
+    line-height: 32dp;
+    letter-spacing: 0.5dp;
+    text-align: center;
+    text-transform: uppercase;
 }
 
 window.modal button.modal-btn:disabled {
@@ -1074,7 +1143,8 @@ body.prelaunch menu {
     left: 0;
     width: 100%;
     align-items: center;
-    gap: 46dp;
+    top: 46%;
+    gap: 30dp;  /* (a little above the middle: room for a seventh choice, Update, above the hint) */
 }
 
 body.prelaunch hero {
@@ -1123,6 +1193,58 @@ body.prelaunch #menu-list button {
     color: var(--des-tan);
     font-effect: glow(0dp 3dp 0dp 0dp rgba(0, 0, 0, 85%));
     decorator: none;
+}
+
+/* A new version: a stone bar at the top right, as the notes over the game, its mark amber and the bar breathing so it
+   isn't missed; the Update choice amber. */
+body.prelaunch update-note.on {
+    top: 32dp;
+    right: 40dp;
+    gap: 14dp;
+    padding: 12dp 22dp 13dp 14dp;
+    border-width: 0;
+    border-top-width: 1dp;
+    border-top-color: #4f4d46;
+    border-bottom-width: 1dp;
+    border-bottom-color: #111111;
+    border-radius: 0;
+    box-shadow: #000000 0 0 0 1dp;
+    background-color: #2c2c2b;
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#333331, #262626);
+}
+
+body.prelaunch update-note.on:hover {
+    border-top-color: var(--des-hover-edge);
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#4c4a45, #393835);
+}
+
+body.motion update-note.on {
+    animation: 1.1s linear-in-out infinite alternate des-breathe;
+}
+
+body.prelaunch update-mark {
+    width: 44dp;
+    height: 44dp;
+    font-size: 32dp;
+    color: var(--des-amber);
+}
+
+body.prelaunch update-title {
+    font-family: Old Standard TT;
+    font-size: 21dp;
+    line-height: 28dp;
+    color: var(--des-tan-light);
+}
+
+body.prelaunch update-line {
+    font-family: Old Standard TT;
+    font-size: 16dp;
+    line-height: 22dp;
+    color: var(--des-tan);
+}
+
+body.prelaunch #menu-list button.update {
+    color: var(--des-amber-light);
 }
 
 body.prelaunch #menu-list button:not(:disabled):hover {
@@ -1195,6 +1317,1438 @@ body.prelaunch menu-glyph {
 
 body.prelaunch menu-glyph menu-key {
     display: none;
+}
+
+/* ---- A list that goes on past its box (Trophies'): an amber mark on the box's edge, at the top or the bottom, as the
+   game marks its item strip. ---- */
+list-more {
+    display: none;
+    position: absolute;
+    left: 50%;
+    width: 22dp;
+    height: 14dp;
+    margin-left: -11dp;
+    font-family: var(--font-family-icons);
+    font-size: 44dp;
+    line-height: 14dp;
+    text-align: center;
+    color: var(--des-amber);
+}
+
+list-more.on {
+    display: block;
+}
+
+list-more.up {
+    top: -8dp;
+    decorator: text("&#xe5c7;" center center);  /* arrow_drop_up */
+}
+
+list-more.down {
+    bottom: -8dp;
+    decorator: text("&#xe5c5;" center center);  /* arrow_drop_down */
+}
+
+/* ---- Trophies (trophies_page.hpp): the list in a box at the column's left, the set's summary in a box at its right,
+   each with the game's fine frame. ---- */
+trophy-page {
+    display: flex;
+    flex: 1 1 0dp;
+    align-self: center;
+    width: 1152dp;
+    min-height: 0;
+    gap: 22dp;
+    padding: 8dp 0 6dp;
+}
+
+trophy-box,
+trophy-summary {
+    position: relative;
+    border-width: 1dp;
+    border-color: #4d4a42;
+    background-color: rgba(0, 0, 0, 62%);
+}
+
+trophy-box {
+    display: flex;
+    flex-flow: column;
+    flex: 0 0 744dp;
+    align-self: flex-start;
+    padding: 6dp 6dp 6dp 8dp;
+}
+
+/* (as tall as the whole rows that fit: trophies_page.cpp sets its height) */
+trophy-list {
+    display: block;
+    flex: 0 0 auto;
+    overflow: hidden auto;
+}
+
+trophy-list scrollbarvertical,
+trophy-list scrollbarvertical slidertrack {
+    width: 4dp;
+    margin: 0;
+}
+
+trophy-list scrollbarvertical slidertrack {
+    background-color: rgba(0, 0, 0, 45%);
+}
+
+trophy-list scrollbarvertical sliderbar {
+    width: 4dp;
+    border-radius: 0;
+    background-color: var(--des-bracket);
+}
+
+trophy-row {
+    display: flex;
+    align-items: center;
+    height: 73dp;
+    gap: 16dp;
+    padding: 0 14dp 0 10dp;
+    border-top-width: 1dp;
+    border-top-color: transparent;
+    border-bottom-width: 1dp;
+    border-bottom-color: #2c2a27;
+    font-family: Old Standard TT;
+    font-weight: normal;
+    color: var(--des-tan);
+    cursor: pointer;
+}
+
+trophy-row:hover {
+    border-top-color: var(--des-hover-edge);
+    background-color: rgba(255, 255, 255, 5%);
+}
+
+trophy-row.focused {
+    border-top-color: var(--des-blood-edge);
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#853432, #6a2524);
+    color: var(--des-tan-light);
+}
+
+body.motion trophy-row.focused {
+    animation: 1.1s linear-in-out infinite alternate des-breathe;
+}
+
+trophy-icon {
+    display: flex;
+    flex: 0 0 56dp;
+    height: 56dp;
+    align-items: center;
+    justify-content: center;
+    border-width: 1dp;
+    border-color: #3d3b35;
+    background-color: #0d0d0c;
+}
+
+trophy-icon img {
+    width: 54dp;
+    height: 54dp;
+}
+
+trophy-row.locked trophy-icon img {
+    image-color: rgba(255, 255, 255, 40%);
+}
+
+trophy-icon icon {
+    font-size: 32dp;
+    color: #8f8a80;
+}
+
+trophy-icon.platinum icon { color: #c9d2db; }
+trophy-icon.gold icon { color: #d8a83a; }
+trophy-icon.silver icon { color: #b9b9b4; }
+trophy-icon.bronze icon { color: #b8784a; }
+
+trophy-row.locked trophy-icon icon {
+    opacity: 0.42;
+}
+
+trophy-text {
+    display: block;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+trophy-name,
+trophy-detail {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+trophy-name {
+    font-size: 21dp;
+    line-height: 27dp;
+    letter-spacing: 0.3dp;
+    color: var(--des-tan-light);
+}
+
+trophy-detail {
+    font-size: 16dp;
+    line-height: 22dp;
+    letter-spacing: 0.4dp;
+    color: var(--des-tan-muted);
+}
+
+trophy-row.focused trophy-detail {
+    color: var(--des-tan);
+}
+
+trophy-tag {
+    margin-left: 10dp;
+    font-size: 14dp;
+    letter-spacing: 0;
+    color: var(--des-amber);
+}
+
+trophy-meta {
+    display: block;
+    flex: 0 0 auto;
+    text-align: right;
+}
+
+trophy-grade {
+    display: block;
+    font-size: 20dp;
+    line-height: 27dp;
+    color: var(--des-tan-light);
+}
+
+trophy-date {
+    display: block;
+    font-size: 16dp;
+    line-height: 22dp;
+    letter-spacing: 0.4dp;
+    color: var(--des-tan);
+}
+
+trophy-date icon.lock {
+    width: 14dp;
+    height: 14dp;
+    margin: -2dp 6dp 0 0;
+    font-size: 13dp;
+    decorator: text("&#xe897;" center center);
+    color: var(--des-tan-muted);
+}
+
+trophy-row.concealed trophy-name {
+    color: var(--des-tan);
+}
+
+trophy-note {
+    display: block;
+    padding: 24dp 18dp;
+    font-family: Old Standard TT;
+    font-size: 18dp;
+    line-height: 26dp;
+    color: var(--des-tan);
+}
+
+icon.trophy-hidden {
+    decorator: text("&#xe8f5;" center center);  /* visibility_off */
+}
+
+trophy-summary {
+    display: block;
+    flex: 1 1 auto;
+    align-self: flex-start;
+    padding: 20dp 22dp 18dp;
+    font-family: Old Standard TT;
+    font-weight: normal;
+    color: var(--des-tan);
+}
+
+trophy-title {
+    display: block;
+    font-size: 23dp;
+    line-height: 30dp;
+    color: var(--des-tan-light);
+}
+
+trophy-count {
+    display: flex;
+    margin: 4dp 0 10dp;
+    font-size: 17dp;
+    letter-spacing: 0.5dp;
+}
+
+count-text {
+    flex: 1 1 auto;
+}
+
+trophy-summary menu-gauge {
+    display: block;
+    position: relative;
+    height: 12dp;
+    border-width: 1dp;
+    border-color: #6a665b;
+    background-color: #050505;
+}
+
+trophy-summary menu-fill {
+    display: block;
+    height: 100%;
+    background-color: #2f5f7a;
+    decorator: linear-gradient(#3d7594, #234a60);
+}
+
+trophy-grades {
+    display: block;
+    margin: 18dp 0 0;
+    padding: 14dp 0 4dp;
+    border-top-width: 1dp;
+    border-top-color: #3a3832;
+}
+
+trophy-grade-count {
+    display: flex;
+    align-items: center;
+    height: 34dp;
+    font-size: 20dp;
+    color: var(--des-tan-light);
+}
+
+trophy-grade-count icon {
+    font-size: 20dp;
+    margin-right: 12dp;
+}
+
+trophy-grade-count.platinum icon { color: #c9d2db; }
+trophy-grade-count.gold icon { color: #d8a83a; }
+trophy-grade-count.silver icon { color: #b9b9b4; }
+trophy-grade-count.bronze icon { color: #b8784a; }
+
+grade-name {
+    flex: 1 1 auto;
+}
+
+trophy-hidden {
+    display: flex;
+    align-items: center;
+    margin: 12dp 0 0;
+    padding: 14dp 0 0;
+    border-top-width: 1dp;
+    border-top-color: #3a3832;
+    font-size: 16dp;
+    letter-spacing: 0.4dp;
+}
+
+trophy-hidden icon {
+    font-size: 18dp;
+    margin-right: 10dp;
+    color: var(--des-tan-muted);
+}
+
+hidden-name {
+    flex: 1 1 auto;
+}
+
+hidden-value {
+    color: var(--des-tan-muted);
+}
+
+body.page.motion trophy-page {
+    animation: 0.17s linear-in-out des-page-in;
+}
+
+/* ---- Mods (mods_page.hpp): the mods in a framed box at the column's left; the summary, the focused mod's whole note
+   and the two buttons at its right. With no mods yet, how to add one, the buttons under it. ---- */
+mods-page {
+    display: flex;
+    flex: 1 1 0dp;
+    align-self: center;
+    width: 1152dp;
+    min-height: 0;
+    gap: 22dp;
+    padding: 8dp 0 6dp;
+    font-family: Old Standard TT;
+    font-weight: normal;
+    color: var(--des-tan);
+}
+
+mods-page.empty {
+    flex-flow: column;
+    gap: 16dp;
+}
+
+mods-box,
+mods-summary {
+    position: relative;
+    border-width: 1dp;
+    border-color: #4d4a42;
+    background-color: rgba(0, 0, 0, 62%);
+}
+
+mods-box {
+    display: flex;
+    flex-flow: column;
+    flex: 0 0 744dp;
+    align-self: flex-start;
+    max-height: 100%;
+    padding: 4dp 6dp 6dp 8dp;
+}
+
+mods-page.empty mods-box {
+    flex: 0 0 auto;
+    width: 744dp;
+}
+
+mods-list {
+    display: block;
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow: hidden auto;
+}
+
+mods-list scrollbarvertical,
+mods-list scrollbarvertical slidertrack {
+    width: 4dp;
+    margin: 0;
+}
+
+mods-list scrollbarvertical slidertrack {
+    background-color: rgba(0, 0, 0, 45%);
+}
+
+mods-list scrollbarvertical sliderbar {
+    width: 4dp;
+    border-radius: 0;
+    background-color: var(--des-bracket);
+}
+
+mods-section {
+    display: block;
+    height: 30dp;
+    margin: 4dp 10dp 0;
+    border-bottom-width: 1dp;
+    border-bottom-color: #3a3832;
+    font-size: 17dp;
+    line-height: 30dp;
+    letter-spacing: 0.5dp;
+    color: var(--des-tan-muted);
+}
+
+mod-row {
+    display: flex;
+    align-items: center;
+    height: 60dp;
+    gap: 16dp;
+    padding: 0 12dp 0 12dp;
+    border-top-width: 1dp;
+    border-top-color: transparent;
+    border-bottom-width: 1dp;
+    border-bottom-color: #2c2a27;
+    cursor: pointer;
+}
+
+mod-row:hover {
+    border-top-color: var(--des-hover-edge);
+    background-color: rgba(255, 255, 255, 5%);
+}
+
+mod-row.focused {
+    border-top-color: var(--des-blood-edge);
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#853432, #6a2524);
+}
+
+body.motion mod-row.focused {
+    animation: 1.1s linear-in-out infinite alternate des-breathe;
+}
+
+mod-check {
+    display: flex;
+    flex: 0 0 28dp;
+    justify-content: center;
+}
+
+mod-check icon {
+    font-size: 26dp;
+    color: var(--des-tan-light);
+}
+
+mod-row.off mod-check icon {
+    color: var(--des-tan-muted);
+}
+
+mod-row.problem mod-check icon.warning {
+    color: var(--des-warn);
+}
+
+mod-row.problem mod-check icon.error {
+    color: var(--des-error);
+}
+
+/* (on the focus bar's red, a mark keeps its shape in the light colour) */
+mod-row.focused mod-check icon,
+mod-row.focused mod-line icon {
+    color: var(--des-tan-light);
+}
+
+mod-text {
+    display: block;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+mod-name,
+mod-line {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+mod-name {
+    font-size: 21dp;
+    line-height: 26dp;
+    letter-spacing: 0.3dp;
+    color: var(--des-tan-light);
+}
+
+/* (on or off shows once, in the check box; an off mod's name is dimmed) */
+mod-row.off mod-name {
+    color: var(--des-tan-muted);
+}
+
+mod-line {
+    font-size: 16dp;
+    line-height: 22dp;
+    letter-spacing: 0.4dp;
+    color: var(--des-tan-muted);
+}
+
+mod-row.focused mod-line {
+    color: var(--des-tan);
+}
+
+mod-line icon {
+    width: 15dp;
+    height: 15dp;
+    margin: -2dp 6dp 0 0;
+    font-size: 15dp;
+}
+
+mod-line.note icon {
+    color: var(--des-info);
+}
+
+mod-line.gameplay icon {
+    color: var(--des-warn);
+}
+
+mod-side {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 14dp;
+}
+
+mod-side icon.restart {
+    font-size: 20dp;
+    color: var(--des-tan-light);
+}
+
+mod-move {
+    display: none;
+    flex-flow: column;
+    width: 18dp;
+}
+
+mod-row.focused mod-move {
+    display: flex;
+}
+
+move-up,
+move-down {
+    display: block;
+    height: 14dp;
+    font-family: var(--font-family-icons);
+    font-size: 34dp;
+    line-height: 14dp;
+    text-align: center;
+    color: var(--des-amber);
+}
+
+move-up {
+    decorator: text("&#xe5c7;" center center);
+}
+
+move-down {
+    decorator: text("&#xe5c5;" center center);
+}
+
+move-up.none,
+move-down.none {
+    opacity: 0.2;
+}
+
+state-word {
+    font-size: 18dp;
+    color: var(--des-tan-light);
+}
+
+mods-empty {
+    display: block;
+    padding: 14dp 14dp 10dp;
+}
+
+empty-title {
+    display: block;
+    font-size: 23dp;
+    line-height: 30dp;
+    color: var(--des-tan-light);
+}
+
+empty-lead {
+    display: block;
+    margin: 2dp 0 10dp;
+    font-size: 17dp;
+    color: var(--des-tan-muted);
+}
+
+empty-step {
+    display: block;
+    font-size: 18dp;
+    line-height: 34dp;
+    letter-spacing: 0.4dp;
+}
+
+mods-side {
+    display: flex;
+    flex-flow: column;
+    flex: 1 1 auto;
+    align-self: flex-start;
+    gap: 14dp;
+}
+
+mods-page.empty mods-side {
+    flex-flow: row;
+    flex: 0 0 auto;
+}
+
+mods-page.empty mods-summary {
+    display: none;
+}
+
+mods-summary {
+    display: block;
+    padding: 18dp 22dp 18dp;
+}
+
+summary-line {
+    display: block;
+    font-size: 23dp;
+    line-height: 30dp;
+    color: var(--des-tan-light);
+}
+
+summary-note {
+    display: block;
+    margin: 6dp 0 0;
+    font-size: 16dp;
+    line-height: 23dp;
+    letter-spacing: 0.4dp;
+}
+
+summary-note icon {
+    width: 16dp;
+    height: 16dp;
+    margin: -2dp 8dp 0 0;
+    font-size: 16dp;
+}
+
+summary-note.warning icon {
+    color: var(--des-tan-light);
+}
+
+summary-note.info icon {
+    color: var(--des-info);
+}
+
+summary-note.offline icon {
+    color: var(--des-warn);
+}
+
+mods-detail {
+    display: block;
+    margin: 14dp 0 0;
+    padding: 14dp 0 0;
+    border-top-width: 1dp;
+    border-top-color: #3a3832;
+    font-size: 16dp;
+    line-height: 24dp;
+    letter-spacing: 0.4dp;
+}
+
+mods-buttons {
+    display: flex;
+    flex-flow: column;
+    gap: 10dp;
+}
+
+mods-page.empty mods-buttons {
+    flex-flow: row;
+}
+
+mods-button {
+    display: block;
+    height: 38dp;
+    padding: 0 22dp;
+    border-top-width: 1dp;
+    border-top-color: #4f4d46;
+    border-bottom-width: 1dp;
+    border-bottom-color: #141414;
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#333331, #262626);
+    font-size: 17dp;
+    line-height: 36dp;
+    letter-spacing: 1.5dp;
+    text-align: center;
+    text-transform: uppercase;
+    color: var(--des-tan-light);
+    cursor: pointer;
+}
+
+mods-button:hover {
+    border-top-color: var(--des-hover-edge);
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#4c4a45, #393835);
+}
+
+mods-button.focused,
+mods-button.close {
+    border-top-color: var(--des-blood-edge);
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#853432, #6a2524);
+}
+
+mods-help {
+    display: none;
+}
+
+mods-help.on {
+    display: block;
+    position: absolute;
+    left: 50%;
+    top: 170dp;
+    width: 700dp;
+    margin-left: -350dp;
+    z-index: 7;
+    padding: 24dp 30dp 26dp;
+    border-width: 1dp;
+    border-color: #4d4a42;
+    background-color: #030303;
+    box-shadow: #000000 0 0 0 1dp;
+}
+
+help-title {
+    display: block;
+    margin: 0 0 10dp;
+    font-size: 21dp;
+    color: var(--des-tan-light);
+}
+
+help-line {
+    display: block;
+    margin: 0 0 10dp;
+    font-size: 17dp;
+    line-height: 26dp;
+    letter-spacing: 0.4dp;
+}
+
+mods-help mods-button.close {
+    width: 220dp;
+    margin: 16dp auto 0;
+}
+
+mods-page icon.info {
+    decorator: text("&#xe88e;" center center);
+}
+
+mods-page icon.restart {
+    decorator: text("&#xe5d5;" center center);
+}
+
+mods-page icon.offline {
+    decorator: text("&#xe648;" center center);
+}
+
+body.page.motion mods-page {
+    animation: 0.17s linear-in-out des-page-in;
+}
+
+/* ---- Co-op (coop_page.hpp): the System page's tall stone bars in a framed box at the column's left, each with its
+   inner line, the chosen one on blood; what co-op is, or the invite code and the players, in a box beside them. ---- */
+coop-page {
+    display: flex;
+    flex: 1 1 0dp;
+    align-self: center;
+    align-items: flex-start;
+    width: 1152dp;
+    min-height: 0;
+    gap: 20dp;
+    padding: 8dp 0 6dp;
+    font-family: Old Standard TT;
+    font-weight: normal;
+    color: var(--des-tan);
+}
+
+coop-box,
+coop-info {
+    display: block;
+    border-width: 1dp;
+    border-color: #4d4a42;
+    background-color: rgba(0, 0, 0, 62%);
+}
+
+coop-box {
+    flex: 0 0 640dp;
+    padding: 24dp 22dp 0;
+}
+
+coop-action {
+    display: block;
+    height: 70dp;
+    margin: 0 0 24dp;
+    padding: 0 26dp;
+    border-width: 1dp;
+    border-color: #56534b;
+    box-shadow: rgba(16, 16, 15, 55%) 0 0 0 6dp inset, #4a4842 0 0 0 7dp inset;
+    background-color: #2c2c2b;
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#333331, #262626);
+    font-size: 26dp;
+    line-height: 68dp;
+    letter-spacing: 0.3dp;
+    color: var(--des-tan);
+    cursor: pointer;
+}
+
+coop-action:hover {
+    border-color: var(--des-hover-edge);
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#4c4a45, #393835);
+    color: var(--des-tan-light);
+}
+
+coop-action.focused {
+    border-color: var(--des-blood-edge);
+    box-shadow: rgba(66, 17, 15, 45%) 0 0 0 6dp inset, #b0544e 0 0 0 7dp inset;
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#853432, #6a2524);
+    color: var(--des-tan-light);
+}
+
+body.motion coop-action.focused {
+    animation: 1.1s linear-in-out infinite alternate des-breathe;
+}
+
+coop-action.disabled,
+coop-action.disabled:hover {
+    border-color: #3a3833;
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#292927, #212120);
+    color: var(--des-locked);
+}
+
+coop-action.disabled.focused {
+    border-color: var(--des-blood-edge);
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#5e2a28, #4a1f1e);
+    color: var(--des-tan-muted);
+}
+
+coop-info {
+    flex: 0 0 492dp;
+    padding: 14dp 18dp 4dp;
+}
+
+coop-info.none {
+    display: none;
+}
+
+coop-info info-line,
+coop-info info-label {
+    display: block;
+    margin: 0 0 10dp;
+    font-size: 17dp;
+    line-height: 25dp;
+    letter-spacing: 0.3dp;
+}
+
+coop-info info-label {
+    margin: 0;
+    color: var(--des-tan-muted);
+}
+
+coop-info info-line.warning {
+    color: var(--des-tan-light);
+}
+
+coop-info info-code {
+    display: block;
+    margin: 2dp 0 6dp;
+    font-size: 33dp;
+    line-height: 40dp;
+    letter-spacing: 1.3dp;
+    white-space: nowrap;
+    color: var(--des-tan-light);
+}
+
+coop-info info-lan {
+    white-space: nowrap;
+    color: var(--des-tan-light);
+}
+
+coop-info info-rule {
+    display: block;
+    height: 1dp;
+    margin: 10dp 0 20dp;
+    background-color: #3a3833;
+}
+
+body.page.motion coop-page {
+    animation: 0.17s linear-in-out des-page-in;
+}
+
+/* ---- Change Buttons (controls_page.hpp): Settings' rows, the game's button or action in the stone bar and its input in
+   the box beside it; the keys' two inputs in two boxes, the chosen one on blood. A pad button shows as its picture. ---- */
+menu-rows.keys {
+    flex: 0 0 1152dp;
+}
+
+menu-rows.keys menu-value {
+    flex: 0 0 275dp;
+    justify-content: center;
+}
+
+menu-rows.pad menu-value {
+    justify-content: center;
+}
+
+controls-fill {
+    display: none;
+}
+
+menu-value.on controls-fill {
+    display: block;
+    position: absolute;
+    left: 3dp;
+    right: 3dp;
+    top: 3dp;
+    bottom: 3dp;
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#5a1d1b, #42110f);
+}
+
+menu-value.on menu-text {
+    color: var(--des-tan-light);
+}
+
+menu-value menu-text.none {
+    color: var(--des-tan-muted);
+}
+
+menu-value.on menu-text.none {
+    color: var(--des-tan);
+}
+
+menu-value.modified menu-text {
+    color: var(--des-tan-light);
+}
+
+menu-value.wait menu-text {
+    color: var(--des-tan-light);
+}
+
+body.motion menu-value.wait menu-text {
+    animation: 1s linear-in-out infinite des-blink;
+}
+
+controls-art {
+    display: block;
+    position: relative;
+    height: 26dp;
+}
+
+controls-art menu-art {
+    height: 26dp;
+}
+
+menu-rows.pad menu-value menu-text {
+    display: none;
+}
+
+menu-rows.pad menu-value.wait menu-text {
+    display: block;
+}
+
+menu-rows.pad menu-value.wait controls-art {
+    display: none;
+}
+
+controls-restore {
+    display: block;
+    width: 300dp;
+    height: 34dp;
+    margin: 18dp 0 4dp 200dp;
+    border-top-width: 1dp;
+    border-top-color: #4f4d46;
+    border-bottom-width: 1dp;
+    border-bottom-color: #141414;
+    background-color: #2c2c2b;
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#333331, #262626);
+    font-size: 17dp;
+    line-height: 32dp;
+    letter-spacing: 0.5dp;
+    text-align: center;
+    text-transform: uppercase;
+    color: var(--des-tan);
+    cursor: pointer;
+}
+
+controls-restore:hover {
+    border-top-color: var(--des-hover-edge);
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#4c4a45, #393835);
+    color: var(--des-tan-light);
+}
+
+controls-restore.focused {
+    border-top-color: var(--des-blood-edge);
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#853432, #6a2524);
+    color: var(--des-tan-light);
+}
+
+body.motion controls-restore.focused {
+    animation: 1.1s linear-in-out infinite alternate des-breathe;
+}
+
+controls-restore.locked {
+    color: var(--des-locked);
+}
+
+/* ---- Players (players_page.hpp): six players at a time in a framed box at the column's left, as Trophies' rows: a
+   mark for how you met in a dark tile, with an arrow in its corner for which way; the name, how, and when. ---- */
+players-page {
+    display: flex;
+    flex: 1 1 0dp;
+    align-self: center;
+    width: 1152dp;
+    min-height: 0;
+    padding: 8dp 0 6dp;
+    font-family: Old Standard TT;
+    font-weight: normal;
+    color: var(--des-tan);
+}
+
+players-box {
+    display: block;
+    position: relative;
+    flex: 0 0 744dp;
+    align-self: flex-start;
+    padding: 6dp 6dp 6dp 8dp;
+    border-width: 1dp;
+    border-color: #4d4a42;
+    background-color: rgba(0, 0, 0, 62%);
+}
+
+players-page.none players-box {
+    display: none;
+}
+
+player-item {
+    display: none;
+}
+
+player-item.shown {
+    display: flex;
+    align-items: center;
+    height: 73dp;
+    gap: 16dp;
+    padding: 0 14dp 0 10dp;
+    border-top-width: 1dp;
+    border-top-color: transparent;
+    border-bottom-width: 1dp;
+    border-bottom-color: #2c2a27;
+    cursor: pointer;
+}
+
+player-item.shown:hover {
+    border-top-color: var(--des-hover-edge);
+    background-color: rgba(255, 255, 255, 5%);
+}
+
+player-item.focused {
+    border-top-color: var(--des-blood-edge);
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#853432, #6a2524);
+}
+
+body.motion player-item.focused {
+    animation: 1.1s linear-in-out infinite alternate des-breathe;
+}
+
+player-tile {
+    display: block;
+    position: relative;
+    flex: 0 0 56dp;
+    height: 56dp;
+    border-width: 1dp;
+    border-color: #3d3b35;
+    background-color: #0d0d0c;
+}
+
+player-tile icon {
+    position: absolute;
+    left: 11dp;
+    top: 11dp;
+    width: 32dp;
+    height: 32dp;
+    font-size: 32dp;
+    color: var(--des-tan);
+}
+
+player-tile icon.way {
+    left: auto;
+    top: auto;
+    right: 2dp;
+    bottom: 2dp;
+    width: 16dp;
+    height: 16dp;
+    font-size: 16dp;
+    color: var(--des-tan-light);
+}
+
+player-item.blocked player-tile icon {
+    color: var(--des-locked);
+}
+
+players-page icon.met-help {
+    decorator: text("&#xe3e4;" center center);  /* flare: a summon sign */
+}
+
+players-page icon.met-invasion {
+    decorator: text("&#xf889;" center center);  /* swords */
+}
+
+players-page icon.met-monk {
+    decorator: text("&#xef55;" center center);  /* local_fire_department */
+}
+
+players-page icon.met-blocked {
+    decorator: text("&#xe14b;" center center);  /* block */
+}
+
+players-page icon.way.in {
+    decorator: text("&#xe0b5;" center center);  /* call_received: into your world */
+}
+
+players-page icon.way.out {
+    decorator: text("&#xe0b2;" center center);  /* call_made: out to theirs */
+}
+
+player-words {
+    display: block;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+player-name,
+player-how {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+player-name {
+    font-size: 21dp;
+    line-height: 27dp;
+    letter-spacing: 0.3dp;
+    color: var(--des-tan-light);
+}
+
+player-item.blocked player-name {
+    color: var(--des-tan-muted);
+}
+
+player-tag {
+    margin-left: 10dp;
+    font-size: 14dp;
+    letter-spacing: 0;
+    color: var(--des-amber);
+}
+
+player-how {
+    font-size: 16dp;
+    line-height: 22dp;
+    letter-spacing: 0.4dp;
+    color: var(--des-tan-muted);
+}
+
+player-item.focused player-how {
+    color: var(--des-tan);
+}
+
+player-ago {
+    display: block;
+    flex: 0 0 auto;
+    font-size: 16dp;
+    letter-spacing: 0.4dp;
+    color: var(--des-tan);
+}
+
+body.page.motion players-page {
+    animation: 0.17s linear-in-out des-page-in;
+}
+
+/* ---- The on-screen keyboard (osk_window.hpp): the question box, the text in a value box, the keys small stone keys
+   in the PS3 keyboard's rows, the one with the focus on blood; the same keys and buttons as Alpha UI's. ---- */
+window.modal.osk {
+    max-width: 760dp;
+    background-color: #030303;
+}
+
+window.modal.osk osk-field {
+    align-items: center;
+    padding: 6dp 16dp;
+    border-width: 0;
+    background-color: transparent;
+    decorator: ninepatch(des-box, des-box-inner, 5dp);
+}
+
+window.modal.osk osk-text {
+    font-family: Old Standard TT;
+    font-size: 26dp;
+    line-height: 36dp;
+    color: var(--des-tan-light);
+}
+
+window.modal.osk osk-caret {
+    background-color: var(--des-tan-light);
+}
+
+window.modal.osk osk-count {
+    font-family: Old Standard TT;
+    font-size: 15dp;
+    color: var(--des-tan-muted);
+    opacity: 1;
+}
+
+window.modal.osk osk-keys,
+window.modal.osk osk-row {
+    gap: 5dp;
+}
+
+window.modal.osk button.osk-key {
+    height: 38dp;
+    padding: 0;
+    border-width: 0;
+    border-top-width: 1dp;
+    border-top-color: #4f4d46;
+    border-bottom-width: 1dp;
+    border-bottom-color: #141414;
+    border-radius: 0;
+    box-shadow: none;
+    background-color: #2c2c2b;
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#333331, #262626);
+    font-family: Old Standard TT;
+    font-size: 19dp;
+    line-height: 36dp;
+    text-transform: none;
+    color: var(--des-tan);
+}
+
+window.modal.osk button.osk-key.osk-wide,
+window.modal.osk button.osk-key.osk-space {
+    font-size: 14dp;
+    letter-spacing: 0.5dp;
+    text-transform: uppercase;
+}
+
+window.modal.osk button.osk-key:hover {
+    border-top-color: var(--des-hover-edge);
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#4c4a45, #393835);
+    color: var(--des-tan-light);
+}
+
+window.modal.osk button.osk-key:focus-visible {
+    border-top-color: var(--des-blood-edge);
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#853432, #6a2524);
+    color: var(--des-tan-light);
+}
+
+window.modal.osk osk-hints {
+    font-family: Old Standard TT;
+    font-size: 15dp;
+    color: var(--des-tan);
+}
+
+window.modal.osk osk-pill {
+    border-color: #4d4a42;
+    border-radius: 0;
+    font-size: 12dp;
+    opacity: 1;
+    color: var(--des-tan-muted);
+}
+
+window.modal.osk osk-hint {
+    font-family: Old Standard TT;
+    font-size: 15dp;
+    color: var(--des-tan-muted);
+    opacity: 1;
+}
+
+/* ---- Notes over the game (overlay.hpp's toasts): a small stone bar at the top right, as the game's own notes, its
+   mark at the left in its status colour (a trophy's picture in a dark tile); it slides in from the right, linear, as
+   the menu's pages do. The menu hint sits low in the middle, as a prompt does. ---- */
+toast {
+    top: 32dp;
+    right: 40dp;
+    width: 500dp;
+    padding: 12dp 18dp 13dp 72dp;
+    gap: 2dp;
+    border-width: 0;
+    border-top-width: 1dp;
+    border-top-color: #4f4d46;
+    border-bottom-width: 1dp;
+    border-bottom-color: #111111;
+    border-radius: 0;
+    box-shadow: #000000 0 0 0 1dp;
+    background-color: #2c2c2b;
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#333331, #262626);
+    font-family: Old Standard TT;
+    font-weight: normal;
+    color: var(--des-tan);
+    transform: translateX(60dp);
+    transition: filter transform 0.17s linear-in-out;
+}
+
+toast[open] {
+    transform: translateX(0dp);
+}
+
+toast heading {
+    font-family: Old Standard TT;
+    font-size: 17dp;
+    font-weight: normal;
+    line-height: 24dp;
+    letter-spacing: 0.3dp;
+    text-transform: none;
+    color: var(--des-tan-light);
+}
+
+toast heading icon {
+    display: none;
+}
+
+toast message {
+    gap: 2dp;
+    font-size: 17dp;
+    line-height: 24dp;
+    letter-spacing: 0.3dp;
+    color: var(--des-tan);
+}
+
+toast progress {
+    display: none;
+}
+
+toast-mark {
+    display: block;
+    position: absolute;
+    left: 14dp;
+    top: 12dp;
+    width: 44dp;
+    height: 44dp;
+    font-family: var(--font-family-icons);
+    font-size: 30dp;
+    line-height: 44dp;
+    text-align: center;
+}
+
+toast-mark.warning {
+    color: var(--des-warn);
+    decorator: text("&#xe002;" center center);
+}
+
+toast-mark.info {
+    color: var(--des-info);
+    decorator: text("&#xe88e;" center center);
+}
+
+toast-mark.done {
+    color: var(--des-ok);
+    decorator: text("&#xe86c;" center center);
+}
+
+toast-mark.menu-notification {
+    display: none;
+}
+
+/* A trophy: its picture in the mark's place, in a dark tile. */
+toast.trophy {
+    padding-left: 14dp;
+}
+
+toast toast-row {
+    gap: 14dp;
+    align-items: flex-start;
+}
+
+toast toast-icon {
+    flex: 0 0 44dp;
+    width: 44dp;
+    height: 44dp;
+    justify-content: center;
+    border-width: 1dp;
+    border-color: #4d4a42;
+    background-color: #0b0b0a;
+}
+
+toast toast-icon img,
+toast toast-icon icon {
+    width: 42dp;
+    height: 42dp;
+}
+
+toast toast-icon icon {
+    font-size: 30dp;
+}
+
+toast toast-body {
+    gap: 2dp;
+    max-width: none;
+}
+
+toast.trophy message,
+toast.trophy trophy-name {
+    font-size: 17dp;
+    font-weight: normal;
+    color: var(--des-tan);
+}
+
+/* (its grade in words, without colour: only status has colour) */
+toast.trophy grade,
+toast.trophy grade.platinum,
+toast.trophy grade.gold,
+toast.trophy grade.silver,
+toast.trophy grade.bronze {
+    font-size: 14dp;
+    color: var(--des-tan-muted);
+}
+
+/* The menu hint: low in the middle, as a prompt. */
+toast.menu-notification {
+    top: auto;
+    bottom: 64dp;
+    left: 50%;
+    right: auto;
+    width: auto;
+    padding: 9dp 20dp;
+    transform: translateX(-50%) translateY(20dp);
+}
+
+toast.menu-notification[open] {
+    transform: translateX(-50%) translateY(0dp);
+}
+
+toast.menu-notification b {
+    font-weight: normal;
+    color: var(--des-tan-light);
 }
 
 /* ---- Motion (body.motion), the game's: the band and its lines drop in from the top edge when the menu opens (once:

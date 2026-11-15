@@ -5,6 +5,7 @@
 
 #include "button.hpp"
 #include "component.hpp"
+#include "controls_page.hpp"
 #include "controls_window.hpp"
 #include "event.hpp"
 #include "hud_editor.hpp"
@@ -12,6 +13,7 @@
 #include "looks.hpp"
 #include "menu_shell.hpp"
 #include "modal.hpp"
+#include "players_page.hpp"
 #include "players_window.hpp"
 #include "privacy_window.hpp"
 #include "settings.hpp"
@@ -53,9 +55,8 @@ extern "C" int ps3_net_player_erase(void);
 void ask_erase() {
     push_document(std::make_unique<Modal>(Modal::Props{
         .title = "Delete your data on the server?",
-        .bodyText = "This deletes your name, your characters' online records, your messages and bloodstains, and the "
-                    "rest the online server keeps about you (Privacy note). Online play turns off, so the game goes "
-                    "back to its title screen. It cannot be undone.",
+        .bodyText = "Deletes your name and everything the server keeps about you. Online play turns off. This "
+                    "can't be undone.",
         .actions =
             {
                 ModalAction{.label = "Cancel",
@@ -735,10 +736,22 @@ void SettingsPage::open(const RowDesc& row) {
         mShell.push(std::make_unique<HudEditor>());
         break;
     case Opens::Controls:
+        if (looks::current().pages) {
+            mShell.open_over([](Rml::Element* host, menu::PageHost& shell) -> std::unique_ptr<menu::Page> {
+                return std::make_unique<ControlsPage>(host, shell);
+            });
+            break;
+        }
         play_sound(kSoundClick);
         mShell.push(std::make_unique<ControlsWindow>());
         break;
     case Opens::Players:
+        if (looks::current().pages) {
+            mShell.open_over([](Rml::Element* host, menu::PageHost& shell) -> std::unique_ptr<menu::Page> {
+                return std::make_unique<PlayersPage>(host, shell);
+            });
+            break;
+        }
         play_sound(kSoundClick);
         mShell.push(std::make_unique<PlayersWindow>());
         break;

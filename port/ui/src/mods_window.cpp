@@ -4,12 +4,14 @@
 // a mod's card (Cross, Enter or a click) turns it on or off; pressing a card whose files only need moving moves them.
 // A card's arrows (or L1 and R1, Page Up and Page Down) move the mod up or down the list: the higher one wins when two
 // change the same file. Both go to the mods folder's order file at once (mods.hpp). The mods folder is read when the
-// window opens and on "Refresh the list".
+// window opens and on "Refresh the list". Alpha UI's; the mods folder is kept in ModsState (mods_state.hpp), as for the
+// DeS UI page (mods_page.cpp).
 #include "mods_window.hpp"
 
 #include "app.hpp"
 #include "button.hpp"
 #include "mods.hpp"
+#include "mods_state.hpp"
 #include "pane.hpp"
 #include "report.hpp"
 #include "settings.hpp"
@@ -27,75 +29,14 @@
 namespace ui {
 namespace {
 
-// The mods were given when the game started (a test run): the cards can't change them.
-bool rows_fixed() {
-    return settings::pinned("DES_MODS") || mods::from_environment();
-}
-
-bool mod_in_use(const std::string& name) {
-    const auto& used = mods::in_use();
-    return std::any_of(used.begin(), used.end(), [&](const mods::Mod& m) { return m.name == name; });
-}
-
 Rml::String quoted(const std::string& name) {
     return "\"" + escape(name) + "\"";
 }
 
 }  // namespace
 
-struct ModsWindow::State {
-    std::filesystem::path dir;
-    std::vector<mods::Mod> all;            // the mods folder as read, in its order (the order file's), on or off
-    std::vector<mods::Overlap> overlaps;   // among the mods that are on
-    std::vector<Component*> cards;         // the card that shows all[i] (build_tab), for the focus after a move
-    unsigned generation = 1;               // moves with every change the cards and the summary show
-    bool lookAgain = false;                // read the folder again and build the list again (update())
-
-    void load() {
-        dir = mods::folder(report::data_dir());
-        all = settings::pinned("DES_MODS") ? mods::scan(dir, settings::pinned_value("DES_MODS")) : mods::scan(dir);
-        for (mods::Mod& m : all) mods::plan(m);   // (loose files: where the game's own files say they go)
-        refresh_overlaps();
-    }
-    // The order file, as the cards now say.
-    void save() {
-        if (mods::write_order(dir, mods::entries(all))) return;
-        play_sound(kSoundWarning);
-        push_toast({
-            .type = "warning",
-            .title = "Your change wasn't saved",
-            .content = "The mods folder can't be written to: " + mods::utf8(dir / mods::kOrderFile),
-            .duration = std::chrono::seconds(8),
-        });
-    }
-    void refresh_overlaps() {
-        std::vector<mods::Mod> on;
-        for (const mods::Mod& m : all)
-            if (m.usable() && m.enabled) on.push_back(m);
-        overlaps = on.size() > 1 ? mods::overlaps(on) : std::vector<mods::Overlap>{};
-        generation++;
-    }
-    std::size_t usable() const {
-        return std::count_if(all.begin(), all.end(), [](const mods::Mod& m) { return m.usable(); });
-    }
-    std::size_t on() const {
-        return std::count_if(all.begin(), all.end(), [](const mods::Mod& m) { return m.usable() && m.enabled; });
-    }
-    // The usable mod next to all[i] in the list, above (step -1) or below (+1); all.size() when there is none.
-    std::size_t neighbour(std::size_t i, int step) const {
-        for (long long j = (long long)i + step; j >= 0 && j < (long long)all.size(); j += step)
-            if (all[(std::size_t)j].usable()) return (std::size_t)j;
-        return all.size();
-    }
-    // What the cards say differs from what this session runs with (which mods, or their order): a restart applies it.
-    bool restart_needed() const {
-        if (mods::from_environment()) return false;
-        std::vector<std::string> now, used;
-        for (const mods::Mod& m : all)
-            if (m.usable() && m.enabled) now.push_back(m.name);
-        for (const mods::Mod& m : mods::in_use()) used.push_back(m.name);
-        return now != used;
-    }
+struct ModsWindow::State : ModsState {
+    std::vector<Component*> cards;  // the card that shows all[i] (build_tab), for the focus after a move
 };
 
 namespace {
@@ -140,46 +81,28 @@ private:
     // Up (step -1) or down (+1) past the next usable mod; the focus goes with it.
     bool move(int step) {
         if (!mod().usable()) return false;
-        const std::size_t to = mState->neighbour(mIndex, step);
-        if (rows_fixed() || to >= mState->all.size()) {   // (or the top or the bottom of the list already)
+        const std::size_t to = mState->move(mIndex, step);   // (every card shows its mod again)
+        if (to >= mState->all.size()) {   // (fixed, or the top or the bottom of the list already)
             play_sound(kSoundWarning);
             return true;
         }
-        std::swap(mState->all[mIndex], mState->all[to]);
-        mState->save();
         play_sound(kSoundItemChange);
-        mState->refresh_overlaps();   // (every card shows its mod again)
         if (to < mState->cards.size() && mState->cards[to] != nullptr) mState->cards[to]->focus();
         return true;
     }
 
     bool press() {
-        mods::Mod& m = mState->all[mIndex];
+        const mods::Mod& m = mState->all[mIndex];
         if (m.usable()) {
-            if (rows_fixed()) {
-                play_sound(kSoundWarning);
-                return true;
-            }
-            m.enabled = !m.enabled;
-            mState->save();
-            play_sound(m.enabled ? kSoundItemEnable : kSoundItemDisable);
-            mState->refresh_overlaps();
+            if (!mState->toggle(mIndex)) play_sound(kSoundWarning);
+            else play_sound(m.enabled ? kSoundItemEnable : kSoundItemDisable);
             return true;
         }
         if (m.why != mods::Problem::NotInPlace) {
             play_sound(kSoundWarning);
             return true;
         }
-        const std::string err = mods::place(m);
-        play_sound(err.empty() ? kSoundItemEnable : kSoundWarning);
-        push_toast({
-            .type = err.empty() ? "" : "warning",
-            .title = err.empty() ? "Mod fixed" : "Mod not fixed",
-            .content = err.empty() ? m.name + " is ready. Select it to turn it on."
-                                   : m.name + ": " + err + ". Some of its files may have moved already.",
-            .duration = std::chrono::seconds(6),
-        });
-        mState->lookAgain = true;
+        play_sound(mState->fix(mIndex).empty() ? kSoundItemEnable : kSoundWarning);
         return true;
     }
 
@@ -189,8 +112,8 @@ private:
         std::string rml;
         if (m.usable()) {
             const bool on = m.enabled;
-            const bool pending = !mods::from_environment() && on != mod_in_use(m.name);
-            const bool fixed = rows_fixed();
+            const bool pending = mState->pending(mIndex);
+            const bool fixed = ModsState::fixed();
             const bool top = mState->neighbour(mIndex, -1) >= mState->all.size();
             const bool bottom = mState->neighbour(mIndex, 1) >= mState->all.size();
             mRoot->SetClass("on", on);
@@ -208,11 +131,9 @@ private:
             } else {
                 rml += "<mod-line>Changes how the game looks or sounds.</mod-line>";
             }
-            for (const mods::Overlap& o : mState->overlaps) {
-                if (o.covered != m.name) continue;
-                rml += "<mod-line class=\"note\">Some of its changes are replaced by " + quoted(o.by) +
+            if (const std::string by = mState->covered_by(mIndex); !by.empty()) {
+                rml += "<mod-line class=\"note\">Some of its changes are replaced by " + quoted(by) +
                        ", which is higher in the list. Move this mod up to use its own.</mod-line>";
-                break;
             }
             rml += "</mod-text><mod-state><state-word>" + std::string(on ? "On" : "Off") + "</state-word>";
             if (pending) rml += "<state-note>after a restart</state-note>";
@@ -305,29 +226,17 @@ void ModsWindow::build_tab(Rml::Element* content) {
     for (std::size_t i = 0; i < state->all.size(); ++i)
         if (!state->all[i].usable()) list.add_child<ModCard>(state, i);
 
-    list.add_rml("<mods-footer><footer-title>Good to know</footer-title>"
-                 "<footer-line>Mods are made by players. Back up your save before you try one.</footer-line>"
-                 "<footer-line>Mods that only change how the game looks or sounds keep online play. Any other mod "
-                 "keeps you offline while it's on.</footer-line>"
-                 "<footer-line>When two mods change the same thing, the one higher in the list wins. To move a mod, "
-                 "use the arrows on its card, or the shoulder buttons (L1 and R1) or Page Up and Page Down."
-                 "</footer-line>"
-                 "<footer-line>Mods made for the PS3 game or for RPCS3 work when they replace the game's files. Very "
-                 "large texture mods can run out of memory, as on a PS3.</footer-line></mods-footer>");
+    Rml::String footer = "<mods-footer><footer-title>Good to know</footer-title>";
+    for (const char* line : kModsGoodToKnow) footer += "<footer-line>" + escape(line) + "</footer-line>";
+    list.add_rml(footer + "</mods-footer>");
 }
 
 void ModsWindow::render_summary() {
     if (mSummary == nullptr) return;
     mSummaryShown = mState->generation;
     const State& s = *mState;
-    const std::size_t usable = s.usable(), on = s.on();
-    Rml::String line = s.all.empty() ? Rml::String("No mods yet")
-                       : usable == 0 ? Rml::String("None of your mods can be used yet")
-                       : on == 0     ? "No mods on (" + std::to_string(usable) + " in the list)"
-                                     : std::to_string(on) + " of " + std::to_string(usable) +
-                                           (usable == 1 ? " mod on" : " mods on");
-    Rml::String rml = "<summary-text><summary-line>" + line + "</summary-line>";
-    if (rows_fixed()) {
+    Rml::String rml = "<summary-text><summary-line>" + s.summary_line() + "</summary-line>";
+    if (ModsState::fixed()) {
         rml += "<summary-note class=\"info\"><icon class=\"mods-info\"/>This run's mods were set when the game "
                "started, so they can't be changed here.</summary-note>";
     } else if (s.restart_needed()) {

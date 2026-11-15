@@ -78,7 +78,9 @@ std::string glyph_rml(prompts::Device device, prompts::Key key) {
 
 MenuShell::MenuShell() : MenuShell(false, DocumentScope::MenuBar) {}
 
-MenuShell::MenuShell(Standalone) : MenuShell(true, DocumentScope::None) {}
+MenuShell::MenuShell(Standalone alone) : MenuShell(true, DocumentScope::None) {
+    mAlone = std::move(alone.entry);
+}
 
 MenuShell::MenuShell(bool standalone, DocumentScope scope)
     : Document(kDocumentSource, false, scope), mModel(standalone) {
@@ -138,6 +140,10 @@ MenuShell::MenuShell(bool standalone, DocumentScope scope)
 MenuShell::~MenuShell() {
     if (mPage) mPage->closing();
     mPage.reset();
+    while (!mUnder.empty()) {
+        mUnder.back().page->closing();
+        mUnder.pop_back();
+    }
 }
 
 bool MenuShell::handle_nav_command(Rml::Event&, NavCommand) {
@@ -147,7 +153,14 @@ bool MenuShell::handle_nav_command(Rml::Event&, NavCommand) {
 void MenuShell::show() {
     if (mModel.level() == menu::Model::Level::Closed) {
         mModel.open();
-        if (mModel.standalone()) open_settings();
+        if (mModel.standalone()) {
+            const std::vector<menu::Entry>& entries = menu::entries();
+            int alone = -1;
+            for (size_t i = 0; i < entries.size(); i++)
+                if (entries[i].title == mAlone) alone = static_cast<int>(i);
+            if (alone >= 0) choose_entry(alone);
+            else open_settings();
+        }
     }
     mClosing = false;
     mReleases = input::release_count();
@@ -232,6 +245,7 @@ void MenuShell::draw() {
     if (host::animations_enabled()) classes += " motion";
     if (mPage && level == Level::Page)
         if (const std::string own = mPage->classes(); !own.empty()) classes += " " + own;
+    if (!mUnder.empty() && level == Level::Page) classes += " over";
     if (classes != mClassesShown) {
         mClassesShown = classes;
         mBody->SetClassNames(classes);
@@ -246,6 +260,12 @@ void MenuShell::draw() {
     const bool first = mEntry <= 0, last = mEntry + 1 >= static_cast<int>(mEntryElems.size());
     if (mEnds[0]->IsClassSet("end") != first) mEnds[0]->SetClass("end", first);
     if (mEnds[1]->IsClassSet("end") != last) mEnds[1]->SetClass("end", last);
+
+    // A page over another names itself in the frame (its entry's name is the page under it).
+    if (const std::string title = !mUnder.empty() && mPage ? mPage->title() : "Menu"; title != mTitleShown) {
+        mTitleShown = title;
+        if (Rml::Element* t = mSlot->GetFirstChild()) set_text_content(t, title);
+    }
 
     std::string strip;
     if (level == Level::Entries && mEntry >= 0 && mEntry < static_cast<int>(menu::entries().size()))
@@ -269,9 +289,11 @@ void MenuShell::draw() {
         mEnds[1]->SetInnerRML(menu::glyph_rml(device, prompts::Key::NextTab));
     }
     std::string rml;
+    // (a prompt without words shares the next one's: L1 R1 Scroll; it is .joined, for the look to set them close)
     for (const prompts::Prompt& p : list)
-        rml += "<menu-prompt data-key=\"" + std::to_string(static_cast<int>(p.key)) + "\">" +
-               menu::glyph_rml(device, p.key) + "<menu-says>" + escape(p.label) + "</menu-says></menu-prompt>";
+        rml += "<menu-prompt data-key=\"" + std::to_string(static_cast<int>(p.key)) + "\"" +
+               (p.label.empty() ? " class=\"joined\"" : "") + ">" + menu::glyph_rml(device, p.key) + "<menu-says>" +
+               escape(p.label) + "</menu-says></menu-prompt>";
     if (rml != mPromptsShown) {
         mPromptsShown = rml;
         mPrompts->SetInnerRML(rml);
@@ -394,11 +416,23 @@ void MenuShell::command(menu::Command c, bool down) {
         }
         return;
     }
-    if (mPage && mModel.level() == Level::Page) mPage->command(c, true);
+    if (mPage && mModel.level() == Level::Page && !mPage->command(c, true) && !mUnder.empty() &&
+        (c == Command::PrevTab || c == Command::NextTab)) {
+        // A page over another with no tabs of its own (Players over Settings, whose tabs its band shows): the band's
+        // buttons go back to the page under it and move its tab.
+        close_over();
+        play_sound(kSoundWindowClose);
+        if (mPage) mPage->command(c, true);
+    }
 }
 
 void MenuShell::back() {
     if (mPage && mModel.level() == menu::Model::Level::Page && mPage->back()) return;
+    if (!mUnder.empty() && mModel.level() == menu::Model::Level::Page) {
+        close_over();
+        play_sound(kSoundWindowClose);
+        return;
+    }
     if (mModel.standalone()) {
         close_menu();
         return;
@@ -413,9 +447,38 @@ void MenuShell::back() {
 
 void MenuShell::close_page() {
     badge("", "");
+    while (!mUnder.empty()) close_over();
     if (mPage) mPage->closing();
     mPage.reset();
     clear_children(mPageHost);
+}
+
+void MenuShell::open_over(const PageMaker& make) {
+    if (!mPage || mModel.level() != menu::Model::Level::Page) return;
+    mPage->release();
+    mPage->hidden();
+    badge("", "");
+    Rml::ElementPtr made = mDocument->CreateElement("menu-page");
+    Rml::Element* host = mPageHost->GetParentNode()->InsertBefore(std::move(made), mPageHost->GetNextSibling());
+    mPageHost->SetClass("under", true);
+    mUnder.push_back({std::move(mPage), mPageHost});
+    mPageHost = host;
+    mPage = make(mPageHost, *this);
+    play_sound(kSoundWindowOpen);
+    draw();
+}
+
+void MenuShell::close_over() {
+    if (mUnder.empty()) return;
+    if (mPage) mPage->closing();
+    mPage.reset();
+    Rml::Element* gone = mPageHost;
+    mPageHost = mUnder.back().host;
+    mPage = std::move(mUnder.back().page);
+    mUnder.pop_back();
+    gone->GetParentNode()->RemoveChild(gone);
+    mPageHost->SetClass("under", false);
+    draw();
 }
 
 void MenuShell::close_menu() {
@@ -468,14 +531,20 @@ void MenuShell::open(std::unique_ptr<Document> document) {
     Document::push(std::move(document));
 }
 
-void MenuShell::open_settings() {
+void MenuShell::open_page(const std::string& entry, const PageMaker& make) {
     close_page();
     for (size_t i = 0; i < menu::entries().size(); i++)
-        if (menu::entries()[i].title == "Settings") mEntry = static_cast<int>(i);
-    mPage = std::make_unique<SettingsPage>(mPageHost, *this);
+        if (menu::entries()[i].title == entry) mEntry = static_cast<int>(i);
+    mPage = make(mPageHost, *this);
     mModel.open_page();
     if (!mModel.standalone()) play_sound(kSoundWindowOpen);
     draw();
+}
+
+void MenuShell::open_settings() {
+    open_page("Settings", [](Rml::Element* host, menu::PageHost& shell) -> std::unique_ptr<menu::Page> {
+        return std::make_unique<SettingsPage>(host, shell);
+    });
 }
 
 SettingsPage* MenuShell::settings_page() {

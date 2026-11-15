@@ -3,13 +3,17 @@
 #include "menu_pages.hpp"
 
 #include "app.hpp"
+#include "coop_page.hpp"
 #include "coop_window.hpp"
 #include "crash_report.hpp"
+#include "looks.hpp"
 #include "menu_shell.hpp"
+#include "mods_page.hpp"
 #include "mods_window.hpp"
 #include "report_ack.hpp"
 #include "settings.hpp"
 #include "settings_catalog.hpp"
+#include "trophies_page.hpp"
 #include "trophies_window.hpp"
 #include "ui.hpp"
 
@@ -21,8 +25,8 @@
 namespace ui {
 
 // The Quit tab, the window's close button and the start screen's Quit all ask the same question.
-void request_quit_confirm() {
-    ask(menu::quit_question());
+void request_quit_confirm(bool played) {
+    ask(menu::quit_question(played));
 }
 
 namespace menu {
@@ -58,6 +62,18 @@ void restart_now() {
     if (app().quit) app().quit();
 }
 
+std::unique_ptr<Page> make_trophies_page(Rml::Element* host, PageHost& shell) {
+    return std::make_unique<TrophiesPage>(host, shell);
+}
+
+std::unique_ptr<Page> make_mods_page(Rml::Element* host, PageHost& shell) {
+    return std::make_unique<ModsPage>(host, shell);
+}
+
+std::unique_ptr<Page> make_coop_page(Rml::Element* host, PageHost& shell) {
+    return std::make_unique<CoopPage>(host, shell);
+}
+
 }  // namespace
 
 const std::vector<Entry>& entries() {
@@ -65,20 +81,26 @@ const std::vector<Entry>& entries() {
         {"Settings", "Change how the game looks, sounds and plays.",
             [](MenuShell& menu) { menu.open_settings(); }},
         {"Trophies", "See the trophies you have earned, and the ones still to find.",
-            [](MenuShell& menu) { menu.open(std::make_unique<TrophiesWindow>()); }},
+            [](MenuShell& menu) {
+                if (looks::current().pages) menu.open_page("Trophies", make_trophies_page);
+                else menu.open(std::make_unique<TrophiesWindow>());
+            }},
         {"Mods", "Turn mods on or off, and choose the order they load in.",
-            [](MenuShell& menu) { menu.open(std::make_unique<ModsWindow>()); }},
+            [](MenuShell& menu) {
+                if (looks::current().pages) menu.open_page("Mods", make_mods_page);
+                else menu.open(std::make_unique<ModsWindow>());
+            }},
         {"Co-op", "Play through the game with up to three friends.",
-            [](MenuShell& menu) { menu.open(make_coop_window()); }},
+            [](MenuShell& menu) {
+                if (looks::current().pages) menu.open_page("Co-op", make_coop_page);
+                else menu.open(make_coop_window());
+            }},
         {"Report an issue", "Make a report of a problem, with what the game was doing.",
             [](MenuShell& menu) {
                 ask({
                     .title = "Report an issue?",
-                    .body = "Opens a new issue on GitHub with the details filled in, and a zip to attach with a "
-                            "screenshot, your PC's details, your settings, what each part of the game was doing, the "
-                            "game's recent messages and your save (your characters and their names), so the problem "
-                            "can be seen where it happened. It has no game files; nothing is sent until you submit the "
-                            "issue. Making it takes a few seconds.",
+                    .body = "Opens a GitHub issue, and makes a zip to attach: a screenshot, your PC's details, "
+                            "your settings, recent messages and your save. Nothing is sent until you submit it.",
                     .answers = {{"Report",
                                     [&menu] {
                                         with_zip_ack([&menu] {  // (the first report on this PC: report_ack.hpp)
@@ -95,10 +117,20 @@ const std::vector<Entry>& entries() {
     return sEntries;
 }
 
-Question quit_question() {
+std::unique_ptr<Document> screen_alone(const std::string& entry) {
+    if (entry == "Settings") return std::make_unique<MenuShell>(MenuShell::Standalone{});
+    if (looks::current().pages && (entry == "Trophies" || entry == "Mods" || entry == "Co-op"))
+        return std::make_unique<MenuShell>(MenuShell::Standalone{entry});
+    if (entry == "Trophies") return std::make_unique<TrophiesWindow>();
+    if (entry == "Mods") return std::make_unique<ModsWindow>();
+    if (entry == "Co-op") return make_coop_window();
+    return nullptr;
+}
+
+Question quit_question(bool played) {
     return {
         .title = "Quit to the desktop?",
-        .body = "Progress since the game last saved will be lost.",
+        .body = played ? "Progress since the game last saved will be lost." : "",
         .answers = {{"Quit game",
                         [] {
                             if (app().quit) app().quit();
@@ -116,16 +148,14 @@ std::vector<std::string> waiting_for_restart() {
 }
 
 Question restart_question(std::function<void()> later) {
-    std::vector<std::string> named;  // "Renderer (Vulkan)"
+    std::vector<std::string> named;  // "Renderer"
     for (const std::string& key : settings::restart_pending()) {
         const std::optional<catalog::Shown> s = catalog::shown(key);
-        named.push_back(!s ? key : s->value.empty() ? s->label : s->label + " (" + s->value + ")");
+        named.push_back(s ? s->label : key);
     }
-    const bool one = named.size() == 1;
     return {
         .title = "Restart the game now?",
-        .body = and_list(named) + (one ? " takes" : " take") + " effect when the game starts again. Later keeps " +
-                (one ? "it" : "them") + " for the next start.",
+        .body = and_list(named) + (named.size() == 1 ? " takes" : " take") + " effect after a restart.",
         .answers = {{"Restart now", restart_now}, {"Later", std::move(later)}},
         .safe = 1,
     };
