@@ -79,6 +79,8 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
   one player walks through.
 - **Boss kills keep everyone together:** no rating screen, nobody sent home, and the boss room's walls drop. The
   host's room stays open, during a boss fight and after it, so a friend can always join again.
+- **A friend who joins during a boss fight** fights the boss too. Before, in 1-1, Phalanx wasn't in its game: it
+  saw only the host fighting, and its blows did nothing.
 - **A friend who dies** comes back where the host last arrived (the start of the area) and stays in the session.
   Once it is back, the others see it again, with its rolls, attacks and other moves.
 - **Bloodstains.** A player who dies drops its souls in a bloodstain where it died, a friend too. Only that player
@@ -518,6 +520,15 @@ their first instruction):
   kept the wall itself, so they couldn't pass. The edit makes the same call in the true branch, between
   `NotNetMessage_begin` and `_end`, wherever a handler drops its wall by a direct call to a function with
   `SetColiEnable(..., false)` and has no `LuaCallStart`; only 14291 matches.
+- A boss that wakes only for the player who walks through its fog also wakes for a player put in its room. Phalanx
+  (1-1) is drawn and can be hit only after `PhalanxStandBy`, which the fog's handler (`OnEvent_110`) runs only for
+  the player who walked through (its `param:IsNetMessage() == false` branch). In the game's own
+  co-op every player walks in. A friend that joins during the fight arrives beside the host instead, so Phalanx
+  wasn't in its game. The fight's start (`OnRegionJustIn(<id>, LOCAL_PLAYER, <room>, "OnEvent_<id>", once)`, the
+  handler with `SetBossGauge`) runs in each game whose player arrives in the room, one put there included. It now
+  runs the same stand-by first. For a player who walked in, that is a second run, which sets the same values again.
+  The edit takes the functions a fog's handler (`HELPID_GO_TO_IN`) calls in that branch; only Phalanx's matches
+  (checked on every area's script).
 - The Nexus's timers and checks (`OnKeyTime2`, `OnRegistFunc`) are each player's own. No phantom reaches the Nexus in
   the original game, so its script registers them outside `NotNetMessage_begin` and `_end`, and in a session each one
   is a network event: a step that fires in one game runs in the others too, where it registers the next step again.
@@ -727,6 +738,10 @@ the newer generation, and saves as usual.
   again. A death outside a boss fight comes back within seconds. With the host killed too, half a minute after the
   friend, the host's respawn took the friend along: both at the start, the friend standing with full health. Not
   yet by hand.
+- A friend put in Phalanx's room during the fight (two copies, scripted, the friend fighting by itself): before, the
+  friend had Phalanx's health bar on its screen but no Phalanx and no hoplites, and 40 s of its blows took no health. With the
+  edit, both games draw them, and in 40 s the friend killed 12 of the 38 hoplites in its game. Not yet by hand, and
+  not run on the other discs.
 - The Japanese and Asian discs (with their 1.04 update) play with the others ("Which discs" above). What is checked
   beside the runs:
   - Co-op's rows in `port/regions/BCJS30022.inc` and `BCAS20071.inc` come from `tools/region/region_table.py find`
