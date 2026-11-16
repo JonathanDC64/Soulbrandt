@@ -281,7 +281,7 @@ bool untouched(const Spec& s) {
 }
 
 std::string describe(const Spec& s) {
-    static const char* const kNames[] = {"PlayStation", "Xbox", "Nintendo", "keyboard"};
+    static const char* const kNames[] = {"PlayStation", "Xbox", "Nintendo", "keyboard", "Steam Deck"};
     std::string out = kNames[int(s.kind)];
     out += " x" + std::to_string(s.scale);
     if (s.kind != Kind::Keyboard) {
@@ -321,6 +321,12 @@ constexpr Rgba kGloss = rgb(110, 110, 112), kLetter = rgb(178, 176, 178), kShado
 constexpr Rgba kYellow = rgb(236, 226, 112), kDim = rgb(96, 94, 96), kLine = rgb(6, 6, 6);
 constexpr Rgba kXboxA = rgb(96, 178, 84), kXboxB = rgb(210, 72, 66), kXboxX = rgb(78, 132, 210);
 constexpr Rgba kXboxY = rgb(226, 196, 72);
+constexpr Rgba kDeckRing = rgb(72, 70, 72);   // the raised edge around a Steam Deck stick's top
+// A Steam Deck's face letters: no colour, so lighter than the game's grey to read as well as the coloured ones.
+constexpr Rgba kDeckLetter = rgb(218, 216, 218);
+// PlayStation's shapes, for the menus' prompts only (draw_single): the page keeps the game's own pictures.
+constexpr Rgba kPsCross = rgb(127, 178, 229), kPsCircle = rgb(232, 106, 106), kPsTriangle = rgb(79, 201, 164);
+constexpr Rgba kPsSquare = rgb(217, 149, 201);
 
 // Premultiplied RGBA, 8 bits a channel.
 struct Canvas {
@@ -354,6 +360,13 @@ float sd_rbox(float x, float y, const Box& b, float rt, float rb) {
     r = std::min(r, std::min(hx, hy));
     const float qx = std::fabs(x - b.cx()) - hx + r, qy = std::fabs(y - b.cy()) - hy + r;
     return std::hypot(std::max(qx, 0.f), std::max(qy, 0.f)) + std::min(std::max(qx, qy), 0.f) - r;
+}
+// A line from (ax, ay) to (bx, by), its ends round, `r` either side.
+float sd_segment(float x, float y, float ax, float ay, float bx, float by, float r) {
+    const float px = x - ax, py = y - ay, dx = bx - ax, dy = by - ay;
+    const float len2 = dx * dx + dy * dy;
+    const float t = len2 > 0 ? std::clamp((px * dx + py * dy) / len2, 0.f, 1.f) : 0.f;
+    return std::hypot(px - dx * t, py - dy * t) - r;
 }
 // A triangle: the largest distance to its sides' lines, which is exact at the sides, where the edge is drawn.
 float sd_tri(float x, float y, const float v[3][2]) {
@@ -442,39 +455,46 @@ void arrow(Ctx& c, float cx, float cy, float size, int dir, Rgba color) {
     fill(c.cv, clip, [&](float x, float y) { return sd_tri(x, y, v); }, [&](float, float) { return color; });
 }
 
+// The font's scale for capitals `cap` pixels high.
+float cap_scale(const stbtt_fontinfo* f, float cap) {
+    int x0, y0, x1, y1;
+    stbtt_GetCodepointBox(f, 'H', &x0, &y0, &x1, &y1);
+    return y1 > 0 ? cap / float(y1) : stbtt_ScaleForPixelHeight(f, cap * 1.4f);
+}
+
+// A line of text at scale `sc`: its width (advances and kerning) and its ink's extent above and below the baseline.
+void measure(const stbtt_fontinfo* f, const std::string& s, float sc, float& w, float& top, float& bottom) {
+    w = 0;
+    top = 1e9f;
+    bottom = -1e9f;
+    for (size_t i = 0; i < s.size(); i++) {
+        const int cp = static_cast<unsigned char>(s[i]);
+        int adv, lsb;
+        stbtt_GetCodepointHMetrics(f, cp, &adv, &lsb);
+        int bx0, by0, bx1, by1;
+        stbtt_GetCodepointBitmapBox(f, cp, sc, sc, &bx0, &by0, &bx1, &by1);
+        if (by1 > by0) {
+            top = std::min(top, float(by0));
+            bottom = std::max(bottom, float(by1));
+        }
+        w += float(adv) * sc;
+        if (i + 1 < s.size()) w += float(stbtt_GetCodepointKernAdvance(f, cp, static_cast<unsigned char>(s[i + 1]))) * sc;
+    }
+}
+
 // Text in the box: its capitals `cap` pixels high, narrowed to fit, centred (left-aligned with left = true), on the
 // game's soft shadow.
 void text(Ctx& c, const Box& b, const std::string& s, float cap, Rgba color, bool left = false) {
     if (!c.font || s.empty()) return;
     const stbtt_fontinfo* f = c.font;
-    int x0, y0, x1, y1;
-    stbtt_GetCodepointBox(f, 'H', &x0, &y0, &x1, &y1);
-    float scale = y1 > 0 ? cap / float(y1) : stbtt_ScaleForPixelHeight(f, cap * 1.4f);
+    float scale = cap_scale(f, cap);
     // The width at this scale, and the ink's extent, then narrower if it does not fit.
-    const auto measure = [&](float sc, float& w, float& top, float& bottom) {
-        w = 0;
-        top = 1e9f;
-        bottom = -1e9f;
-        for (size_t i = 0; i < s.size(); i++) {
-            const int cp = static_cast<unsigned char>(s[i]);
-            int adv, lsb;
-            stbtt_GetCodepointHMetrics(f, cp, &adv, &lsb);
-            int bx0, by0, bx1, by1;
-            stbtt_GetCodepointBitmapBox(f, cp, sc, sc, &bx0, &by0, &bx1, &by1);
-            if (by1 > by0) {
-                top = std::min(top, float(by0));
-                bottom = std::max(bottom, float(by1));
-            }
-            w += float(adv) * sc;
-            if (i + 1 < s.size()) w += float(stbtt_GetCodepointKernAdvance(f, cp, static_cast<unsigned char>(s[i + 1]))) * sc;
-        }
-    };
     float w, top, bottom;
-    measure(scale, w, top, bottom);
+    measure(f, s, scale, w, top, bottom);
     const float room = b.w() * (left ? 1.f : 0.84f);
     if (w > room && w > 0) {
         scale *= room / w;
-        measure(scale, w, top, bottom);
+        measure(f, s, scale, w, top, bottom);
     }
     if (top > bottom) return;
     const float base_y = b.cy() - (top + bottom) / 2;   // the ink centred
@@ -514,18 +534,75 @@ void face(Ctx& c, const Box& b, const char* letter, Rgba color) {
     text(c, b, letter, 0.40f * b.h(), color);
 }
 
-void shoulder(Ctx& c, const Box& b, const char* label, bool trigger) {
+// A shape's outline in `color` on the game's soft shadow (as text() draws letters): sd is the shape's outline, the
+// line drawn `lw` wide along it.
+template <typename Sd>
+void stroke(Ctx& c, const Box& clip, Sd sd, float lw, Rgba color) {
+    for (int pass = 0; pass < 2; pass++) {
+        const float dx = pass ? 0.f : 0.5f * c.u, dy = pass ? 0.f : 0.75f * c.u;
+        const Box at{clip.x0 + dx, clip.y0 + dy, clip.x1 + dx + 1, clip.y1 + dy + 1};
+        fill(c.cv, at, [&](float x, float y) { return std::fabs(sd(x - dx, y - dy)) - lw / 2; },
+             [&](float, float) { return pass ? color : kShadow; });
+    }
+}
+
+// PlayStation's face buttons: the disc with its shape on it, in its colour.
+void ps_face(Ctx& c, const Box& b, int p) {
+    disc(c, b);
+    const float d = std::min(b.w(), b.h()), cx = b.cx(), cy = b.cy(), lw = 0.085f * d;
+    const Box clip = centred(cx, cy, 0.62f * d, 0.62f * d);
+    switch (p) {
+    case kPCross: {
+        const float a = 0.17f * d;
+        stroke(c, clip, [=](float x, float y) {
+            return std::min(sd_segment(x, y, cx - a, cy - a, cx + a, cy + a, 0.f),
+                            sd_segment(x, y, cx - a, cy + a, cx + a, cy - a, 0.f));
+        }, lw, kPsCross);
+        break;
+    }
+    case kPCircle: stroke(c, clip, [=](float x, float y) { return sd_circle(x, y, cx, cy, 0.19f * d); }, lw, kPsCircle); break;
+    case kPSquare: {
+        const Box sq = centred(cx, cy, 0.36f * d, 0.36f * d);
+        stroke(c, clip, [=](float x, float y) { return sd_rbox(x, y, sq, 0.02f * d, 0.02f * d); }, lw, kPsSquare);
+        break;
+    }
+    case kPTriangle: {
+        const float v[3][2] = {{cx, cy - 0.22f * d}, {cx + 0.22f * d, cy + 0.16f * d}, {cx - 0.22f * d, cy + 0.16f * d}};
+        stroke(c, clip, [&](float x, float y) { return sd_tri(x, y, v); }, lw, kPsTriangle);
+        break;
+    }
+    default: break;
+    }
+}
+
+// A bumper or a trigger with its name on it. A Steam Deck's (deck) have its own shapes: a slim bumper with round ends,
+// and a narrower trigger with a round top.
+void shoulder(Ctx& c, const Box& b, const char* label, bool trigger, bool deck = false) {
+    if (deck) {
+        const float w = (trigger ? 0.78f : 0.94f) * b.w(), h = (trigger ? 0.92f : 0.64f) * b.h();
+        const Box k = centred(b.cx(), b.cy(), w, h);
+        cap(c, k, trigger ? 0.5f * w : 0.5f * h, trigger ? 0.20f * h : 0.5f * h);
+        text(c, k, label, 0.34f * b.h(), kLetter);
+        return;
+    }
     const float w = 0.94f * b.w(), h = (trigger ? 0.86f : 0.70f) * b.h();
     const Box k = centred(b.cx(), b.cy(), w, h);
     cap(c, k, trigger ? 0.45f * w : 0.24f * h, 0.24f * h);
     text(c, k, label, 0.34f * b.h(), kLetter);
 }
 
-// A stick: its letter, with the four ways it moves in yellow (moving), or with no arrows (pressed in).
-void stick(Ctx& c, const Box& b, const char* label, bool moving) {
+// A stick: its letter, with the four ways it moves in yellow (moving), or with no arrows (pressed in). A Steam Deck's
+// (deck) has a ring around its dished top.
+void stick(Ctx& c, const Box& b, const char* label, bool moving, bool deck = false) {
     const float d = std::min(b.w(), b.h());
     const Box k = centred(b.cx(), b.cy(), d, d);
-    disc(c, moving ? centred(k.cx(), k.cy(), 0.86f * d, 0.86f * d) : k);
+    const Box top = moving ? centred(k.cx(), k.cy(), 0.86f * d, 0.86f * d) : k;
+    disc(c, top);
+    if (deck) {
+        const float r = 0.37f * top.w(), lw = std::max(1.f, 0.05f * top.w()), cx = top.cx(), cy = top.cy();
+        fill(c.cv, top, [=](float x, float y) { return std::fabs(sd_circle(x, y, cx, cy, r)) - lw / 2; },
+             [](float, float) { return kDeckRing; });
+    }
     text(c, k, label, (moving ? 0.34f : 0.32f) * d, kLetter);
     if (moving) {
         const float a = 0.20f * d, r = 0.40f * d;
@@ -549,11 +626,13 @@ void dpad(Ctx& c, const Box& b, unsigned lit) {
     for (int i = 0; i < 4; i++) arrow(c, b.cx() + dx[i], b.cy() + dy[i], a, i, (lit >> i) & 1 ? kYellow : kDim);
 }
 
-// Select and Start: a small button with the pad's picture on it, then the button's name when the cell is wide.
+// Select and Start: a small button with the pad's picture on it, then the button's name when the cell is wide. A Steam
+// Deck's View and Menu are small buttons with well-rounded corners, with Xbox's pictures on them.
 void menu_button(Ctx& c, const Box& b, Kind kind, bool start) {
     const float d = b.h();
     const Box k = {b.x0, b.y0, b.x0 + d, b.y1};
-    disc(c, k);
+    if (kind == Kind::SteamDeck) cap(c, centred(k.cx(), k.cy(), 0.80f * d, 0.80f * d), 0.32f * d, 0.32f * d);
+    else disc(c, k);
     const float u = d / 26.f, cx = k.cx(), cy = k.cy();
     const auto bar = [&](float x, float y, float w, float h) {
         const Box r = centred(x, y, w, h);
@@ -563,6 +642,14 @@ void menu_button(Ctx& c, const Box& b, Kind kind, bool start) {
     if (kind == Kind::Nintendo) {
         bar(cx, cy, 10 * u, 2.4f * u);
         if (start) bar(cx, cy, 2.4f * u, 10 * u);
+    } else if (kind == Kind::PlayStation) {   // Select a flat block, Start a triangle pointing on
+        if (start) {
+            arrow(c, cx + 0.6f * u, cy, 9 * u, 1, kLetter);
+        } else {
+            const Box r = centred(cx, cy, 11 * u, 4.6f * u);
+            fill(c.cv, r, [&](float px, float py) { return sd_rbox(px, py, r, 0.9f * u, 0.9f * u); },
+                 [&](float, float) { return kLetter; });
+        }
     } else if (start) {   // Xbox's Menu: three lines
         for (int i = -1; i <= 1; i++) bar(cx, cy + float(i) * 3.2f * u, 10 * u, 1.8f * u);
     } else {              // Xbox's View: two windows, one over the other
@@ -573,7 +660,9 @@ void menu_button(Ctx& c, const Box& b, Kind kind, bool start) {
         }
     }
     if (b.w() > 1.5f * d) {
-        const char* word = kind == Kind::Nintendo ? (start ? "PLUS" : "MINUS") : (start ? "MENU" : "VIEW");
+        const char* word = kind == Kind::Nintendo ? (start ? "PLUS" : "MINUS")
+                           : kind == Kind::PlayStation ? (start ? "START" : "SELECT")
+                                                       : (start ? "MENU" : "VIEW");
         const Box rest{k.x1 + 0.12f * d, b.y0, b.x1, b.y1};
         text(c, rest, word, 0.44f * d, kLetter, true);
     }
@@ -581,20 +670,33 @@ void menu_button(Ctx& c, const Box& b, Kind kind, bool start) {
 
 // Pad button p (kPadNames) as the device shows it.
 void pad_button(Ctx& c, const Box& b, Kind kind, int p) {
-    const bool x = kind == Kind::Xbox;
+    if (kind == Kind::PlayStation) {   // the menus' prompts only (draw_single): the page draws none of these
+        switch (p) {
+        case kPCross: case kPCircle: case kPSquare: case kPTriangle: return ps_face(c, b, p);
+        case kPR1: return shoulder(c, b, "R1", false);
+        case kPR2: return shoulder(c, b, "R2", true);
+        case kPL1: return shoulder(c, b, "L1", false);
+        case kPL2: return shoulder(c, b, "L2", true);
+        case kPR3: return stick(c, b, "R3", false);
+        case kPL3: return stick(c, b, "L3", false);
+        default: break;   // the D-pad, Select and Start as below
+        }
+    }
+    const bool x = kind == Kind::Xbox, deck = kind == Kind::SteamDeck;
     // SDL names a Nintendo pad's buttons by their letters (SDL2's default), so A presses Cross as it does on an Xbox
-    // pad: the same letters, without the colours.
+    // pad: the same letters, without the colours. A Steam Deck has Xbox's letters too, without the colours, and names
+    // its shoulders and sticks L1 to R3.
     switch (p) {
-    case kPCross: face(c, b, "A", x ? kXboxA : kLetter); break;
-    case kPCircle: face(c, b, "B", x ? kXboxB : kLetter); break;
-    case kPSquare: face(c, b, "X", x ? kXboxX : kLetter); break;
-    case kPTriangle: face(c, b, "Y", x ? kXboxY : kLetter); break;
-    case kPR1: shoulder(c, b, x ? "RB" : "R", false); break;
-    case kPR2: shoulder(c, b, x ? "RT" : "ZR", true); break;
-    case kPL1: shoulder(c, b, x ? "LB" : "L", false); break;
-    case kPL2: shoulder(c, b, x ? "LT" : "ZL", true); break;
-    case kPR3: stick(c, b, "RS", false); break;
-    case kPL3: stick(c, b, "LS", false); break;
+    case kPCross: face(c, b, "A", x ? kXboxA : deck ? kDeckLetter : kLetter); break;
+    case kPCircle: face(c, b, "B", x ? kXboxB : deck ? kDeckLetter : kLetter); break;
+    case kPSquare: face(c, b, "X", x ? kXboxX : deck ? kDeckLetter : kLetter); break;
+    case kPTriangle: face(c, b, "Y", x ? kXboxY : deck ? kDeckLetter : kLetter); break;
+    case kPR1: shoulder(c, b, x ? "RB" : deck ? "R1" : "R", false, deck); break;
+    case kPR2: shoulder(c, b, x ? "RT" : deck ? "R2" : "ZR", true, deck); break;
+    case kPL1: shoulder(c, b, x ? "LB" : deck ? "L1" : "L", false, deck); break;
+    case kPL2: shoulder(c, b, x ? "LT" : deck ? "L2" : "ZL", true, deck); break;
+    case kPR3: stick(c, b, deck ? "R3" : "RS", false, deck); break;
+    case kPL3: stick(c, b, deck ? "L3" : "LS", false, deck); break;
     case kPUp: dpad(c, b, 1); break;
     case kPRight: dpad(c, b, 2); break;
     case kPDown: dpad(c, b, 4); break;
@@ -632,8 +734,8 @@ void draw_pad_cell(Ctx& c, const Box& b, Role role, const Spec& s) {
     case kDpad: dpad(c, b, 15); return;
     case kDpadLR: dpad(c, b, 10); return;
     case kDpadUD: dpad(c, b, 5); return;
-    case kRStick: stick(c, b, "R", true); return;
-    case kLStick: stick(c, b, "L", true); return;
+    case kRStick: stick(c, b, "R", true, s.kind == Kind::SteamDeck); return;
+    case kLStick: stick(c, b, "L", true, s.kind == Kind::SteamDeck); return;
     default: break;
     }
     const int g = role_button(role);
@@ -769,7 +871,8 @@ void draw_tile_cell(Ctx& c, const Box& b, Role role, const Spec& s) {
     const char* letter = p == kPCross ? "A" : p == kPCircle ? "B" : p == kPSquare ? "X" : p == kPTriangle ? "Y" : nullptr;
     if (!letter) return draw_pad_cell(c, b, role, s);
     const bool x = s.kind == Kind::Xbox;
-    const Rgba col = !x ? kLetter : p == kPCross ? kXboxA : p == kPCircle ? kXboxB : p == kPSquare ? kXboxX : kXboxY;
+    const Rgba col = s.kind == Kind::SteamDeck ? kDeckLetter : !x ? kLetter
+                     : p == kPCross ? kXboxA : p == kPCircle ? kXboxB : p == kPSquare ? kXboxX : kXboxY;
     text(c, b, letter, 0.62f * b.h(), col);
 }
 
@@ -972,7 +1075,7 @@ Image draw(const Page& page, const std::vector<uint8_t>& base, const Spec& spec,
             std::memset(&cv.px[(size_t(y) * size_t(W) + size_t(cell.x * S)) * 4], 0, size_t(cell.w * S) * 4);
         if (moved >= 0) put_moved(cv, page, base, cell, b, moved, pictures);
         else if (spec.kind == Kind::Keyboard) draw_key_cell(c, b, cell.role, spec);
-        else if (spec.kind == Kind::Xbox || spec.kind == Kind::Nintendo) draw_pad_cell(c, b, cell.role, spec);
+        else draw_pad_cell(c, b, cell.role, spec);   // Xbox, Nintendo, Steam Deck
     }
     // Level 0, then each level half the last (a box filter on the premultiplied colours), each straight alpha.
     Image out;
@@ -1009,6 +1112,73 @@ Image draw(const Page& page, const std::vector<uint8_t>& base, const Spec& spec,
         w = nw;
         h = nh;
     }
+    return out;
+}
+
+// ---- One button on its own ----
+
+namespace {
+
+// The word on a wide picture, or none: a key with a word on it ("Enter"), on a cap as wide as the word needs; and
+// PlayStation's Select and Start, a pill with the word on it as the PS3's own prompts draw them. A letter, an arrow
+// key, a chord, the mouse and every other button keep the page's square.
+std::string wide_word(const Single& s) {
+    if (s.kind == Kind::PlayStation) return s.pad == kPSelect ? "SELECT" : s.pad == kPStart ? "START" : "";
+    if (s.kind != Kind::Keyboard || s.key.mod) return "";
+    const int in = s.key.in;
+    if (in >= kMouse && in <= kWheelDown) return "";
+    if (in == kVkUp || in == kVkRight || in == kVkDown || in == kVkLeft) return "";
+    return s.key.label.size() > 1 ? s.key.label : "";
+}
+// Its capitals, of the height: a key's word, or a pill's smaller capitals.
+float wide_cap(const Single& s) { return s.kind == Kind::Keyboard ? 0.36f : 0.28f; }
+constexpr float kWideEdge = 0.04f;  // the cap's margin, of its height (the page's keys fill 0.92 of the cell)
+
+}  // namespace
+
+float single_ratio(const Single& s, const unsigned char* font) {
+    stbtt_fontinfo info;
+    const std::string word = wide_word(s);
+    if (word.empty() || !font || !stbtt_InitFont(&info, font, stbtt_GetFontOffsetForIndex(font, 0))) return 1.f;
+    constexpr float h = 100.f;
+    float w, top, bottom;
+    measure(&info, word, cap_scale(&info, wide_cap(s) * h), w, top, bottom);
+    // The word with room either side as a letter key has, about a quarter of the height; and never less than text()
+    // needs, which keeps a word in the middle 84 % of the cap, so a long one is not narrowed.
+    const float room = std::max(w + 0.48f * h, w / 0.84f + 0.04f * h);
+    return std::max(1.f, (room + 2 * kWideEdge * h) / h);
+}
+
+Image draw_single(const Single& s, int width, int height, const unsigned char* font) {
+    Image out;
+    if (width <= 0 || height <= 0) return out;
+    Canvas cv;
+    cv.w = width;
+    cv.h = height;
+    cv.px.assign(size_t(width) * size_t(height) * 4, 0);
+    stbtt_fontinfo info;
+    const bool have_font = font && stbtt_InitFont(&info, font, stbtt_GetFontOffsetForIndex(font, 0));
+    const float w = float(width), h = float(height), d = std::min(w, h);
+    Ctx c{cv, have_font ? &info : nullptr, h / 26.f};
+    const Box sq = centred(w / 2, h / 2, d, d);
+    if (const std::string word = wide_word(s); !word.empty()) {
+        const float e = kWideEdge * h;
+        const Box k{e, e, w - e, h - e};
+        const float r = s.kind == Kind::Keyboard ? 0.22f * h : k.h() / 2;   // a key's corners, or a pill's round ends
+        cap(c, k, r, r);
+        text(c, k, word, wide_cap(s) * h, kLetter);
+    } else if (s.kind == Kind::Keyboard) {
+        key(c, sq, s.key);
+    } else if (s.pad >= 0 && s.pad < 16) {
+        pad_button(c, sq, s.kind, s.pad);
+    } else {
+        dpad(c, sq, s.dpad);
+    }
+    out.width = uint32_t(width);
+    out.height = uint32_t(height);
+    out.levels = 1;
+    out.rgba = std::move(cv.px);
+    out.premultiplied = true;
     return out;
 }
 

@@ -11,7 +11,9 @@
 #include "version.hpp"  // (kProductName: the project server's name in the Server row)
 
 #include <string>
+#include <span>
 #include <string_view>
+#include <vector>
 
 namespace ui::settings {
 
@@ -42,6 +44,7 @@ std::string describe();
 void load_and_apply_env();
 
 const Def* find(std::string_view key);
+std::span<const Def> defs();  // every setting, in kDefs' order
 std::string get(std::string_view key);  // the value, or its default
 int get_int(std::string_view key);
 bool is_default(std::string_view key);
@@ -56,9 +59,24 @@ void set(std::string_view key, const std::string& value);
 // value each frame, des_ui.cpp's sync_fullscreen.)
 void store(std::string_view key, const std::string& value);
 
+// Tries a value of a setting applied at once (Apply::Live), not pinned: applied and shown by get() until end_try or a
+// set() of it, and never saved (Settings' Compare shows the value the menu opened with, held). False, and nothing
+// tried, for any other setting.
+bool try_value(std::string_view key, const std::string& value);
+void end_try(std::string_view key);  // the stored value again, applied
+
 // The variable was set in the environment when the game started (not by settings.ini): it wins over the file.
 bool pinned(std::string_view key);
 std::string pinned_value(std::string_view key);
+
+// The restart-only settings (Apply::Restart) changed since the game started, leaving out pinned ones: their keys, in
+// kDefs' order. Their new values wait for the next start; the F1 menu asks about a restart as it closes
+// (menu_pages.hpp). None before load_and_apply_env.
+std::vector<std::string> restart_pending();
+
+// The setting's stored value is in effect already: its own code applied it at once, though it is restart-only (the
+// co-op host's public address). restart_pending leaves it out until it changes again.
+void now_in_effect(std::string_view key);
 
 // The keyboard and mouse layout (docs/41), in cellPad's PAD_KEYS form: movement on WASD, the attacks on the mouse
 // buttons, Space to roll and dash, and so on, as in the Souls games on PC. The PAD_KEYS setting, and a PAD_KEYS set in

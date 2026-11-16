@@ -4,7 +4,8 @@
 // folder becomes RSX_STATE_DIR, and the row exists only in a build whose runtime has the Vulkan route. On Windows, on
 // a GeForce card before the RTX 20 series (DES_RENDERER_GPU_ID gives the GPU's PCI IDs here; the other cases give
 // none), the default is Vulkan, and a saved D3D12 becomes Vulkan once. The gpu-in-* cases are in that rule, the
-// gpu-out-* cases are not.
+// gpu-out-* cases are not. And a restart-only setting changed in the menu waits for the next start (restart_pending):
+// not a live one, not one in effect already, not one pinned by the environment.
 //
 //   settings_check --row      a build with the row (DES_RSX_VULKAN: port/CMakeLists.txt found the Vulkan route)
 //   settings_check --no-row   a build without it: nothing of it, and settings.ini's RSX_BACKEND is not applied
@@ -13,6 +14,7 @@
 // temporary folder that it removes. Prints one line a case and "settings_check: N passed, M failed"; exit 1 on a
 // failure. Built on demand: cmake --build <build> --target settings_check.
 #include "settings.hpp"
+#include "../../des_seamless.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -22,6 +24,7 @@
 #include <sstream>
 #include <string>
 #include <system_error>
+#include <vector>
 
 #ifdef _WIN32
 #include <process.h>
@@ -82,6 +85,13 @@ namespace ui::privacy {
 int version() { return 1; }
 void set_needed(bool) {}
 }  // namespace ui::privacy
+
+// What settings.cpp needs of seamless co-op (des_seamless.cpp): off.
+namespace des::seamless {
+Mode mode() { return Mode::Off; }
+bool start(const std::string&, std::string*) { return false; }
+void held(const std::string&) {}
+}  // namespace des::seamless
 
 namespace {
 
@@ -181,6 +191,22 @@ int run_case(const std::string& name) {
             std::printf("    unknown case %s\n", name.c_str());
             return 2;
         }
+    } else if (name == "restart-waits") {  // restart-only settings changed in the menu wait for the next start
+        using Keys = std::vector<std::string>;
+        check(settings::restart_pending().empty(), "nothing waits at the start");
+        settings::set("DES_LANGUAGE", "ja");
+        settings::set("DES_FPS", "60");  // (live: never waits)
+        check(settings::restart_pending() == Keys{"DES_LANGUAGE"}, "Language waits, alone");
+        settings::set("DES_LANGUAGE", "");
+        check(settings::restart_pending().empty(), "changed back: nothing waits");
+        settings::set("DES_ONLINE", "0");
+        settings::now_in_effect("DES_ONLINE");  // (as after the server deleted this player's data)
+        check(settings::restart_pending().empty(), "in effect already: Online does not wait");
+        settings::set("DES_ONLINE", "1");
+        check(settings::restart_pending() == Keys{"DES_ONLINE"}, "Online changed again: it waits");
+    } else if (name == "restart-pinned") {  // DES_LANGUAGE=en in the environment: the next start has it again
+        settings::set("DES_LANGUAGE", "ja");
+        check(settings::restart_pending().empty(), "a pinned setting never waits");
     } else if (name == "set-saves") {  // the row changed in the menu: kept for the next start, not applied now
         settings::set("RSX_BACKEND", "vulkan");
         check(env("RSX_BACKEND").empty(), "not applied before a restart: " + env("RSX_BACKEND"));
@@ -210,6 +236,8 @@ const Case kCases[] = {
     {"state-env-wins", nullptr, {{"RSX_STATE_DIR", "elsewhere"}}},
     {"test-run", nullptr, {}, false},
     {"set-saves", nullptr, {}},
+    {"restart-waits", nullptr, {}},
+    {"restart-pinned", nullptr, {{"DES_LANGUAGE", "en"}}},
     // 0.1.0's settings.ini ("d3d12" whether picked or not), by GPU
     {"gpu-in-1070-saved", "RSX_BACKEND = d3d12\n", {{"DES_RENDERER_GPU_ID", "10de:1b81"}}},        // GTX 1070 (#205, #372)
     {"gpu-in-1060-saved", "RSX_BACKEND = d3d12\n", {{"DES_RENDERER_GPU_ID", "10de:1c03"}}},        // GTX 1060 6GB (#398)
@@ -245,7 +273,8 @@ int main(int argc, char** argv) {
         const auto dir = root / c.name;
         std::filesystem::create_directories(dir, ec);
         if (c.ini) std::ofstream(dir / "settings.ini") << c.ini;
-        for (const char* k : {"RSX_BACKEND", "RSX_STATE_DIR", "DES_SETTINGS", "DES_DATA_DIR", "PS3_PIDFILE"})
+        for (const char* k :
+            {"RSX_BACKEND", "RSX_STATE_DIR", "DES_SETTINGS", "DES_DATA_DIR", "PS3_PIDFILE", "DES_LANGUAGE"})
             ps3_setenv(k, "");
         ps3_setenv("DES_RENDERER_GPU", "Test GPU");  // (not this PC's: a case gives the rule's GPU itself)
         ps3_setenv("DES_RENDERER_GPU_ID", "");

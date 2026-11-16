@@ -6,7 +6,7 @@
 namespace ui::setup {
 namespace {
 
-// The resolutions the Render resolution row offers (settings_window.cpp), as the preset page names them.
+// The resolutions the Render resolution row offers (settings_catalog.cpp), as the preset page names them.
 std::string scale_name(int scale, const char* more = "") {
     return std::to_string(scale) + "% (" + scale_label(scale) + more + ")";
 }

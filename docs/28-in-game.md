@@ -820,6 +820,8 @@ The harnesses drove the boot menus from outside: every 2 s, if the log showed th
 
 The same save's level now starts loading at 15.2 s instead of 32.5 s, and runs normally after (29.8 fps unattended). `regress.sh` uses it (all four shots ok, 117 s instead of about 150). For playing: `tools/des/play.sh DES_SKIP_INTRO=1 DES_AUTO_CONTINUE=1` goes straight into the last save.
 
+With no character in the save (a new save, or none), it presses nothing (2026-11-15, issue #471). There is nothing to continue: its presses went from the title into New Game, and each CROSS opened the name box again, so the player couldn't use the screen. It reads the slot list once, at its first press: a slot marked in use with a character file. The root is the one `cellSaveData` uses: `PS3_SAVEDATA_ROOT`, else the normal save, and co-op's own once co-op has set it. The log says "no character in the save to continue".
+
 RPCS3's "Skip Intro Videos" patch for BLUS30443 (GalCiv) writes `li r0,3; stw r0,0x100(r28)` at 0x008EEF78: every logo's `m_animState` goes straight to 3 (wait for the fade-out). `DES_SKIP_INTRO` jumped to the last logo and skipped its hold instead, so one fade-in and fade-out still played, about 2 s more.
 
 ### Skip options: logos and the opening movie (2026-10-17)

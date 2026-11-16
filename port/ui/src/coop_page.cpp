@@ -1,0 +1,208 @@
+// Written for Demon's Souls. Co-op as a page of the F1 menu (coop_page.hpp). What each action does, and the questions
+// it asks, are the Co-op window's (coop_window.hpp's coop namespace); this page lays them out as the mock-up's.
+#include "coop_page.hpp"
+
+#include "coop_window.hpp"
+#include "event.hpp"
+#include "sound.hpp"
+#include "ui.hpp"
+
+#include "../../des_seamless.h"
+
+#include <RmlUi/Core.h>
+
+#include <algorithm>
+
+namespace ui {
+namespace {
+
+namespace co = des::seamless;
+
+void set_class(Rml::Element* e, const char* name, bool on) {
+    if (e->IsClassSet(name) != on) e->SetClass(name, on);
+}
+
+struct Action {
+    const char* label;
+    const char* brief;  // the strip's line while it has the focus
+    void (*press)();
+    bool (*disabled)();
+};
+
+bool never() {
+    return false;
+}
+
+// The actions for co-op's mode now, in order.
+std::vector<Action> actions_for(co::Mode mode) {
+    if (mode == co::Mode::Off)
+        return {{"Host", "Host a game, and send your friends the invite code.", coop::open_host, never},
+                {"Join", "Join a friend's game with their invite code.", coop::open_join, never}};
+    if (mode == co::Mode::Join)
+        return {{"Leave co-op", "Go back to your own world, and to your normal characters.", coop::open_leave, never}};
+    return {{"Copy code", "Copy the invite code and send it to your friends.", coop::copy_code, coop::no_code},
+            {"New code", "Make a new code. The old one stops working.", coop::open_new_code, never},
+            {"Public address", "Give the address the internet sees, when your router can't.",
+             coop::open_public_address, never},
+            {"Leave co-op", "Go back to your normal characters.", coop::open_leave, never}};
+}
+
+// A guest's one line on how the connection is (in the strip: no box holds a single line); "" when there is more to
+// say than a line, in the box beside the actions.
+std::string guest_line(const co::Status& s) {
+    if (s.mode != co::Mode::Join || !s.started) return "";
+    switch (s.link) {
+    case co::Status::Link::Connecting: return "Reaching the host's game...";
+    case co::Status::Link::Connected: return "You're connected to the host's game.";
+    case co::Status::Link::Full: return "The host's game is full. You join as soon as a place frees up.";
+    default: return "";
+    }
+}
+
+// Beside the actions: what co-op is, or the invite code, the router's answer and the players; "" for no box.
+std::string info_rml(const co::Status& s) {
+    if (s.mode == co::Mode::Off)
+        return "<info-line>One of you hosts. The others join with the host's invite code and follow the host from "
+               "area to area.</info-line>"
+               "<info-line>Co-op uses its own characters, kept apart from your normal ones. No online game server is "
+               "used: only your friends' games and yours. A host whose router can't tell its internet address asks "
+               "Google's STUN server for it.</info-line>";
+    if (!s.started) return "<info-line class=\"warning\">Co-op did not start: " + escape(s.error) + ".</info-line>";
+    if (s.mode == co::Mode::Join) {
+        if (!guest_line(s).empty()) return "";
+        return "<info-line class=\"warning\">The connection to the host's game was lost. Your game takes you back to "
+               "your own world and keeps trying.</info-line><info-rule/>"
+               "<info-line>If the host hosts again, its code is a new one: leave co-op, then join with the new code."
+               "</info-line>";
+    }
+    std::string b;
+    if (s.code_spent)
+        b += "<info-line class=\"warning\">Many wrong codes were tried, so your code no longer lets anyone in. Make a "
+             "new code and send it to your friends.</info-line><info-rule/>";
+    if (!s.code.empty())
+        b += "<info-label>Your invite code</info-label><info-code>" + escape(s.code) + "</info-code>"
+             "<info-line>Send it to your friends. Don't post it in public: it holds your internet address."
+             "</info-line><info-rule/>";
+    b += "<info-line>" + escape(s.router.empty() ? "Asking your router to open the port..." : s.router) +
+         "</info-line>";
+    if (!s.lan_code.empty() && (s.code.empty() || s.lan_code != s.code))
+        b += "<info-line>On your own network: <info-lan>" + escape(s.lan_code) + "</info-lan></info-line>";
+    b += "<info-rule/><info-line>Players: " + std::to_string(s.players > 0 ? s.players : 1) + " of " +
+         std::to_string(s.max_players) + " (Settings &gt; Network).";
+    if (s.waiting > 0) b += " Waiting to join: " + std::to_string(s.waiting) + ".";
+    return b + "</info-line>";
+}
+
+}  // namespace
+
+CoopPage::CoopPage(Rml::Element* host, menu::PageHost& shell) : mHost(host), mShell(shell) {
+    build();
+}
+
+CoopPage::~CoopPage() {
+    mListeners.clear();
+}
+
+void CoopPage::build() {
+    mListeners.clear();
+    mActions.clear();
+    clear_children(mHost);
+    const co::Status s = co::status();
+    mMode = static_cast<int>(s.mode);
+    Rml::Element* page = append(mHost, "coop-page");
+    Rml::Element* box = append(page, "coop-box");
+    const std::vector<Action> list = actions_for(s.mode);
+    for (size_t i = 0; i < list.size(); i++) {
+        Rml::Element* a = append_text_element(box, "coop-action", list[i].label);
+        mActions.push_back(a);
+        const int index = static_cast<int>(i);
+        mListeners.push_back(std::make_unique<ScopedEventListener>(a, Rml::EventId::Click, [this, index](Rml::Event&) {
+            if (index != mFocus) {
+                mFocus = index;
+                play_sound(kSoundItemFocus);
+            } else {
+                press();
+            }
+        }));
+    }
+    mInfo = append(page, "coop-info");
+    mInfoShown = "\x01";  // (none shown yet: a guest's "" too sets the box's class)
+    mFocus = std::clamp(mFocus, 0, std::max(0, static_cast<int>(mActions.size()) - 1));
+    mFocusShown = -1;
+    mNext = {};
+    refresh();
+}
+
+void CoopPage::refresh() {
+    const co::Status s = co::status();
+    if (static_cast<int>(s.mode) != mMode) {
+        build();
+        return;
+    }
+    if (const std::string rml = info_rml(s); rml != mInfoShown) {
+        mInfoShown = rml;
+        mInfo->SetInnerRML(rml);
+        set_class(mInfo, "none", rml.empty());
+    }
+    mLine = guest_line(s);
+    const std::vector<Action> list = actions_for(s.mode);
+    for (size_t i = 0; i < mActions.size() && i < list.size(); i++)
+        set_class(mActions[i], "disabled", list[i].disabled());
+}
+
+void CoopPage::update() {
+    const auto now = std::chrono::steady_clock::now();
+    if (now >= mNext) {  // (the router answers a few seconds after the start, and players come and go)
+        mNext = now + std::chrono::milliseconds(500);
+        refresh();
+    }
+    if (mFocus != mFocusShown) {
+        mFocusShown = mFocus;
+        for (size_t i = 0; i < mActions.size(); i++) set_class(mActions[i], "focused", static_cast<int>(i) == mFocus);
+    }
+}
+
+void CoopPage::move(int by) {
+    const int to = std::clamp(mFocus + by, 0, std::max(0, static_cast<int>(mActions.size()) - 1));
+    if (to == mFocus) return;
+    mFocus = to;
+    play_sound(kSoundItemFocus);
+}
+
+void CoopPage::press() {
+    const std::vector<Action> list = actions_for(co::status().mode);
+    if (mFocus < 0 || mFocus >= static_cast<int>(list.size())) return;
+    if (list[mFocus].disabled()) {
+        play_sound(kSoundWarning);
+        return;
+    }
+    list[mFocus].press();
+}
+
+void CoopPage::focus_action(int index) {
+    mFocus = std::clamp(index, 0, std::max(0, static_cast<int>(mActions.size()) - 1));
+}
+
+bool CoopPage::command(menu::Command command, bool down) {
+    using menu::Command;
+    if (!down) return false;
+    switch (command) {
+    case Command::Up: move(-1); return true;
+    case Command::Down: move(1); return true;
+    case Command::Confirm: press(); return true;
+    default: return false;
+    }
+}
+
+std::vector<prompts::Prompt> CoopPage::prompts(const std::string& backLabel) const {
+    using prompts::Key;
+    return {{Key::Move, "Select"}, {Key::Confirm, "Choose"}, {Key::Back, backLabel}};
+}
+
+std::string CoopPage::strip() const {
+    if (!mLine.empty()) return mLine;
+    const std::vector<Action> list = actions_for(static_cast<co::Mode>(mMode));
+    return mFocus >= 0 && mFocus < static_cast<int>(list.size()) ? list[mFocus].brief : "";
+}
+
+}  // namespace ui

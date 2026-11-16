@@ -5,6 +5,7 @@
 // FFCCEOT-Recomp's host.cpp (GL3 in an SDL window).
 #include "host.hpp"
 
+#include "button_art.hpp"
 #include "mouse.hpp"
 #include "portable.hpp"
 #include "renderer.hpp"
@@ -39,15 +40,24 @@ void log_message(Rml::Log::Type type, const Rml::String& message) {
     if (type <= Rml::Log::LT_WARNING) std::fprintf(stderr, "[ui] %s\n", message.c_str());
 }
 
+std::string normalize(const std::string& path);
+
 // add_png's images, by source.
 std::mutex sPngLock;
 std::map<std::string, std::vector<uint8_t>, std::less<>> sPngs;
 
+// An image by source: add_png's, else one of the UI's own (res/img, embedded), by its path from a style sheet.
 bool find_png(const Rml::String& source, std::vector<unsigned char>& file) {
-    std::lock_guard<std::mutex> lock(sPngLock);
-    const auto it = sPngs.find(source);
-    if (it == sPngs.end()) return false;
-    file = it->second;
+    {
+        std::lock_guard<std::mutex> lock(sPngLock);
+        if (const auto it = sPngs.find(source); it != sPngs.end()) {
+            file = it->second;
+            return true;
+        }
+    }
+    const Asset* a = find_asset(normalize(source));
+    if (!a) return false;
+    file.assign(a->data, a->data + a->size);
     return true;
 }
 
@@ -170,6 +180,9 @@ std::unique_ptr<Renderer> make_renderer(void* device, void* queue) { return d3d1
 // as SDL gives the panel's real density (Windows gives the scale the player chose), and 2.25 x leaves 320 dp of height.
 //
 // While a full-window page is open (set_follow_height, the setup screens) the scale is simply what the window holds.
+//
+// A document that needs more width than that (the menus are laid out for 1280 dp: set_room) is never scaled past what
+// the window holds of its width, after the UI scale setting (render).
 float base_scale(int width, int height, unsigned dpi, bool follow_window) {
     const float display = std::max(1.0f, float(dpi) / 96.0f);  // (dpi 0 is not known. A TV can say less than 96.)
     if (width <= 0 || height <= 0) return display;
@@ -237,6 +250,7 @@ struct State {
     Rml::Context* rml = nullptr;
     float ui_scale = 0.0f;
     bool follow_height = false;
+    float room = 0.0f;  // set_room
     bool initialised = false;
     int pointer_x = 0, pointer_y = 0;  // set_pointer
     bool pointer_inside = false, cursor_wanted = false;
@@ -325,20 +339,28 @@ void draw_lizard(int width, int height) {
 }
 
 void load_fonts() {
+    using Rml::Style::FontStyle;
+    using Rml::Style::FontWeight;
     struct Font {
         const char* file;
         const char* family;
-        Rml::Style::FontWeight weight;
+        FontWeight weight;
         bool fallback;
+        FontStyle style = FontStyle::Normal;
     };
-    for (const Font& f : {Font{"res/fonts/AlegreyaSans-Regular.ttf", "Alegreya Sans", Rml::Style::FontWeight::Normal, true},
-                          Font{"res/fonts/AlegreyaSans-Bold.ttf", "Alegreya Sans", Rml::Style::FontWeight::Bold, false},
-                          Font{"res/fonts/Cinzel.ttf", "Cinzel", Rml::Style::FontWeight::Auto, false},
+    for (const Font& f : {Font{"res/fonts/AlegreyaSans-Regular.ttf", "Alegreya Sans", FontWeight::Normal, true},
+                          Font{"res/fonts/AlegreyaSans-Bold.ttf", "Alegreya Sans", FontWeight::Bold, false},
+                          Font{"res/fonts/Cinzel.ttf", "Cinzel", FontWeight::Auto, false},
+                          // (the DeS UI look's text: looks.hpp)
+                          Font{"res/fonts/OldStandard-Regular.ttf", "Old Standard TT", FontWeight::Normal, false},
+                          Font{"res/fonts/OldStandard-Bold.ttf", "Old Standard TT", FontWeight::Bold, false},
+                          Font{"res/fonts/OldStandard-Italic.ttf", "Old Standard TT", FontWeight::Normal, false,
+                               FontStyle::Italic},
                           Font{"res/fonts/MaterialSymbolsRounded-Regular.ttf", "Material Symbols Rounded",
-                               Rml::Style::FontWeight::Auto, false}}) {
+                               FontWeight::Auto, false}}) {
         const Asset* a = find_asset(f.file);
-        if (!a || !Rml::LoadFontFace({reinterpret_cast<const Rml::byte*>(a->data), a->size}, f.family,
-                                     Rml::Style::FontStyle::Normal, f.weight, f.fallback))
+        if (!a || !Rml::LoadFontFace({reinterpret_cast<const Rml::byte*>(a->data), a->size}, f.family, f.style,
+                                     f.weight, f.fallback))
             std::fprintf(stderr, "[ui] cannot load font %s\n", f.file);
     }
 }
@@ -406,6 +428,7 @@ bool init(void* d3d12_device, void* d3d12_queue, void* hwnd, int width, int heig
         return false;
     }
     load_fonts();
+    button_art::install();
     s.rml = Rml::CreateContext("main", {std::max(width, 1), std::max(height, 1)});
     if (!s.rml) {
         shutdown();
@@ -439,6 +462,7 @@ void set_hdr(float scale, bool srgb) {
     if (s.renderer) s.renderer->set_hdr(scale, srgb);
 }
 void set_follow_height(bool on) { s.follow_height = on; }
+void set_room(float dp) { s.room = std::max(0.0f, dp); }
 
 unsigned window_dpi() {
     // DES_UI_DPI=<n>: as if the display said so, to try another PC's on this one.
@@ -465,8 +489,9 @@ void render(void* back_buffer, unsigned index, int width, int height, const char
     if (!s.initialised) return;
     if (s.rml->GetDimensions() != Rml::Vector2i{width, height}) s.rml->SetDimensions({width, height});
     const float base = base_scale(width, height, window_dpi(), s.follow_height);
-    if (const float ratio = (s.ui_scale > 0.0f ? s.ui_scale : 1.0f) * base;
-        ratio != s.rml->GetDensityIndependentPixelRatio()) {
+    float ratio = (s.ui_scale > 0.0f ? s.ui_scale : 1.0f) * base;
+    if (s.room > 0.0f) ratio = std::min(ratio, std::max(0.5f, std::floor(float(width) / s.room * 16.0f) / 16.0f));
+    if (ratio != s.rml->GetDensityIndependentPixelRatio()) {
         s.rml->SetDensityIndependentPixelRatio(ratio);
         restyle_documents();
     }
@@ -542,6 +567,7 @@ bool init(const std::function<std::unique_ptr<Renderer>(ImageSource images)>& ma
         return false;
     }
     load_fonts();
+    button_art::install();
     s.rml = Rml::CreateContext("main", {std::max(width, 1), std::max(height, 1)});
     if (!s.rml) {
         shutdown();

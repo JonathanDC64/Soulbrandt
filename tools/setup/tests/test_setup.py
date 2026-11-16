@@ -528,6 +528,87 @@ class FetchTest(unittest.TestCase):
                     fetch.fetch(self.entry(blob, sha256="0" * 64), d, allow_http=True)
                 self.assertEqual(os.listdir(d), [])
 
+    def test_failure_says_where_a_copy_goes(self):
+        """A download's failure carries its address and where a copy of the player's own goes (issue #544), and
+        whether the server's certificate was refused: by Python's check with no other way to try, or by Windows'
+        own too (curl exit 35 or 60). Not for a failure through curl of another kind."""
+        blob = _zip([("a.txt", b"q" * 3000)])
+        with tempfile.TemporaryDirectory() as d:     # served, but not the pinned file
+            e = self.entry(blob, sha256="0" * 64)
+            with self.assertRaises(fetch.FetchError) as cm:
+                fetch.fetch(e, d, allow_http=True)
+            self.assertEqual((cm.exception.url, cm.exception.archive, cm.exception.certificate),
+                             (e["url"], fetch.archive_path(e, Path(d)), False))
+        cert = urllib.error.URLError(ssl.SSLCertVerificationError(1, "unable to get local issuer certificate"))
+
+        def refuse(*a, **k):
+            raise cert
+
+        with mock.patch.object(fetch.urllib.request, "urlopen", refuse):
+            with tempfile.TemporaryDirectory() as d, mock.patch.object(fetch, "windows_curl", lambda: None):
+                with self.assertRaises(fetch.FetchError) as cm:
+                    fetch.fetch(self.entry(blob), d, allow_http=True)
+                self.assertTrue(cm.exception.certificate)
+            for rc, refused in ((60, True), (35, True), (28, False)):
+                with tempfile.TemporaryDirectory() as d, \
+                        mock.patch.object(fetch, "windows_curl", lambda: Path("curl.exe")), \
+                        mock.patch.object(fetch, "_run_curl", lambda args, watch=None, rc=rc: (rc, b"", "schannel")):
+                    e = self.entry(blob)
+                    with self.assertRaises(fetch.FetchError) as cm:
+                        fetch.fetch(e, d, allow_http=True)
+                    self.assertIn(f"curl exit {rc}", str(cm.exception))
+                    self.assertEqual((cm.exception.certificate, cm.exception.archive),
+                                     (refused, fetch.archive_path(e, Path(d))))
+
+    def test_curl_tries_again_without_a_revocation_check(self):
+        """curl exit 35 (a secure connection that did not start, as when Windows could not check whether an
+        antivirus' certificate was revoked: issue #483) gets one more try with --ssl-revoke-best-effort, noted in
+        setup's log. A curl too old for the option (exit 2) reports the first try's failure. Other failures get no
+        such try."""
+        def runs(*codes):
+            calls, left = [], list(codes)
+
+            def run(args, watch=None):
+                calls.append(list(args))
+                return left.pop(0), b"200", "schannel: the revocation function was unable to check revocation"
+            return calls, run
+
+        e = {"name": "llvm-win64", "url": "https://example.invalid/llvm.zip", "size": 10}
+        with tempfile.TemporaryDirectory() as d:
+            part = Path(d) / "llvm.zip.part"
+            calls, run = runs(35, 0)
+            notes = []
+            with mock.patch.object(fetch, "_run_curl", run):
+                fetch._curl_fetch(Path("curl.exe"), e, part, None, 10, False, notes.append)
+            self.assertEqual([("--ssl-revoke-best-effort" in c) for c in calls], [False, True])
+            self.assertEqual(calls[1][:3], ["curl.exe", "-q", "--ssl-revoke-best-effort"])
+            self.assertEqual(len(notes), 1)
+            self.assertIn("curl exit 35", notes[0])
+            for codes, said in (((35, 2), "curl exit 35"), ((35, 35), "curl exit 35"), ((60,), "curl exit 60"),
+                                ((28,), "curl exit 28")):
+                calls, run = runs(*codes)
+                with mock.patch.object(fetch, "_run_curl", run), self.assertRaises(fetch.FetchError) as cm:
+                    fetch._curl_fetch(Path("curl.exe"), e, part, None, 10, False)
+                self.assertIn(said, str(cm.exception))
+                self.assertEqual(len(calls), len(codes))
+            calls, run = runs(33, 35, 0)   # (a restart and the second try, both)
+            with mock.patch.object(fetch, "_run_curl", run):
+                fetch._curl_fetch(Path("curl.exe"), e, part, None, 10, False)
+            self.assertEqual([("--ssl-revoke-best-effort" in c) for c in calls], [False, False, True])
+
+        with mock.patch.object(fetch, "windows_curl", lambda: Path("curl.exe")):
+            calls, run = runs(35, 0)
+            with mock.patch.object(fetch, "_run_curl", run):
+                status, _, _ = fetch.curl_get("https://example.invalid/feed", {"Accept": "text/plain"}, 10)
+            self.assertEqual(status, 200)
+            self.assertEqual([("--ssl-revoke-best-effort" in c) for c in calls], [False, True])
+            self.assertEqual(calls[0][-7:], calls[1][-7:])   # (the same headers, files and address)
+            for codes in ((35, 2), (35, 35)):
+                calls, run = runs(*codes)
+                with mock.patch.object(fetch, "_run_curl", run), self.assertRaises(OSError) as cm:
+                    fetch.curl_get("https://example.invalid/feed", None, 10)
+                self.assertIn("curl exit 35", str(cm.exception))
+
     def test_curl_get(self):
         if not fetch.windows_curl():
             self.skipTest("no Windows curl here")

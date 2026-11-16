@@ -46,6 +46,9 @@ Rml::Element* create_toast(Rml::Element* parent, const Toast& toast) {
     if (!toast.type.empty()) {
         elem->SetClass(toast.type, true);
     }
+    // Its mark, for a look that draws one (DeS UI: a status colour at the note's left; Alpha UI hides it): the note's
+    // type (warning, info), or done for a plain note, an outcome.
+    if (toast.icon.empty()) append(elem, "toast-mark")->SetClass(toast.type.empty() ? "done" : toast.type, true);
     // With an icon: toast > toast-row > (toast-icon, toast-body > heading, message), then the progress bar.
     Rml::Element* body = elem;
     if (!toast.icon.empty()) {

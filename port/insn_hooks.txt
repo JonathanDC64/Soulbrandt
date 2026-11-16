@@ -241,6 +241,13 @@
 # tie rule means, instead of the side its turn's rounding picks.
 0x0030F2BC=des_roll_tie   # lfs f27, 0xB0(r1): the turn's last load; f30, f31 and f26, f27 = forward, side
 
+# des_kick (port/des_options.cpp): DES_KICK=1, attacking never kicks and the
+# Kick key does. The script asks its function 212 ("the stick was just pushed
+# forward") beside each R1 press to pick the kick; the answer becomes "this R1
+# press was the Kick key's", for the player alone.
+0x00300BAC=des_kick   # lwz r0, -0x7F84(r30): function 212's answer in r10 (both paths); r29 = the controller
+0x00310AA8=des_kick   # stb r17, 0x84(r31): the pad manipulator's slot 0, r17 = R1 down this frame
+
 # des_game_error (port/des_options.cpp): the game's error report goes to the log.
 # On a PS3 it stops the game; here the game goes on with the part that failed
 # (docs/116: NPC talks that end at once when no sound stream starts).
@@ -250,3 +257,41 @@
 # in HighGraphics' command ring, as the ring's other writers do. The game sleeps
 # 30 us once when the ring is full and then writes anyway (docs/117).
 0x00D229A4=des_viewport_room   # nop after bl usleep(30) in 0x00D22670, then the write; r28 = the ring's control, r31 = put
+
+# des_coop_hook (port/des_seamless_game.cpp): seamless co-op (docs/146). Nothing
+# changes unless co-op started (DES_SEAMLESS).
+0x0017A4A8=des_coop_hook   # addi r9,r26,0x34 in the load step 0x0017A358: a guest's follow waits for the host, then loads its area
+0x0053B31C=des_coop_hook   # lwz r9,0x9C(r3) in the session's leave 0x0053B300: the host keeps its session
+0x0053E368=des_coop_hook   # bl 0x001A2028 (a byte set while the game loads) in the session event dispatch 0x0053DFD8's member-left case: a leave during a load is taken at once
+0x00467628=des_coop_hook   # cmpwi r4,0, the start of 0x00467628 (r4: the name of a script event the game raises, the session's among them): the co-op log names them
+0x00A6B2F8=des_coop_hook   # lwz r11,8(r4) in the game's Lua reader: co-op's edits to the area scripts
+0x00CA15A8=des_coop_hook   # lwz r0,4(r4) in Lua's string reader (getS): co-op's edits to the area scripts
+0x005086F8=des_coop_hook   # cmpwi cr7,r4,0x427F, the event flags' set (r3 flags, r4 flag, r5 value): progress kept for every player
+0x00508C00=des_coop_hook   # stdu in 0x00508C00, a guest's join filling its flag copies (r3 flags): its own world's flags kept
+0x00419DCC=des_coop_hook   # lwz r9,0(r29) after a load's world swap of the flags (bl 0x005098D8): a guest's own world kept
+0x0044C780=des_coop_hook   # ld r0,0x90(r1), the end of WarpNextStageKick: a guest going home loads its own area, where it stood
+0x00299B74=des_coop_hook   # lbz r0,0xE8(r9) in an NPC's setup 0x002999C8 (r24 the mode it came with): a friend notes the NPCs it sets up as the host's
+0x00299BB0=des_coop_hook   # mr r23,r3 in the NPC setup 0x002999C8 (r3 the new character): the same
+0x004C9638=des_coop_hook   # bl 0x0026F378 (the player's type) in the talk check 0x004C9600: a friend can talk to the NPCs
+0x004C9C5C=des_coop_hook   # bl 0x0026F378 (the player's type) in the talk check 0x004C9C18: the same
+0x0025CB6C=des_coop_hook   # lwz r9,0x8C(r9) in the area items' add 0x0025CAE8 (the player's type for this area): a friend gets the items too
+0x0025CC34=des_coop_hook   # bl 0x005087C8 (the item's taken flag, r14) in the same add: a friend sees each item as its own world has it
+0x002C9AEC=des_coop_hook   # bl 0x00532108 (message 3: the area characters' places, from a member) in 0x002C9A18: held after a load until the others are in the area
+0x002C98C4=des_coop_hook   # bl 0x00532108 (message 0x21: the area characters' states, from a member) in 0x002C9818: the same
+0x002C9740=des_coop_hook   # bl 0x00532358 (message 4: the area characters' states, from the host) in 0x002C96C0: the same
+0x002C9600=des_coop_hook   # bl 0x00532358 (message 0x26: an area character's place, from the host) in 0x002C9358: the same
+0x002C96A8=des_coop_hook   # bl 0x00532358 in 0x002C9358's loop (message 0x26): the same
+0x002B2984=des_coop_hook   # lwz r9,0x8C(r9) in a corpse's drop add 0x002B2900: a friend gets drops from dead enemies too
+0x0053EA2C=des_coop_hook   # lwz r0,0x8C(r9) in the session update 0x0053E578's check of a joined guest (state 6): one in body form (0) leaves; a friend joins in either form
+0x0043E4E0=des_coop_hook   # mr r3,r4 at the start of SetTextEffect's native (r3: the text's type): a friend's revival waits for its "The Demon Was Destroyed"
+0x002DDAA8=des_coop_hook   # bl 0x0026F378 in a character's draw update 0x002DD920 (r3: the type for its phantom material on or off): a friend whose glow is off is drawn without it
+0x002DDADC=des_coop_hook   # bl 0x0026F378 in the draw update 0x002DD920, for the phantom material's kind (0x000D81D0): a friend draws an NPC of type 4 as the host does
+0x002DDB48=des_coop_hook   # bl 0x0026F378 in the draw update 0x002DD920, compared with 4 (types 3, 4, 10, 11 take another draw path): the same
+0x002DDB90=des_coop_hook   # bl 0x0026F378 in the draw update 0x002DD920, for 0x0025D418: the same
+0x002E1000=des_coop_hook   # bl 0x0026F378 in a character's draw objects' build 0x002E0E60, compared with 4 (no face for a phantom's type): a friend's NPCs of type 4 get their faces
+0x00080E88=des_coop_hook   # cmpwi r5,0, the ghost colour upload 0x00080E88 starting (r3 the ghost manager, r5/r7 the material kinds, r31 the drawn object): a player's own glow colour
+0x0006C860=des_coop_hook   # bl 0x00080E88 in 0x0006C850 returned: kind 2's material back in the ghost manager's table
+0x000E9650=des_coop_hook   # bl 0x0006C908 in the ghost model draw 0x000E8C48 returned (r26 the ghost owner, r31 the drawn object): its own colours before 0x0006DA20 records its constants
+0x00609338=des_coop_hook   # bl 0x0026F378 in a cutscene's copy setup 0x006087B8 returned (r3 the character's type, r31 the copy: +0x70 its draw object, +0xBC the character): the copy drawn with its player's glow and colour
+0x00272A88=des_coop_hook   # bl 0x0052A610 in an enemy's souls for this game's player (0x00272938; r3 1 for a guest, which halves them): a friend gets the full souls
+0x004117E4=des_coop_hook   # bl 0x009204A0 in RecvGlobalQwc's 0x004117C0 (the Nexus script) returned: a friend plays in the host's world tendency

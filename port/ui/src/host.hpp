@@ -31,6 +31,10 @@ void set_hdr(float scale, bool srgb);
 // While on, the UI's base scale is what the window holds, 960 x 720 px = 1 px a dp, whatever the display's: for documents
 // drawn as the whole window, the setup screens (Document::scales_with_window). ui::update sets it.
 void set_follow_height(bool on);
+// The window width the open documents are laid out for, in dp; 0 for any (Document::room). The UI's scale, the UI
+// scale setting's included, is never more than the window holds of that width: in 1/16 steps down, and not under 0.5.
+// ui::update sets it.
+void set_room(float dp);
 
 // The window's DPI (96 is 100%), 0 if not known.
 unsigned window_dpi();

@@ -1,0 +1,809 @@
+/* Written for Demon's Souls. The F1 menu and Settings (menu_shell.hpp, settings_page.hpp) in the Alpha UI look: the
+   port's own, as the menu bar and the settings window drew it, with the prompts, the list beside the value and the
+   preview.
+   Another look changes what it needs in its own sheet (looks.hpp). Colours and fonts from theme.rcss.
+
+   The body's classes say what shows: entries (the F1 menu's bar), page (a page in its frame), closed, standalone
+   (Settings from the start screen or setup), preview, listing, typing, comparing, hiding (Shift or R3 held), asking (a
+   question is up), motion (the transitions; off for the tests' pictures). */
+/* --menu-room: the window width the menu is laid out for. While it is open the UI's scale is never more than the window
+   holds of it, so a small window or a large UI scale shrinks the menu instead of cutting it off (menu_shell.cpp's
+   room()). Alpha UI: the frame's 1152dp at most and the body's 64dp each side. */
+body {
+    --menu-room: 1280dp;
+    display: flex;
+    width: 100%;
+    height: 100%;
+    padding: 40dp 64dp;
+    font-family: var(--font-family-body);
+    font-weight: normal;
+    font-size: var(--font-size-base);
+    color: var(--color-text);
+}
+
+/* ---- The F1 menu's entries: a bar along the top that slides down (popup.rcss's). ---- */
+menu-entries {
+    display: flex;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: var(--toolbar-height);
+    align-items: stretch;
+    background-color: rgba(var(--color-surface-rgb), 80%);
+    border-bottom-width: 1dp;
+    border-bottom-color: var(--color-border);
+    font-family: var(--font-family-heading);
+    font-weight: bold;
+    font-size: var(--font-size-xl);
+    text-transform: uppercase;
+    transform: translateY(-65dp);
+}
+
+body.entries menu-entries {
+    transform: translateY(0);
+}
+
+body.motion menu-entries {
+    transition: transform 0.2s cubic-in-out;
+}
+
+menu-entry {
+    flex: 0 0 auto;
+    padding: 0 var(--space-xl);
+    line-height: 63dp;
+    white-space: nowrap;
+    opacity: 0.55;
+    cursor: pointer;
+}
+
+menu-entry:hover {
+    opacity: 0.9;
+}
+
+menu-entry.on {
+    opacity: 1;
+    border-bottom-width: 2dp;
+    border-bottom-color: var(--color-accent);
+    font-effect: glow(0dp 4dp 0dp 4dp black);
+}
+
+/* The arrows at the entries' ends, for a look that draws them. */
+menu-end {
+    display: none;
+}
+
+menu-close {
+    display: block;
+    position: absolute;
+    top: 8dp;
+    right: 8dp;
+    width: 48dp;
+    height: 48dp;
+    font-family: var(--font-family-icons);
+    font-weight: normal;
+    font-size: var(--font-size-4xl);
+    color: rgba(var(--color-text-rgb), 70%);
+    border-radius: 6dp;
+    decorator: text("&#xe5cd;" center center);
+    cursor: pointer;
+}
+
+menu-close:hover {
+    color: var(--color-white);
+    background-color: rgba(var(--color-accent-rgb), 24%);
+}
+
+/* ---- A page's frame: the entries (the one open marked), the page, the prompts. Its height in a larger window is
+   Interface > Menu height, which the shell sets as its max-height (menu_shell.cpp); 640 dp until then. Its width stops
+   at a line's comfortable length. (A box-shadow here has no offset: RmlUi draws a box with an offset shadow off its
+   place.) ---- */
+menu-frame {
+    display: none;
+    flex-flow: column;
+    width: 100%;
+    height: 100%;
+    max-width: 1152dp;
+    max-height: 640dp;
+    margin: auto;
+    overflow: hidden;
+    border-width: 1dp;
+    border-color: var(--color-border);
+    border-radius: var(--radius-window);
+    background-color: rgba(var(--color-surface-rgb), 90%);
+    box-shadow: 0 0 25dp 5dp rgba(0, 0, 0, 60%);
+}
+
+body.page menu-frame {
+    display: flex;
+}
+
+body.page.motion menu-frame {
+    animation: 0.2s cubic-out menu-frame-in;
+}
+
+@keyframes menu-frame-in {
+    from { opacity: 0; transform: scale(0.97); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+/* The slot: in Alpha UI it takes no room, and holds only the page's close button, drawn at the right end of the
+   page's first row (Settings' tabs). The entries are the F1 menu's bar, which Back returns to. A look with a band
+   shows the slot (des.rcss). */
+menu-slot {
+    display: block;
+    position: relative;
+    flex: 0 0 0;
+    height: 0;
+}
+
+menu-slot-entry {
+    display: none;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+/* The menu's own title, for a look whose band names it. */
+menu-title {
+    display: none;
+}
+
+/* The page's close button: it closes the menu, as the menu bar's did. Centred on the tabs' row (56 dp). */
+menu-slot-close {
+    display: block;
+    position: absolute;
+    top: 13dp;
+    right: 12dp;
+    z-index: 1;
+    width: 30dp;
+    height: 30dp;
+    border-radius: 4dp;
+    font-family: var(--font-family-icons);
+    font-weight: normal;
+    font-size: var(--font-size-2xl);
+    color: rgba(var(--color-text-rgb), 70%);
+    decorator: text("&#xe5cd;" center center);
+    cursor: pointer;
+}
+
+menu-slot-close:hover {
+    color: var(--color-white);
+    background-color: rgba(var(--color-accent-rgb), 24%);
+}
+
+/* The line under a look's band (Alpha UI has the help beside the rows instead). */
+menu-strip {
+    display: none;
+}
+
+menu-page {
+    display: flex;
+    flex-flow: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* A page with another opened over it (menu_shell.hpp's open_over): kept as it is, hidden, until that one closes. */
+menu-page.under {
+    display: none;
+}
+
+menu-prompts {
+    display: flex;
+    flex: 0 0 46dp;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 20dp;
+    padding: 0 18dp;
+    border-top-width: 1dp;
+    border-top-color: rgba(var(--color-border-rgb), 28%);
+    font-size: var(--font-size-base);
+}
+
+menu-prompt {
+    display: flex;
+    align-items: center;
+    gap: 8dp;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+/* (a prompt without words shares the next one's: L1 R1 Tabs) */
+menu-prompt.joined {
+    margin-right: -14dp;
+}
+
+menu-prompt:hover menu-says {
+    color: var(--color-accent);
+}
+
+/* A button as the device in use shows it (prompts.hpp): its picture, drawn the way the game's prompts look
+   (menu-art, button_art.hpp: its width follows its height; two side by side for the keyboard's arrows). Its name,
+   menu-key, is there for a look that draws text instead. */
+menu-glyph {
+    display: flex;
+    align-items: center;
+    gap: 2dp;
+}
+
+menu-glyph menu-art {
+    display: block;
+    height: 26dp;
+}
+
+menu-glyph menu-key {
+    display: none;
+}
+
+/* ---- Settings: its tabs, with room at the right for the close button. The buttons that change them are a prompt
+   along the bottom (menu-prompt.tabs); a look that draws them at the tabs' ends shows menu-tab-key and hides that
+   prompt. ---- */
+menu-tabs {
+    display: flex;
+    flex: 0 0 56dp;
+    align-items: center;
+    gap: 4dp;
+    padding: 0 54dp 0 14dp;
+    overflow: hidden;
+    border-bottom-width: 1dp;
+    border-bottom-color: rgba(var(--color-border-rgb), 28%);
+}
+
+menu-tab-key {
+    display: none;
+    flex: 0 0 auto;
+    margin: 0 6dp;
+}
+
+/* A shoulder button fills less of its picture than a face button: larger beside the tabs than in the prompts. */
+menu-tab-key menu-art {
+    height: 36dp;
+}
+
+menu-tab {
+    flex: 0 0 auto;
+    padding: 14dp 12dp 12dp;
+    border-bottom-width: 2dp;
+    border-bottom-color: transparent;
+    font-family: var(--font-family-heading);
+    font-weight: bold;
+    font-size: 19dp;
+    text-transform: uppercase;
+    white-space: nowrap;
+    color: rgba(var(--color-accent-rgb), 55%);
+    cursor: pointer;
+}
+
+menu-tab:hover {
+    color: rgba(var(--color-accent-rgb), 90%);
+}
+
+menu-tab.on {
+    color: var(--color-accent);
+    border-bottom-color: var(--color-accent);
+    font-effect: glow(0dp 4dp 0dp 4dp black);
+}
+
+/* ---- The rows, and beside them the help of the one with the focus. ---- */
+menu-body {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+
+menu-rows {
+    display: block;
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 14dp 18dp 12dp 24dp;
+    overflow: hidden auto;
+}
+
+menu-heading {
+    display: block;
+    padding: 12dp 4dp 6dp;
+    font-family: var(--font-family-heading);
+    font-weight: bold;
+    font-size: var(--font-size-2xs);
+    letter-spacing: 1.9dp;
+    text-transform: uppercase;
+    color: rgba(var(--color-text-rgb), 64%);
+}
+
+menu-bracket,
+menu-aside {
+    display: none;
+}
+
+menu-row {
+    display: flex;
+    position: relative;
+    align-items: center;
+    height: 42dp;
+    margin-bottom: 6dp;
+    padding: 0 14dp 0 8dp;
+    border-width: 1dp;
+    border-color: rgba(var(--color-border-rgb), 25%);
+    border-radius: 4dp;
+    background-color: rgba(var(--color-control-rgb), 20%);
+    cursor: pointer;
+}
+
+menu-row:hover {
+    background-color: rgba(var(--color-interactive-rgb), 7%);
+}
+
+menu-row.focused {
+    background-color: rgba(var(--color-interactive-rgb), 14%);
+    border-color: rgba(var(--color-interactive-rgb), 70%);
+}
+
+menu-row.listing {
+    z-index: 3;
+}
+
+body.listing menu-row,
+body.listing menu-heading {
+    opacity: 0.35;
+}
+
+body.listing menu-row.listing {
+    opacity: 1;
+}
+
+menu-label {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    font-family: var(--font-family-heading);
+    font-weight: bold;
+    font-size: var(--font-size-lg);
+    text-transform: uppercase;
+    color: var(--color-accent);
+}
+
+/* The mark before a label: changed from the game's own (a dot), waiting for a restart (the arrow round). */
+menu-mark {
+    display: block;
+    flex: 0 0 22dp;
+    height: 22dp;
+    font-family: var(--font-family-icons);
+    font-weight: normal;
+    font-size: 10dp;
+    color: rgba(var(--color-text-rgb), 64%);
+}
+
+menu-row.modified menu-mark {
+    decorator: text("&#xe061;" center center);
+}
+
+menu-row.waits menu-mark {
+    font-size: 16dp;
+    color: var(--color-warning);
+    decorator: text("&#xe863;" center center);
+}
+
+menu-value {
+    display: flex;
+    position: relative;
+    flex: 0 0 230dp;
+    align-items: center;
+    justify-content: flex-end;
+    height: 32dp;
+    font-size: var(--font-size-lg);
+    white-space: nowrap;
+}
+
+menu-value menu-text {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: right;
+}
+
+menu-row.modified menu-value menu-text {
+    font-weight: bold;
+}
+
+menu-value menu-tag {
+    flex: 0 0 auto;
+    padding-left: 6dp;
+    font-size: var(--font-size-xs);
+    color: rgba(var(--color-text-rgb), 64%);
+}
+
+menu-row.text menu-value menu-text:empty {
+    flex: 1 1 auto;
+    decorator: text("Not set" #d7d2c3a3 right center);
+}
+
+menu-tag:empty {
+    display: none;
+}
+
+/* A number's share of its range, for a look that draws it. */
+menu-gauge {
+    display: none;
+}
+
+/* The arrows that change the value, on the row with the focus; dimmed at the first or last value. */
+menu-arrow {
+    display: none;
+    flex: 0 0 24dp;
+    height: 24dp;
+    font-family: var(--font-family-icons);
+    font-weight: normal;
+    font-size: 22dp;
+    color: var(--color-accent);
+    opacity: 0.8;
+    cursor: pointer;
+}
+
+menu-arrow.left {
+    decorator: text("&#xe5cb;" center center);
+    margin-right: auto;
+}
+
+menu-arrow.right {
+    decorator: text("&#xe5cc;" center center);
+}
+
+menu-row.focused.steps menu-arrow,
+menu-peek menu-arrow {
+    display: block;
+}
+
+/* A row that opens something (Change buttons): its chevron, always, in place of what Enter does. */
+menu-row.action menu-arrow.right {
+    display: block;
+    opacity: 0.6;
+}
+
+menu-row.action menu-value menu-text {
+    display: none;
+}
+
+menu-row.action.focused menu-arrow.right {
+    opacity: 1;
+}
+
+menu-arrow.end,
+menu-row.focused.steps menu-arrow.end {
+    opacity: 0.15;
+}
+
+menu-row.listing menu-arrow,
+menu-row.typing menu-arrow,
+menu-row.comparing menu-arrow {
+    display: none;
+}
+
+menu-value icon.lock {
+    display: none;
+}
+
+menu-row.locked menu-value icon.lock {
+    display: inline-block;
+    flex: 0 0 auto;
+    margin-right: 6dp;
+    font-size: var(--font-size-md);
+    decorator: text("&#xe897;" center center);
+}
+
+menu-row.locked menu-label,
+menu-row.locked menu-value {
+    opacity: 0.45;
+}
+
+menu-row.comparing menu-value menu-text {
+    color: var(--color-warning);
+}
+
+/* A value being typed: the field in place of the text. */
+menu-row.typing menu-value menu-text,
+menu-row.typing menu-value menu-tag {
+    display: none;
+}
+
+menu-value input {
+    flex: 1 1 auto;
+    height: 30dp;
+    padding: 4dp 8dp;
+    border-width: 1dp;
+    border-color: rgba(var(--color-interactive-rgb), 70%);
+    border-radius: 3dp;
+    background-color: rgba(var(--color-control-rgb), 60%);
+    font-size: var(--font-size-lg);
+    text-align: right;
+    color: var(--color-accent);
+    nav: none;
+}
+
+/* The values listed beside the value (Enter), below its row or above it when there is no room (settings_page.cpp). */
+menu-list {
+    display: block;
+    position: absolute;
+    right: 14dp;
+    top: 45dp;
+    z-index: 6;
+    width: 260dp;
+    padding: 4dp 0;
+    border-width: 1dp;
+    border-color: rgba(var(--color-border-rgb), 55%);
+    border-radius: 4dp;
+    background-color: rgba(var(--color-surface-rgb), 98%);
+    box-shadow: 0 0 18dp 2dp rgba(0, 0, 0, 60%);
+    font-family: var(--font-family-body);
+    font-weight: normal;
+    text-transform: none;
+}
+
+menu-item {
+    display: flex;
+    align-items: center;
+    gap: 16dp;
+    padding: 4dp 14dp;
+    font-size: var(--font-size-lg);
+    white-space: nowrap;
+    color: var(--color-text);
+    cursor: pointer;
+}
+
+menu-item menu-text {
+    flex: 1 1 auto;
+}
+
+menu-item menu-tag {
+    flex: 0 0 auto;
+    font-size: var(--font-size-xs);
+    color: rgba(var(--color-text-rgb), 64%);
+}
+
+menu-item:hover {
+    background-color: rgba(var(--color-interactive-rgb), 8%);
+}
+
+menu-item.cursor {
+    background-color: rgba(var(--color-interactive-rgb), 14%);
+    color: var(--color-accent);
+}
+
+menu-item.now menu-text {
+    font-weight: bold;
+}
+
+menu-item.disabled {
+    opacity: 0.4;
+}
+
+/* The help: what the row does, why it is as it is, when it applies and its variable. */
+menu-help {
+    display: flex;
+    flex-flow: column;
+    flex: 0 0 470dp;
+    padding: 20dp 24dp;
+    overflow: hidden auto;
+    border-left-width: 1dp;
+    border-left-color: rgba(var(--color-border-rgb), 28%);
+}
+
+menu-helpbox {
+    display: flex;
+    flex-flow: column;
+    flex: 1 1 auto;
+    gap: 10dp;
+}
+
+menu-helpbox > * {
+    flex: 0 0 auto;
+}
+
+menu-helpbox h3 {
+    display: block;
+    margin: 0;
+    font-family: var(--font-family-heading);
+    font-weight: bold;
+    font-size: 21dp;
+    color: var(--color-accent);
+}
+
+menu-notes {
+    display: block;
+}
+
+menu-notes status-badge {
+    display: block;
+    margin-bottom: 4dp;
+    font-size: var(--font-size-md);
+}
+
+status-badge.waits {
+    color: var(--color-warning);
+}
+
+menu-helptext {
+    display: block;
+    font-size: var(--font-size-lg);
+    line-height: 1.45;
+}
+
+menu-footnote {
+    display: block;
+    font-size: var(--font-size-sm);
+    color: rgba(var(--color-text-rgb), 64%);
+}
+
+menu-facts {
+    display: block;
+    margin-top: auto;
+    padding-top: 8dp;
+    font-size: var(--font-size-base);
+    color: rgba(var(--color-text-rgb), 64%);
+}
+
+menu-fact {
+    display: flex;
+    justify-content: space-between;
+    gap: 12dp;
+    padding: 2dp 0;
+}
+
+menu-fact-value.key {
+    font-size: var(--font-size-sm);
+    letter-spacing: 0.5dp;
+}
+
+/* ---- The preview: the menu set aside to a strip along the top, so the game shows below it. ---- */
+menu-peek {
+    display: none;
+}
+
+body.preview {
+    padding-top: 0;
+}
+
+body.preview menu-frame {
+    max-width: 880dp;
+    max-height: 154dp;
+    margin: 0 auto auto;
+    border-top-width: 0;
+    border-radius: 0 0 4dp 4dp;
+}
+
+body.preview menu-slot,
+body.preview menu-tabs,
+body.preview menu-body {
+    display: none;
+}
+
+body.preview menu-peek {
+    display: flex;
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 10dp 18dp 0;
+}
+
+body.preview menu-prompts {
+    flex-basis: 44dp;
+    border-top-width: 0;
+}
+
+menu-peek-prev,
+menu-peek-next {
+    display: block;
+    flex: 0 0 150dp;
+    overflow: hidden;
+    white-space: nowrap;
+    font-size: var(--font-size-base);
+    color: rgba(var(--color-text-rgb), 64%);
+    cursor: pointer;
+}
+
+menu-peek-next {
+    text-align: right;
+}
+
+menu-peek-prev.none,
+menu-peek-next.none {
+    visibility: hidden;
+}
+
+menu-peek-row {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    justify-content: center;
+    gap: 12dp;
+}
+
+menu-peek-row menu-name {
+    font-family: var(--font-family-heading);
+    font-weight: bold;
+    font-size: 19dp;
+    text-transform: uppercase;
+    white-space: nowrap;
+    color: var(--color-accent);
+}
+
+menu-peek-row menu-value {
+    flex: 0 0 auto;
+    min-width: 210dp;
+    padding: 0 4dp;
+    border-radius: 3dp;
+    background-color: rgba(var(--color-interactive-rgb), 14%);
+    font-size: 19dp;
+    cursor: pointer;
+}
+
+menu-peek-row menu-value menu-text {
+    flex: 1 1 auto;
+    padding: 0 6dp;
+    text-align: center;
+}
+
+menu-peek-row menu-value menu-tag {
+    padding: 0 6dp 0 0;
+}
+
+menu-peek-line {
+    display: block;
+    flex: 0 0 100%;
+    margin-top: 4dp;
+    overflow: hidden;
+    white-space: nowrap;
+    text-align: center;
+    font-size: var(--font-size-base);
+    color: rgba(var(--color-text-rgb), 64%);
+}
+
+/* ---- Compare's line: the value the page opened with, then the one now. Below the frame (the row shows the value
+   too), and over the game below the preview's strip. ---- */
+menu-badge {
+    display: none;
+    position: absolute;
+    bottom: 3dp;
+    left: 50%;
+    padding: 8dp 18dp;
+    transform: translateX(-50%);
+    border-width: 1dp;
+    border-color: var(--color-warning);
+    border-radius: 3dp;
+    background-color: rgba(var(--color-surface-rgb), 85%);
+    font-family: var(--font-family-heading);
+    font-weight: bold;
+    font-size: var(--font-size-base);
+    letter-spacing: 1.5dp;
+    text-transform: uppercase;
+    white-space: nowrap;
+    color: var(--color-warning);
+    pointer-events: none;
+}
+
+menu-badge.on {
+    display: block;
+}
+
+menu-badge.now {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+}
+
+body.preview menu-badge {
+    top: 170dp;
+    bottom: auto;
+}
+
+/* ---- Shift or R3 held: the menu out of the way, the game alone. ---- */
+body.hiding menu-entries,
+body.hiding menu-frame,
+body.hiding menu-badge {
+    visibility: hidden;
+}

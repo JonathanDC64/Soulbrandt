@@ -24,7 +24,8 @@
 #include "host.hpp"
 #include "input.hpp"
 #include "keys.hpp"
-#include "menu_bar.hpp"
+#include "menu_pages.hpp"
+#include "menu_shell.hpp"
 #include "mods.hpp"
 #include "mouse.hpp"
 #include "net_notices.hpp"
@@ -39,13 +40,10 @@
 #include "privacy_window.hpp"
 #include "report.hpp"
 #include "settings.hpp"
-#include "settings_window.hpp"
 #include "setup_engine.hpp"
 #include "setup_screens.hpp"
 #include "setup_window.hpp"
 #include "players_window.hpp"
-#include "mods_window.hpp"
-#include "trophies_window.hpp"
 #include "trophy_toasts.hpp"
 #include "ui.hpp"
 #include "updates.hpp"
@@ -59,6 +57,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -107,6 +106,7 @@ typedef struct {  // as pad_hid_sony.h has it, field for field: the poll fills a
 static_assert(sizeof(PadHidSonyState) == 10, "pad_hid_sony.h's PadHidSonyState");
 int pad_hid_sony_poll(PadHidSonyState* out, int max);
 int cellPad_host_pads_on(void);  // cellPad.h: 0 while the game ignores the pads (PAD_FOCUS_ONLY in the background)
+int cellPad_host_glyph_device(void);  // cellPad.h: what the game was last used with (PAD_GLYPH_*, pad_glyph.h)
 int cellPad_host_controller(int i, char* id, int idn, char* name, int namen);  // cellPad.h: the i-th port's pad
 
 typedef struct CellOskDialogHost {  // cellOskDialog.h: the game's on-screen keyboard, shown by the UI
@@ -166,7 +166,7 @@ std::atomic<bool> sStartUp{false};
 // The window's close button (and Alt+F4) asks first, as Quit does; a test run's window closes at once.
 bool sCloseAsks = false;
 std::atomic<bool> sCloseRequested{false};  // set on the window thread, the question opened in frame
-std::atomic<bool> sQuitConfirmed{false};   // Quit Game was chosen: the next WM_CLOSE goes through  // the start screen is to show or showing (des_ui_start_screen_up, any thread)
+std::atomic<bool> sQuitConfirmed{false};   // Quit game was chosen: the next WM_CLOSE goes through  // the start screen is to show or showing (des_ui_start_screen_up, any thread)
 bool sDocumentsPushed = false;
 bool sActive = false;
 bool sPadIdle = false;  // awake with no document up: the pads are not fed to RmlUi (frame)
@@ -210,12 +210,14 @@ std::mutex sShotNowLock;
 std::string sShotNow;
 
 // DES_UI_KEYS=frame:KEY[,frame:KEY...]: press a key at a presented frame (a test drives the menus with it). The key
-// OSK opens the keyboard as the game would, and a digit types it (a number field).
+// OSK opens the keyboard as the game would, and a digit types it (a number field). KEY+ holds the key down and KEY-
+// lets it go (Compare and Hide act while a key is held: 300:C+,360:C-).
 constexpr int kScriptOsk = -1;
 constexpr int kScriptChar = 0x10000;  // + the character
 struct ScriptKey {
     unsigned long long frame;
     int vk;
+    char hold = 0;  // '+' down only, '-' up only, 0 down and up
 };
 std::vector<ScriptKey> sScriptKeys;
 int vk_from_name(const std::string& name);
@@ -502,6 +504,7 @@ ui::input::PadState read_pads(bool& neutral) {
     neutral = true;
     if (ui::settings::no_user_input()) return pad;  // PS3_NO_USER_INPUT: no pad of the user's is read
     if (!cellPad_host_pads_on()) return pad;         // PAD_FOCUS_ONLY, with the window in the background
+    pad.glyph = cellPad_host_glyph_device();          // (the menus' prompts: input.hpp's menu_device)
     const PadOnly only = pad_only();
     read_xinput(pad, neutral, only);
     PadHidSonyState hid[4];
@@ -567,8 +570,8 @@ std::string held_inputs() {
     return s.empty() ? "nothing now" : s;
 }
 
-ui::MenuBar* menu_bar() {
-    return static_cast<ui::MenuBar*>(ui::find_document(ui::DocumentScope::MenuBar));
+ui::MenuShell* menu_bar() {
+    return static_cast<ui::MenuShell*>(ui::find_document(ui::DocumentScope::MenuBar));
 }
 
 void open_menu_bar() {
@@ -576,6 +579,13 @@ void open_menu_bar() {
         ui::play_sound(ui::kSoundMenuOpen);
         bar->show();
     }
+}
+
+// The menu chord pressed over the game: the menus' prompts show the device that pressed it (a pad, or the keyboard
+// standing in for one).
+void open_menu_from_chord() {
+    ui::input::note_device(cellPad_host_glyph_device());
+    open_menu_bar();
 }
 
 // The keyboard as the game opens it (cellOskDialog_set_host), for DES_UI_OPEN=osk and the OSK test key.
@@ -634,19 +644,24 @@ void push_documents() {
         push_setup(std::getenv("DES_UI_OPEN"));
         return;
     }
-    ui::push_document(std::make_unique<ui::MenuBar>(), false);
+    ui::push_document(std::make_unique<ui::MenuShell>(), false);
     if (sStartScreen) ui::push_document(std::make_unique<ui::Prelaunch>());
 
-    // DES_UI_OPEN=menu | settings | trophies | mods | players | privacy | osk | setup | setup-run: open one at startup
+    // DES_UI_OPEN=menu | settings | trophies | mods | players | coop | privacy | osk | setup | setup-run: open one at
+    // startup
     // (for screenshots and tests; privacy is the note as Settings > Network shows it).
     // setup is setup's start screen over the game (docs/88: its own window comes with the split host), with
     // DES_SETUP_GAME's folders to begin with; setup-run runs the setup engine at once, on those folders.
     if (const char* open = std::getenv("DES_UI_OPEN"); open && *open) {
         if (!std::strcmp(open, "menu")) open_menu_bar();
-        else if (!std::strcmp(open, "settings")) ui::push_document(std::make_unique<ui::SettingsWindow>());
-        else if (!std::strcmp(open, "trophies")) ui::push_document(std::make_unique<ui::TrophiesWindow>());
-        else if (!std::strcmp(open, "mods")) ui::push_document(std::make_unique<ui::ModsWindow>());
+        else if (!std::strcmp(open, "settings")) {
+            open_menu_bar();
+            if (auto* bar = menu_bar()) bar->open_settings();
+        }
+        else if (!std::strcmp(open, "trophies")) ui::push_document(ui::menu::screen_alone("Trophies"));
+        else if (!std::strcmp(open, "mods")) ui::push_document(ui::menu::screen_alone("Mods"));
         else if (!std::strcmp(open, "players")) ui::push_document(std::make_unique<ui::PlayersWindow>());
+        else if (!std::strcmp(open, "coop")) ui::push_document(ui::menu::screen_alone("Co-op"));
         else if (!std::strcmp(open, "privacy"))
             ui::push_document(std::make_unique<ui::PrivacyWindow>(ui::PrivacyWindow::Mode::Read));
         else if (!std::strcmp(open, "osk")) open_test_osk();
@@ -701,6 +716,7 @@ void process_queue() {
                 ui::input::capture_key(e.a);
                 break;
             }
+            ui::input::note_device(1);  // (the keyboard: the menus' prompts)
             if (is_menu_key(WPARAM(e.a)) && !ui::any_document_visible()) {
                 open_menu_bar();
                 break;
@@ -725,6 +741,7 @@ void process_queue() {
             break;
         case InputEvent::MouseDown:
             if (ui::input::binding_capture()) break;  // a mouse button for a binding (controls_window.cpp reads it)
+            ui::input::note_device(1);
             ctx->ProcessMouseButtonDown(e.a, e.mods);
             break;
         case InputEvent::MouseUp:
@@ -736,6 +753,7 @@ void process_queue() {
                 ui::input::capture_wheel(e.wheel < 0.0f ? 1 : -1);
                 break;
             }
+            ui::input::note_device(1);
             ctx->ProcessMouseWheel(Rml::Vector2f(0.0f, e.wheel), e.mods);
             break;
         case InputEvent::Leave:
@@ -764,8 +782,8 @@ void script_keys_for_frame(unsigned long long frame) {
             push_event({InputEvent::Char, k.vk - kScriptChar});
             continue;
         }
-        push_event({InputEvent::KeyDown, k.vk, 0, 0});
-        push_event({InputEvent::KeyUp, k.vk, 0, 0});
+        if (k.hold != '-') push_event({InputEvent::KeyDown, k.vk, 0, 0});
+        if (k.hold != '+') push_event({InputEvent::KeyUp, k.vk, 0, 0});
     }
 }
 
@@ -790,9 +808,8 @@ void push_custom_server_notice() {
     ui::push_toast({
         .type = "warning",
         .title = "Playing offline",
-        .content = "The settings name a custom server (" + ui::settings::get("DES_NET_CUSTOM") +
-                   ") that was not chosen on this PC. To play on it, press Custom again in Settings > Network > "
-                   "Server, then restart the game.",
+        .content = "To play on " + ui::settings::get("DES_NET_CUSTOM") +
+                   ", choose Custom again in Settings > Network > Server, then restart.",
         .duration = kCustomServerNoticeDuration,
     });
     std::fprintf(stderr, "[ui] the custom server notice is up\n");
@@ -803,11 +820,8 @@ void push_mods_notice() {
     ui::push_toast({
         .type = "warning",
         .title = "Playing offline: gameplay mods are on",
-        .content = "These mods change how the game plays: " + ui::mods::gameplay_names() +
-                   ". Online play stays off while they are on. To play online, press F1 or " +
-                   ui::input::chord_label(ui::settings::get_int("pad_menu_chord")) +
-                   " for the menu, turn them off in Mods and restart the game. Mods that only change the look can "
-                   "stay on.",
+        .content = "To play online, turn off " + ui::mods::gameplay_names() + " in Mods (F1 or " +
+                   ui::input::chord_label(ui::settings::get_int("pad_menu_chord")) + "), then restart.",
         .duration = kCustomServerNoticeDuration,
     });
     std::fprintf(stderr, "[ui] the gameplay mods notice is up\n");
@@ -932,7 +946,9 @@ void watch_thread() {
         if (const char* v = std::getenv("DES_UI_PRESS"); v && *v) {
             const int vk = vk_from_name(v);
             ps3_setenv("DES_UI_PRESS", "");
-            if (vk > 0) {
+            if (vk >= kScriptChar) {
+                push_event({InputEvent::Char, vk - kScriptChar});   // a digit or '.': typed, as DES_UI_KEYS types it
+            } else if (vk > 0) {
                 push_event({InputEvent::KeyDown, vk});
                 push_event({InputEvent::KeyUp, vk});
                 if (is_menu_key(WPARAM(vk)) && !sCapturing.load()) wake_overlay();
@@ -1106,7 +1122,7 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
         // Waking: what is held now is not a press (the chord, or the key that opened the menu, is handled here).
         sActive = true;
         ui::input::reset_input_state();
-        if (chordEdge) open_menu_bar();
+        if (chordEdge) open_menu_from_chord();
     }
     if (sHangNotice.exchange(false)) push_hang_notice();
     if (sCustomServerNotice.exchange(false)) push_custom_server_notice();
@@ -1137,7 +1153,7 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
             sPadIdle = true;
             ui::input::reset_input_state();  // what is held now is not a press when a document opens
         }
-        if (chordEdge) open_menu_bar();
+        if (chordEdge) open_menu_from_chord();
     }
     if (ui::OskWindow* osk = ui::active_osk()) osk->on_pad(pad.buttons);
     ui::trophies::drain();
@@ -1233,10 +1249,13 @@ int vk_from_name(const std::string& name) {
         int vk;
     } kNames[] = {{"F1", VK_F1},       {"ESC", VK_ESCAPE}, {"UP", VK_UP},         {"DOWN", VK_DOWN},
                   {"LEFT", VK_LEFT},   {"RIGHT", VK_RIGHT}, {"ENTER", VK_RETURN}, {"PGUP", VK_PRIOR},
-                  {"PGDN", VK_NEXT},   {"TAB", VK_TAB},    {"SPACE", VK_SPACE}, {"OSK", kScriptOsk}};
+                  {"PGDN", VK_NEXT},   {"TAB", VK_TAB},    {"SPACE", VK_SPACE}, {"SHIFT", VK_SHIFT},
+                  {"OSK", kScriptOsk}};
     for (const auto& n : kNames)
         if (ui::same_name(n.name, name.c_str())) return n.vk;
-    if (name.size() == 1 && name[0] >= '0' && name[0] <= '9') return kScriptChar + name[0];
+    if (name.size() == 1 && ((name[0] >= '0' && name[0] <= '9') || name[0] == '.')) return kScriptChar + name[0];
+    if (name.size() == 1 && std::isalpha(static_cast<unsigned char>(name[0])))  // a letter: its key (P: Preview)
+        return std::toupper(static_cast<unsigned char>(name[0]));
     return 0;
 }
 
@@ -1268,9 +1287,15 @@ void parse_debug_knobs() {
         for (const std::string& item : split(v, ',')) {
             const size_t colon = item.find(':');
             if (colon == std::string::npos) continue;
-            const int vk = vk_from_name(item.substr(colon + 1));
+            std::string name = item.substr(colon + 1);
+            char hold = 0;
+            if (name.size() > 1 && (name.back() == '+' || name.back() == '-')) {
+                hold = name.back();
+                name.pop_back();
+            }
+            const int vk = vk_from_name(name);
             const unsigned long long f = std::strtoull(item.c_str(), nullptr, 10);
-            if (vk && f) sScriptKeys.push_back({f, vk});
+            if (vk && f && (vk < kScriptChar || hold == 0)) sScriptKeys.push_back({f, vk, hold});
         }
     }
 }

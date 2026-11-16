@@ -24,17 +24,39 @@
 // --page: only the pages whose names hold NAME. --probe: one pixel's bytes in each frame, from every renderer.
 // --verbose: the first bytes that differ in each frame.
 // Exit code 0: every picture and count the same; 1: one differs; 2: it could not run.
+#include "controls_page.hpp"
+#include "coop_page.hpp"
+#include "crash_dialog.hpp"
+#include "coop_window.hpp"
 #include "host.hpp"
+#include "looks.hpp"
+#include "menu_shell.hpp"
+#include "menu_pages.hpp"
+#include "mods_page.hpp"
+#include "osk_window.hpp"
+#include "overlay.hpp"
+#include "players_page.hpp"
+#include "players_state.hpp"
+#include "prelaunch.hpp"
 #include "renderer.hpp"
-#include "settings_window.hpp"
+#include "report.hpp"
+#include "report_ack.hpp"
+#include "settings.hpp"
+#include "settings_catalog.hpp"
+#include "settings_page.hpp"
 #include "setup_screens.hpp"
 #include "souls_model.hpp"
+#include "trophies_page.hpp"
+#include "trophy_set.hpp"
 #include "ui.hpp"
+#include "updates.hpp"
 
 #include "gpu.h"
 #include "gpu_shader.h"
 #include "gpu_vt_cmd.h"
 #include "ui_render_compare_hooks.h"
+
+#include "../../des_seamless.h"
 
 #include <RmlUi/Core.h>
 
@@ -44,13 +66,17 @@
 #include <dxgi1_6.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <filesystem>
+#include <fstream>
 #include <functional>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <string>
@@ -59,6 +85,10 @@
 // settings.cpp and report.cpp set variables through the game's getenv cache (boot_main.cpp); here, the process's.
 extern "C" void ps3_setenv(const char* name, const char* value) {
     _putenv_s(name, value ? value : "");
+}
+
+namespace des::seamless {
+void set_test_status(const Status& s);  // ui_render_compare_stubs.cpp: what status() and mode() give
 }
 
 namespace {
@@ -646,6 +676,33 @@ const char* const kModelPage = R"(<rml><head><style>
      height: 300px;"></div></div>
 </body></rml>)";
 
+// What a look's sheet draws with (looks.hpp): the UI's own images (res/img, tools/ui/make_ui_art.py), the grain tiled
+// and the value box as a nine-patch with corners in dp; a focus bar that breathes; a page that slides in, as the game's
+// menus move (linear, 400 px in 0.17 s).
+const char* const kLookPage = R"(<rml><head><style>
+@spritesheet ui-art { src: /res/img/valuebox.png; resolution: 2x;
+    valuebox: 0px 0px 24px 24px; valuebox-inner: 10px 10px 4px 4px; }
+@keyframes breathe { from { opacity: 1; } to { opacity: 0.8; } }
+@keyframes slide-in { from { transform: translateX(-400px); opacity: 0; } to { transform: none; opacity: 1; } }
+.band { position: absolute; left: 0px; top: 56px; width: 1280px; height: 120px; background-color: #2c2b2b;
+    decorator: image(/res/img/grain.png repeat left top); border-top: 1px #45433d; border-bottom: 1px #45433d; }
+.page { position: absolute; left: 96px; top: 220px; width: 720px; height: 400px;
+    animation: 0.17s linear-in-out slide-in; }
+.row { display: block; height: 40px; margin-bottom: 8px; }
+.label { display: inline-block; width: 340px; height: 32px; padding: 4px 16px; background-color: #333331;
+    decorator: image(/res/img/grain.png repeat left top); color: #c8aa8c; }
+.focus .label { background-color: #752a29; animation: 0.5s linear-in-out infinite alternate breathe; }
+.value { display: inline-block; width: 300px; height: 32px; margin-left: 16px; padding: 4px 14px; color: #c8aa8c;
+    decorator: ninepatch(valuebox, valuebox-inner, 5dp); }
+</style></head><body>
+<div class="band"/>
+<div class="page">
+  <div class="row focus"><span class="label">Render resolution</span><span class="value">150% (1920 x 1080)</span></div>
+  <div class="row"><span class="label">Anti-aliasing</span><span class="value">SMAA</span></div>
+  <div class="row"><span class="label">Frame rate</span><span class="value" style="width: 120px;">60 fps</span></div>
+</div>
+</body></rml>)";
+
 // A 64x64 TGA (stb_image reads it, as the UI's PNGs): a gradient and a disc, half transparent at the edge.
 std::vector<unsigned char> test_image() {
     const int n = 64;
@@ -846,15 +903,373 @@ void open_rml(const char* rml) {
     }
 }
 
-void open_settings(int tab, bool prelaunch) {
-    auto& w = static_cast<ui::SettingsWindow&>(ui::push_document(std::make_unique<ui::SettingsWindow>(prelaunch)));
-    if (tab > 0 && !w.set_active_tab(tab)) std::fprintf(stderr, "ui_render_compare: no tab %d\n", tab);  // (0: open)
+// The F1 menu, made once as in the game: it stays when the pages close (it is permanent), hidden.
+ui::MenuShell& menu_shell() {
+    if (ui::Document* bar = ui::find_document(ui::DocumentScope::MenuBar)) return static_cast<ui::MenuShell&>(*bar);
+    return static_cast<ui::MenuShell&>(ui::push_document(std::make_unique<ui::MenuShell>(), false));
+}
+
+// Settings on the tab of that title (settings_catalog.hpp's), or as it opens (""): in the F1 menu as its entry opens
+// it, or on its own as the start screen opens it (prelaunch).
+ui::SettingsPage* open_settings(const std::string& tab, bool prelaunch) {
+    ui::MenuShell* shell = nullptr;
+    if (prelaunch) {
+        shell = &static_cast<ui::MenuShell&>(
+            ui::push_document(std::make_unique<ui::MenuShell>(ui::MenuShell::Standalone{})));
+    } else {
+        shell = &menu_shell();
+        shell->show();
+        shell->open_settings();
+    }
+    ui::SettingsPage* page = shell->settings_page();
+    if (!page) std::fprintf(stderr, "ui_render_compare: Settings did not open\n");
+    else if (!tab.empty() && !page->show_tab(tab)) std::fprintf(stderr, "ui_render_compare: no tab %s\n", tab.c_str());
+    return page;
+}
+
+// Settings in the F1 menu (or on its own, as the start screen opens it) on that tab with the focus on that row, and a
+// key pressed there: Enter (its list, or typing), Preview, Compare held.
+void open_settings_row(const std::string& tab, const std::string& row, ui::menu::Command command,
+                       bool prelaunch = false) {
+    ui::SettingsPage* page = open_settings(tab, prelaunch);
+    if (!page || !page->focus_row(row)) {
+        std::fprintf(stderr, "ui_render_compare: no row %s\n", row.c_str());
+        return;
+    }
+    page->command(command, true);
+}
+
+// Change Buttons as Settings opens it (Controls > Change Buttons): the look's own (Alpha UI's window, a page over
+// Settings in a look with looks.hpp's pages), on the keys or the gamepad, the focus on that row (the count of rows:
+// Restore) and input, waiting for that row's input, or with Help open.
+void open_controls(bool keys, int row, int slot, bool wait, bool help) {
+    open_settings_row("Controls", "Change Buttons", ui::menu::Command::Confirm);
+    if (auto* page = dynamic_cast<ui::ControlsPage*>(menu_shell().page())) {
+        page->show_keys(keys);
+        page->focus(row, slot);
+        if (wait) page->wait();
+        if (help) page->open_help();
+    }
+}
+
+// Made-up players met over the last 14 days (names and keys made up): help both ways, invasions both ways, an Old
+// Monk, one blocked, one reported; more than a page of them.
+std::vector<ps3_net_player> standin_players() {
+    struct P {
+        const char* name;
+        const char* key;
+        const char* met;
+        int host;
+        long long ago;
+        int blocked, reported;
+    };
+    const P list[] = {
+        {"Gray_Wanderer", "a1b2c3d4e5f60718", "help", 1, 7200, 0, 0},
+        {"Ashen_Pilgrim", "0f1e2d3c4b5a6978", "invasion", 1, 30000, 0, 1},
+        {"Marsh_Lantern", "1122334455667788", "help", 0, 90000, 0, 0},
+        {"Quiet_Tide", "99aabbccddeeff00", "monk", 0, 200000, 0, 0},
+        {"Rust_Lark", "5566778899aabbcc", "invasion", 0, 400000, 0, 0},
+        {"Pale_Rook", "deadbeef00112233", "", 0, -1, 1, 0},
+        {"Ember_Sparrow", "0a1b2c3d4e5f6a7b", "help", 1, 800000, 0, 0},
+        {"Old_Hollow", "f0e1d2c3b4a59687", "help", 0, 1000000, 0, 0},
+    };
+    std::vector<ps3_net_player> out;
+    const long long now = static_cast<long long>(std::time(nullptr));
+    for (const P& p : list) {
+        ps3_net_player n{};
+        std::snprintf(n.name, sizeof n.name, "%s", p.name);
+        std::memcpy(n.fingerprint, p.key, std::min(sizeof n.fingerprint, std::strlen(p.key)));
+        std::snprintf(n.met, sizeof n.met, "%s", p.met);
+        n.host = p.host;
+        n.at = p.ago < 0 ? -1 : now - p.ago;
+        n.blocked = p.blocked;
+        n.reported = p.reported;
+        n.reportable = !p.reported;
+        out.push_back(n);
+    }
+    return out;
+}
+
+// Players as Settings opens it (Network > Players you met): the look's own (Alpha UI's window, a page over Settings in
+// a look with looks.hpp's pages), from the made-up list (or offline), the focus on that player.
+void open_players(bool offline, int focus) {
+    ui::players::set_test_list(standin_players(), 14, offline);
+    open_settings_row("Network", "Players you met", ui::menu::Command::Confirm);
+    if (auto* page = dynamic_cast<ui::PlayersPage*>(menu_shell().page())) page->focus_player(focus);
+}
+
+// The crash window as the crash dialog shows it (1024 x 640), for a made-up crash; its buttons do nothing here.
+void open_crash() {
+    static const ui::crash_dialog::Content content{
+        .what = "access violation writing 0000000000000000",
+        .details = "made up for the test",
+    };
+    static const ui::crash_dialog::Actions actions{};
+    ui::crash_dialog::push_window(content, actions, {});
+}
+
+// A note over the game (overlay.hpp's toasts) as the overlay shows it, over nothing else: a warning, an outcome (a
+// plain note), an info, a trophy, or the menu hint. The words are the port's own kinds of note; the trophy made up.
+ui::Document* gNoteOverlay = nullptr;  // the note pages' overlay: passive, so close_all_documents leaves it up
+
+void open_note(const std::string& kind) {
+    gNoteOverlay = &ui::push_document(std::make_unique<ui::Overlay>(), true, true);
+    if (kind == "hint") {
+        ui::show_menu_notification();
+        return;
+    }
+    ui::Toast t{.duration = std::chrono::seconds(60)};
+    if (kind == "warning") {
+        t.type = "warning";
+        t.title = "Mods";
+        t.content = "Texture pack 2 holds two versions: keep one, then refresh the list.";
+    } else if (kind == "info") {
+        t.type = "info";
+        t.title = "Co-op";
+        t.content = "Copied. Send it to your friends, not in public.";
+    } else if (kind == "done") {
+        t.title = "Players";
+        t.content = "Gray_Wanderer is blocked.";
+    } else {
+        t.type = "trophy";
+        t.title = "<toast-title>Trophy unlocked</toast-title><grade class=\"gold\"><icon class=\"trophy\"/>Gold</grade>";
+        t.content = "<trophy-name>Every trophy</trophy-name>";
+        t.icon = "<icon class=\"trophy\"/>";
+    }
+    ui::push_toast(std::move(t));
+}
+
+// The on-screen keyboard as the game opens it (cellOskDialog), or Co-op's Public address: a prompt, a made-up address.
+void open_osk() {
+    ui::push_document(std::make_unique<ui::OskWindow>(ui::OskWindow::Props{
+        .prompt = "Your public address, like 203.0.113.7",
+        .text = u"203.0.113.7",
+        .limit = 15,
+    }));
+}
+
+// The start screen with a new version found (a made-up 0.9.0).
+void open_start_update() {
+    static const ui::updates::Release release{.version = "0.9.0", .notes = {"Made up for the test."}};
+    ui::updates::set_test_found(&release);
+    ui::push_document(std::make_unique<ui::Prelaunch>());
+}
+
+// Settings closed on that tab's row and opened again: it opens where it was left.
+void reopen_settings(const std::string& tab, const std::string& row) {
+    ui::SettingsPage* page = open_settings(tab, false);
+    if (!page || !page->focus_row(row)) {
+        std::fprintf(stderr, "ui_render_compare: no row %s\n", row.c_str());
+        return;
+    }
+    menu_shell().open_settings();  // (the page closes, and Settings opens again)
+}
+
+// The menus in that look (looks.hpp): the ui_look setting, applied as the Menu look row applies it.
+void use_look(std::string_view id) {
+    if (ui::settings::get("ui_look") == id) return;
+    ui::settings::set("ui_look", std::string(id));
+    ui::looks::apply();
+}
+
+// A stand-in trophy set for the Trophies pages (the test has no disc): made-up trophies, none of the game's, with no
+// icons, so each shows its grade's cup. Fixed unlock times; the dates are drawn in the PC's time zone.
+bool standin_trophies(sceNpTrophySnapshot& s) {
+    struct T {
+        unsigned grade;
+        bool unlocked;
+        const char* name;
+        const char* detail;
+    };
+    static const T kSet[] = {
+        {1, false, "Every trophy", "Earn every other trophy."},
+        {2, false, "Return to slumber", "See the end of the game."},
+        {2, false, "Every demon's soul", "Hold the soul of every demon at once."},
+        {2, true, "The Nexus restored", "Clear the first area of every archstone."},
+        {3, true, "Pure white", "Raise your character tendency to pure white."},
+        {3, false, "Pure black", "Lower your character tendency to pure black."},
+        {3, true, "A world in white", "Raise a world's tendency to pure white."},
+        {4, true, "First steps", "Leave the Nexus for the first time."},
+        {4, true, "Keeper of the flame", "Speak with the Maiden in Black."},
+        {4, false, "Smith's apprentice", "Have a weapon reinforced to its limit."},
+        {4, true, "A friend in need", "Help another player defeat a demon."},
+        {4, false, "Hunter of the dark", "Defeat an invader in your own world."},
+        {4, true, "Spell weaver", "Learn every kind of spell once."},
+        {4, false, "Collector", "Own every ring."},
+    };
+    s = sceNpTrophySnapshot{};
+    std::snprintf(s.title, sizeof s.title, "%s", "Demon's Souls");
+    s.count = static_cast<unsigned>(std::size(kSet));
+    for (unsigned i = 0; i < s.count; i++) {
+        sceNpTrophySnapshotEntry& e = s.trophies[i];
+        e.trophyId = static_cast<int>(i);
+        e.grade = kSet[i].grade;
+        e.unlocked = kSet[i].unlocked;
+        e.unix_time = e.unlocked ? 1794253620ull + i * 86400ull : 0;
+        std::snprintf(e.name, sizeof e.name, "%s", kSet[i].name);
+        std::snprintf(e.detail, sizeof e.detail, "%s", kSet[i].detail);
+        s.per_grade[e.grade]++;
+        if (e.unlocked) {
+            s.unlocked++;
+            s.unlocked_per_grade[e.grade]++;
+        }
+    }
+    s.percent = static_cast<int>(100 * s.unlocked / s.count);
+    return true;
+}
+
+void open_menu(bool quit);
+
+// Trophies as the F1 menu opens it, from the stand-in set (or no set): the look's own (Alpha UI's window, a page in a
+// look with looks.hpp's pages), with the focus on that trophy.
+void open_trophies(bool set, int focus) {
+    if (set) ui::trophy_set::set_test_source(standin_trophies);
+    else ui::trophy_set::set_test_source([](sceNpTrophySnapshot&) { return false; });
+    open_menu(false);
+    for (size_t i = 0; i < ui::menu::entries().size(); i++)
+        if (ui::menu::entries()[i].title == "Trophies") ui::menu::entries()[i].choose(menu_shell());
+    if (auto* page = dynamic_cast<ui::TrophiesPage*>(menu_shell().page())) page->focus_trophy(focus);
+}
+
+// A stand-in mods folder for the Mods pages (made-up mods of a file or two each, nothing of the game's), made again
+// beside the scratch data folder: three look mods on (two with the same file), a gameplay mod off, a download with
+// two versions in it, and loose files with no game folder. Or an empty one. DES_MODS_DIR points the screens at it.
+void standin_mods(bool any) {
+    const std::filesystem::path data = std::getenv("DES_DATA_DIR") ? std::getenv("DES_DATA_DIR") : "";
+    const std::filesystem::path dir = data.parent_path() / (any ? "mods-standin" : "mods-empty");
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+    std::filesystem::create_directories(dir, ec);
+    const auto put = [&](const char* rel) {
+        const std::filesystem::path p = dir / std::filesystem::u8path(rel);
+        std::filesystem::create_directories(p.parent_path(), ec);
+        std::ofstream(p, std::ios::binary) << "stand-in";
+    };
+    if (any) {
+        put("Clearer text/font/menu_font.ccm");
+        put("Warmer torchlight/sfx/frpg_sfxbnd_m02.ffxbnd");
+        put("Darker nights/sfx/frpg_sfxbnd_m02.ffxbnd");
+        put("Darker nights/param/drawparam/m02_drawparam.parambnd");
+        put("Harder enemies/param/gameparam/gameparam.parambnd");
+        put("Texture pack 2/1080p/menu/menu_tex.tpf");
+        put("Texture pack 2/4K/menu/menu_tex.tpf");
+        put("Old menu font/oldfont.ccm");
+        std::ofstream(dir / "load_order.txt", std::ios::binary)
+            << "on Clearer text\non Warmer torchlight\non Darker nights\noff Harder enemies\n";
+    }
+    _putenv_s("DES_MODS_DIR", dir.string().c_str());
+}
+
+// Mods as the F1 menu opens it, from the stand-in folder: the look's own (Alpha UI's window, a page in a look with
+// looks.hpp's pages), the focus on the mod of that name, or Good to know open.
+void open_mods(bool any, const std::string& focus, bool help) {
+    standin_mods(any);
+    open_menu(false);
+    for (size_t i = 0; i < ui::menu::entries().size(); i++)
+        if (ui::menu::entries()[i].title == "Mods") ui::menu::entries()[i].choose(menu_shell());
+    if (auto* page = dynamic_cast<ui::ModsPage*>(menu_shell().page())) {
+        if (!focus.empty()) page->focus_mod(focus);
+        if (help) page->open_help();
+    }
+}
+
+// Co-op as the F1 menu opens it, with co-op as that made-up status: the look's own (Alpha UI's window, a page in a
+// look with looks.hpp's pages), the focus on that action.
+void open_coop(const des::seamless::Status& s, int focus) {
+    des::seamless::set_test_status(s);
+    open_menu(false);
+    for (size_t i = 0; i < ui::menu::entries().size(); i++)
+        if (ui::menu::entries()[i].title == "Co-op") ui::menu::entries()[i].choose(menu_shell());
+    if (auto* page = dynamic_cast<ui::CoopPage*>(menu_shell().page())) page->focus_action(focus);
+}
+
+// A question as it is asked over its page: Host or Join over Co-op (not in co-op), a player's over Players, Quit over
+// the start screen (nothing played there, so no lost-progress line).
+void open_ask(const std::string& which) {
+    if (which == "host" || which == "join") {
+        open_coop({}, which == "host" ? 0 : 1);
+        if (which == "host") ui::coop::open_host();
+        else ui::coop::open_join();
+    } else if (which == "player") {
+        open_players(false, 0);
+        ui::players::open_actions(standin_players().front());
+    } else if (which == "quit") {
+        ui::push_document(std::make_unique<ui::Prelaunch>());
+        ui::request_quit_confirm(false);
+    }
+}
+
+// A made-up host: its router answered, two of four players in and one waiting; the codes are made up.
+des::seamless::Status standin_host() {
+    des::seamless::Status s;
+    s.mode = des::seamless::Mode::Host;
+    s.started = true;
+    s.code = "7KQ2-M9XD-0RTB-4HWE";
+    s.lan_code = "4H2K-PL7Q-ZZ81-C0DE";
+    s.router = "Your router opened port 3658 for co-op.";
+    s.router_done = s.router_ok = true;
+    s.port = 3658;
+    s.players = 2;
+    s.waiting = 1;
+    return s;
+}
+
+// A made-up guest, connected (or its connection lost).
+des::seamless::Status standin_guest(bool lost) {
+    des::seamless::Status s;
+    s.mode = des::seamless::Mode::Join;
+    s.started = true;
+    s.link = lost ? des::seamless::Status::Link::Lost : des::seamless::Status::Link::Connected;
+    return s;
+}
+
+// A setting as its row sets it, for a page that shows it: the prompts' buttons (DES_GLYPHS), the UI scale (ui_scale,
+// applied as its row applies it). close_pages puts both back.
+void use_setting(const std::string& key, const std::string& value) {
+    ui::settings::set(key, value);
+    if (key == "ui_scale") ui::apply_scale();
 }
 
 void close_pages() {
     ui::close_all_documents();
+    if (gNoteOverlay) gNoteOverlay->force_hide(true);  // (a passive document: the next update removes it)
+    gNoteOverlay = nullptr;
+    if (ui::settings::get("DES_GLYPHS") != "auto") ui::settings::set("DES_GLYPHS", "auto");
+    if (ui::settings::get("ui_scale") != "0") use_setting("ui_scale", "0");
+    ui::get_toasts().clear();
+    ui::updates::set_test_found(nullptr);
+    ui::trophy_set::set_test_source({});
+    des::seamless::set_test_status({});
+    ui::players::clear_test_list();
+    _putenv_s("DES_MODS_DIR", "");
+    ui::SettingsPage::forget_place();  // (Settings opens where it was left: each page starts as at the game's start)
     for (Rml::ElementDocument* d : gDocuments) d->Close();
     gDocuments.clear();
+}
+
+// The F1 menu as F1 opens it (des_ui.cpp's open_menu_bar), and with its Quit question over it.
+void open_menu(bool quit) {
+    menu_shell().show();
+    if (quit) ui::request_quit_confirm();
+}
+
+// The F1 menu with the question its closing asks while two settings wait for a restart. The question's text is made
+// as it is asked, so the settings go back at once, and the scratch settings.ini as it was (or none), for the next run.
+void open_menu_restart() {
+    open_menu(false);
+    const std::filesystem::path ini = std::filesystem::u8path(ui::settings::path());
+    std::ifstream in(ini, std::ios::binary);
+    const bool had = in.good();
+    const std::string before((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    in.close();
+    ui::settings::set("DES_MAXIMIZED", "0");
+    ui::settings::set("DES_NET_P2P_PORT", "4000");
+    ui::ask(ui::menu::restart_question({}));
+    ui::settings::set("DES_MAXIMIZED", "1");
+    ui::settings::set("DES_NET_P2P_PORT", "3658");
+    std::error_code ec;
+    if (had) std::ofstream(ini, std::ios::binary | std::ios::trunc) << before;
+    else std::filesystem::remove(ini, ec);
 }
 
 // The models, drawn as host.cpp draws the sword cursor and the lizard, at fixed times.
@@ -887,6 +1302,67 @@ void draw_models(Tee& tee) {
     tee.draw_model("moonlight", w);
 }
 
+// --rml: every element of the context's documents as a line of text, indented by depth: its tag, its attributes in
+// name order, the pseudo-classes set on it, its border box, and the text of text elements. Two builds' dumps of a page
+// compared show whether a change moved anything in the DOM or the layout, where the pictures show only what is drawn.
+void dump_element(std::string& out, Rml::Element* e, int depth) {
+    out.append(size_t(depth) * 2, ' ');
+    if (auto* t = rmlui_dynamic_cast<Rml::ElementText*>(e)) {
+        out += '"';
+        for (char c : t->GetText()) out += c == '\n' ? std::string("\\n") : std::string(1, c);
+        out += "\"\n";
+        return;
+    }
+    out += '<' + e->GetTagName();
+    std::vector<std::pair<std::string, std::string>> attributes;
+    for (const auto& [name, value] : e->GetAttributes()) attributes.emplace_back(name, value.Get<Rml::String>());
+    std::sort(attributes.begin(), attributes.end());
+    for (const auto& [name, value] : attributes) out += ' ' + name + "=\"" + value + '"';
+    out += '>';
+    Rml::StringList pseudo = e->GetActivePseudoClasses();
+    std::sort(pseudo.begin(), pseudo.end());
+    for (const Rml::String& p : pseudo) out += " :" + p;
+    const Rml::Vector2f at = e->GetAbsoluteOffset(Rml::BoxArea::Border), size = e->GetBox().GetSize(Rml::BoxArea::Border);
+    char box[96];
+    std::snprintf(box, sizeof box, " @%.2f,%.2f %.2fx%.2f%s\n", at.x, at.y, size.x, size.y, e->IsVisible() ? "" : " hidden");
+    out += box;
+    for (int i = 0; i < e->GetNumChildren(); i++) dump_element(out, e->GetChild(i), depth + 1);
+}
+
+void dump_documents(std::string& out) {
+    Rml::Context* c = ui::host::context();
+    for (int i = 0; i < c->GetNumDocuments(); i++) {
+        Rml::ElementDocument* d = c->GetDocument(i);
+        out += "document " + d->GetSourceURL() + '\n';
+        dump_element(out, d, 1);
+    }
+}
+
+// The page as it is, then each row of its first pane focused in turn, as the arrows focus them, and the documents
+// again: what a row shows beside it (its help, its choices) is built only when it has the focus.
+bool write_rml(const std::filesystem::path& path) {
+    std::string out;
+    dump_documents(out);
+    Rml::Context* c = ui::host::context();
+    Rml::ElementList panes;
+    for (int i = c->GetNumDocuments() - 1; i >= 0 && panes.empty(); i--) c->GetDocument(i)->GetElementsByTagName(panes, "pane");
+    if (!panes.empty()) {
+        Rml::Element* rows = panes.front();
+        for (int i = 0; i < rows->GetNumChildren(); i++) {
+            Rml::Element* row = rows->GetChild(i);
+            if (row->GetTagName() == "section-heading" || !row->Focus(true)) continue;
+            ui::update();
+            c->Update();
+            out += "\nrow " + std::to_string(i) + '\n';
+            dump_documents(out);
+        }
+    }
+    FILE* f = std::fopen(path.string().c_str(), "wb");
+    if (!f) return false;
+    const bool ok = std::fwrite(out.data(), 1, out.size(), f) == out.size();
+    return std::fclose(f) == 0 && ok;
+}
+
 std::filesystem::path env_path(const char* name) {
     const char* v = std::getenv(name);
     return v && *v ? std::filesystem::path(v) : std::filesystem::path();
@@ -898,7 +1374,7 @@ int main(int argc, char** argv) {
     std::setvbuf(stdout, nullptr, _IONBF, 0);  // (lines kept should the run end abruptly)
     bool warp = false, verbose = false, vk_on = true;
     int frames = 24, probe_x = -1, probe_y = -1;
-    std::filesystem::path bmp, scratch, vk_dir;
+    std::filesystem::path bmp, rml, scratch, vk_dir;
     std::string only;
     for (int i = 1; i < argc; i++) {
         const std::string a = argv[i];
@@ -906,6 +1382,7 @@ int main(int argc, char** argv) {
         else if (a == "--verbose") verbose = true;
         else if (a == "--frames" && i + 1 < argc) frames = std::max(2, std::atoi(argv[++i]));
         else if (a == "--bmp" && i + 1 < argc) bmp = argv[++i];
+        else if (a == "--rml" && i + 1 < argc) rml = argv[++i];
         else if (a == "--scratch" && i + 1 < argc) scratch = argv[++i];
         else if (a == "--page" && i + 1 < argc) only = argv[++i];
         else if (a == "--vk" && i + 1 < argc) vk_dir = argv[++i];
@@ -915,7 +1392,7 @@ int main(int argc, char** argv) {
             probe_y = std::atoi(argv[++i]);
         }
         else {
-            std::fprintf(stderr, "usage: ui_render_compare [--warp] [--frames N] [--bmp DIR] [--scratch DIR] [--page NAME] "
+            std::fprintf(stderr, "usage: ui_render_compare [--warp] [--frames N] [--bmp DIR] [--rml DIR] [--scratch DIR] [--page NAME] "
                                  "[--probe X Y] [--verbose] [--vk DIR | --no-vk]\n");
             return 2;
         }
@@ -926,15 +1403,21 @@ int main(int argc, char** argv) {
     std::filesystem::create_directories(scratch / "data", ec);
     std::filesystem::create_directories(scratch / "setup", ec);
     if (!bmp.empty()) std::filesystem::create_directories(bmp, ec);
+    if (!rml.empty()) std::filesystem::create_directories(rml, ec);
     if (!vk_dir.empty()) {
         std::filesystem::create_directories(vk_dir / "d3d12", ec);
         std::filesystem::create_directories(vk_dir / "vk", ec);
     }
     _putenv_s("DES_DATA_DIR", (scratch / "data").string().c_str());
+    // (and to report.hpp's data folder, which may have been looked up before main: the player's own then)
+    ui::report::set_data_dir(scratch / "data");
     _putenv_s("DES_SETTINGS", (scratch / "settings.ini").string().c_str());
     _putenv_s("DES_SETUP_DATA", (scratch / "setup").string().c_str());
     _putenv_s("PS3_NO_USER_INPUT", "1");
     _putenv_s("DES_UI_NO_ANIM", "1");
+    // The settings as the game reads them at its start (des_ui_early_init): the test's settings.ini, with the options
+    // set in the environment pinned, so a run can draw the pages as a player with those settings sees them.
+    ui::settings::load_and_apply_env();
     const bool models = !env_path("PS3_VFS_ROOT").empty();
 
     Device d;
@@ -1040,9 +1523,33 @@ int main(int argc, char** argv) {
     ui::host::add_png("compare:image", image.data(), image.size());
 
     std::vector<Page> pages;
-    const char* const kTabs[] = {"display", "game", "controls", "network", "interface", "about"};
-    for (int t = 0; t < 6; t++) pages.push_back({std::string("settings-") + kTabs[t], 1280, 720, false, 1.f, false, [t] { open_settings(t, false); }, {}});
-    pages.push_back({"settings-prelaunch", 1280, 720, false, 1.f, false, [] { open_settings(0, true); }, {}});
+    // A page for each of Settings' tabs: settings-display, settings-game...
+    for (const ui::catalog::TabDesc& t : ui::catalog::tabs()) {
+        std::string name = "settings-";
+        for (const char c : t.title)
+            name += c == ' ' ? '-' : static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        pages.push_back({name, 1280, 720, false, 1.f, false, [title = t.title] { open_settings(title, false); }, {}});
+    }
+    pages.push_back({"settings-prelaunch", 1280, 720, false, 1.f, false, [] { open_settings("", true); }, {}});
+    // The start screen over the game, its first choice with the focus.
+    pages.push_back({"start", 1280, 720, false, 1.f, false, [] { ui::push_document(std::make_unique<ui::Prelaunch>()); }, {}});
+    using ui::menu::Command;
+    pages.push_back({"settings-list", 1280, 720, false, 1.f, false,
+                     [] { open_settings_row("Display", "Aspect ratio", Command::Confirm); }, {}});
+    // A list on a tab long enough to scroll: the rows' scroll box clips, so the list must stay whole.
+    pages.push_back({"settings-list-scrolls", 1280, 720, false, 1.f, false,
+                     [] { open_settings_row("Network", "Your glow colour", Command::Confirm); }, {}});
+    pages.push_back({"settings-preview", 1280, 720, false, 1.f, false,
+                     [] { open_settings_row("Picture", "Render resolution", Command::Preview); }, {}});
+    pages.push_back({"settings-preview-start", 1280, 720, false, 1.f, false,
+                     [] { open_settings_row("Picture", "Render resolution", Command::Preview, true); }, {}});
+    pages.push_back({"settings-reopen", 1280, 720, false, 1.f, false,
+                     [] { reopen_settings("Picture", "Depth of field"); }, {}});
+    pages.push_back({"settings-compare", 1280, 720, false, 1.f, false,
+                     [] { open_settings_row("Picture", "Render resolution", Command::Compare); }, {}});
+    pages.push_back({"settings-tall", 1920, 1200, false, 1.f, false, [] { open_settings("Network", false); }, {}});
+    pages.push_back({"settings-typing", 1280, 720, false, 1.f, false,
+                     [] { open_settings_row("Network", "Online name", Command::Confirm); }, {}});
     pages.push_back({"setup-start", 1280, 720, false, 1.f, false, [] {
         ui::push_document(std::make_unique<ui::SetupStartWindow>(ui::SetupStartWindow::Props{}));
     }, {}});
@@ -1062,10 +1569,197 @@ int main(int argc, char** argv) {
         p.onStart = [](ui::setup::Request) {};
         ui::push_document(std::make_unique<ui::SetupBeforeWindow>(std::move(p)));
     }, {}});
+    pages.push_back({"menu", 1280, 720, false, 1.f, false, [] { open_menu(false); }, {}});
+    pages.push_back({"menu-quit", 1280, 720, false, 1.f, false, [] { open_menu(true); }, {}});
+    pages.push_back({"menu-restart", 1280, 720, false, 1.f, false, open_menu_restart, {}});
+    // Trophies and Mods, as Alpha UI shows them (their windows).
+    pages.push_back({"trophies", 1280, 720, false, 1.f, false, [] { open_trophies(true, 1); }, {}});
+    pages.push_back({"mods", 1280, 720, false, 1.f, false, [] { open_mods(true, "", false); }, {}});
+    // Change Buttons as Alpha UI shows it (its window).
+    pages.push_back({"controls", 1280, 720, false, 1.f, false, [] { open_controls(false, 0, 0, false, false); }, {}});
+    // Notes over the game: a warning, a trophy, and the menu hint.
+    for (const char* kind : {"warning", "trophy", "hint"})
+        pages.push_back({std::string("note-") + kind, 1280, 720, false, 1.f, false, [kind] { open_note(kind); }, {}});
+    // The start screen with a new version found: its note and the Update choice stand out.
+    pages.push_back({"start-update", 1280, 720, false, 1.f, false, open_start_update, {}});
+    // The on-screen keyboard.
+    pages.push_back({"osk", 1280, 720, false, 1.f, false, open_osk, {}});
+    // The crash window, at its own size.
+    pages.push_back({"crash", 1024, 640, false, 1.f, false, open_crash, {}});
+    // Players as Alpha UI shows it (its window), from the made-up list.
+    pages.push_back({"players", 1280, 720, false, 1.f, false, [] { open_players(false, 0); }, {}});
+    // Co-op as Alpha UI shows it (its window): not in co-op, and hosting.
+    pages.push_back({"coop", 1280, 720, false, 1.f, false, [] { open_coop({}, 0); }, {}});
+    pages.push_back({"coop-host", 1280, 720, false, 1.f, false, [] { open_coop(standin_host(), 0); }, {}});
+    // A question with named answers: Public address, over the host's Co-op.
+    pages.push_back({"coop-address", 1280, 720, false, 1.f, false, [] {
+        open_coop(standin_host(), 2);
+        ui::coop::open_public_address();
+    }, {}});
+    // Settings worth comparing between the looks, on Settings' Display tab: the prompts as Xbox buttons and as keys,
+    // UI scale 150% on a 1920 x 1080 window, a 2560 x 1440 window at the display's scale, and a 21:9 window.
+    const auto with = [](const char* key, const char* value) {
+        return [key, value] {
+            use_setting(key, value);
+            open_settings("Display", false);
+        };
+    };
+    pages.push_back({"glyphs-xbox", 1280, 720, false, 1.f, false, with("DES_GLYPHS", "xbox"), {}});
+    pages.push_back({"glyphs-keys", 1280, 720, false, 1.f, false, with("DES_GLYPHS", "keyboard"), {}});
+    pages.push_back({"scale-150", 1920, 1080, false, 1.f, false, with("ui_scale", "150"), {}});
+    // Small windows: 1024 x 768 at the display's scale, and 900 x 650 at UI scale 125% with a value's list open. The
+    // menu must fit the window whole.
+    const auto small_list = [] {
+        use_setting("ui_scale", "125");
+        open_settings_row("Display", "Display mode", Command::Confirm);
+    };
+    pages.push_back({"small-1024", 1024, 768, false, 1.f, false, [] { open_settings("Display", false); }, {}});
+    pages.push_back({"small-list-125", 900, 650, false, 1.f, false, small_list, {}});
+    pages.push_back({"window-1440", 2560, 1440, false, 1.f, false, [] { open_settings("Display", false); }, {}});
+    pages.push_back({"settings-wide", 2560, 1080, false, 1.f, false, [] { open_settings("Display", false); }, {}});
+    // Questions over their pages, in their short words: Host, Join, a player's, the start screen's Quit.
+    for (const char* which : {"host", "join", "player", "quit"})
+        pages.push_back({std::string("ask-") + which, 1280, 720, false, 1.f, false, [which] { open_ask(which); }, {}});
+    // The question before a first report, its tick not yet ticked (the scratch data folder has no answer kept).
+    pages.push_back({"report-ack", 1280, 720, false, 1.f, false, [] {
+        open_menu(false);
+        ui::with_zip_ack(nullptr);
+    }, {}});
+    // DeS UI's pages, in a build that offers it (a developer build until it is released, looks.hpp). Every page
+    // opens in the default look; these switch to DeS UI first.
+    use_look("des");
+    const bool band = ui::looks::current().id == "des";
+    use_look(ui::looks::kDefault);
+    if (band) {
+        const auto in_band = [](std::function<void()> open) {
+            return [open = std::move(open)] {
+                use_look("des");
+                open();
+            };
+        };
+        pages.push_back({"des-menu", 1280, 720, false, 1.f, false, in_band([] { open_menu(false); }), {}});
+        pages.push_back({"des-quit", 1280, 720, false, 1.f, false, in_band([] { open_menu(true); }), {}});
+        pages.push_back({"des-menu-restart", 1280, 720, false, 1.f, false, in_band(open_menu_restart), {}});
+        // Trophies as a page: the top of the list, further down (the list scrolled, its marks above and below), with
+        // no set found, and on its own as the start screen opens it.
+        pages.push_back({"des-trophies", 1280, 720, false, 1.f, false, in_band([] { open_trophies(true, 1); }), {}});
+        pages.push_back({"des-trophies-down", 1280, 720, false, 1.f, false, in_band([] { open_trophies(true, 9); }), {}});
+        pages.push_back({"des-trophies-none", 1280, 720, false, 1.f, false, in_band([] { open_trophies(false, 0); }), {}});
+        // Two of them hidden (DES_TROPHY_HIDDEN, the test knob), the focus on one still locked: "Hidden trophy".
+        pages.push_back({"des-trophies-hidden", 1280, 720, false, 1.f, false, in_band([] {
+            _putenv_s("DES_TROPHY_HIDDEN", "1,4");
+            open_trophies(true, 1);
+            _putenv_s("DES_TROPHY_HIDDEN", "");
+        }), {}});
+        // Mods as a page: a mod some of whose files another gives (its arrows to move it), a folder that needs
+        // attention, Good to know, and no mods yet.
+        pages.push_back({"des-mods", 1280, 720, false, 1.f, false, in_band([] { open_mods(true, "Darker nights", false); }), {}});
+        pages.push_back({"des-mods-attention", 1280, 720, false, 1.f, false,
+                         in_band([] { open_mods(true, "Texture pack 2", false); }), {}});
+        pages.push_back({"des-mods-help", 1280, 720, false, 1.f, false, in_band([] { open_mods(true, "", true); }), {}});
+        pages.push_back({"des-mods-empty", 1280, 720, false, 1.f, false, in_band([] { open_mods(false, "", false); }), {}});
+        // Change Buttons as a page over Settings: the gamepad, the keys (the second box of Attack chosen), the keys
+        // waiting for Lock on's first input, Help, and Restore at the end of the gamepad's rows.
+        pages.push_back({"des-controls", 1280, 720, false, 1.f, false,
+                         in_band([] { open_controls(false, 0, 0, false, false); }), {}});
+        pages.push_back({"des-controls-keys", 1280, 720, false, 1.f, false,
+                         in_band([] { open_controls(true, 7, 1, false, false); }), {}});
+        pages.push_back({"des-controls-wait", 1280, 720, false, 1.f, false,
+                         in_band([] { open_controls(true, 12, 0, true, false); }), {}});
+        pages.push_back({"des-controls-help", 1280, 720, false, 1.f, false,
+                         in_band([] { open_controls(true, 0, 0, false, true); }), {}});
+        pages.push_back({"des-controls-restore", 1280, 720, false, 1.f, false,
+                         in_band([] { open_controls(false, 16, 0, false, false); }), {}});
+        // Notes over the game as stone bars, each kind's mark in its colour; the menu hint low in the middle.
+        for (const char* kind : {"warning", "done", "info", "trophy", "hint"})
+            pages.push_back({std::string("des-note-") + kind, 1280, 720, false, 1.f, false,
+                             in_band([kind] { open_note(kind); }), {}});
+        pages.push_back({"des-start-update", 1280, 720, false, 1.f, false, in_band(open_start_update), {}});
+        // The on-screen keyboard: the question box with small stone keys, every key and button of Alpha UI's.
+        pages.push_back({"des-osk", 1280, 720, false, 1.f, false, in_band(open_osk), {}});
+        // The crash window, its red mark kept, the focus on Report on GitHub.
+        pages.push_back({"des-crash", 1024, 640, false, 1.f, false, in_band(open_crash), {}});
+        // Players as a page over Settings: the list's first page, further down (its marks above and below), and offline
+        // (the strip's line, no box).
+        pages.push_back({"des-players", 1280, 720, false, 1.f, false, in_band([] { open_players(false, 0); }), {}});
+        pages.push_back({"des-players-down", 1280, 720, false, 1.f, false, in_band([] { open_players(false, 6); }), {}});
+        pages.push_back({"des-players-offline", 1280, 720, false, 1.f, false, in_band([] { open_players(true, 0); }), {}});
+        // Co-op as a page: not in co-op, hosting (the focus on New code), joined (its line in the strip, no box) and
+        // a guest whose connection was lost.
+        pages.push_back({"des-coop", 1280, 720, false, 1.f, false, in_band([] { open_coop({}, 0); }), {}});
+        pages.push_back({"des-coop-host", 1280, 720, false, 1.f, false, in_band([] { open_coop(standin_host(), 1); }), {}});
+        pages.push_back({"des-coop-join", 1280, 720, false, 1.f, false,
+                         in_band([] { open_coop(standin_guest(false), 0); }), {}});
+        pages.push_back({"des-coop-lost", 1280, 720, false, 1.f, false,
+                         in_band([] { open_coop(standin_guest(true), 0); }), {}});
+        // A question with named answers, as rows, Cancel under them: Public address, over the host's page.
+        pages.push_back({"des-coop-address", 1280, 720, false, 1.f, false, in_band([] {
+            open_coop(standin_host(), 2);
+            ui::coop::open_public_address();
+        }), {}});
+        for (const char* which : {"host", "join", "player", "quit"})
+            pages.push_back({std::string("des-ask-") + which, 1280, 720, false, 1.f, false,
+                             in_band([which] { open_ask(which); }), {}});
+        // The settings worth comparing (Alpha UI's above): Xbox buttons, keys, UI scale 150%, a 2560 x 1440 window.
+        pages.push_back({"des-glyphs-xbox", 1280, 720, false, 1.f, false, in_band(with("DES_GLYPHS", "xbox")), {}});
+        pages.push_back({"des-glyphs-keys", 1280, 720, false, 1.f, false, in_band(with("DES_GLYPHS", "keyboard")), {}});
+        pages.push_back({"des-scale-150", 1920, 1080, false, 1.f, false, in_band(with("ui_scale", "150")), {}});
+        pages.push_back({"des-small-1024", 1024, 768, false, 1.f, false,
+                         in_band([] { open_settings("Display", false); }), {}});
+        pages.push_back({"des-small-list-125", 900, 650, false, 1.f, false, in_band(small_list), {}});
+        pages.push_back({"des-window-1440", 2560, 1440, false, 1.f, false,
+                         in_band([] { open_settings("Display", false); }), {}});
+        pages.push_back({"des-trophies-start", 1280, 720, false, 1.f, false, in_band([] {
+            ui::trophy_set::set_test_source(standin_trophies);
+            ui::push_document(ui::menu::screen_alone("Trophies"));
+        }), {}});
+        pages.push_back({"des-display", 1280, 720, false, 1.f, false, in_band([] { open_settings("Display", false); }), {}});
+        pages.push_back({"des-list", 1280, 720, false, 1.f, false,
+                         in_band([] { open_settings_row("Display", "Aspect ratio", Command::Confirm); }), {}});
+        pages.push_back({"des-list-scrolls", 1280, 720, false, 1.f, false,
+                         in_band([] { open_settings_row("Network", "Your glow colour", Command::Confirm); }), {}});
+        pages.push_back({"des-help", 1280, 720, false, 1.f, false,
+                         in_band([] { open_settings_row("Display", "Display mode", Command::Help); }), {}});
+        pages.push_back({"des-preview", 1280, 720, false, 1.f, false,
+                         in_band([] { open_settings_row("Picture", "Render resolution", Command::Preview); }), {}});
+        // Preview from Settings on its own, as the start screen opens it: the strip without the page's frame.
+        pages.push_back({"des-preview-start", 1280, 720, false, 1.f, false,
+                         in_band([] { open_settings_row("Picture", "Render resolution", Command::Preview, true); }), {}});
+        pages.push_back({"des-reopen", 1280, 720, false, 1.f, false,
+                         in_band([] { reopen_settings("Picture", "Depth of field"); }), {}});
+        pages.push_back({"des-compare", 1280, 720, false, 1.f, false,
+                         in_band([] { open_settings_row("Picture", "Render resolution", Command::Compare); }), {}});
+        pages.push_back({"des-prelaunch", 1280, 720, false, 1.f, false, in_band([] { open_settings("", true); }), {}});
+        pages.push_back({"des-start", 1280, 720, false, 1.f, false,
+                         in_band([] { ui::push_document(std::make_unique<ui::Prelaunch>()); }), {}});
+        pages.push_back({"des-tall", 1920, 1200, false, 1.f, false, in_band([] { open_settings("Network", false); }), {}});
+        // A wide window: the bands span it, their contents and the rows keep to the centred column.
+        pages.push_back({"des-wide", 2560, 1080, false, 1.f, false, in_band([] { open_settings("Display", false); }), {}});
+        // Rows that open something (the word in the box) and empty texts (Not set).
+        pages.push_back({"des-network", 1280, 720, false, 1.f, false, in_band([] { open_settings("Network", false); }), {}});
+        // Every tab in a window tall enough for all its rows (des-tab-display, des-tab-game...), to set beside Alpha
+        // UI's.
+        for (const ui::catalog::TabDesc& t : ui::catalog::tabs()) {
+            std::string name = "des-tab-";
+            for (const char c : t.title)
+                name += c == ' ' ? '-' : static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            pages.push_back({name, 1280, 1240, false, 1.f, false, in_band([title = t.title] { open_settings(title, false); }), {}});
+        }
+        // A stick's deadzone (Down from the row above it): its picture beside the row. Typing a value in its box.
+        pages.push_back({"des-stick", 1280, 720, false, 1.f, false,
+                         in_band([] { open_settings_row("Controls", "Vibration", Command::Down); }), {}});
+        pages.push_back({"des-typing", 1280, 720, false, 1.f, false,
+                         in_band([] { open_settings_row("Network", "Online name", Command::Confirm); }), {}});
+        pages.push_back({"des-report-ack", 1280, 720, false, 1.f, false, in_band([] {
+            open_menu(false);
+            ui::with_zip_ack(nullptr);
+        }), {}});
+    }
     pages.push_back({"clip", 1280, 720, false, 1.f, false, [] { open_rml(kClipPage); }, {}, true});
+    pages.push_back({"look-primitives", 1280, 720, false, 1.f, false, [] { open_rml(kLookPage); }, {}});
     pages.push_back({"filters", 1280, 720, false, 1.f, false, [] { open_rml(kFilterPage); }, {}, true});
     pages.push_back({"filters-odd-size", 1001, 563, false, 1.f, false, [] { open_rml(kFilterPage); }, {}, true});
-    pages.push_back({"hdr-settings", 1280, 720, true, 2.5f, true, [] { open_settings(4, false); }, {}});
+    pages.push_back({"hdr-settings", 1280, 720, true, 2.5f, true, [] { open_settings("Interface", false); }, {}});
     pages.push_back({"hdr-filters", 1280, 720, true, 1.8f, false, [] { open_rml(kFilterPage); }, {}, true});
     pages.push_back({"hdr-clip", 1280, 720, true, 3.0f, true, [] { open_rml(kClipPage); }, {}, true});
     if (models) {
@@ -1116,6 +1810,7 @@ int main(int argc, char** argv) {
         unsigned long long before[URC_RENDERERS][URC_COUNT];
         std::memcpy(before, g_urc_count, sizeof before);
         const int mismatches = tee->mismatches;
+        use_look(ui::looks::kDefault);
         p.open();
         tee->before_end = p.draws;
         uint64_t diff[kRenderers] = {}, drawn = 0, changed[kRenderers] = {};
@@ -1212,6 +1907,8 @@ int main(int argc, char** argv) {
                     for (int i = 1; i < kRenderers; i++)
                         if (diff[i]) write_bmp(bmp / (p.name + "-" + kRendererName[i] + ".bmp"), rb[i], p.w, p.h);
                 }
+                if (!rml.empty() && !write_rml(rml / (p.name + ".txt")))
+                    std::fprintf(stderr, "ui_render_compare: %s's elements were not written\n", p.name.c_str());
             }
         }
         close_pages();

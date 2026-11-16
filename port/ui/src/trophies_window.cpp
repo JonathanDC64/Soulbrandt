@@ -1,4 +1,5 @@
-// The Trophies window (docs/44, section 5.4). Everything in it comes from sceNpTrophy_snapshot, which reads the trophy
+// The Trophies window (docs/44, section 5.4), Alpha UI's. Everything in it comes from sceNpTrophy_snapshot (through
+// trophy_set.hpp, as for the DeS UI page, trophies_page.cpp), which reads the trophy
 // set (the disc's TROPHY.TRP) and the unlock file under the HLE's lock. It works before the game registers its
 // trophies, so the window opens from the start screen too. The icons are the set's PNGs (sceNpTrophy_icon), served
 // through host::add_png as the pop-ups' are. The list is read again when the unlock hook sees an unlock
@@ -14,6 +15,7 @@
 #include "pane.hpp"
 #include "settings.hpp"
 #include "text_fonts.hpp"
+#include "trophy_set.hpp"
 #include "trophy_toasts.hpp"
 #include "ui.hpp"
 
@@ -30,37 +32,6 @@
 #include <string>
 #include <vector>
 
-// ---- What this uses of the runtime (libs/network/sceNpTrophy.h, declared here: des_ui does not take ps3recomp's
-// include paths) ----
-extern "C" {
-typedef struct sceNpTrophySnapshotEntry {
-    int trophyId;
-    unsigned grade;  // SCE_NP_TROPHY_GRADE_*: 1 platinum, 2 gold, 3 silver, 4 bronze
-    unsigned char hidden;
-    unsigned char unlocked;
-    unsigned char reserved[2];
-    unsigned long long unix_time;  // 0 while locked
-    char name[128];                // UTF-8
-    char detail[1024];
-} sceNpTrophySnapshotEntry;
-typedef struct sceNpTrophySnapshot {
-    char commId[16];
-    char title[128];
-    char detail[1024];
-    unsigned count;  // entries used in trophies[], in id order
-    unsigned unlocked;
-    unsigned per_grade[5];  // indexed by grade
-    unsigned unlocked_per_grade[5];
-    int percent;
-    sceNpTrophySnapshotEntry trophies[128];
-} sceNpTrophySnapshot;
-int sceNpTrophy_snapshot(sceNpTrophySnapshot* out);
-}
-static_assert(sizeof(sceNpTrophySnapshotEntry) == 1176 && offsetof(sceNpTrophySnapshotEntry, name) == 24 &&
-                  offsetof(sceNpTrophySnapshot, trophies) == 1224 &&
-                  sizeof(sceNpTrophySnapshot) == 1224 + 128 * sizeof(sceNpTrophySnapshotEntry),
-              "sceNpTrophySnapshot as libs/network/sceNpTrophy.h declares it");
-
 namespace ui {
 namespace {
 
@@ -68,41 +39,8 @@ constexpr int kPageRows = 6;                  // L1 / R1 move this many rows
 constexpr unsigned long long kRetryMs = 2000;  // no trophy set found yet: look again this often
 constexpr const char* kShowHidden = "trophies_show_hidden";
 
-// DES_TROPHY_HIDDEN=<id>,<id>,... (a test knob, unset by default): this window treats those trophies as hidden, as if
-// the set said so. Demon's Souls has no hidden trophy, so this is how a hidden row, and revealing it, can be seen.
-// Nothing else sees it: not the HLE, the pop-ups or the unlock file. Read when the window opens.
-std::set<int> test_hidden() {
-    std::set<int> ids;
-    const char* p = std::getenv("DES_TROPHY_HIDDEN");
-    while (p && *p) {
-        char* end = nullptr;
-        const long id = std::strtol(p, &end, 10);
-        if (end == p) {  // a separator
-            p++;
-            continue;
-        }
-        if (id >= 0 && id < 128) ids.insert(int(id));
-        p = end;
-    }
-    return ids;
-}
-
-std::string text_of(const char* s, size_t max) {
-    return std::string(s, strnlen(s, max));
-}
-
-// "18 Oct 2026, 21:04", in local time.
-std::string unlock_date(unsigned long long unixTime) {
-    static constexpr const char* kMonths[12] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                                                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
-    const std::time_t t = static_cast<std::time_t>(unixTime);
-    std::tm tm{};
-    if (!ui::local_time(t, tm) || tm.tm_mon < 0 || tm.tm_mon > 11) return {};
-    char out[48];
-    std::snprintf(out, sizeof out, "%d %s %d, %02d:%02d", tm.tm_mday, kMonths[tm.tm_mon], tm.tm_year + 1900,
-                  tm.tm_hour, tm.tm_min);
-    return out;
-}
+using trophy_set::text_of;
+using trophy_set::unlock_date;
 
 std::string icon_rml(int id) {
     const std::string source = trophies::icon_source(id);
@@ -121,14 +59,13 @@ struct TrophiesWindow::State {
     std::unique_ptr<sceNpTrophySnapshot> snap = std::make_unique<sceNpTrophySnapshot>();  // (148 KB: not the stack)
     bool found = false;
     int hiddenCount = 0;
-    std::set<int> testHidden = test_hidden();
+    std::set<int> testHidden = trophy_set::test_hidden();
     std::set<int> revealed;        // hidden trophies pressed in this window; not kept
     unsigned generation = 1;       // moves with every change the rows show
     std::vector<Component*> rows;  // the trophy rows, in order (for L1 / R1)
 
     void load() {
-        found = sceNpTrophy_snapshot(snap.get()) == 0 && snap->count > 0;
-        if (snap->count > 128) snap->count = 128;
+        found = trophy_set::read(*snap);
         hiddenCount = 0;
         std::string text = found ? text_of(snap->title, sizeof snap->title) : std::string();  // (for host::cover_text)
         for (unsigned i = 0; found && i < snap->count; i++) {

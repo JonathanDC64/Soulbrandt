@@ -109,17 +109,22 @@ void write_dump(EXCEPTION_POINTERS* info) {
     CloseHandle(file);
 }
 
-// The end of the log, beside the report (the log is des.log in the data folder's logs folder).
+// The end of the log, beside the report (the log is des.log in the data folder's logs folder), and the co-op log's
+// (this run's, if it has one) as <report>.coop.log.
 void write_log_tail(const std::wstring& path) {
     const auto log = report::log_path();
     if (log.empty()) return;
     report::flush_log();
-    const std::string tail = report::read_head_tail(log, 60, 256 << 10);
-    FILE* f = nullptr;
-    _wfopen_s(&f, path.c_str(), L"wb");
-    if (!f) return;
-    std::fwrite(tail.data(), 1, tail.size(), f);
-    std::fclose(f);
+    const auto write = [](const std::wstring& to, const std::string& text) {
+        FILE* f = nullptr;
+        _wfopen_s(&f, to.c_str(), L"wb");
+        if (!f) return;
+        std::fwrite(text.data(), 1, text.size(), f);
+        std::fclose(f);
+    };
+    write(path, report::read_head_tail(log, 60, 256 << 10));
+    if (const auto coop = report::coop_log_path(); !coop.empty() && path.size() > 4)
+        write(path.substr(0, path.size() - 4) + L".coop.log", report::read_head_tail(coop, 200, 2 << 20));
 }
 
 // What to start again with (the dialog's restart button).
@@ -283,10 +288,11 @@ std::string top_of_stack(const std::string& txt, int n, const char* heading = "s
     return out;
 }
 
-// settings.ini with the online name, the matchmaking password, the custom server's address and its mark only as set
-// (as settings::describe() shows them; this process has not read the settings).
+// settings.ini with the online name, the matchmaking password, the custom server's address and its mark, and co-op's
+// public address only as set (as settings::describe() shows them; this process has not read the settings).
 std::string hide_private(const std::string& ini) {
-    static const char* kHidden[] = {"DES_NET_NAME", "DES_NET_PASSWORD", "DES_NET_CUSTOM", "net_custom_here"};
+    static const char* kHidden[] = {"DES_NET_NAME", "DES_NET_PASSWORD", "DES_NET_CUSTOM", "net_custom_here",
+                                    "DES_SEAMLESS_ADDRESS"};
     std::string out;
     size_t at = 0;
     while (at < ini.size()) {
@@ -337,6 +343,8 @@ std::string make_report(Dialog& d) {
     auto log = d.txt;
     log.replace_extension(L".log");
     if (const std::string tail = read_text(log); !tail.empty()) files.push_back({"des.log", report::bytes(report::redact_log(tail))});
+    log.replace_extension(L".coop.log");  // (the co-op log's, when the run had one)
+    if (const std::string coop = read_text(log); !coop.empty()) files.push_back({"coop.log", report::bytes(report::redact_log(coop))});
     std::string save_note;  // (the save: this process has the game's environment and working folder)
     for (report::File& f : report::save_files(save_note)) files.push_back(std::move(f));
     const auto zip = report::write_bundle(report::narrow(d.txt.stem().wstring()), files);

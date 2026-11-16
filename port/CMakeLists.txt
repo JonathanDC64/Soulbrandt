@@ -190,7 +190,14 @@ add_executable(des_boot
     "${CMAKE_CURRENT_SOURCE_DIR}/des_pantheon.cpp"         # the checks on Pantheon records from other players
     "${CMAKE_CURRENT_SOURCE_DIR}/des_prework.cpp"           # startup work: the shader cache, behind a progress bar
     "${CMAKE_CURRENT_SOURCE_DIR}/des_route.cpp"             # DES_ROUTE: a walk on the game clock, with screenshots
+    "${CMAKE_CURRENT_SOURCE_DIR}/des_seamless.cpp"          # seamless co-op: the host's room server, the invite code
+    "${CMAKE_CURRENT_SOURCE_DIR}/des_seamless_game.cpp"     # seamless co-op in the game: joining, following the host
+    "${CMAKE_CURRENT_SOURCE_DIR}/des_seamless_scripts.cpp"  # seamless co-op: the area scripts' edits, in memory
+    "${CMAKE_CURRENT_SOURCE_DIR}/des_seamless_save.cpp"     # seamless co-op's own save; bringing a character into it
 )
+# des_seamless.cpp decrypts the game's requests with the AES in ps3recomp's mbedTLS (built into the runtime).
+set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/des_seamless.cpp" APPEND PROPERTY INCLUDE_DIRECTORIES
+    "${PS3RECOMP_DIR}/third_party/mbedtls/include")
 
 if(WIN32)
     target_include_directories(des_boot PRIVATE
@@ -909,7 +916,9 @@ if(_des_hal AND WIN32 AND TARGET des_ui)
         ui/tests/ui_render_compare_hooks.c
         ui/tests/ui_render_compare_stubs.cpp
         "${PS3RECOMP_DIR}/runtime/host/host_stubs.c")   # (what the runtime's modules take from the PPU loader)
-    target_include_directories(ui_render_compare PRIVATE ui/src ui/include "${PS3RECOMP_DIR}/libs/video/gpu")
+    target_include_directories(ui_render_compare PRIVATE ui/src ui/include "${PS3RECOMP_DIR}/libs/video/gpu"
+        "${DES_VERSION_DIR}")   # (settings.hpp's version.hpp)
+    add_dependencies(ui_render_compare des_version)
     target_compile_definitions(ui_render_compare PRIVATE PS3RECOMP_RSX_HAL=1 NOMINMAX _CRT_SECURE_NO_WARNINGS)
     set(_urc_vk "")
     if(EXISTS "${PS3RECOMP_BUILD_DIR}/CMakeCache.txt")
@@ -953,7 +962,7 @@ endif()
 if(_des_hal_vk)
     set_property(SOURCE
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/src/settings.cpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/ui/src/settings_window.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ui/src/settings_catalog.cpp"
         TARGET_DIRECTORY des_ui APPEND PROPERTY COMPILE_DEFINITIONS DES_RSX_VULKAN=1)
 endif()
 message(STATUS "des_boot: Settings > Display > Renderer (the runtime's Vulkan route): ${_des_hal_vk}")

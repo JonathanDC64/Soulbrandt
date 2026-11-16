@@ -339,6 +339,10 @@ jobs:
       - name: The shown name in one place
         run: python tools/ci/check_product_name.py
 
+      # The menus' own images (port/ui/res/img) are what tools/ui/make_ui_art.py makes, byte for byte.
+      - name: The menus' images
+        run: python tools/ui/make_ui_art.py --check
+
       # Every build with the game's PS3_GAME/ICON0.PNG makes the exe's icon with scripts/make_icon.py.
       # Here it gets a made-up picture of the same shape (320x176) and must write all six sizes.
       - name: Icon step on a made-up picture

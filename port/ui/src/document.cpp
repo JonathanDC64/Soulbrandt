@@ -2,6 +2,7 @@
 #include "document.hpp"
 
 #include "host.hpp"
+#include "looks.hpp"
 #include "ui.hpp"
 
 #include <algorithm>
@@ -16,11 +17,17 @@ Rml::ElementDocument* load_document(const Rml::String& source) {
     }
     auto* document = context->LoadDocumentFromMemory(source);
     if (document != nullptr) {
-        if (auto global = Rml::Factory::InstanceStyleSheetFile("res/rml/global.rcss")) {
+        if (auto sheets = Rml::Factory::InstanceStyleSheetFile("res/rml/global.rcss")) {
             if (const auto* local = document->GetStyleSheetContainer()) {
-                global = global->CombineStyleSheetContainer(*local);
+                sheets = sheets->CombineStyleSheetContainer(*local);
             }
-            document->SetStyleSheetContainer(std::move(global));
+            // Every look's sheet last (looks.hpp): only the chosen look's rules apply, and they win over the rest.
+            for (const looks::Look& look : looks::kLooks) {
+                if (auto own = Rml::Factory::InstanceStyleSheetFile("res/rml/looks/" + Rml::String(look.id) + ".rcss")) {
+                    sheets = sheets->CombineStyleSheetContainer(*own);
+                }
+            }
+            document->SetStyleSheetContainer(std::move(sheets));
         }
     }
     return document;

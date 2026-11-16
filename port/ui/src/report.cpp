@@ -24,6 +24,7 @@
 #include <fcntl.h>
 #include <intrin.h>
 #include <psapi.h>
+#include <setupapi.h>  // (the graphics card's PCI Express link, system_info)
 #include <xinput.h>
 #include <io.h>
 #include <objbase.h>
@@ -463,9 +464,100 @@ uint64_t g_log_bytes = 0;
 int g_tees = 0;
 std::atomic<int> g_tee_idle{0};  // tee threads waiting for output with everything before it in the log file
 
+// ---- The co-op log: a session's lines from the log, each with its time, in logs/coop.log ----
+// A co-op session's story (the room, who joined and left, the loads the friends followed, what each game kept for the
+// others) is a few lines a minute among thousands, and a report keeps only des.log's start and end. coop.log keeps those
+// lines whole, each with the time it was printed (UTC, so that a host's and a friend's line up). The tee threads pick
+// them out of what they copy to des.log, so the game's own threads do nothing more. It is made at the first such line:
+// a run without one leaves the last session's as it was. The one before it is kept as coop.prev.log.
+
+constexpr uint64_t kCoopCap = 32ull << 20;  // past this the file stops, with a note (des.log goes on)
+constexpr size_t kCoopLine = 4096;          // of a longer line, its start
+// The lines it keeps: the port's co-op lines, the rooms (psnr, psnr_host), matching, the network, the router's port
+// forwarding, and the reports made meanwhile
+const char* const kCoopTags[] = {"[coop]", "[psnr", "[sceNpMatching2]", "[sceNp]", "[upnp]", "[sys_net]", "[report]"};
+
+std::filesystem::path g_coop_path;  // (start_log) beside the log, named as it is: "coop" for its "des"
+std::atomic<bool> g_coop_open{false};  // this run's is made (read without the lock: a crash's report may hold it)
+FILE* g_coop_file = nullptr;           // (these four under g_log_lock)
+bool g_coop_failed = false;
+uint64_t g_coop_bytes = 0;
+int g_coop_day = -1;
+
+bool coop_tagged(const char* p, size_t n) {
+    if (n == 0 || p[0] != '[') return false;
+    for (const char* tag : kCoopTags) {
+        const size_t k = std::strlen(tag);
+        if (n >= k && std::memcmp(p, tag, k) == 0) return true;
+    }
+    return false;
+}
+
+// One line (with its end) into coop.log, after its time. Under g_log_lock.
+void coop_write(const char* line, size_t n) {
+    if (!g_coop_file) {
+        if (g_coop_path.empty() || g_coop_failed) return;
+        // The main one's last session becomes coop.prev.log (another copy's, coop.<process>.log, has none)
+        if (g_coop_path.filename() == "coop.log") replace_file(g_coop_path, g_coop_path.parent_path() / "coop.prev.log");
+        g_coop_file = open_file(g_coop_path, "wb");
+        if (!g_coop_file) {
+            g_coop_failed = true;
+            return;
+        }
+        std::setvbuf(g_coop_file, nullptr, _IOFBF, 1 << 14);
+        g_coop_open.store(true);
+    }
+    if (g_coop_bytes >= kCoopCap) return;
+    const auto now = std::chrono::system_clock::now();
+    const std::time_t secs = std::chrono::system_clock::to_time_t(now);
+    const int ms = int(std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000);
+    std::tm tm{};
+#ifdef _WIN32
+    gmtime_s(&tm, &secs);
+#else
+    gmtime_r(&secs, &tm);
+#endif
+    char stamp[64];
+    int k = 0;
+    if (tm.tm_yday != g_coop_day) {  // the date at the start, and again when it changes
+        g_coop_day = tm.tm_yday;
+        k = std::snprintf(stamp, sizeof stamp, "== %04d-%02d-%02d (UTC)\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
+    }
+    k += std::snprintf(stamp + k, sizeof stamp - size_t(k), "%02d:%02d:%02d.%03d ", tm.tm_hour, tm.tm_min, tm.tm_sec, ms);
+    std::fwrite(stamp, 1, size_t(k), g_coop_file);
+    std::fwrite(line, 1, n, g_coop_file);
+    g_coop_bytes += size_t(k) + n;
+    if (g_coop_bytes >= kCoopCap) {
+        static const char kNote[] = "[log] (coop.log passed 32 MB: it stops here; des.log goes on)\n";
+        std::fwrite(kNote, 1, sizeof kNote - 1, g_coop_file);
+    }
+}
+
+// What a tee thread read: its co-op lines into coop.log. A read can end inside a line; its start waits in `carry` for
+// the rest (each tee thread reads a pipe of its own, so it has its own). Under g_log_lock.
+void coop_pick(const char* data, size_t n) {
+    thread_local std::string carry;
+    for (const char *p = data, *end = data + n; p < end;) {
+        const char* nl = static_cast<const char*>(std::memchr(p, '\n', size_t(end - p)));
+        const size_t len = size_t((nl ? nl + 1 : end) - p);
+        if (carry.empty() && nl) {
+            if (coop_tagged(p, len)) coop_write(p, len);
+        } else {
+            if (carry.size() < kCoopLine) carry.append(p, std::min(len, kCoopLine - carry.size()));
+            if (nl) {
+                if (carry.back() != '\n') carry += '\n';  // (a long line's start)
+                if (coop_tagged(carry.data(), carry.size())) coop_write(carry.data(), carry.size());
+                carry.clear();
+            }
+        }
+        p += len;
+    }
+}
+
 void log_write(const char* data, size_t n) {
     std::lock_guard<std::mutex> lock(g_log_lock);
     if (g_log_file) {
+        coop_pick(data, n);
         if (g_log_bytes + n > kLogCap) {
             static const char kNote[] =
                 "\n[log] (the log passed 128 MB: what followed its first 2 MB was dropped; it goes on from here)\n";
@@ -483,6 +575,7 @@ void log_write(const char* data, size_t n) {
 void log_flush_now() {
     std::lock_guard<std::mutex> lock(g_log_lock);
     if (g_log_file) std::fflush(g_log_file);
+    if (g_coop_file) std::fflush(g_coop_file);
 }
 
 #ifdef _WIN32
@@ -717,6 +810,16 @@ void make_issue_report(std::vector<uint8_t> rgba, int width, int height, std::st
             std::filesystem::file_time_type::clock::now() - std::filesystem::last_write_time(prev, ec) <
                 std::chrono::hours(24))
             files.push_back({"des.prev.log", bytes(redact_log(read_head_tail(prev, 40, 192 << 10)))});
+        // The co-op log whole (its last 4 MB at most), and the previous session's when it is from the last day. Until
+        // this run has a co-op line, coop.log is still the last session's.
+        const auto coop_prev = g_coop_path.parent_path() / L"coop.prev.log";
+        const bool started = g_coop_open.load();
+        if (started) files.push_back({"coop.log", bytes(redact_log(read_head_tail(g_coop_path, 200, 4 << 20)))});
+        const auto last = started ? coop_prev : g_coop_path;
+        if (!last.empty() && std::filesystem::exists(last, ec) &&
+            std::filesystem::file_time_type::clock::now() - std::filesystem::last_write_time(last, ec) <
+                std::chrono::hours(24))
+            files.push_back({"coop.prev.log", bytes(redact_log(read_head_tail(last, 100, 1 << 20)))});
     }
     for (File& f : save) files.push_back(std::move(f));
     const auto zip = write_bundle("issue-" + stamp, files);
@@ -847,6 +950,7 @@ void set_data_dir(const std::filesystem::path& dir) {
 }
 
 std::filesystem::path log_path() { return g_log_path; }
+std::filesystem::path coop_log_path() { return g_coop_open.load() ? g_coop_path : std::filesystem::path(); }
 
 std::string version() { return kVersion; }
 
@@ -943,6 +1047,61 @@ std::string other_modules() {
     for (const auto& name : names) out += " " + name + ";";
     if (!names.empty()) out.pop_back();
     return out + "\n";
+}
+
+// The PCI Express link of the graphics card with these PCI ids, as Windows reads it: ", PCIe 3.0 x16", or
+// ", PCIe 1.1 x16 now (the card: 3.0 x16)" when the link runs below what the card can do. Empty when Windows does not
+// say. The game sends a lot over this link each frame (the vertices it fetches, the constants of each draw, the
+// pictures it reads back), so a card in a slot with fewer lanes than it has can hold the frame rate down while the
+// card itself looks idle (issue #523). The speed is the one now: a card at rest slows its link and speeds it up
+// again under load; the lanes are what a slot gives it.
+std::string pci_link(UINT vendor, UINT device, UINT subsys) {
+    // DEVPKEY_PciDevice_CurrentLinkSpeed (9), CurrentLinkWidth (10), MaxLinkSpeed (11) and MaxLinkWidth (12), in
+    // pciprop.h; spelled out here.
+    static const GUID pci_keys = {0x3ab22e31, 0x8264, 0x4b4e, {0x9a, 0xf5, 0xa8, 0xd2, 0xd8, 0xe3, 0x3e, 0x62}};
+    static const GUID display_class = {0x4d36e968, 0xe325, 0x11ce, {0xbf, 0xc1, 0x08, 0x00, 0x2b, 0xe1, 0x03, 0x18}};
+    HDEVINFO set = SetupDiGetClassDevsW(&display_class, nullptr, nullptr, DIGCF_PRESENT);
+    if (set == INVALID_HANDLE_VALUE) return {};
+    wchar_t with_subsys[64], without[48];
+    swprintf(with_subsys, std::size(with_subsys), L"PCI\\VEN_%04X&DEV_%04X&SUBSYS_%08X", vendor, device, subsys);
+    swprintf(without, std::size(without), L"PCI\\VEN_%04X&DEV_%04X", vendor, device);
+    std::string out;
+    // Two passes: the card with these subsystem ids first, then any with the vendor and device ids.
+    for (int pass = 0; pass < 2 && out.empty(); pass++) {
+        const wchar_t* want = pass == 0 ? with_subsys : without;
+        SP_DEVINFO_DATA dev{};
+        dev.cbSize = sizeof dev;
+        for (DWORD i = 0; out.empty() && SetupDiEnumDeviceInfo(set, i, &dev); i++) {
+            wchar_t ids[1024] = L"";
+            if (!SetupDiGetDeviceRegistryPropertyW(set, &dev, SPDRP_HARDWAREID, nullptr, reinterpret_cast<PBYTE>(ids),
+                                                   sizeof ids - sizeof(wchar_t), nullptr))
+                continue;
+            bool match = false;
+            for (const wchar_t* id = ids; *id && !match; id += std::wcslen(id) + 1)
+                match = _wcsnicmp(id, want, std::wcslen(want)) == 0;
+            if (!match) continue;
+            UINT32 v[4] = {};
+            bool have[4] = {};
+            for (int k = 0; k < 4; k++) {
+                const DEVPROPKEY key{pci_keys, DEVPROPID(9 + k)};
+                DEVPROPTYPE type = 0;
+                have[k] = SetupDiGetDevicePropertyW(set, &dev, &key, &type, reinterpret_cast<PBYTE>(&v[k]), sizeof v[k],
+                                                    nullptr, 0) &&
+                          type == DEVPROP_TYPE_UINT32;
+            }
+            if (!have[0] || !have[1]) break;  // (not a PCI Express card, or Windows does not say)
+            // Speed codes: 1 = 2.5 GT/s (PCIe 1.x), 2 = 5 (2.0), 3 = 8 (3.0), 4 = 16 (4.0), 5 = 32 (5.0), 6 = 64 (6.0).
+            const auto gen = [](UINT32 s) -> std::string {
+                return s == 1 ? "1.1" : s >= 2 && s <= 6 ? std::to_string(s) + ".0" : "?";
+            };
+            const std::string now = gen(v[0]) + " x" + std::to_string(v[1]);
+            out = ", PCIe " + now;
+            if (have[2] && have[3] && (v[2] > v[0] || v[3] > v[1]))
+                out += " now (the card: " + gen(v[2]) + " x" + std::to_string(v[3]) + ")";
+        }
+    }
+    SetupDiDestroyDeviceInfoList(set);
+    return out;
 }
 
 // Windows' own record of graphics driver resets in the last week: event 4101 from "Display" in the System log
@@ -1079,6 +1238,7 @@ void platform_facts(std::ostringstream& o, bool game_process) {
                     if (SUCCEEDED(adapter->CheckInterfaceSupport(__uuidof(IDXGIDevice), &driver)))
                         o << ", driver " << HIWORD(driver.HighPart) << "." << LOWORD(driver.HighPart) << "."
                           << HIWORD(driver.LowPart) << "." << LOWORD(driver.LowPart);
+                    o << pci_link(d.VendorId, d.DeviceId, d.SubSysId);
                     if (have_used && d.AdapterLuid.LowPart == used.LowPart && d.AdapterLuid.HighPart == used.HighPart) {
                         o << " (in use";
                         IDXGIAdapter3* a3 = nullptr;
@@ -1232,8 +1392,9 @@ std::string environment_info(const std::string& command_line) {
     std::string out = "Command line: " + (command_line.empty() ? command_line_text() : command_line) + "\n";
     static const char* kPrefixes[] = {"DES_", "PS3_", "RSX_", "SPU_", "SPURS_", "GCM_", "PAD_", "PPU_", "AUDIO_",
                                       "VBLANK", "FIFO_", "LIBSRE_", "SAIL_", "TROPHY_", "WATCHDOG_"};
+    // (co-op's invite code holds the host's address and key; its public address is the host's own)
     static const char* kHidden[] = {"DES_NET_NAME", "DES_NET_PASSWORD", "DES_NET_CUSTOM", "PS3_NP_ONLINE_ID",
-                                    "PS3_NET_PASSWORD"};
+                                    "PS3_NET_PASSWORD", "DES_SEAMLESS_CODE", "DES_SEAMLESS_ADDRESS"};
     std::vector<std::string> lines;
     for (const std::string& kv : environment_strings()) {
         const size_t eq = kv.find('=');
@@ -1547,7 +1708,8 @@ void start_log() {
         const auto now = std::filesystem::file_time_type::clock::now();
         for (const auto& e : std::filesystem::directory_iterator(dir, ec)) {
             const std::string name = e.path().filename().string();
-            if (name.rfind("des.", 0) == 0 && name != "des.log" && name != "des.prev.log" &&
+            if ((name.rfind("des.", 0) == 0 || name.rfind("coop.", 0) == 0) && name != "des.log" &&
+                name != "des.prev.log" && name != "coop.log" && name != "coop.prev.log" &&
                 now - e.last_write_time(ec) > std::chrono::hours(24))
                 std::filesystem::remove(e.path(), ec);
         }
@@ -1559,6 +1721,7 @@ void start_log() {
     if (!g_log_file) return;
     flock(fileno(g_log_file), LOCK_EX | LOCK_NB);
     std::setvbuf(g_log_file, nullptr, _IOFBF, 1 << 16);
+    g_coop_path = dir / ("coop" + path.filename().string().substr(3));  // (before the tee threads read it)
 
     // The runtime's chatty per-event messages are on when standard error is not a terminal (ps3_log.h: "someone is
     // capturing a log"). Standard error is a pipe from here on: keep what it decided on the terminal (quiet).
@@ -1585,6 +1748,7 @@ void flush_log() {
     for (int i = 0; i < 20; i++) {
         if (g_log_lock.try_lock()) {
             std::fflush(g_log_file);
+            if (g_coop_file) std::fflush(g_coop_file);
             g_log_lock.unlock();
             return;
         }
@@ -1606,7 +1770,8 @@ void start_log() {
         const auto now = std::filesystem::file_time_type::clock::now();
         for (const auto& e : std::filesystem::directory_iterator(dir, ec)) {
             const std::wstring name = e.path().filename().wstring();
-            if (name.rfind(L"des.", 0) == 0 && name != L"des.log" && name != L"des.prev.log" &&
+            if ((name.rfind(L"des.", 0) == 0 || name.rfind(L"coop.", 0) == 0) && name != L"des.log" &&
+                name != L"des.prev.log" && name != L"coop.log" && name != L"coop.prev.log" &&
                 now - e.last_write_time(ec) > std::chrono::hours(24))
                 std::filesystem::remove(e.path(), ec);
         }
@@ -1615,6 +1780,7 @@ void start_log() {
     }
     if (!g_log_file) return;
     std::setvbuf(g_log_file, nullptr, _IOFBF, 1 << 16);
+    g_coop_path = dir / (L"coop" + path.filename().wstring().substr(3));  // (before the tee threads read it)
 
     const HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE), err = GetStdHandle(STD_ERROR_HANDLE);
     // The runtime's chatty per-event messages are on when standard error is not a console (ps3_log.h: "someone is
@@ -1644,6 +1810,7 @@ void flush_log() {
     for (int i = 0; i < 20; i++) {  // (not forever: the thread holding it may be the one that crashed)
         if (g_log_lock.try_lock()) {
             std::fflush(g_log_file);
+            if (g_coop_file) std::fflush(g_coop_file);
             g_log_lock.unlock();
             return;
         }

@@ -65,11 +65,19 @@ endforeach()
 # ---- Embedded styles and fonts (cmake/EmbedFiles.cmake) ----
 set(DES_UI_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 file(GLOB DES_UI_STYLES CONFIGURE_DEPENDS ${DES_UI_DIR}/res/rml/*.rcss)
+# Each look's sheet (looks.hpp) and the menus' own images (tools/ui/make_ui_art.py): a new one is picked up as it is.
+file(GLOB DES_UI_LOOKS CONFIGURE_DEPENDS ${DES_UI_DIR}/res/rml/looks/*.rcss)
+file(GLOB DES_UI_IMAGES CONFIGURE_DEPENDS ${DES_UI_DIR}/res/img/*.png)
 set(DES_UI_FILES
   ${DES_UI_STYLES}
+  ${DES_UI_LOOKS}
+  ${DES_UI_IMAGES}
   ${DES_UI_DIR}/res/fonts/Cinzel.ttf
   ${DES_UI_DIR}/res/fonts/AlegreyaSans-Regular.ttf
   ${DES_UI_DIR}/res/fonts/AlegreyaSans-Bold.ttf
+  ${DES_UI_DIR}/res/fonts/OldStandard-Regular.ttf
+  ${DES_UI_DIR}/res/fonts/OldStandard-Bold.ttf
+  ${DES_UI_DIR}/res/fonts/OldStandard-Italic.ttf
   ${DES_UI_DIR}/res/fonts/MaterialSymbolsRounded-Regular.ttf
   ${DES_UI_DIR}/../../PRIVACY.md)  # (the privacy note: privacy.cpp; its path in the table is ../../PRIVACY.md)
 set(DES_UI_ASSETS ${CMAKE_CURRENT_BINARY_DIR}/ui_assets.cpp)
@@ -119,8 +127,9 @@ endif()
 # compile lines, only its link line.
 if(WIN32)
   target_link_libraries(des_ui PRIVATE des_rmlui_backend RmlUi::RmlUi d3d11 d3d12 d3dcompiler dxgi dxguid xinput shell32
-    ole32 user32 dbghelp uuid wevtapi winhttp)   # (dbghelp: the crash reports' minidump and stack; wevtapi: driver
-                                                 # resets; winhttp: the first Python with no curl, setup_http.cpp)
+    ole32 user32 dbghelp uuid wevtapi winhttp setupapi)   # (dbghelp: the crash reports' minidump and stack; wevtapi:
+                                                          # driver resets; winhttp: the first Python with no curl,
+                                                          # setup_http.cpp; setupapi: the GPU's PCI Express link)
 else()
   # SDL2 and vkd3d as port/CMakeLists.txt found them (the window, the pads, D3D12 and D3DCompile).
   if(NOT TARGET PkgConfig::DES_VKD3D_LIBS)
@@ -164,6 +173,46 @@ if(WIN32)
 endif()
 add_dependencies(settings_check des_version)
 
+# Settings' rows on their own (tests/settings_catalog_check.cpp, which makes up settings_hooks.hpp): every row's setting
+# in settings.cpp, sound choices and numbers, help written as the settings window expects, each disc's Language row.
+# With the same definitions as des_ui's settings files (DES_RSX_VULKAN among them: port/CMakeLists.txt). The same on
+# every platform; CI runs it on both (host.yml). Built on demand:
+#   cmake --build <build> --target settings_catalog_check, then settings_catalog_check
+add_executable(settings_catalog_check EXCLUDE_FROM_ALL tests/settings_catalog_check.cpp src/settings_catalog.cpp
+  src/settings_values.cpp src/settings.cpp src/mods.cpp)
+target_include_directories(settings_catalog_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${DES_VERSION_DIR})
+target_compile_definitions(settings_catalog_check PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
+if(DES_DEV)
+  target_compile_definitions(settings_catalog_check PRIVATE DES_DEV=1)
+else()
+  target_compile_definitions(settings_catalog_check PRIVATE DES_DEV=0)
+endif()
+if(MSVC)
+  target_compile_options(settings_catalog_check PRIVATE /EHsc /W3 /wd4100)
+endif()
+if(WIN32)
+  target_link_libraries(settings_catalog_check PRIVATE dxgi)   # (settings.cpp's renderer_gpu)
+endif()
+add_dependencies(settings_catalog_check des_version)
+
+# The menus' looks on their own (tests/ui_style_check.cpp): RmlUi with the embedded files, no window or renderer. Every
+# look in looks.hpp has its sheet, each sheet's rules are inside its own @media (theme: ...), RmlUi reads it without a
+# warning, and a theme switched on and off changes a style and changes it back. The same on every platform; CI runs it
+# on both (host.yml). Built on demand:
+#   cmake --build <build> --target ui_style_check, then ui_style_check
+add_executable(ui_style_check EXCLUDE_FROM_ALL tests/ui_style_check.cpp ${DES_UI_ASSETS})
+target_include_directories(ui_style_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_definitions(ui_style_check PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
+if(DES_DEV)
+  target_compile_definitions(ui_style_check PRIVATE DES_DEV=1)
+else()
+  target_compile_definitions(ui_style_check PRIVATE DES_DEV=0)
+endif()
+if(MSVC)
+  target_compile_options(ui_style_check PRIVATE /EHsc /W3)
+endif()
+target_link_libraries(ui_style_check PRIVATE RmlUi::RmlUi)
+
 # setup_folder.cpp on its own (tests/setup_folder_check.cpp): where setup builds, the usual folder or the one chosen on
 # setup's screens (docs/88 section 3), in made-up folders under the system's temporary folder. The same on every
 # platform; CI runs it on both (host.yml). Built on demand:
@@ -173,6 +222,19 @@ target_include_directories(setup_folder_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR
 target_compile_definitions(setup_folder_check PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
 if(MSVC)
   target_compile_options(setup_folder_check PRIVATE /EHsc /W3 /wd4100)
+endif()
+
+# The menus' keys on their own (tests/input_map_check.cpp): a pad's buttons as keys with the menu chord's rule, each
+# key's command in the F1 menu, what is held, and the prompts' buttons for each device. RmlUi's key names only (a
+# header). The same on every platform; CI runs it on both (host.yml). Built on demand:
+#   cmake --build <build> --target input_map_check, then input_map_check
+add_executable(input_map_check EXCLUDE_FROM_ALL tests/input_map_check.cpp src/menu_pad.cpp src/menu_input.cpp
+  src/prompts.cpp src/button_pages.cpp)
+target_include_directories(input_map_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${rmlui_SOURCE_DIR}/Include
+  ${stb_SOURCE_DIR})
+target_compile_definitions(input_map_check PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
+if(MSVC)
+  target_compile_options(input_map_check PRIVATE /EHsc /W3 /wd4100)
 endif()
 
 # mods.cpp on its own (tests/mods_check.cpp): mod folders found, read and sorted into look and gameplay mods, and
@@ -229,6 +291,16 @@ add_executable(report_addresses_check EXCLUDE_FROM_ALL tests/report_addresses_ch
 target_include_directories(report_addresses_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 if(MSVC)
   target_compile_options(report_addresses_check PRIVATE /EHsc /W3)
+endif()
+
+# The F1 menu's rules on their own (tests/menu_logic_check.cpp): menu_model.cpp and settings_model.cpp with no RmlUi
+# and no settings: where Back goes, what closing the menu does while settings wait for a restart, and what Settings
+# has open and prompts. The same on every platform; CI runs it on both (host.yml). Built on demand:
+#   cmake --build <build> --target menu_logic_check, then menu_logic_check
+add_executable(menu_logic_check EXCLUDE_FROM_ALL tests/menu_logic_check.cpp src/menu_model.cpp src/settings_model.cpp)
+target_include_directories(menu_logic_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+if(MSVC)
+  target_compile_options(menu_logic_check PRIVATE /EHsc /W3)
 endif()
 
 # The first Python's fetch on its own (tests/setup_fetch_check.cpp), the data folder and the free space stubbed: curl

@@ -1,4 +1,5 @@
-// From Dusklight (CC0), src/dusk/ui/modal.cpp, by way of FFCCEOT-Recomp. Adapted for Demon's Souls (unchanged here).
+// From Dusklight (CC0), src/dusk/ui/modal.cpp, by way of FFCCEOT-Recomp. Adapted for Demon's Souls: the button focused
+// first can be any of them (Props::focusAction).
 #include "modal.hpp"
 
 #include <algorithm>
@@ -115,6 +116,11 @@ void Modal::set_icon(const Rml::String& icon) {
 
 bool Modal::focus() {
     if (mContentPane != nullptr && mContentPane->focus()) {
+        return true;
+    }
+    if (mProps.focusAction > 0 && mProps.focusAction < static_cast<int>(mButtons.size()) &&
+        mButtons[static_cast<size_t>(mProps.focusAction)]->focus())
+    {
         return true;
     }
     for (const auto& button : mButtons) {

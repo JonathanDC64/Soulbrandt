@@ -7,23 +7,66 @@ licences in `port/ui/NOTICE.md`.
 
 ## What it does
 
-- **Start screen** over the game as it boots: "DEMON'S SOULS", a silver
-  rule, *PC port*, then **Play**, **Settings**, **Trophies** and **Quit**. The game's
-  logos and notices run behind it, darkened from the left; it gets no input
-  until Play. Esc or Circle on the start screen asks to quit.
+- **Start screen** over the game as it boots: the port's name over *Demon's
+  Souls on PC*, then **Play**, **Settings**, **Trophies**, **Mods**,
+  **Co-op** and **Quit**. The game's logos and notices run behind it,
+  darkened from the left; it gets no input until Play. Esc or Circle on the
+  start screen asks to quit. When the update check finds a newer version,
+  an **Update to X** choice shows in the accent colour, and a note at the
+  top right says "Version X is out" (a click on it opens the same window),
+  so a new version isn't missed.
 - **In-game menu**: F1 or Esc on the keyboard, or **L3 + R3** on a gamepad
   (Settings > Interface can switch this to Select + Start). It is a bar at
-  the top with **Settings**, **Trophies**, **Report an issue** and **Quit**. Esc, Circle,
-  F1 or Start close it.
-- **Quit** asks first ("Return to the desktop? Progress since the game last
-  saved will be lost.") in a blood-red window, then posts WM_CLOSE to the
+  the top with **Settings**, **Trophies**, **Mods**, **Co-op**, **Report an
+  issue** and **Quit** (`menu_pages.cpp`'s entries). Settings opens in a
+  frame, and the bar goes: the tabs along the frame's top with a close
+  button at their right, the page, and a row of prompts for what the keys
+  do now, drawn for the device last used (the keyboard, or the pad's own
+  buttons). Back (Esc, Circle) closes one thing at a time: a list or the
+  preview, then the page (back to the bar), then the menu. F1 or Start
+  close it at once.
+- **Restart question**: closing the menu while a restart-only setting has
+  changed since the game started asks first, "Restart the game now?", naming
+  each one by its row with its value ("Start maximized (Off)"). **Restart
+  now** starts the game again past the start screen; **Later**, the answer
+  with the focus, keeps them for the next start, and closing the menu doesn't
+  ask again until something else waits. A setting pinned by the environment
+  never waits.
+- **Questions** (`question.hpp`) put the action first and the safe answer
+  after it, as the game's own do. The safe answer has the focus first, and
+  Esc, Circle or F1 give it. A question's title is the question itself
+  ("Host co-op?"), and its text a line or two.
+- **Quit** asks first ("Quit to the desktop? Progress since the game last
+  saved will be lost.", without the second line on the start screen, where
+  nothing has been played) in a blood-red window, then posts WM_CLOSE to the
   game window. The window's close button and Alt+F4 ask the same question
   (the UI consumes their WM_CLOSE). The window closes at once only in a run
   nobody plays: a tools/des test run, `PAD_FILE` or `EXIT_AFTER_MS`.
-- **Settings**: tabs Display, Game, Controls, Interface, About, the left
-  pane showing the value, the right pane showing the choices and help. Rows
-  that only apply at the next start say so. A row whose option was set in
-  the environment shows that value, can't be changed, and its help says why.
+- **Settings**: tabs Display, Picture, Game, Controls, Network, Interface
+  and About (and Developer in a developer build), the rows on the left and
+  the help of the row with the focus on the right: what it does, why it is
+  as it is now, when it applies and its variable. Display has the window,
+  HDR and the frame rate; Picture the render resolution ("150%
+  (1920 × 1080)"), the filtering and the effects. On a row:
+  - Left and Right change the value in place.
+  - Enter lists the values beside it (or types it, or opens what the row
+    opens). The list opens below the row, or above it when there is no room.
+  - **Preview** (P, Y, Triangle) on a setting the game shows (the picture,
+    the aspect, HDR) sets the menu aside to a strip along the top, so the
+    change shows on the game. Up and Down move among those settings.
+  - **Compare** (C, X, Square, held) shows the value the menu opened with,
+    on the game and in a line under the menu ("Before: 100% (1280 × 720)"),
+    then the value now once it is let go.
+  - **Hide** (Shift, R3, held) takes the menu off the screen.
+  - Q and E, Page Up and Page Down, LB and RB or L1 and R1 change the tab.
+    Alpha UI shows them first in the prompts (Tabs); DeS UI at the tabs'
+    ends.
+
+  Rows that only apply at the next start say so, with a mark before the
+  label while their change waits. A row whose option was set in the
+  environment shows that value with a lock before it, dimmed, can't be
+  changed, and its help says why. From the start screen and setup, Settings
+  opens on its own, with no entries above it, and Back closes it.
 - **Trophies** (`trophies_window.cpp`, docs/44 section 5.4): the trophy set's
   summary (unlocked n of 38, the percentage, the count per grade) over a list
   of every trophy: its icon (dimmed while locked), name, description, grade,
@@ -58,8 +101,9 @@ open the menu.
 `DES_SETTINGS` points. Keys are the run options' own environment variable
 names. At startup, before the game reads its options, each value becomes its
 environment variable unless that variable is already set: **explicit
-environment always wins.** Changes are saved when the settings window closes
-and on every change.
+environment always wins.** Changes are saved when Settings closes or a
+window opens over it, and on every change. Compare's value is never saved:
+the file keeps the value chosen.
 
 | Row (tab) | Key | Values | Applies |
 |---|---|---|---|
@@ -72,6 +116,7 @@ and on every change.
 | Continue automatically (Game) | `DES_AUTO_CONTINUE` | 0 / 1 | at once until the first level loads (read at each pad poll); from the file it waits for Play on the start screen |
 | Sound (Game) | `AUDIO_MUTE` (inverted) | 0 / 1 | at once (live knob) |
 | UI scale (Interface) | `ui_scale` | 0 = auto (the display's scale, less on a small window), 75, 100, 125, 150 (% of it) | at once |
+| Menu height (Interface) | `ui_menu_height` | 0-100 in steps of 10 (default 40): how far Settings' height goes from its 640 dp (0, Compact) to the window's whole height (100) | at once |
 | Start screen (Interface) | `show_start_screen` | 1 / 0 | next start |
 | Menu hint (Interface) | `menu_hint` | 1 / 0 | at once |
 | Trophy pop-ups (Interface) | `trophy_popups` | 1 / 0 (off hides the toast; the unlock is still kept) | at once |
@@ -88,6 +133,32 @@ Live values go through `ps3_setenv` (the runtime's getenv cache and
 PS3_KNOB). Controls is information only (the menu keys, the keyboard pad
 map); rebinding is not done. About has the version (git short hash at
 configure time), the licence, the settings file's path and the credits.
+
+The rows are data. `port/ui/src/settings_catalog.cpp` lists every tab,
+section and row: its key, its kind (a choice, on/off, a number, text, a value
+to read, or a button that opens something), its choices and its help.
+`settings_page.cpp` builds the page from that list, and `settings_rows.cpp`
+says what each row shows and does (its value, its list, whether Left and
+Right change it). To add a row:
+
+1. Add the key's `Def` to `kDefs` in `settings.cpp`.
+2. Add a `RowDesc` to the catalogue, in its tab and section.
+   - Write its help without the "(KEY)" line. The page shows the key below
+     the help.
+   - Wrap it in `preview(...)` when the game shows the change at once (a
+     picture setting), so Preview offers it.
+   - Write its choices without "(original)". Mark the game's own choice
+     `Choice::original` instead.
+3. Run `settings_catalog_check`. CI runs it too (`host.yml`, on Windows and
+   Linux). It checks that:
+   - every key is in `kDefs`;
+   - every default is one of its row's choices;
+   - every number row's range is sound;
+   - the help is written as above.
+
+What a row reads or does outside `settings.cpp`, such as the gamepads, the
+game's swords or updates, goes through `settings_hooks.hpp`. The check has
+its own stand-ins for those hooks.
 
 `play.sh` sets `AUDIO_MUTE=0` for every session, so under play.sh the Sound
 row shows as set from outside. Launching the exe directly, it is a normal
@@ -133,6 +204,13 @@ before the first change and hands the vblank back to the PS3's 59.94 Hz. A
   cut off. Now it has 1 x. The setup screens take exactly what the window
   holds, as they did for the height. `DES_UI_DPI=<n>` tries another
   display's figure on this PC.
+- **The menus' width** (11-16). The F1 menu and Settings are laid out for
+  1280 dp of width (their sheet's `--menu-room`), more than those 960. While
+  one is open, the UI's scale, the UI scale setting's included, is never
+  more than the window holds of that width, in 1/16 steps down
+  (`Document::room`, `host::set_room`). A window under 1280 dp wide, or a
+  large UI scale, makes the menu smaller instead of cutting it off. At a
+  window of 1280 dp or more nothing changes.
 - It opens maximized on the primary display (Start maximized,
   `DES_MAXIMIZED`, on by default; it sets the runtime's `RSX_MAXIMIZED`,
   read once as the window is made, so a change takes effect at the next
@@ -170,6 +248,9 @@ a row of the pad's buttons with what they do.
 - **Keyboard.** Typing goes straight into the text at the cursor. Backspace
   and Delete delete, Home/End move the cursor, Enter finishes and Esc goes
   back. The arrows move on the grid.
+
+In DeS UI the keyboard is its question box with small stone keys; the keys
+and the buttons are the same in every look.
 
 The game gets no pad input while the keyboard is up, as with any menu. With
 `DES_UI=0`, or when the UI fails to start, the Windows input box is used, or
@@ -279,8 +360,10 @@ hook in a normal run saves the environment block and starts the log. The
 dialog is the menu's own modal ("The game has crashed", the error, Restart
 game / Report on GitHub / Show details / Close) drawn by the same host
 (host.cpp) on a D3D12 device and swap chain of its own, with the mouse, the
-keyboard or an XInput pad. **Report on GitHub** zips `crash.txt`,
-`system.txt`, `settings.ini` and `des.log` (all redacted) into
+keyboard or an XInput pad. It opens on Report on GitHub, so a report isn't
+missed; a look with pages (DeS UI) lists its four answers as rows.
+**Report on GitHub** zips `crash.txt`, `system.txt`, `settings.ini` and
+`des.log` (all redacted) into
 `reports\crash-<time>.zip`, opens a new issue on
 https://github.com/JonathanDC64/DemonsSoulsRecomp with the title, the error,
 the top of the stack and the system filled in, and shows the zip in
@@ -292,7 +375,7 @@ the saved command line again.
 What the reports hold now (more than below), and how a frozen game is
 reported: docs/74.
 
-The menu bar's **Report an issue** asks first (what is sent, and that
+The F1 menu's **Report an issue** asks first (what is sent, and that
 nothing is sent until the issue is submitted). **Report** closes the menu;
 4 presented frames later, inside the frame hook and before the UI is drawn,
 the back buffer is read (`host::capture`), so the picture is the game's, not
@@ -325,11 +408,11 @@ issue text is cut to fit a link (about 6.5 KB encoded); the zip has the rest.
 | `DES_CRASH_DIALOG_DETAILS=1` | The crash dialog presses Show details by itself (its frame 10). |
 | `DES_CRASH_DIALOG_SHOT=<file.bmp>` | The crash dialog writes its picture (its frame 40). |
 | `DES_CRASH_DIALOG_EXIT_MS=<ms>` | The crash dialog closes itself after that long. |
-| `DES_UI_OPEN=menu` / `settings` / `trophies` / `osk` | Open the menu bar, the settings window, the Trophies window or a test of the on-screen keyboard at startup. |
+| `DES_UI_OPEN=menu` / `settings` / `trophies` / `osk` | Open the F1 menu, Settings in it, the Trophies window or a test of the on-screen keyboard at startup. |
 | `DES_UI_OPEN=privacy` | Open the privacy note at startup, as Settings > Network shows it (Close only; docs/69 section 6). |
 | `DES_PRIVACY_ASK=1` | Ask the privacy note's question at start with any server that goes online, not only the project's own, as long as this version was not accepted (tests; docs/69 section 6). |
 | `DES_UI_SHOT=<a.bmp>[,frame][;<b.bmp>,frame...]` | Write the back buffer, UI included, at that presented frame (default 300). |
-| `DES_UI_KEYS=<frame>:<KEY>[,...]` | Press keys at presented frames: F1 ESC UP DOWN LEFT RIGHT ENTER PGUP PGDN TAB SPACE. OSK opens the on-screen keyboard as the game would, and a digit (0-9) is typed, for a number field. With DES_UI_SHOT, a test can walk the menus. |
+| `DES_UI_KEYS=<frame>:<KEY>[,...]` | Press keys at presented frames: F1 ESC UP DOWN LEFT RIGHT ENTER PGUP PGDN TAB SPACE SHIFT, and a letter (A-Z). OSK opens the on-screen keyboard as the game would, and a digit (0-9) is typed, for a number field. `<KEY>+` holds a key down and `<KEY>-` lets it go, for Compare and Hide (`300:C+,360:C-`). With DES_UI_SHOT, a test can walk the menus. |
 | `DES_UI_PICK=<folder>[;<folder>...]` | The setup screens' folder dialogs answer in turn with these folders, and none is shown; past the list's end, as if closed without a choice. With DES_UI_KEYS and DES_UI_SHOT, a test can walk the game folder pages. |
 | `DES_UI_NO_ANIM=1` | No transitions. |
 | `DES_TEST_OLD_CPU=1` | As if the processor had no SSE4.1: the message, then the exit (`port/des_cpu_check.cpp`). |
@@ -400,6 +483,14 @@ Files:
 - `des_ui.cpp`: `des_ui_early_init()` (called first in
   `ps3_title_options_init`, des_options.cpp), the overlay hooks, the input
   queue, gamepad reads, the input hold, the debug knobs.
+- `menu_pad.cpp`: a pad's buttons as the menus' keys. Triangle, Square,
+  Select and R3 press P, C, H and Shift; a button of the menu chord does its
+  own thing only alone (R3 stops hiding once L3 joins it; with Select + Start
+  as the chord, Select's Help is a tap, given as it comes up). `menu_input.cpp`:
+  each key's command in the F1 menu and its pages (Preview, Help, Compare and
+  Hide among them, the last two held), and `prompts.cpp` the buttons the
+  prompts show for each device, following the Button icons row. All three
+  are checked alone by `input_map_check`.
 - `host.cpp`: RmlUi's system and file interfaces (the embedded files),
   fonts, scale, the images given to `add_png`, the BMP screenshot, and the
   renderer (`renderer.hpp`): `render_d3d12.cpp`, or on Windows
@@ -422,10 +513,29 @@ Files:
 - `crash_report.cpp`: the startup hook, the filter and abort handler, the
   report and minidump, the dialog process. `crash_dialog.cpp`: its window,
   D3D12 swap chain and modal.
-- `settings_window.cpp`, `prelaunch.cpp`, `menu_bar.cpp`, `overlay.cpp`,
+- `settings_catalog.cpp`: the settings rows as data (above), with
+  `settings_values.cpp` (the rows' values) and `settings_hooks.cpp` (what they
+  take from the rest of the UI).
+- `menu_pages.cpp`: the F1 menu's entries and its questions as data.
+  `menu_model.cpp`: its rules (where Back goes, when closing asks about a
+  restart). `question.cpp`: a question asked one way wherever it comes from.
+- `menu_shell.cpp`: the F1 menu as one document, its entries and the page
+  open in its frame, and Settings on its own for the start screen and setup.
+  It reads its keys itself (`menu_input.cpp`), holds Compare and Hide while
+  their keys are down, and draws the prompts the page gives. A page
+  (`menu_page.hpp`) builds its elements in the frame: `settings_page.cpp`,
+  Settings, a passive view of `settings_model.cpp` (the tab, the focus on
+  each tab, the list, the typing and the preview, and the prompts for each)
+  and of `settings_rows.cpp` (each row's value and list from the catalogue).
+  While the game runs, Settings opens where it was left, from the F1 menu,
+  the start screen or setup alike: the tab, and each tab's row, by its label.
+  `menu_logic_check` checks both models alone. Both files list the elements
+  they build, the same in every look, and the classes their state sets;
+  `menu.rcss` is how Alpha UI draws them.
+- `prelaunch.cpp`, `overlay.cpp`,
   `prework_modal.cpp`: the documents. `input.cpp`: pad state to UI keys with repeat. The rest is
   Dusklight's framework (document stack, windows, panes, buttons, modals,
-  tabs), unchanged apart from its headers.
+  tabs), unchanged apart from its headers and the modal's first focus.
 - `des_ui` is its own static library linked into des_boot: des_boot's
   compile flags don't change (the lifted chunks don't rebuild). Third-party
   code is built with `/O2` (the port configures with an empty build type).
@@ -543,6 +653,142 @@ the other translucent panels flickered over the game, so panels are plain
 translucent fills. `prelaunch.rcss` is rewritten (no picture, no
 golds): menu buttons in bone that light up white with a soul-white left
 edge and a fading band.
+
+### Menu looks
+
+The menus can have more than one look. Every look draws the same
+documents. Only the style sheets differ.
+
+There are two looks:
+
+- **Alpha UI** (`alpha`), the default and the only one in a release build.
+- **DeS UI** (`des`), offered in developer builds only until it is signed
+  off. It copies the game's own pause menu and its band.
+
+How it works:
+
+- **The list.** `looks.hpp` lists the looks. Each look's `id` is three
+  things: its `ui_look` value, its RmlUi theme name, and its sheet's name,
+  `res/rml/looks/<id>.rcss`.
+- **The sheets.** A look's sheet holds only what it changes. All of it sits
+  inside `@media (theme: <id>)`, its `@spritesheet` and `@keyframes` too.
+- **How a look is chosen.** Every document gets every look's sheet, after its
+  own sheets (`document.cpp`). Only the chosen look's theme is on in RmlUi
+  (`looks::apply`). So switching looks needs no reload, and the chosen look
+  wins over the documents' own rules.
+- **The elements.** `menu_shell.hpp` (the F1 menu, the frame, the prompts)
+  and `settings_page.hpp` (the tabs and rows) list them. Every look gets the
+  same ones; the documents' own sheet (`menu.rcss`) hides those Alpha UI
+  doesn't draw, and a look's sheet shows them:
+  - `menu-title`, the page's title;
+  - `menu-slot-entry`, the F1 entries along the frame's top (a click
+    switches page; `.on` the one open). Alpha UI's frame has only its close
+    button, `menu-slot-close`, at the right of Settings' tabs;
+  - `menu-tab-key`, the buttons that change Settings' tabs, at the tabs'
+    ends. Alpha UI has them in the prompts instead, as `menu-prompt.tabs`
+    (a prompt's kind is its class), which a look that shows `menu-tab-key`
+    hides;
+  - `menu-end`, the buttons that move along the F1 entries (L1 and R1, Q
+    and E), at their ends (`.end` at the first or the last);
+  - `menu-strip`, a line about the entry or the row with the focus;
+  - `menu-gauge > menu-fill`, how far a number is along its range (its width
+    is a percent, from `rows::Value::fill`);
+  - `menu-heading > menu-bracket`, a line down a section's side, as long as
+    its rows (`SettingsPage::update_brackets` sets its height after layout);
+  - `menu-aside`, beside the focused row: its notes and a stick's picture
+    (see `helpPane` below);
+  - on the start screen (`body.prelaunch`), `prelaunch-prompts`, the prompts
+    for its keys, and `update-note` (`.on` once a newer version is found:
+    `update-mark`, `update-title`, `update-line`), with the Update choice
+    marked `.update`;
+  - in a note over the game (`overlay.cpp`), `toast-mark`, its status mark,
+    with the note's type as its class (`warning`, `info`, or `done` for a
+    plain note);
+  - in the report question, `tick-label` and `tick-value`, the tick's line
+    and its state in words (No, Yes);
+  - `list-more.up` and `.down` (`.on` while there is more that way), where a
+    list goes on past its box;
+  - a page of the F1 menu's own (see `pages` below) lists its elements in
+    its header (`trophies_page.hpp`, `mods_page.hpp`, `coop_page.hpp`,
+    `controls_page.hpp`, `players_page.hpp`);
+  - status has colour, and nothing else: `--des-ok`, `--des-warn`,
+    `--des-error` and `--des-info` in DeS UI, from the HUD's bars.
+- **The column.** A look that keeps its contents in a centred column sets
+  `--menu-column` on the body, in dp or px. The shell sets `--menu-side`, the
+  room each side of it in the window, for the sheet to pad its bands with.
+  RmlUi has no `calc()`, so the shell works it out (`update_column`).
+  `--menu-room` (menu.rcss: 1280dp) is the window width the menu is laid out
+  for, what goes past the column included; a look whose menu needs more
+  sets its own.
+- **Body classes** carry the state: the level (`entries`, `page`), what the
+  page has open (`listing`, `typing`, `preview`, `helping`, `comparing`),
+  `hiding`, `closing`, `asking` (a question is up, `ui::asking()`) and
+  `motion`.
+- **Motion.** A look's moves run only when animations are on: they sit
+  under `body.motion`, or `body.closing` for the menu going away, and the
+  shell sets neither otherwise. The tests' pictures (`DES_UI_NO_ANIM`,
+  `ui_render_compare`) are taken without them, so they stay the same from
+  run to run.
+- **Traits.** A few things a sheet can't say are fields of the look in
+  `kLooks`. The rule: if RCSS can do it, it isn't a trait.
+  - `helpPane`: Settings shows the help beside the rows. Without it there's a
+    line under the band (`menu-strip`), and Help (H, View, Select) opens the
+    whole help in a box. What the help shows that matters while a value
+    changes goes beside the focused row instead (`menu-aside`): the row's
+    notes (why it is as it is, such as staying offline) and a stick's
+    picture for a deadzone.
+  - `listBeside`: a value's list opens beside the value, at its row. Without
+    it the list opens below the row. A list (or `menu-aside`) placed past
+    the rows' right end needs `clip: none`, or the rows' scroll box cuts it
+    off on a tab long enough to scroll; the page keeps both inside the rows'
+    height.
+  - `menuHeight`: Interface > Menu height sizes Settings' frame. The shell
+    sets that height inline, which a sheet can't override, so a look that
+    sizes the frame itself turns this off and the row is hidden.
+  - `pages`: the F1 menu's other screens open as pages in its frame, as
+    Settings does (Trophies, Mods and Co-op so far: `trophies_page.cpp`,
+    `mods_page.cpp`, `coop_page.cpp`), and Settings' Change Buttons and
+    Players you met open as pages over Settings (`controls_page.cpp`,
+    `players_page.cpp`, through the shell's `open_over`; Back goes back to
+    Settings as it was). A page over another with no tabs of its own
+    (Players) shows the tabs of the page under it, and the band's buttons go
+    back to that page and move its tab. Without it they
+    open as their own windows, as Alpha UI keeps them. The start screen
+    opens them the same way, alone in the frame (`menu::screen_alone`).
+- **Alpha UI** is the documents' own sheets as they are (for the F1 menu and
+  Settings, `menu.rcss`). Its sheet is empty.
+- **DeS UI** is `looks/des.rcss`. Its text is Old Standard TT (SIL OFL
+  1.1, in `res/fonts` with its licence).
+- **Images.** The looks draw with images of the menus' own in `res/img`,
+  made by `tools/ui/make_ui_art.py` from numbers, never from the game:
+  - `grain.png`, a worn-stone noise that tiles;
+  - `valuebox.png`, a box with cut corners, drawn as a nine-patch.
+
+  CI checks that the files in the tree are what the script makes.
+  `ui_render_compare`'s `look-primitives` page draws them on every renderer.
+
+To add a look:
+
+1. Add a line to `kLooks`. Set `released = false` until it is finished, so
+   only developer builds offer it. Set its traits.
+2. Write its sheet. Show the elements it draws that Alpha UI hides.
+3. Run `ui_style_check`. CI runs it too (`host.yml`, on Windows and Linux).
+   It checks that:
+   - every look has its sheet;
+   - every sheet belongs to a look;
+   - each sheet's rules are all inside its own theme;
+   - RmlUi reads each sheet without a warning.
+4. Add its pages to `ui_render_compare`, as DeS UI's `des-*` pages are
+   added. Each switches to the look first (`use_look`), and they're added
+   only in a build that offers it, so a release build skips them until the
+   look is released.
+5. Take shots in the game with `tools/des/uishots.sh`, setting
+   `UISHOTS_LOOKS` to the looks to compare (for example `"alpha des"`).
+   A look the build doesn't offer draws as the default, so one not
+   released yet needs a developer build.
+
+The Interface tab shows a Menu look row once a build offers more than one
+look.
 
 ## Not done
 

@@ -1,8 +1,8 @@
 // The button page on its own (button_pages.cpp): a made-up code map and texture pack read, the page decoded and drawn
-// again for each device. No game data. Exit code 0 when every check passes.
+// again for each device; and the menus' single buttons drawn. No game data. Exit code 0 when every check passes.
 //   button_icons_check [--ccm <dsfont24.ccm> --tpf <dsfont24.tpf>] [--png <folder>]
-// --ccm and --tpf read the player's own files in place of the made-up ones; --png writes each page drawn (level 0) to
-// the folder, to look at. Pages from the player's files hold the game's art: keep them out of the repository.
+// --ccm and --tpf read the player's own files in place of the made-up ones; --png writes each page drawn (level 0) and a
+// sheet of the single buttons (singles.png) to the folder, to look at. Pages from the player's files hold the game's art: keep them out of the repository.
 #include "button_pages.hpp"
 
 #include <cmath>
@@ -279,6 +279,27 @@ int main(int argc, char** argv) {
     check(ni.width == 512 && ni.levels == 10, "drawn at 1x: 512x512 and 10 levels");
     check(bp::describe(bp::normalized(nin)) == "Nintendo x1 triangle=cross cross=triangle", "PAD_MAP in the page's name");
 
+    // The Steam Deck: every cell drawn, Xbox's letters without their colours (no green A on Cross's cell).
+    bp::Spec deck = xn;
+    deck.kind = bp::Kind::SteamDeck;
+    const bp::Spec dn = bp::normalized(deck);
+    check(bp::describe(dn) == "Steam Deck x2", "the Steam Deck's page named");
+    const bp::Image di = bp::draw(page, base, dn, font.empty() ? nullptr : font.data());
+    all = di.width == 1024 && di.levels == 11;
+    for (const bp::Cell& c : page.cells) all = all && cell_alpha(di, c, 2) > 200;
+    check(all, "the Steam Deck: every button cell drawn at 2x");
+    if (const bp::Cell* cr = cell_of(page, bp::kCross)) {
+        int green = -255, deck_green = -255;
+        for (int y = cr->y * 2; y < (cr->y + cr->h) * 2; y++)
+            for (int x = cr->x * 2; x < (cr->x + cr->w) * 2; x++) {
+                const uint8_t* p = at(xi, uint32_t(x), uint32_t(y));
+                const uint8_t* q = at(di, uint32_t(x), uint32_t(y));
+                green = std::max(green, int(p[1]) - int(p[0]));
+                deck_green = std::max(deck_green, int(q[1]) - int(q[0]));
+            }
+        check(green > 40 && deck_green < 12, "Cross: Xbox's green A, the Steam Deck's grey A");
+    }
+
     // PlayStation with Triangle and Cross swapped: the game's own pictures change places, the rest stays.
     check(bp::untouched(bp::normalized(ps)) && !bp::untouched(xn), "PlayStation with no button moved: nothing drawn");
     bp::Spec psm = ps;
@@ -376,11 +397,92 @@ int main(int argc, char** argv) {
               "a spare picture is never drawn over (Xbox, at 2x)");
     }
 
+    // ---- The menus' single buttons (draw_single): each pad's buttons, PlayStation's drawn in the same style, and keys ----
+    const unsigned char* letters = font.empty() ? nullptr : font.data();
+    std::vector<std::vector<bp::Single>> sheet;   // --png: a row per device
+    {
+        constexpr int kH = 48;
+        bool all = true;
+        for (bp::Kind kind : {bp::Kind::PlayStation, bp::Kind::Xbox, bp::Kind::Nintendo, bp::Kind::SteamDeck}) {
+            sheet.emplace_back();
+            for (int p = -1; p < 16; p++) {
+                const bp::Single s{kind, p, p < 0 ? 5u : 0u, {}};
+                sheet.back().push_back(s);
+                // PlayStation's Select and Start: a pill with the word on it; every other button square.
+                const bool pill = kind == bp::Kind::PlayStation && (p == 0 || p == 3);
+                const float ratio = bp::single_ratio(s, letters);
+                const int w = int(std::lround(float(kH) * ratio));
+                const bp::Image im = bp::draw_single(s, w, kH, letters);
+                all = all && im.width == uint32_t(w) && im.height == kH && im.levels == 1 && im.premultiplied &&
+                      at(im, uint32_t(w / 2), kH / 2)[3] > 200 && at(im, 1, 1)[3] == 0 &&
+                      (pill ? !letters || ratio > 1.5f : ratio == 1.f);
+            }
+        }
+        check(all, "every pad button drawn on its own at its size, opaque in the middle; PlayStation's Select and "
+                   "Start wide pills, the rest square");
+        // The most of `f` over a picture's pixels: PlayStation's shapes in their colours.
+        const auto most = [&](int pad, auto f) {
+            const bp::Image im = bp::draw_single({bp::Kind::PlayStation, pad, 0, {}}, kH, kH, letters);
+            int m = -255;
+            for (uint32_t y = 0; y < kH; y++)
+                for (uint32_t x = 0; x < kH; x++) m = std::max(m, f(at(im, x, y)));
+            return m;
+        };
+        check(most(14, [](const uint8_t* p) { return int(p[2]) - int(p[0]); }) > 60, "PlayStation's Cross blue");
+        check(most(13, [](const uint8_t* p) { return int(p[0]) - int(p[2]); }) > 80, "its Circle red");
+        check(most(12, [](const uint8_t* p) { return int(p[1]) - int(p[0]); }) > 80, "its Triangle green");
+        check(most(15, [](const uint8_t* p) { return std::min(int(p[0]), int(p[2])) - int(p[1]); }) > 40, "its Square pink");
+
+        const bp::Single enter{bp::Kind::Keyboard, -1, 0, {0x0D, 0, "Enter", ""}};
+        const bp::Single letter{bp::Kind::Keyboard, -1, 0, {'P', 0, "P", ""}};
+        const bp::Single up{bp::Kind::Keyboard, -1, 0, {0x26, 0, "", ""}};
+        const float wide = bp::single_ratio(enter, letters);
+        check(!letters || (wide > 1.3f && wide < 2.5f), "Enter's cap as wide as its word");
+        check(bp::single_ratio(letter, letters) == 1.f && bp::single_ratio(up, letters) == 1.f, "a letter and an arrow key square");
+        const int ew = int(std::lround(float(kH) * wide));
+        const bp::Image ei = bp::draw_single(enter, ew, kH, letters);
+        check(ei.width == uint32_t(ew) && at(ei, 3, kH / 2)[3] > 200 && at(ei, uint32_t(ew - 4), kH / 2)[3] > 200,
+              "a wide key's cap fills its width");
+        check(bp::draw_single(enter, 0, kH, letters).rgba.empty(), "no picture at no size");
+        sheet.push_back({enter, {bp::Kind::Keyboard, -1, 0, {0x1B, 0, "Esc", ""}}, {bp::Kind::Keyboard, -1, 0, {0x10, 0, "Shift", ""}},
+                         letter, up, {bp::Kind::Keyboard, -1, 0, {0x28, 0, "", ""}}, {bp::Kind::Keyboard, -1, 0, {0x25, 0, "", ""}},
+                         {bp::Kind::Keyboard, -1, 0, {0x27, 0, "", ""}}});
+    }
+
     if (png) {
+        // The single buttons, a row per device, at 48 pixels high (straight alpha, as a PNG is).
+        constexpr int kH = 48, kGap = 6;
+        int sw = 0;
+        for (const auto& row : sheet) {
+            int w = 0;
+            for (const bp::Single& s : row) w += int(std::lround(float(kH) * bp::single_ratio(s, letters))) + kGap;
+            sw = std::max(sw, w);
+        }
+        const int sh = int(sheet.size()) * (kH + kGap);
+        std::vector<uint8_t> rgba(size_t(sw) * size_t(sh) * 4, 0);
+        for (size_t r = 0; r < sheet.size(); r++) {
+            int x0 = 0;
+            for (const bp::Single& s : sheet[r]) {
+                const int w = int(std::lround(float(kH) * bp::single_ratio(s, letters)));
+                const bp::Image im = bp::draw_single(s, w, kH, letters);
+                for (int y = 0; y < kH; y++)
+                    for (int x = 0; x < w; x++) {
+                        const uint8_t* q = at(im, uint32_t(x), uint32_t(y));
+                        uint8_t* o = &rgba[((size_t(r) * (kH + kGap) + size_t(y)) * size_t(sw) + size_t(x0 + x)) * 4];
+                        for (int ch = 0; ch < 3; ch++) o[ch] = q[3] ? uint8_t(std::min(255, (int(q[ch]) * 255 + q[3] / 2) / q[3])) : 0;
+                        o[3] = q[3];
+                    }
+                x0 += w + kGap;
+            }
+        }
+        const std::string singles = std::string(png) + "/singles.png";
+        const bool wrote = stbi_write_png(singles.c_str(), sw, sh, 4, rgba.data(), sw * 4);
+        std::printf("%s %s\n", wrote ? "wrote" : "could not write", singles.c_str());
+
         const struct {
             const char* name;
             const bp::Image* im;
-        } out[] = {{"xbox_2x.png", &xi}, {"nintendo_1x.png", &ni}, {"keyboard_4x.png", &ki}};
+        } out[] = {{"xbox_2x.png", &xi}, {"nintendo_1x.png", &ni}, {"keyboard_4x.png", &ki}, {"steamdeck_2x.png", &di}};
         for (const auto& o : out) {
             const std::string path = std::string(png) + "/" + o.name;
             // The top of the page, where the cells are: 128 rows of the game's at the page's scale.

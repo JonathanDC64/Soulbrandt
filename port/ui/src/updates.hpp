@@ -46,6 +46,8 @@ void start_check();
 State state();
 const Release& found();  // State::Found: the newer release
 bool skipped();          // found() is the version the player chose to skip
+// For the tests (ui_render_compare): the check as having found this release; null: as it was (Off).
+void set_test_found(const Release* release);
 void skip();             // "Skip this version": no notice for it again (Settings, About still offers it)
 // The version the last update kept to go back to (its folder in <install>/.previous), or empty.
 std::string kept_version();

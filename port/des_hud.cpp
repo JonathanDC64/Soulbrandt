@@ -94,6 +94,7 @@
 extern "C" void ppu_register_function(uint64_t addr, void (*fn)(ppu_context*));
 extern "C" float des_hud_side_width(void);   /* des_aspect.cpp: the canvas's extra width on each side */
 extern "C" float des_hud_top_height(void);   /* des_aspect.cpp: its extra height above and below */
+extern "C" void ps3_setenv(const char* name, const char* value);   /* boot_main.cpp: through the getenv cache */
 #ifndef PS3_GAME_SPLIT   /* DES_SPLIT: the game DLL's (ps3emu/game_split.h) */
 extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
 #endif
@@ -274,6 +275,16 @@ void want_read()
     const bool changed = !same(w, s_want);
     s_want = w;
     if (!changed) return;
+    /* A part drawn at another size than the game's samples its art's edges
+     * between texels and picks up the next sprite in the atlas: a thin frame
+     * round the eye emblem at 50% (piece17), at any render scale. The
+     * renderer's sprite-edge clamp keeps the filter inside each sprite; it is
+     * on below and above 100% render scale anyway, and RSX_UVCLAMP_1X turns
+     * it on at 100% while the HUD is resized. Art drawn 1:1 is not changed by
+     * it. (A HUD drawn larger than its art keeps a faint line there.) */
+    bool resized = w.size != 1.0f;
+    for (const Part& p : kParts) resized |= w.part_size[p.group] != 1.0f;
+    ps3_setenv("RSX_UVCLAMP_1X", resized ? "1" : "0");
     char hidden[64] = "", moved[160] = "";
     for (const Part& p : kParts) {
         if (!w.shown[p.group]) {

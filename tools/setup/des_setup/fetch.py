@@ -3,7 +3,9 @@
 toolchain.json names each tool at one exact version: its URL, size and
 SHA-256. An entry without a SHA-256 is not pinned yet and is refused, so
 nothing unchecked is ever used. Downloads resume from where they stopped
-(HTTP Range), go to a .part file and are renamed only once they match.
+(HTTP Range), go to a .part file and are renamed only once they match. A
+copy the player downloaded themselves, under the archive's name in the same
+folder, is checked the same way and used (setup's failed page says so).
 Archives (.zip, and on Linux .tar.xz and .tar.gz, docs/87) are unpacked into a
 folder of their own, refusing any entry that would land outside it and any
 link.
@@ -31,7 +33,14 @@ CHUNK = 1 << 20
 
 
 class FetchError(RuntimeError):
-    pass
+    """A tool's download or unpacking that did not finish. A download's also has where it comes from (`url`) and where
+    setup keeps it (`archive`): a copy the player downloads themselves and puts there is checked and used as setup's
+    own (issue #544). `certificate`: the server's certificate was refused, by Python's check and by Windows' own when
+    that was tried."""
+
+    def __init__(self, message, url=None, archive=None, certificate=False):
+        super().__init__(message)
+        self.url, self.archive, self.certificate = url, archive, certificate
 
 
 # ---- Windows' own TLS, for a server whose certificate Python's check doesn't accept ----
@@ -61,15 +70,27 @@ def windows_curl():
     return p if p and p.is_file() else None
 
 
-def _curl_args(curl, url, timeout, allow_http) -> list:
+def _curl_args(curl, url, timeout, allow_http, revoke_best_effort=False) -> list:
     """The host's own curl options (setup_python.cpp): -q first, so no curlrc of the player's changes what it does;
     https only (and the tests' http://127.0.0.1); no meter, only what went wrong; a stalled try ends after `timeout`
-    seconds, as urllib's does."""
+    seconds, as urllib's does. revoke_best_effort: the second try after a secure connection that did not start
+    (REVOKE_RETRY)."""
     proto = "=http,https" if allow_http and url.startswith("http://127.0.0.1") else "=https"
     t = str(max(1, int(timeout)))
-    return [str(curl), "-q", "--location", "--proto", proto, "--proto-redir", proto, "--tlsv1.2", "--silent",
-            "--show-error", "--connect-timeout", t, "--speed-limit", "1", "--speed-time", t, "--user-agent",
-            "des-setup"]
+    return ([str(curl), "-q"] + (["--ssl-revoke-best-effort"] if revoke_best_effort else []) +
+            ["--location", "--proto", proto, "--proto-redir", proto, "--tlsv1.2", "--silent", "--show-error",
+             "--connect-timeout", t, "--speed-limit", "1", "--speed-time", t, "--user-agent", "des-setup"])
+
+
+# curl's exit 35: the secure connection did not start. Windows' TLS reports it so when it could not check whether the
+# server's certificate was revoked: no answer from the place that says so, or a certificate that names no such place.
+# An antivirus that checks secure connections puts its own certificate in front of every server's, and that one often
+# names none (issue #483: Python's download stopped with curl exit 35 every time, with such an antivirus installed).
+# So a try that ends with 35 is made once more with --ssl-revoke-best-effort: a revocation check that cannot be made
+# then passes, as in a web browser. A certificate the check finds revoked, or one Windows does not trust, is still
+# refused, and a download still has to match its size and SHA-256. A curl too old for the option (before 7.70) ends
+# that try with exit 2, and the first try's failure is the one reported.
+REVOKE_RETRY = 35
 
 
 def _run_curl(args, watch=None):
@@ -95,11 +116,17 @@ def curl_get(url, headers=None, timeout=60, allow_http=False):
         raise OSError("Windows' own curl.exe is not there")
     with tempfile.TemporaryDirectory(prefix="des-curl-") as tmp:
         body, head = Path(tmp) / "body", Path(tmp) / "head"
-        args = _curl_args(curl, url, timeout, allow_http)
+        extra = []
         for k, v in (headers or {}).items():
-            args += ["--header", f"{k}: {v}"]
-        args += ["-o", str(body), "-D", str(head), "-w", "%{http_code}", url]
-        rc, out, err = _run_curl(args)
+            extra += ["--header", f"{k}: {v}"]
+        extra += ["-o", str(body), "-D", str(head), "-w", "%{http_code}", url]
+        rc, out, err = _run_curl(_curl_args(curl, url, timeout, allow_http) + extra)
+        if rc == REVOKE_RETRY:
+            body.unlink(missing_ok=True)   # (so nothing of the first try's can read as the second's answer)
+            head.unlink(missing_ok=True)
+            rc2, out2, err2 = _run_curl(_curl_args(curl, url, timeout, allow_http, revoke_best_effort=True) + extra)
+            if rc2 != 2:
+                rc, out, err = rc2, out2, err2
         if rc != 0:
             raise OSError(f"curl exit {rc}" + (f": {err}" if err else ""))
         got = {}
@@ -113,26 +140,41 @@ def curl_get(url, headers=None, timeout=60, allow_http=False):
         return int(code) if code.isdigit() else 0, body.read_bytes() if body.is_file() else b"", got
 
 
-def _curl_fetch(curl, e: dict, part: Path, progress, timeout, allow_http):
+def _curl_fetch(curl, e: dict, part: Path, progress, timeout, allow_http, note=None):
     """Entry e's download through Windows' own curl into its .part file, carrying on from what is there (-C -), the
-    bar from the file's size (as setup_python.cpp does)."""
+    bar from the file's size (as setup_python.cpp does). note(line): a line for setup's log on the second try after a
+    secure connection that did not start (REVOKE_RETRY)."""
     size = e["size"]
 
     def watch():
         if progress and part.is_file():
             progress(min(part.stat().st_size, size), size)
 
-    for again in (False, True):
-        rc, _, err = _run_curl(_curl_args(curl, e["url"], timeout, allow_http) +
+    restarted = relaxed = False
+    first = None   # (the first try's failure, when the second one's curl did not know --ssl-revoke-best-effort)
+    while True:
+        rc, _, err = _run_curl(_curl_args(curl, e["url"], timeout, allow_http, revoke_best_effort=relaxed) +
                                ["--fail", "-C", "-", "-o", str(part), e["url"]], watch)
         watch()
         if rc == 0:
             return
-        if rc == 33 and not again:   # (curl's "cannot resume": the server ignored the range; start over once)
+        if rc == 33 and not restarted:   # (curl's "cannot resume": the server ignored the range; start over once)
+            restarted = True
             part.unlink(missing_ok=True)
             continue
+        if rc == REVOKE_RETRY and not relaxed:
+            relaxed, first = True, (rc, err)
+            if note:
+                note(f"note {e['name']}: the secure connection did not start (curl exit {rc}"
+                     + (f": {err}" if err else "") + "); once more, letting a revocation check that cannot be "
+                     "made pass")
+            continue
+        if rc == 2 and first:
+            rc, err = first
+        # (35: the secure connection did not start, which is how Windows' TLS reports a revocation check it could not
+        # make; 60: the certificate refused)
         raise FetchError(f"{e['name']}: the download through Windows' curl stopped (curl exit {rc}"
-                         + (f": {err}" if err else "") + "); it resumes next time")
+                         + (f": {err}" if err else "") + "); it resumes next time", certificate=rc in (35, 60))
 
 
 def load_manifest(path=None) -> dict:
@@ -185,6 +227,10 @@ def fetch(e: dict, cache, progress=None, allow_http=False, timeout=60, note=None
             return final
         final.unlink()                      # a stale or damaged copy
     part = final.with_name(final.name + ".part")
+
+    def failed(message, certificate=False):
+        return FetchError(message, e["url"], final, certificate)
+
     done = part.stat().st_size if part.is_file() else 0
     if done > e["size"]:
         part.unlink()
@@ -205,24 +251,28 @@ def fetch(e: dict, cache, progress=None, allow_http=False, timeout=60, note=None
                         f.write(b)
                         done += len(b)
                         if done > e["size"]:
-                            raise FetchError(f"{e['name']}: the download is larger than the manifest says")
+                            raise failed(f"{e['name']}: the download is larger than the manifest says")
                         if progress:
                             progress(done, e["size"])
         except OSError as err:
             curl = windows_curl() if cert_failed(err) else None
             if not curl:
-                raise FetchError(f"{e['name']}: the download stopped ({err}); it resumes next time") from err
+                raise failed(f"{e['name']}: the download stopped ({err}); it resumes next time",
+                             cert_failed(err)) from err
             if note:
                 note(f"note {e['name']}: Python's check did not accept the server's certificate "
                      f"({getattr(err, 'reason', err)}); downloading through Windows' own curl, which checks it as "
                      "Windows does")
-            _curl_fetch(curl, e, part, progress, timeout, allow_http)
+            try:
+                _curl_fetch(curl, e, part, progress, timeout, allow_http, note)
+            except FetchError as ce:
+                raise failed(str(ce), ce.certificate) from ce
     if not part.is_file() or part.stat().st_size != e["size"]:
-        raise FetchError(f"{e['name']}: the download is incomplete; it resumes next time")
+        raise failed(f"{e['name']}: the download is incomplete; it resumes next time")
     got = _sha256(part)
     if got != e["sha256"]:
         part.unlink()
-        raise FetchError(f"{e['name']}: the download does not match its pinned SHA-256 (got {got}); deleted")
+        raise failed(f"{e['name']}: the download does not match its pinned SHA-256 (got {got}); deleted")
     os.replace(part, final)
     return final
 

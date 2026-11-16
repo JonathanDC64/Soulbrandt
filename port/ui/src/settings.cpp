@@ -6,6 +6,9 @@
 #include "report.hpp"
 #include "version.hpp"
 
+#include "../../des_seamless.h"
+
+#include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
@@ -17,6 +20,7 @@
 #include <random>
 #include <set>
 #include <string>
+#include <vector>
 
 #if DES_RSX_VULKAN && defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -105,6 +109,11 @@ constexpr Def kDefs[] = {
     {"net_custom_here", "", Apply::UiOnly},    // custom_chosen_here's mark for that address on this PC
     {"DES_NET_NAME", "", Apply::Restart},      // the online name (PS3_NP_ONLINE_ID); "" = no NP identity
     {"DES_NET_P2P_PORT", "3658", Apply::Restart},  // PS3_NET_P2P_PORT, 1024-65535
+    {"DES_SEAMLESS_ADDRESS", "", Apply::Restart},  // seamless co-op host's public IPv4 (the Co-op window); "" = router's
+    {"DES_SEAMLESS_PLAYERS", "4", Apply::Live},    // the most players a seamless co-op host takes, itself included: 2-4
+    {"DES_SEAMLESS_GLOW", "1", Apply::Live},       // seamless co-op: "0" = the other players see this one without its phantom glow
+    {"DES_SEAMLESS_GLOW_COLOR", "", Apply::Live},  // seamless co-op: this player's glow colour, "RRGGBB"; "" = the game's blue
+    {"glow_hue_custom", "30", Apply::UiOnly},      // Your glow colour's Custom hue (0-350), kept while a named colour is on
     {"DES_NET_PASSWORD", "", Apply::Live},     // matchmaking password; a hash of it goes to the server; "" = everyone
     {"DES_NET_TENDENCY", "", Apply::Live},     // des_qwc_local: "" = the server's mixed in (the game's), "own" = yours only
     {"DES_NET_RATING_POLL", "", Apply::Live},  // des_net_grade_poll: seconds between rating checks; "" = the game's 300
@@ -114,6 +123,8 @@ constexpr Def kDefs[] = {
     {"DES_NET_SYNC", "", Apply::Live},         // des_net_sync: position packets a second; "" = every 6th frame
     {"DES_DISCORD", "1", Apply::Live},         // discord_presence.cpp: the Discord status; "0" = none
     {"ui_scale", "0", Apply::UiOnly},          // 0 = Auto, else percent
+    {"ui_look", "alpha", Apply::UiOnly},       // the menus' look: a looks.hpp id
+    {"ui_menu_height", "40", Apply::UiOnly},   // menu_shell.cpp: Settings' height, 0 = 640 dp ... 100 = the window's
     {"show_start_screen", "1", Apply::UiOnly},
     {"update_check", "1", Apply::UiOnly},      // updates.hpp: look for a newer release at each start (docs/105)
     {"update_skip", "", Apply::UiOnly},        // the release the player chose to skip ("Skip this version")
@@ -136,6 +147,7 @@ constexpr Def kDefs[] = {
     {"PAD_DEADZONE_LEFT", "", Apply::Live},    // cellPad, live: tilt where the stick starts counting; "" = the default
     {"PAD_DEADZONE_RIGHT", "", Apply::Live},   // (and PAD_DEADZONE_ANTI: des_options.cpp's run_defaults)
     {"DES_ROLLDIR", "1", Apply::Live},         // des_roll_dir, read at each roll; 0 = locked-on rolls go 4 ways only
+    {"DES_KICK", "0", Apply::Live},            // des_kick, at each attack: 1 = attacking never kicks, the Kick key does
     {"keys_layout", "souls", Apply::UiOnly},   // the layout PAD_KEYS changes; a file without this line is older
     {"DES_MOUSE_LOOK", "0", Apply::Live},      // mouse look (des_mouse_look; port/ui/src/mouse.cpp), read each frame
     {"DES_MOUSE_SENS", "0.09", Apply::Live},   // mouse look's degrees per mouse count
@@ -146,8 +158,12 @@ constexpr Def kDefs[] = {
 };
 
 std::map<std::string, std::string, std::less<>> sValues;
+// Values being tried (try_value): shown and applied for now, over sValues', and never saved.
+std::map<std::string, std::string, std::less<>> sTried;
 std::set<std::string, std::less<>> sPinned;
 std::map<std::string, std::string, std::less<>> sPinnedValues;
+// The restart-only settings' values the game runs with: as load_and_apply_env left them, or as now_in_effect noted.
+std::map<std::string, std::string, std::less<>> sInEffect;
 std::string sPath;
 bool sPathResolved = false;
 
@@ -231,8 +247,66 @@ void make_dirs(const std::string& file) {
     std::filesystem::create_directories(std::filesystem::path(report::widen(file)).parent_path(), ec);
 }
 
+// The keyboard and mouse bindings as cellPad gets them: the layout with the changes after it, less the Kick key's
+// ("kick=", the Keyboard page's Kick row: the port's own, des_kick in des_options.cpp). With DES_KICK=1 its inputs
+// press R1 too, added to R1's last bindings, and DES_KICK_KEYS names them, for des_kick to read at each attack. A
+// wheel notch is left out: it is never held, so it could never be told from the attack.
+std::string keys_for_pad(const std::string& keys) {
+    const auto lower = [](std::string s) {
+        for (char& c : s) c = char(std::tolower(static_cast<unsigned char>(c)));
+        return s;
+    };
+    const std::string mode = pinned("DES_KICK") ? pinned_value("DES_KICK") : get("DES_KICK");
+    std::string out, r1, kick;
+    bool have_r1 = false;
+    size_t at = 0;
+    while (at < keys.size()) {
+        size_t end = keys.find_first_of(", ;", at);
+        if (end == std::string::npos) end = keys.size();
+        const std::string pair = keys.substr(at, end - at);
+        at = end + 1;
+        if (pair.empty()) continue;
+        const size_t eq = pair.find('=');
+        const std::string target = lower(pair.substr(0, eq));
+        const std::string value = eq == std::string::npos ? "" : pair.substr(eq + 1);
+        if (target == "kick") {   // (named again, it replaces, as a target does in cellPad)
+            kick = value;
+            continue;
+        }
+        if (target == "r1") {
+            r1 = value;
+            have_r1 = true;
+        }
+        if (!out.empty()) out += ',';
+        out += pair;
+    }
+    // (cellPad keeps 4 bindings a target, PAD_BIND_MAX: the Kick keys fill what R1's own leave)
+    int room = 4;
+    for (size_t a = 0; a < r1.size();) {
+        size_t end = r1.find('|', a);
+        if (end == std::string::npos) end = r1.size();
+        const std::string item = lower(r1.substr(a, end - a));
+        a = end + 1;
+        if (!item.empty() && item != "none") room--;
+    }
+    std::string held;
+    at = 0;
+    while (mode == "1" && room > 0 && at < kick.size()) {
+        size_t end = kick.find('|', at);
+        if (end == std::string::npos) end = kick.size();
+        const std::string item = kick.substr(at, end - at), in = lower(item.substr(item.find('+') + 1));
+        at = end + 1;
+        if (item.empty() || in == "none" || in == "wheelup" || in == "wheeldown") continue;
+        held += (held.empty() ? "" : "|") + item;
+        room--;
+    }
+    ps3_setenv("DES_KICK_KEYS", held.c_str());
+    if (!held.empty() && have_r1) out += ",r1=" + (r1.empty() || lower(r1) == "none" ? held : r1 + "|" + held);
+    return out;
+}
+
 // The environment variables a setting drives (DES_SKIP_INTRO_MOVIE sets PS3_SAIL_SKIP_FIRST, which cellSail reads as each movie opens; PAD_KEYS gives cellPad the
-// layout with the changes after it).
+// layout with the changes after it, keys_for_pad).
 void apply_env(std::string_view key, const std::string& value) {
     const std::string k(key);
     // (an unset option stays unset; DES_FPS "" is the game's mode, PAD_MAP "" the game's buttons, PAD_KEYS "" the
@@ -244,7 +318,7 @@ void apply_env(std::string_view key, const std::string& value) {
         return;
     if (key == "DES_NET_PASSWORD") return;  // (only its hash is used, in PS3_HTTP_HEADER: apply_match_group)
     if (key == "PAD_KEYS") {
-        ps3_setenv("PAD_KEYS", keys_with_layout(value).c_str());
+        ps3_setenv("PAD_KEYS", keys_for_pad(keys_with_layout(value)).c_str());
         return;
     }
     ps3_setenv(k.c_str(), value.c_str());
@@ -269,6 +343,10 @@ const Def* find(std::string_view key) {
         if (key == d.key) return &d;
     }
     return nullptr;
+}
+
+std::span<const Def> defs() {
+    return kDefs;
 }
 
 bool harness_run() {
@@ -307,10 +385,11 @@ const std::string& path() {
 std::string describe() {
     std::string out;
     for (const Def& d : kDefs) {
-        // (an issue report leaves out the online name, the custom server's address and its mark: only whether one is
-        // set)
+        // (an issue report leaves out the online name, the custom server's address and its mark, and the co-op
+        // host's public address: only whether one is set)
         const bool hide = std::strcmp(d.key, "DES_NET_NAME") == 0 || std::strcmp(d.key, "DES_NET_CUSTOM") == 0 ||
-                          std::strcmp(d.key, "DES_NET_PASSWORD") == 0 || std::strcmp(d.key, "net_custom_here") == 0;
+                          std::strcmp(d.key, "DES_NET_PASSWORD") == 0 || std::strcmp(d.key, "net_custom_here") == 0 ||
+                          std::strcmp(d.key, "DES_SEAMLESS_ADDRESS") == 0;
         const auto shown = [hide](const std::string& v) { return hide && !v.empty() ? std::string("(set)") : v; };
         const std::string value = get(d.key);
         out += std::string(d.key) + " = " + shown(value);
@@ -468,7 +547,46 @@ std::string net_options_header() {
 // A developer build's cheat session wins over this: des_dev_boot runs after des_ui_early_init (which calls
 // load_and_apply_env) in ps3_title_options_init, and clears PS3_NET_ONLINE, PSNR_SERVER and PS3_NET_HOSTS when a cheat
 // is set at start (docs/55 section 6). So nothing here checks DES_DEV_SESSION; the Network tab reads it to say why.
+// Seamless co-op (DES_SEAMLESS, des_seamless.h) in place of the rows: no server of this project or anyone else's,
+// only the host's game. Gameplay mods keep it off too, as online (docs/143), and it needs an online name.
+static void apply_seamless() {
+    namespace co = des::seamless;
+    const bool host = co::mode() == co::Mode::Host;
+    if (mods::gameplay_in_use()) {
+        sNetModsHeld = true;
+        sNetStatus = "Off: gameplay mods are on";
+        std::fprintf(stderr, "[ui] seamless co-op: off, gameplay mods are on (%s; Settings > Mods)\n",
+                     mods::gameplay_names().c_str());
+        co::held("gameplay mods are on (Settings > Mods)");
+        return;
+    }
+    const std::string name = env_set("PS3_NP_ONLINE_ID") ? std::string(std::getenv("PS3_NP_ONLINE_ID"))
+                                                         : effective("DES_NET_NAME");
+    if (!net_name_ok(name)) {
+        sNetStatus = name.empty() ? "Off: no online name" : "Off: the online name is not valid";
+        std::fprintf(stderr, "[ui] seamless co-op: off, %s (Settings > Network)\n",
+                     name.empty() ? "no online name" : "the online name is not valid (3-16 letters, digits, - or _)");
+        co::held(name.empty() ? "there is no online name (Settings > Network)"
+                              : "the online name is not valid (Settings > Network)");
+        return;
+    }
+    int port = std::atoi(effective("DES_NET_P2P_PORT").c_str());
+    if (port < kNetP2pPortMin || port > kNetP2pPortMax) port = kNetP2pPortDefault;
+    set_net_knob("PS3_NET_P2P_PORT", std::to_string(port));
+    std::string why;
+    if (!co::start(name, &why)) {
+        sNetStatus = "Off: co-op did not start (" + why + ")";
+        return;
+    }
+    sNetOnline = true;
+    sNetStatus = host ? "Seamless co-op: hosting" : "Seamless co-op: joining a friend's game";
+}
+
 void apply_network() {
+    if (des::seamless::mode() != des::seamless::Mode::Off) {
+        apply_seamless();
+        return;
+    }
     const std::string online = effective("DES_ONLINE");
     if (online.empty() || online == "0") {
         sNetStatus = "Off: Online is off";
@@ -648,7 +766,7 @@ void load_and_apply_env() {
     // The keyboard and mouse layout applies with or without settings.ini; a PAD_KEYS from the environment changes it
     // as the setting would.
     const std::string keys = pinned("PAD_KEYS") ? pinned_value("PAD_KEYS") : get("PAD_KEYS");
-    ps3_setenv("PAD_KEYS", keys_with_layout(keys).c_str());
+    ps3_setenv("PAD_KEYS", keys_for_pad(keys_with_layout(keys)).c_str());
     std::fprintf(stderr, "[ui] keyboard and mouse: the Souls layout%s%s\n", keys.empty() ? "" : ", changed by ",
                  keys.c_str());
     // Mods before the network: a gameplay mod keeps it off. Which mods are on is the mods folder's order file
@@ -668,12 +786,20 @@ void load_and_apply_env() {
     apply_renderer();
 #endif
     write_in_use();
+    for (const Def& d : kDefs)
+        if (d.apply == Apply::Restart) sInEffect[d.key] = get(d.key);
 }
 
-std::string get(std::string_view key) {
+// The value settings.ini has (or will have), leaving out one being tried.
+static std::string stored(std::string_view key) {
     if (const auto it = sValues.find(key); it != sValues.end()) return it->second;
     const Def* d = find(key);
     return d ? default_of(*d) : "";
+}
+
+std::string get(std::string_view key) {
+    if (const auto it = sTried.find(key); it != sTried.end()) return it->second;
+    return stored(key);
 }
 
 int get_int(std::string_view key) {
@@ -688,10 +814,13 @@ bool is_default(std::string_view key) {
 void set(std::string_view key, const std::string& value) {
     const Def* d = find(key);
     if (!d) return;
+    if (const auto it = sTried.find(key); it != sTried.end()) sTried.erase(it);
     sValues[std::string(key)] = value;
     if ((d->apply == Apply::Live || d->apply == Apply::Session) && !pinned(key))
         apply_env(key, value.empty() ? default_of(*d) : value);
     if (key == "DES_NET_PASSWORD" && !pinned(key)) apply_match_group();
+    if (key == "DES_KICK" && !pinned(key))   // (the Kick key presses R1 only with DES_KICK=1: keys_for_pad)
+        apply_env("PAD_KEYS", pinned("PAD_KEYS") ? pinned_value("PAD_KEYS") : get("PAD_KEYS"));
     save();
     write_in_use();
 }
@@ -703,6 +832,22 @@ void store(std::string_view key, const std::string& value) {
     write_in_use();
 }
 
+bool try_value(std::string_view key, const std::string& value) {
+    const Def* d = find(key);
+    if (!d || d->apply != Apply::Live || pinned(key)) return false;
+    sTried[std::string(key)] = value;
+    apply_env(key, value.empty() ? default_of(*d) : value);
+    return true;
+}
+
+void end_try(std::string_view key) {
+    const auto it = sTried.find(key);
+    if (it == sTried.end()) return;
+    sTried.erase(it);
+    const std::string value = stored(key);
+    apply_env(key, value.empty() ? default_of(*find(key)) : value);
+}
+
 bool pinned(std::string_view key) {
     return sPinned.count(key) != 0;
 }
@@ -710,6 +855,21 @@ bool pinned(std::string_view key) {
 std::string pinned_value(std::string_view key) {
     const auto it = sPinnedValues.find(key);
     return it == sPinnedValues.end() ? std::string() : it->second;
+}
+
+std::vector<std::string> restart_pending() {
+    std::vector<std::string> keys;
+    for (const Def& d : kDefs) {
+        if (d.apply != Apply::Restart || pinned(d.key)) continue;
+        const auto it = sInEffect.find(d.key);
+        if (it == sInEffect.end() || it->second == get(d.key)) continue;
+        if (std::find(keys.begin(), keys.end(), d.key) == keys.end()) keys.push_back(d.key);  // (a key listed twice)
+    }
+    return keys;
+}
+
+void now_in_effect(std::string_view key) {
+    if (const auto it = sInEffect.find(key); it != sInEffect.end()) it->second = get(key);
 }
 
 const NetServer* net_server(std::string_view key) {
@@ -828,7 +988,7 @@ void save() {
                  "# The option keys are the environment variables of the same name; a variable set in the\n"
                  "# environment wins over this file.\n");
     for (const Def& d : kDefs) {
-        if (d.apply != Apply::Session) std::fprintf(f, "%s = %s\n", d.key, get(d.key).c_str());
+        if (d.apply != Apply::Session) std::fprintf(f, "%s = %s\n", d.key, stored(d.key).c_str());
     }
     std::fclose(f);
     report::replace_file(report::widen(tmp), report::widen(file));

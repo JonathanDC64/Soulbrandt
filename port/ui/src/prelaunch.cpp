@@ -4,13 +4,14 @@
 #include "prelaunch.hpp"
 
 #include "app.hpp"
+#include "event.hpp"
 #include "host.hpp"
 #include "input.hpp"
 #include "modal.hpp"
-#include "mods_window.hpp"
+#include "prompts.hpp"
 #include "settings.hpp"
-#include "settings_window.hpp"
-#include "trophies_window.hpp"
+#include "menu_pages.hpp"
+#include "menu_shell.hpp"
 #include "ui.hpp"
 #include "updates.hpp"
 #include "update_window.hpp"
@@ -26,7 +27,7 @@ const Rml::String kDocumentSource = R"RML(
     <link type="text/rcss" href="res/rml/controls.rcss" />
     <link type="text/rcss" href="res/rml/prelaunch.rcss" />
 </head>
-<body>
+<body class="prelaunch">
     <prelaunch-gradient />
     <prelaunch-vignette />
     <content id="root" open>
@@ -38,12 +39,17 @@ const Rml::String kDocumentSource = R"RML(
             </hero>
             <menu-list id="menu-list" />
         </menu>
+        <update-note id="update-note">
+            <update-mark />
+            <update-text><update-title id="update-title" /><update-line>See what's new, and update</update-line></update-text>
+        </update-note>
         <hint-info class="intro-item delay-6">
             <hint-label id="hint-text" />
         </hint-info>
         <version-info class="intro-item delay-7">
             <version-label>Version <version-number id="version-text"></version-number></version-label>
         </version-info>
+        <prelaunch-prompts id="prompts" class="intro-item delay-7" />
     </content>
 </body>
 </rml>
@@ -66,6 +72,24 @@ Prelaunch::Prelaunch() : Document(kDocumentSource, false, DocumentScope::Prelaun
 
     mVersion = mDocument->GetElementById("version-text");
     mHint = mDocument->GetElementById("hint-text");
+    mPrompts = mDocument->GetElementById("prompts");
+    // A click on a prompt does what its button does: Open presses the choice with the focus, Quit asks.
+    listen(mPrompts, Rml::EventId::Click, [this](Rml::Event& e) {
+        for (Rml::Element* t = e.GetTargetElement(); t && t != mPrompts; t = t->GetParentNode()) {
+            if (t->GetTagName() != "menu-prompt") continue;
+            const auto key = static_cast<prompts::Key>(t->GetAttribute<int>("data-key", -1));
+            if (key == prompts::Key::Back) {
+                request_quit_confirm(false);
+            } else if (key == prompts::Key::Confirm) {
+                for (const auto& button : mMenuButtons)
+                    if (Rml::Element* focused = mDocument->GetContext()->GetFocusElement(); button->contains(focused)) {
+                        button->root()->Click();
+                        break;
+                    }
+            }
+            return;
+        }
+    });
 
     listen(mDocument, Rml::EventId::Transitionend, [this](Rml::Event& event) {
         auto* target = event.GetTargetElement();
@@ -93,40 +117,55 @@ void Prelaunch::build_menu_buttons() {
     mMenuButtons.push_back(std::make_unique<Button>(menuList, "Settings"));
     mMenuButtons.back()->on_pressed([this] {
         play_sound(kSoundWindowOpen);
-        push(std::make_unique<SettingsWindow>(true));
+        push(std::make_unique<MenuShell>(MenuShell::Standalone{}));
     });
     apply_intro_animation(mMenuButtons.back()->root(), "delay-2");
 
     mMenuButtons.push_back(std::make_unique<Button>(menuList, "Trophies"));
     mMenuButtons.back()->on_pressed([this] {
         play_sound(kSoundWindowOpen);
-        push(std::make_unique<TrophiesWindow>());
+        push(menu::screen_alone("Trophies"));
     });
     apply_intro_animation(mMenuButtons.back()->root(), "delay-3");
 
     mMenuButtons.push_back(std::make_unique<Button>(menuList, "Mods"));
     mMenuButtons.back()->on_pressed([this] {
         play_sound(kSoundWindowOpen);
-        push(std::make_unique<ModsWindow>());
+        push(menu::screen_alone("Mods"));
     });
     apply_intro_animation(mMenuButtons.back()->root(), "delay-4");
 
-    // Hidden until the update check finds a newer release (show_update).
-    mUpdateIndex = mMenuButtons.size();
-    mMenuButtons.push_back(std::make_unique<Button>(menuList, "Update"));
-    mMenuButtons.back()->on_pressed([] {
+    mMenuButtons.push_back(std::make_unique<Button>(menuList, "Co-op"));
+    mMenuButtons.back()->on_pressed([this] {
+        play_sound(kSoundWindowOpen);
+        push(menu::screen_alone("Co-op"));
+    });
+    apply_intro_animation(mMenuButtons.back()->root(), "delay-5");
+
+    // Hidden until the update check finds a newer release (show_update), marked (.update) so it stands out; the note
+    // at the top right (update-note) opens the same.
+    const auto open_update = [] {
         play_sound(kSoundWindowOpen);
         push_document(std::make_unique<UpdateWindow>(
             UpdateWindow::Props{.open = UpdateWindow::Open::Notes, .release = updates::found(),
                                 .overGame = updates::over_game()}));
-    });
+    };
+    mUpdateIndex = mMenuButtons.size();
+    mMenuButtons.push_back(std::make_unique<Button>(menuList, "Update"));
+    mMenuButtons.back()->on_pressed(open_update);
+    mMenuButtons.back()->root()->SetClass("update", true);
+    if (Rml::Element* note = mDocument->GetElementById("update-note"))
+        mUpdateNoteListener = std::make_unique<ScopedEventListener>(note, Rml::EventId::Click,
+                                                                    [open_update](Rml::Event&) { open_update(); });
     mMenuButtons.back()->root()->SetClass("anim-done", true);
     set_display(mMenuButtons.back()->root(), Rml::Style::Display::None);
 
     mMenuButtons.push_back(std::make_unique<Button>(menuList, "Quit"));
-    mMenuButtons.back()->on_pressed([] { request_quit_confirm(); });
+    mMenuButtons.back()->on_pressed([] { request_quit_confirm(false); });
     apply_intro_animation(mMenuButtons.back()->root(), "delay-5");
 }
+
+Prelaunch::~Prelaunch() = default;
 
 // Play: the game is already running behind this screen; hide it and hand over the input.
 void Prelaunch::play() {
@@ -170,10 +209,15 @@ void Prelaunch::show_update() {
     } else {
         set_display(button.root(), Rml::Style::Display::None);
     }
+    if (Rml::Element* note = mDocument->GetElementById("update-note")) note->SetClass("on", found);
+    if (Rml::Element* title = mDocument->GetElementById("update-title"))
+        set_text_content(title, found ? "Version " + version + " is out" : std::string());
 }
 
 void Prelaunch::update() {
     if (!mEntranceAnimationStarted && mDocument != nullptr) {
+        // Without animations (DES_UI_NO_ANIM: the tests' pictures, uishots) the screen is at once as it ends.
+        mDocument->SetClass("still", !host::animations_enabled());
         mDocument->SetClass("animate-in", true);
         mEntranceAnimationStarted = true;
     }
@@ -188,8 +232,25 @@ void Prelaunch::update() {
         set_text_content(mHint, Rml::String("In the game, F1 or ") +
                                     input::chord_label(settings::get_int("pad_menu_chord")) + " opens the menu.");
     }
+    update_prompts();
 
     Document::update();
+}
+
+// The prompts for the keys here, as the menus show theirs (a look that draws them: DeS UI), drawn again only when
+// they change (the device used last).
+void Prelaunch::update_prompts() {
+    if (mPrompts == nullptr) return;
+    const prompts::Device device = input::menu_device();
+    std::string rml;
+    for (const prompts::Prompt& p : {prompts::Prompt{prompts::Key::Change, "Select"},
+                                     prompts::Prompt{prompts::Key::Confirm, "Open"},
+                                     prompts::Prompt{prompts::Key::Back, "Quit"}})
+        rml += "<menu-prompt data-key=\"" + std::to_string(static_cast<int>(p.key)) + "\">" +
+               menu::glyph_rml(device, p.key) + "<menu-says>" + escape(p.label) + "</menu-says></menu-prompt>";
+    if (rml == mPromptsShown) return;
+    mPromptsShown = rml;
+    mPrompts->SetInnerRML(rml);
 }
 
 bool Prelaunch::focus() {
@@ -211,7 +272,7 @@ bool Prelaunch::handle_nav_command(Rml::Event& event, NavCommand cmd) {
         direction = -1;
     } else if (cmd == NavCommand::Cancel) {
         // Circle / Escape on the start screen asks to quit, as a desktop program's start screen would.
-        request_quit_confirm();
+        request_quit_confirm(false);
         return true;
     } else {
         return false;

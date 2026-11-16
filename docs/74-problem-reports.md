@@ -24,13 +24,15 @@ Code:
 | File | What |
 |---|---|
 | `screenshot.png` | the game's picture, taken with the menu closed |
-| `system.txt` | port version (and whether it is a developer build), ps3recomp version, the game dump's SHA-256, the renderer that runs (with a runtime that has the route switch: `d3d12`, `vulkan`, ..., and why it is D3D12 when Vulkan was asked for; not in the crash dialog's), Windows version, CPU (cores, threads, instruction sets), memory (the PC's and this process's), each GPU with its driver (and the one in use with its memory budget), each display (size, refresh, primary, HDR), power (battery or not), free disk space where the game and the data are, gamepads (XInput, DualSense/DS4), keyboard layout, and other software loaded into the game (overlays, hooks) |
+| `system.txt` | port version (and whether it is a developer build), ps3recomp version, the game dump's SHA-256, the renderer that runs (with a runtime that has the route switch: `d3d12`, `vulkan`, ..., and why it is D3D12 when Vulkan was asked for; not in the crash dialog's), Windows version, CPU (cores, threads, instruction sets), memory (the PC's and this process's), each GPU with its driver, its PCI Express link (the version and lanes now, and the card's own when the link runs below them; a card at rest slows its link, so the lanes are the part to read: fewer than the card's means a narrower slot) and, for the one in use, its memory budget, each display (size, refresh, primary, HDR), power (battery or not), free disk space where the game and the data are, gamepads (XInput, DualSense/DS4), keyboard layout, and other software loaded into the game (overlays, hooks) |
 | `game.txt` | time running; game frames, with "no new frame for N s: the game had stopped" when it has; frames per second for each of the last 60 s; overlay frames; window or fullscreen, size and DPI; picture size; the save (its folder, how many files, how many minutes before the report it was saved); crash and hang reports on this PC in the last 7 days (names only) |
 | `settings.ini` | every setting with its value, `# changed; default: X` where it differs from the default, and `# set in the environment: X` where the environment overrides it |
 | `environment.txt` | the command line and every port or runtime option set in the environment (`DES_`, `PS3_`, `RSX_`, `SPU_`, `SPURS_`, `GCM_`, `PAD_`, `PPU_`, `AUDIO_`, `VBLANK`, `FIFO_`, `LIBSRE_`, `SAIL_`, `TROPHY_`, `WATCHDOG_`) |
 | `runtime.txt` | the runtime's snapshot (below), sampled over 2 s |
 | `des.log` | the first 120 lines of the log and its last 512 KB |
 | `des.prev.log` | the end of the previous run's log, when that run was in the last 24 h: a freeze or crash the player restarted after |
+| `coop.log` | this run's co-op log (below), whole up to its last 4 MB, when the run had co-op |
+| `coop.prev.log` | the co-op log before it, when it is from the last 24 h: a session the player restarted after |
 | `save/<folder>/...` | the player's save (`report::save_files`): each save folder in the game's save root (`PS3_SAVEDATA_ROOT`, else `gamedata/dev_hdd0/home/00000001/savedata`, as `cellSaveData.c` finds it). Every file except the folder's two pictures (`ICON0.PNG`, `PIC1.PNG`: the game's art, and a save loads without them) and a file the runtime is still writing (`.<name>.tmp`). If the game saved while it was read, it is read again, up to twice, half a second apart. At most 8 MB a file and 32 MB in all; a Demon's Souls save is ten 256 KB files |
 
 To load a reported save, put its folder in a save root of its own and start
@@ -39,7 +41,9 @@ any other save if the game's load screen wants them.
 
 The crash and hang dialog's **Report on GitHub** zips `crash.txt`,
 `hang.txt` or `graphics-lost.txt`, `system.txt`, `settings.ini`, `environment.txt` (the game's
-command line, saved with the report), `des.log` and the save (as above; its
+command line, saved with the report), `des.log`, `coop.log` (the game writes
+the co-op log's start and last 2 MB beside the report as `<report>.coop.log`,
+when the run had co-op) and the save (as above; its
 line is in the issue's System block). The dialog runs as a
 process of its own and reads no settings. So the game keeps
 `logs\settings.txt` up to date: the same listing as above, written at
@@ -52,19 +56,64 @@ changed a setting would send no settings at all.
 `ps3_diag_report(out, seconds)` writes, in one go, what the debug console's
 `stat`, `cpu`, `waits`, `threads`, `spu`, `spuhist` and `knobs` would show:
 
-- frames so far, the time since the last one, the last HLE call;
+- frames so far (one a flip, with the flip requests beside them), the time
+  since the last one, the last HLE call;
 - every guest thread: cia, lr, r3, the last syscall (r11, by name), and the
   HLE call it is inside;
 - SPU program runs per lifted image;
-- CPU per host thread over the sample window, with the hot function;
+- what the FIFO thread did in the window: waiting for the game's commands,
+  waiting for the GPU to finish work, presenting, getting the window's next
+  image, and the batches it drew. Only the portable renderer counts these;
+  today's D3D12 renderer says it doesn't;
+- CPU per host thread over the sample window, with the hot function. On Linux
+  it is each thread's time on a CPU and its time ready to run but waiting for
+  one, from the kernel's counts, with the threads named after the guest's
+  threads, SPU groups, the RSX thread, the vblank clock and the sound mixer;
 - the calls each guest thread finished in that window;
 - the host threads; the last 60 SPU history events; the knobs that are set.
+
+Reports made before ps3recomp #291 count a frame twice when the frame rate
+holds steady at its cap (120 at a 60 cap), so read their `game.txt` rates
+with that in mind.
 
 These are names, counters and addresses only. It never reads guest memory.
 
 The hang watchdog also writes one snapshot to the log after 10 s without a
 new frame (`PS3_FREEZE_SNAPSHOT=<s>`, 0 = off), between `[freeze]` lines. So
 even a log from a game the player killed shows where it stopped.
+
+### The co-op log (2026-11-14)
+
+A co-op session's story is a few lines a minute among thousands in `des.log`,
+and a report keeps only that log's start and end: a playtest's report lost
+the middle of an evening, where the problems were. So the log's tee threads
+(the ones that write `des.log`) also copy each co-op line into
+`logs\coop.log`, with the time it was printed in front (UTC, to the
+millisecond, so that the host's and a friend's logs line up). The date is a
+line of its own at the start and when it changes. The lines are the ones that
+start with `[coop]`, `[psnr`, `[sceNpMatching2]`, `[sceNp]`, `[upnp]`,
+`[sys_net]` or `[report]`: the port's co-op lines, the rooms, matching, the
+network, the router and the reports made meanwhile.
+
+- The game's threads do nothing more: the tee threads pick the lines out of
+  what they read anyway. A line cut between two reads waits for its end.
+- It is made at the run's first co-op line, so a run without co-op leaves the
+  last session's file as it was. The one before it is kept as
+  `coop.prev.log`. Another copy of the game running at the same time writes
+  `coop.<process>.log`, as it writes `des.<process>.log`.
+- It stops at 32 MB, with a note (`des.log` goes on).
+- What co-op adds to it (`des_seamless_game.cpp`):
+  - each change of the session's state (none, opening a room, host, joining,
+    client, leaving), with the members as the room library and the game count
+    them, and the room's timer (55 s when a room opens, -1 once a member is
+    in, 10 s after one left; the room is left when it runs out);
+  - the game's own session events, by name: `OnRoomTimeOut`,
+    `OnRoomDisappeared`, `OnIrregularLeaveSession`, `OnLeave_Limit`, the
+    kicks and the failed joins. The game raises them through one function
+    (`0x00467628`, with the name in r4) that calls `global_event.lua`'s
+    handler of that name; a hook there logs the names with a session word in
+    them. Before this, a host that left its room for one of these showed
+    nothing in the log but the room's leave request.
 
 ## When the game freezes
 

@@ -22,7 +22,9 @@ Only one version is kept: the one kept before goes once a swap is done. The play
 with the saves, shader_cache/, a portable install's data/ and portable.txt) never move, nor does anything else that
 is not a program file. The program files are the names at the top of the install that setup/release-files.txt lists
 (the player's zip has it, tools/release/package.py), or, for an install from before it, the names the new release has.
-The program's own file name is in setup/release-info.txt (exe=), so a release may give it another.
+The program's own file name is in setup/release-info.txt (exe=), so a release may give it another. A save in a program
+folder or in .previous (a gamedata folder dragged onto the folder next to it) stops an update or a going back before
+anything is changed, with where it is (saves_in_the_way).
 
 A swap is a few renames in the same folder, each written to DIR/.update/swap.txt first, so a swap that fails is
 undone at once, and one cut short (a power cut) is undone at the program's next start (the host reads the same
@@ -414,6 +416,56 @@ def swap_program(sw: Swap, install: Path, staged: Path, keep_as: Path):
             sw.move(staged / n, install / n)
 
 
+# ---- saves where a swap would take them ----
+
+def _is_save(name: str, is_dir: bool) -> bool:
+    """A name only the player's saves have (no file of a release has one): the gamedata or savedata folder, a save's
+    PARAM.SFO, a trophy file (sceNpTrophy.c's NPWR<id>.json)."""
+    n = name.casefold()
+    if is_dir:
+        return n in ("gamedata", "savedata")
+    return n == "param.sfo" or (n.startswith("npwr") and n.endswith(".json"))
+
+
+def saves_inside(folder: Path) -> list:
+    """The saves in `folder` or below it, each the topmost one found (a gamedata folder, not every save in it). No link
+    is followed."""
+    found = []
+    if not folder.is_dir() or folder.is_symlink():
+        return found
+    for base, dirs, files in os.walk(folder):
+        hit = sorted(d for d in dirs if _is_save(d, True))
+        found += [Path(base) / d for d in hit]
+        dirs[:] = sorted(d for d in dirs if d not in hit)
+        found += [Path(base) / f for f in sorted(files) if _is_save(f, False)]
+    return found
+
+
+def _shown(install: Path, paths, most=3) -> str:
+    names = [str(p.relative_to(install)) for p in paths[:most]]
+    return ", ".join(names) + (f" and {len(paths) - most} more" if len(paths) > most else "")
+
+
+def saves_in_the_way(install: Path):
+    """Issue #528: a gamedata folder dragged in Explorer onto licenses/, the folder below it, went aside with the
+    version an update put in .previous, and the next update deletes .previous. So before a swap changes anything, a
+    save in a program folder (the names release-files.txt lists) or in .previous stops it, and the player is told
+    where the save is. The gamedata folder at the top of the install never moves (KEEP) and is not looked at."""
+    exe = exe_name(install) or "the game"
+    program = [p for n in sorted(listed(install) or ()) for p in saves_inside(install / n)]
+    if program:
+        raise UpdateFailed("busy", "-", f"There is a save in the game's program files: {_shown(install, program)}. "
+                                        f"The game doesn't read saves there, and those files are put aside when the "
+                                        f"version changes. Move it out (the game's saves are in the gamedata folder "
+                                        f"beside {exe}), then try again.")
+    kept = [p for n in (PREVIOUS, PREVIOUS + ".old") for p in saves_inside(install / n)]
+    if kept:
+        raise UpdateFailed("busy", "-", f"There is a save in {_shown(install, kept)}, where the version before this "
+                                        f"one is kept, and that folder is replaced when the version changes. Move it "
+                                        f"out first (the game's saves are in the gamedata folder beside {exe}), then "
+                                        f"try again.")
+
+
 def release_shaped(install: Path) -> bool:
     """A player's install (setup/release-info.txt, and the program it names), not a developer's tree (a git checkout)."""
     return has_program(install) and not (install / ".git").exists()
@@ -561,6 +613,7 @@ def _apply(install, data, app, to, emit, timeout) -> int:
         raise UpdateFailed("internal", "-", f"Setup cannot write to the game's folder ({install}). Move the game "
                                             f"to a folder you can write to, such as Documents, then update.")
     recover(install, emit)
+    saves_in_the_way(install)
     found = [(v, t, r) for v, t, r in stable_releases(read_feed(data)) if t == ".".join(map(str, version_of(to) or ()))]
     if not found:
         raise UpdateFailed("download", "-", f"Version {to} is not among the releases.")
@@ -664,6 +717,7 @@ def _back(install, data, app, emit) -> int:
     if not release_shaped(install):
         raise UpdateFailed("internal", "-", f"{install} is not a player's install of the game.")
     recover(install, emit)
+    saves_in_the_way(install)
     old = kept_version(install)
     if old is None:
         raise UpdateFailed("internal", "-", "There is no earlier version to go back to.")

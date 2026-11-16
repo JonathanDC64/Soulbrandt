@@ -102,6 +102,64 @@ menu-list {
     align-items: flex-start;
 }
 
+/* A new version, so it isn't missed: a note at the top right (a click opens it), and the Update choice in the accent
+   colour with a bar at its left. */
+update-note {
+    display: none;
+}
+
+update-note.on {
+    display: flex;
+    position: absolute;
+    top: 40dp;
+    right: 48dp;
+    align-items: center;
+    gap: 16dp;
+    padding: 14dp 24dp 14dp 18dp;
+    border-width: 2dp;
+    border-color: rgb(var(--color-accent-rgb));
+    border-radius: var(--radius-window);
+    background-color: rgba(var(--color-surface-rgb), 94%);
+    box-shadow: rgba(var(--color-accent-rgb), 35%) 0 0 18dp 2dp;
+    cursor: pointer;
+}
+
+update-note.on:hover {
+    background-color: rgba(var(--color-accent-rgb), 18%);
+}
+
+update-mark {
+    display: block;
+    width: 40dp;
+    height: 40dp;
+    font-family: var(--font-family-icons);
+    font-size: 40dp;
+    color: rgb(var(--color-accent-rgb));
+    decorator: text("&#xe2c4;" center center);  /* file_download */
+}
+
+update-text {
+    display: block;
+}
+
+update-title {
+    display: block;
+    font-family: var(--font-family-heading);
+    font-size: var(--font-size-2xl);
+    color: var(--color-white);
+}
+
+update-line {
+    display: block;
+    font-size: var(--font-size-md);
+    color: var(--color-prelaunch-muted);
+}
+
+#menu-list button.update {
+    border-left-color: rgb(var(--color-accent-rgb));
+    color: rgb(var(--color-accent-rgb));
+}
+
 #menu-list button {
     width: 380dp;
     height: 50dp;
@@ -160,6 +218,11 @@ version-info {
     color: var(--color-prelaunch-muted);
 }
 
+/* The prompts for the keys here, for a look that draws them (DeS UI). */
+prelaunch-prompts {
+    display: none;
+}
+
 /* Startup animation */
 .intro-item {
     opacity: 0;
@@ -180,3 +243,11 @@ body.animate-in .intro-item {
 .delay-5 { transition: opacity transform 0.3s 0.7s cubic-in-out; }
 .delay-6 { transition: opacity transform 0.3s 0.8s cubic-in-out; }
 .delay-7 { transition: opacity transform 0.3s 0.9s cubic-in-out; }
+
+/* Without animations (prelaunch.cpp): no fade, no rise. */
+body.still,
+body.still content,
+body.still .intro-item,
+body.still #menu-list button.anim-done {
+    transition: none;
+}

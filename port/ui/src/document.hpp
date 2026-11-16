@@ -27,6 +27,9 @@ public:
     // While a document that says so is open, the UI's scale follows the window's size (host::set_follow_height):
     // the setup screens, drawn as one full-window page.
     virtual bool scales_with_window() const { return false; }
+    // The window width this document is laid out for, in dp; 0 for any. While it is open, the UI's scale is never more
+    // than the window holds of it (host::set_room): the menus (MenuShell, its sheet's --menu-room).
+    virtual float room() const { return 0.f; }
     virtual void cover() {
         mWasVisible = visible();
         hide(false);

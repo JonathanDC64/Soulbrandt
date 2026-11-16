@@ -10,11 +10,14 @@
 
 namespace ui {
 
+class ScopedEventListener;
+
 // The start screen, over the game window at launch: the title, Play / Settings / Quit. The game boots behind it (its
 // own logos and title screen are the backdrop); Play hides it and gives the game the input.
 class Prelaunch : public Document {
 public:
     Prelaunch();
+    ~Prelaunch() override;
 
     void show() override;
     void hide(bool close) override;
@@ -30,14 +33,18 @@ private:
     void build_menu_buttons();
     void play();
     void show_update();
+    void update_prompts();
 
     bool mEntranceAnimationStarted = false;
     std::vector<std::unique_ptr<Button>> mMenuButtons;
     size_t mUpdateIndex = 0;     // "Update to <version>" among them, shown once the check found one (updates.hpp)
     std::string mUpdateShown;    // the version it shows; empty: hidden
+    std::unique_ptr<ScopedEventListener> mUpdateNoteListener;  // a click on the note at the top right: the same
     Rml::Element* mRoot = nullptr;
     Rml::Element* mVersion = nullptr;
     Rml::Element* mHint = nullptr;
+    Rml::Element* mPrompts = nullptr;
+    std::string mPromptsShown;
 };
 
 }  // namespace ui

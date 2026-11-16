@@ -17,7 +17,7 @@
  *
  * The programs of the archives the game draws without a depth test (kFlat)
  * and the executable's are built a second time in the form a scaled target
- * (RSX_SCALE above 100) draws them, with the sprite-edge clamp
+ * (RSX_SCALE other than 100) draws them, with the sprite-edge clamp
  * (RSX_PRECOMPILE_2D). Without it a first start at 200% compiled 16 of them
  * in play, most in one 280-500 ms frame as the level appeared (docs/93).
  *

@@ -14,6 +14,10 @@ buttons. They now show the buttons of the controller the player used last, or th
 - **Xbox**: A B X Y in their usual colours, LB RB LT RT, LS RS, View and Menu.
 - **Nintendo**: the same letters in grey (SDL names a Nintendo pad's buttons by their letters, so A is Cross), L R
   ZL ZR, Minus and Plus.
+- **Steam Deck**: A B X Y where Xbox has them, in a light grey with no colour, like the Deck's own; L1 R1 as slim
+  bumpers, L2 R2 as triggers with a round top, L3 R3 as sticks with a ring around the top, and View and Menu on small
+  buttons with well-rounded corners. Drawn here in the game's style, like the others; none of Valve's art is used. On
+  a Steam Deck, Automatic shows these.
 - **Keyboard and mouse**: the keys set in Settings > Controls (E, Space, Esc...), the mouse with the button in use
   lit, arrow keys, WASD for moving and the mouse for the camera. A chord (Shift + left button) shows a small Shift key
   on the mouse.
@@ -37,7 +41,12 @@ PlayStation pad with Circle and Cross swapped, the prompt for Circle shows ×. T
 4. **The device.** cellPad records the last device used on port 0 and its kind (`cellPad_host_glyph_device`,
    `pad_glyph.h`): XInput is Xbox; DualShock 4 and DualSense over HID are PlayStation; SDL gives the kind (PS3, PS4,
    PS5, Switch Pro, Joy-Con, else Xbox). The port checks it each frame and the settings twice a second. A change has
-   the renderer ask again.
+   the renderer ask again. On a Steam Deck, Automatic shows an Xbox-type pad as the Deck, since the Deck's own
+   controls reach the game as one (through Steam Input, or SDL). The port knows a Deck by its firmware's maker
+   (`/sys/class/dmi/id/sys_vendor` is "Valve", as cellPad's PAD_KEYBOARD_WITH_PAD default reads it) or by Steam's
+   `SteamDeck=1`, which also reaches the Windows program under Proton (`input.cpp`, `on_steam_deck`). A PlayStation or
+   Nintendo pad on a Deck keeps its own icons. An Xbox pad on a docked Deck shows the Deck's; the row's Xbox choice
+   brings Xbox's back.
 5. **The sprites.** Three button pictures are not text: the HUD's item slot (□), its magic slot (□) and the message
    window's ○. They come from two textures of `menu/menu.tpf`, Menu08 and Menu00, which the port reads the same way
    (by name and size; the cells are where the menu's layout puts them, the same on the US and European discs). They
@@ -71,6 +80,22 @@ Drawing them in code instead, because:
 No model, download or new dependency is needed. The look comes from colours measured on the game's own page. A model
 could still help design a future icon, but its output would need redrawing as shapes.
 
+## The menus' prompts use the same art
+
+The F1 menu and Settings show their prompts and the L1 and R1 beside the tabs with these pictures, one button at a
+time (`button_pages::draw_single`):
+
+- `prompts.cpp` names each prompt's picture as data: a pad's button by its cellPad name, the D-pad with some ways lit,
+  or a key with its cap.
+- `button_art.cpp` is the `<menu-art>` element that shows it. It draws the picture at the pixel size the layout
+  gives it, so it stays sharp at any UI scale. The look's style sheet sets its height, and its width follows: a key
+  with a word on it ("Enter") gets a cap as wide as the word needs.
+- PlayStation's buttons are drawn too, in the same style: ✕, ○, △ and □ in their colours on the dark disc, L1 to R3,
+  and Select and Start as a pill with the word on it, as the PS3's own prompts show them. The game's page keeps its
+  own pictures; the menus never use them.
+- Each glyph also carries the button's name as text (`menu-key`). Today's look hides it; a look that draws text
+  instead hides the picture.
+
 ## Limits and next steps
 
 - **Wide key names.** A key's name is drawn inside a square cap, so "Space" is small. Wider cells would mean changing
@@ -85,7 +110,7 @@ could still help design a future icon, but its output would need redrawing as sh
 
 ## Knobs
 
-- DES_GLYPHS: auto (default), playstation, xbox, nintendo, keyboard. Read live from the environment, then
+- DES_GLYPHS: auto (default), playstation, xbox, nintendo, steamdeck, keyboard. Read live from the environment, then
   settings.ini.
 - PAD_GLYPH_LOG=1 (ps3recomp): log each change of the device.
 
@@ -93,6 +118,9 @@ could still help design a future icon, but its output would need redrawing as sh
 
 - ps3recomp `test_pad_glyph`: the rules for the last device used (presses, drift, triggers, ties, a pad unplugged).
 - ps3recomp `test_rsx_texture_override`: the table of hooks (shapes, replacing, removing, a full table).
+- `button_icons_check` also draws the menus' single buttons: every pad button for each pad, PlayStation's shapes in
+  their colours, and key caps as wide as their word. `--png` writes them as `singles.png`. `input_map_check` checks
+  that every prompt has a picture, for each device.
 - `port/ui/tests/button_icons_check.cpp` (target `button_icons_check`): a made-up code map and texture pack read, the
   page decoded and drawn for each device at 1x, 2x and 4x, every cell drawn, the rest of the page kept. Then a made-up
   menu pack: its two sprite pages found by name and size (not a third texture), drawn at 2x at most, and the item

@@ -48,24 +48,14 @@ void with_zip_ack(std::function<void()> then) {
     const auto ticked = std::make_shared<bool>(false);
     const Rml::String where =
         report::no_desktop()
-            ? "The report is saved with a link to the issue page beside it. GitHub can't attach the file for you: "
-              "when you open the link on a PC, drag the report file (.zip) into the form's \"Report file (.zip)\" box."
-            : "The issue page opens in your browser, and the folder with the report file (.zip) opens beside it. "
-              "GitHub can't attach the file for you: drag it into the form's \"Report file (.zip)\" box.";
+            ? "The report is saved with a link to the issue page. On a PC, drag the .zip into the issue's \"Report "
+              "file\" box."
+            : "Drag the .zip from the folder that opens into the issue's \"Report file\" box.";
     auto owned = std::make_unique<Modal>(Modal::Props{
-        .title = "Before you report",
-        .bodyText = where + " The file has the logs needed to find the problem; without it, a report can rarely be "
-                            "solved. This is asked only once.",
+        .title = "Attach the report file?",
+        .bodyText = where + " Without it, a report can rarely be solved.",
         .actions =
             {
-                ModalAction{
-                    .label = "Cancel",
-                    .onPressed =
-                        [](Modal& m) {
-                            play_sound(kSoundWindowClose);
-                            m.pop();
-                        },
-                },
                 ModalAction{
                     .label = "Continue",
                     .onPressed =
@@ -79,23 +69,34 @@ void with_zip_ack(std::function<void()> then) {
                         },
                     .isDisabled = [ticked] { return !*ticked; },
                 },
+                ModalAction{
+                    .label = "Cancel",
+                    .onPressed =
+                        [](Modal& m) {
+                            play_sound(kSoundWindowClose);
+                            m.pop();
+                        },
+                },
             },
         .onDismiss = [](Modal& m) { m.pop(); },
         .icon = "question-mark",
     });
-    // The tick: a button whose box fills when pressed (Material Symbols' check_box and check_box_outline_blank). Made
-    // before the question shows, so the focus starts on it.
+    // The tick: a button whose box fills when pressed (Material Symbols' check_box and check_box_outline_blank), with
+    // its state in words too for a look that draws it as a row and its value (No, Yes). Made before the question
+    // shows, so the focus starts on it.
     auto& tick = owned->content_pane().add_button(ControlledButton::Props{
         .isSelected = [ticked] { return *ticked; },
     });
     tick.root()->SetClass("report-ack-tick", true);
     Rml::Element* box = append(tick.root(), "icon");
     box->SetClass("check-box-blank", true);
-    append_text(tick.root(), "I'll attach the report file to my issue");
-    tick.on_pressed([ticked, box] {
+    append_text_element(tick.root(), "tick-label", "I'll attach the report file to my issue");
+    Rml::Element* says = append_text_element(tick.root(), "tick-value", "No");
+    tick.on_pressed([ticked, box, says] {
         *ticked = !*ticked;
         box->SetClass("check-box", *ticked);
         box->SetClass("check-box-blank", !*ticked);
+        set_text_content(says, *ticked ? "Yes" : "No");
         play_sound(*ticked ? kSoundItemEnable : kSoundItemDisable);
     });
     // Over what is showing, covering it as a window's own push does (the crash dialog's text would show through).

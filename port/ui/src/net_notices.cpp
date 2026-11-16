@@ -30,7 +30,7 @@ constexpr std::size_t kMaxWaiting = 8;                       // (more than that 
 enum class Kind {
     Refusal,  // the sign-in's or psnr's, or a block or report the server turned down: a warning toast
     Banner,   // the server's: the thin bar at the top
-    Done,     // a block, report or deletion that went through (players_window.cpp, settings_window.cpp): a toast
+    Done,     // a block, report or deletion that went through (players_window.cpp, settings_page.cpp): a toast
 };
 
 struct Message {
@@ -66,7 +66,10 @@ void poll() {
     if (ps3_net_erase_result(&ok, &kept, text, sizeof text)) {
         if (ok) {
             settings::net_off("Off: your data on the server was deleted");
-            if (!settings::pinned("DES_ONLINE")) settings::set("DES_ONLINE", "0");
+            if (!settings::pinned("DES_ONLINE")) {
+                settings::set("DES_ONLINE", "0");
+                settings::now_in_effect("DES_ONLINE");  // (this run is offline already: no restart to ask about)
+            }
         }
         keep(ok ? Kind::Done : Kind::Refusal,
              ok ? std::string(text) + " Online play is off now; turning it on again starts a new record." : text);

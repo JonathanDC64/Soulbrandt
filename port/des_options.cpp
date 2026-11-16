@@ -15,11 +15,16 @@
  *   The hold is 3 s for logo 0 and 5 s for the others; each fade is 1 s, so the
  *   sequence takes about 33 s. When the fade-out of logo 4 finishes, the dialog
  *   requests the next menu state itself (0x3C, the title).
- *   1 does what RPCS3's "Skip Intro" patch for BLUS30443 does (li r0,3;
- *   stw r0,0x100(r28) over the state tests at 0x008EEF78): every update takes
- *   state 3's branch, which moves to the next logo without waiting for a fade,
- *   and after the last one requests the title itself. No logo is drawn, and the
- *   title comes up about five frames after the dialog opens.
+ *   1 leaves the dialog the way it leaves after the last logo's fade-out, from
+ *   its first update: the request for the title (0x00720F50(0x3C, 0)), which
+ *   the dialog itself makes at every update from then until the menu moves
+ *   on. Its own update runs only once, in state 0, where it starts the fade
+ *   from black; after that it never runs, so no logo is ever shown (#518).
+ *   Before, 1 did what RPCS3's "Skip Intro" patch does (li r0,3;
+ *   stw r0,0x100(r28) over the state tests at 0x008EEF78): every update took
+ *   state 3's branch, one logo after the other, and each update still showed
+ *   the logo it was on, so the logos flashed by, a frame each, before the
+ *   title.
  *   2 (the first version of the option) makes a logo that is about to start
  *   fading in (state 0) the last one, and treats the hold of state 2 as already
  *   over: the last logo's fade-in and fade-out still play, about 2 s.
@@ -128,7 +133,10 @@
  *   goes forwards and never moves a cursor off its default. It lets go for
  *   good when the level's script archive (script/m*.luabnd) opens. Read at
  *   each pad poll, so the settings window turns it on or off live until then;
- *   after the first level there is nothing left for it to do.
+ *   after the first level there is nothing left for it to do. With no
+ *   character in the save (a new save, or none) it presses nothing: there is
+ *   nothing to continue, and its CROSS opened New Game's name box over and
+ *   over (#471).
  *
  * The dev cheats and the warp are in des_dev.cpp, compiled into developer
  *   builds only (cmake -DDES_DEV=ON; docs/55).
@@ -139,8 +147,10 @@
 #include "ps3emu/ps3_knob.h"   /* ps3_setenv: through the runtime's getenv cache */
 #include "ui/include/des_ui.h"  /* the wrapper UI: settings.ini and the overlay (docs/32) */
 #include "des_rsx_route.h"      /* the renderer calls below: through rsx_out in a PS3RECOMP_RSX_HAL build */
+#include "des_seamless.h"       /* seamless co-op's mode: its world tendency is always the player's own */
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -172,9 +182,14 @@ extern "C" void des_route_on_open(const char* path);   /* des_route.cpp: a level
 extern "C" unsigned des_route_buttons(void);   /* des_route.cpp: the buttons a press step holds */
 extern "C" volatile unsigned g_pad0_reads, g_pad0_empty_reads, g_pad0_buttons, g_pad0_lstick;   /* cellPad.c */
 extern "C" void cellPad_host_stick(int stick, unsigned char x, unsigned char y, unsigned reads);   /* cellPad.c */
+extern "C" int cellPad_host_key_down(int vk);   /* cellPad.c: a key or mouse button held now */
 #ifdef _WIN32
 extern "C" __declspec(dllimport) short __stdcall GetAsyncKeyState(int vkey);   /* user32 */
 constexpr int VK_F8 = 0x77;
+#endif
+
+#ifndef PS3_GAME_SPLIT   /* DES_SPLIT: the game DLL's (ps3emu/game_split.h) */
+extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
 #endif
 
 namespace {
@@ -219,8 +234,35 @@ void logo_update_skip(ppu_context* ctx)
     const uint32_t dlg = (uint32_t)ctx->gpr[3];
     const int mode = skip_intro();
     if (dlg && mode == 1) {
-        vm_write32(dlg + anim_state_at(), 3);   /* to the next logo, or out after the last */
-    } else if (dlg && mode == 2) {
+        static bool said = false;
+        if (!said) {
+            said = true;
+            fprintf(stderr, "[des] DES_SKIP_INTRO: no logos, straight to the title\n");
+        }
+        const uint64_t lr = ctx->lr;
+        if (vm_read32(dlg + anim_state_at()) == 0) {
+            /* Its first update only starts the fade from black (state 0 -> 1).
+             * Without it the dialog is drawn once at full strength before the
+             * title takes over, and the first logo shows for a frame. */
+            func_008EF430(ctx);
+            while (g_trampoline_fn) {
+                void (*tf)(void*) = g_trampoline_fn;
+                g_trampoline_fn = nullptr;
+                tf(ctx);
+            }
+        }
+        ctx->gpr[3] = 0x3C;   /* the title */
+        ctx->gpr[4] = 0;
+        func_00720F50(ctx);
+        while (g_trampoline_fn) {
+            void (*tf)(void*) = g_trampoline_fn;
+            g_trampoline_fn = nullptr;
+            tf(ctx);
+        }
+        ctx->lr = lr;
+        return;   /* (the dialog's own update would show the logo it is on) */
+    }
+    if (dlg && mode == 2) {
         const uint32_t state = vm_read32(dlg + anim_state_at());
         if (state == 0 && vm_read32(dlg + cur_log_type_at()) < last_log_type()) {
             static bool said = false;
@@ -716,10 +758,21 @@ bool auto_continue_on()   /* live: the settings window can turn it on or off bef
     return on;
 }
 
+std::atomic<int> s_auto_save{-1};   /* whether the save holds a character to continue: -1 not read yet */
+
 unsigned auto_continue_buttons()
 {
     /* From settings.ini the start screen still shows: press nothing until Play. */
     if (s_auto_done || !auto_continue_on() || des_ui_start_screen_up()) return 0;
+    /* With no character in the save (a new one, or none), the presses went into New Game and opened its name box
+     * over and over: each CROSS opened it again (#471). Read once, at the first press. */
+    int has = s_auto_save.load();
+    if (has < 0) {
+        has = des::seamless::save_has_character() ? 1 : 0;
+        s_auto_save.store(has);
+        if (!has) fprintf(stderr, "[des] DES_AUTO_CONTINUE: no character in the save to continue, so it presses nothing\n");
+    }
+    if (!has) return 0;
     using clock = std::chrono::steady_clock;
     static const clock::time_point t0 = clock::now();
     const long long ms =
@@ -1084,6 +1137,7 @@ extern "C" int des_cutscene_playing(void) { return cutscene_playing() ? 1 : 0; }
 extern "C" void des_auto_continue_again(void)
 {
     ps3_setenv("DES_AUTO_CONTINUE", "1");
+    s_auto_save = -1;   /* (the save read again: the run may have made a character since) */
     s_auto_done = false;
 }
 
@@ -2084,13 +2138,17 @@ extern "C" void des_net_sync(ppu_context* ctx, uint32_t addr)
  * is tested: it writes the own values to out and clears r4, so the reader
  * skips the reply, both functions see server = own, and the result is the
  * offline one. The player's own values still go to the server (addQWCData).
- * Blends saved before stay. Live: from the next load. Main thread. */
+ * Blends saved before stay. Live: from the next load. Main thread.
+ * Always in seamless co-op (DES_SEAMLESS host or join): there is no server
+ * there, only the game's own in-game answers (des_seamless.cpp), which give a
+ * neutral tendency, so the mix only pulled each player's tendency toward
+ * neutral (every area halved at a load into the Nexus: 0.8 to 0.4). */
 extern "C" void des_qwc_local(ppu_context* ctx, uint32_t)
 {
     static int own = 0;
     PS3_KNOB(own, [] {
         const char* e = std::getenv("DES_NET_TENDENCY");
-        return e && std::strcmp(e, "own") == 0 ? 1 : 0;
+        return (e && std::strcmp(e, "own") == 0) || des::seamless::mode() != des::seamless::Mode::Off ? 1 : 0;
     }());
     if (!own) return;
     const uint32_t out = (uint32_t)ctx->gpr[4], area = (uint32_t)ctx->gpr[5];
@@ -2545,6 +2603,132 @@ extern "C" void des_roll_tie(ppu_context* ctx, uint32_t)
     if (!on) return;
     if (hist) ctx->fpr[31] = 0.0;
     if (cur) ctx->fpr[27] = 0.0;
+}
+
+/* DES_KICK=1 (0, the original, is the default): attacking never kicks, and
+ * the Kick key does (Settings > Controls > Kick). The game kicks when the
+ * attack (R1) goes down while the left stick has just been pushed forward.
+ * The pad manipulator's update (0x003103F8) keeps that push at +0x184:
+ * 0x0030D9E8 passes the stick's forward axis there only for the first 0.06 s
+ * after it goes past 0.8 (in the character's own frame when not locked on).
+ * The player's script (c0000.esd) reads it through its function 212 (the case
+ * at 0x00300B80 of 0x002FF5C0: +0x184 > 0), and only beside an R1 press, in
+ * the transitions to the kick (one-handed, animation 3100) and to the
+ * two-handed forward attack (4100); nothing else reads it. With DES_KICK=1
+ * the press itself says whether it is a kick: on each frame R1 is down (slot
+ * 0's store at 0x00310AA8, r17 bit 0 = down, set on every frame of a press:
+ * a 3-frame press gives 3; r31 = the manipulator) this
+ * reads whether a Kick binding is held (DES_KICK_KEYS; settings.cpp adds them
+ * to R1's keys as well), and function 212's answer (r10 at 0x00300BAC, r29 =
+ * the controller) is that, for the player alone. So the Kick key does what a
+ * fresh push forward with an attack did, after the script's earlier choices
+ * as before (a backstab, a running, rolling or backstep attack), and the
+ * attack button never kicks. Other characters, and the other players'
+ * characters online, are left alone. Live. DES_KICKLOG=1 prints a line for
+ * each frame the attack is down, and, in either mode, the game's own answer
+ * each time the script asks;
+ * with PS3_NO_USER_INPUT (a scripted run) DES_KICK_TEST=1 stands for a held
+ * Kick key. */
+namespace {
+struct KickBind {
+    int in, mod;
+};
+struct KickKeys {
+    KickBind b[4];
+    int n;
+};
+
+/* One input as the Keyboard page writes it (controls_window.cpp, PAD_KEYS's
+ * names): its virtual-key code for cellPad_host_key_down, the mouse buttons as
+ * VK_LBUTTON to VK_XBUTTON2. 0: not an input, or a wheel notch (never held). */
+int kick_vk(const char* s, size_t n)
+{
+    static const struct { const char* name; int vk; } kNames[] = {
+        {"space", 0x20},   {"enter", 0x0D},    {"return", 0x0D},   {"tab", 0x09},      {"esc", 0x1B},
+        {"escape", 0x1B},  {"backspace", 0x08}, {"shift", 0x10},   {"lshift", 0xA0},   {"rshift", 0xA1},
+        {"ctrl", 0x11},    {"lctrl", 0xA2},    {"rctrl", 0xA3},    {"alt", 0x12},      {"lalt", 0xA4},
+        {"ralt", 0xA5},    {"up", 0x26},       {"down", 0x28},     {"left", 0x25},     {"right", 0x27},
+        {"insert", 0x2D},  {"delete", 0x2E},   {"home", 0x24},     {"end", 0x23},      {"pageup", 0x21},
+        {"pagedown", 0x22}, {"capslock", 0x14}, {"mouse1", 0x01},  {"mouse2", 0x02},   {"mouse3", 0x04},
+        {"mouse4", 0x05},  {"mouse5", 0x06},
+    };
+    if (n == 1 && std::isalnum((unsigned char)s[0])) return std::toupper((unsigned char)s[0]);
+    const auto same = [&](const char* name) {
+        if (std::strlen(name) != n) return false;
+        for (size_t i = 0; i < n; i++)
+            if (std::tolower((unsigned char)s[i]) != name[i]) return false;
+        return true;
+    };
+    for (const auto& k : kNames)
+        if (same(k.name)) return k.vk;
+    if ((n == 2 || n == 3) && (s[0] | 0x20) == 'f' && s[1] >= '1' && s[1] <= '9') {
+        const int f = n == 2 ? s[1] - '0' : (s[2] >= '0' && s[2] <= '9' ? (s[1] - '0') * 10 + s[2] - '0' : 0);
+        return f >= 1 && f <= 24 ? 0x70 + f - 1 : 0;
+    }
+    if (n > 2 && n < 8 && s[0] == '0' && (s[1] | 0x20) == 'x') {
+        char buf[8];
+        std::memcpy(buf, s, n);
+        buf[n] = 0;
+        return int(std::strtol(buf, nullptr, 16) & 0xFF);
+    }
+    return 0;
+}
+
+/* DES_KICK_KEYS: bindings separated by '|', each an input or a modifier and
+ * an input ("mouse4|shift+v"). */
+KickKeys kick_keys(const char* e)
+{
+    KickKeys k{};
+    while (e && *e && k.n < 4) {
+        const char* end = std::strchr(e, '|');
+        if (!end) end = e + std::strlen(e);
+        const char* plus = static_cast<const char*>(std::memchr(e, '+', size_t(end - e)));
+        KickBind b{};
+        if (plus) {
+            b.mod = kick_vk(e, size_t(plus - e));
+            b.in = kick_vk(plus + 1, size_t(end - plus - 1));
+        } else {
+            b.in = kick_vk(e, size_t(end - e));
+        }
+        if (b.in && (!plus || b.mod)) k.b[k.n++] = b;
+        e = *end ? end + 1 : end;
+    }
+    return k;
+}
+
+bool kick_held(const KickKeys& k)
+{
+    if (ps3_env_int("PS3_NO_USER_INPUT", 0)) return ps3_env_int("DES_KICK_TEST", 0) != 0;
+    for (int i = 0; i < k.n; i++)
+        if (cellPad_host_key_down(k.b[i].in) && (!k.b[i].mod || cellPad_host_key_down(k.b[i].mod))) return true;
+    return false;
+}
+}  // namespace
+
+extern "C" void des_kick(ppu_context* ctx, uint32_t addr)
+{
+    static int mode = 0, log = 0;
+    static KickKeys keys{};
+    static bool kick = false;   /* the player's last R1 press was the Kick key's */
+    PS3_KNOB(mode, ps3_env_int("DES_KICK", 0));
+    PS3_KNOB(log, env_on("DES_KICKLOG"));
+    PS3_KNOB(keys, kick_keys(std::getenv("DES_KICK_KEYS")));
+    if (mode != 1) kick = false;
+    if (mode != 1 && !log) return;
+    const uint32_t ctrl = player_controller();
+    if (!ctrl) return;
+    if (addr == 0x00310AA8u) {   /* stb r17, 0x84(r31): slot 0, R1 down this frame */
+        if (mode != 1 || !(ctx->gpr[17] & 1) || (uint32_t)ctx->gpr[31] != vm_read32(ctrl + 0x174)) return;
+        kick = kick_held(keys);
+        if (log) fprintf(stderr, "[kicklog] attack down: %s\n", kick ? "Kick key held, a kick" : "no kick");
+        return;
+    }
+    /* 0x00300BAC (lwz r0, -0x7F84(r30)): function 212's answer is in r10, both paths */
+    if ((uint32_t)ctx->gpr[29] != ctrl) return;
+    if (log)
+        fprintf(stderr, "[kicklog] the script asks \"stick just pushed forward?\": the game says %s%s\n",
+                ctx->gpr[10] ? "yes" : "no", mode != 1 ? "" : kick ? ", the Kick key says yes" : ", the Kick key says no");
+    if (mode == 1) ctx->gpr[10] = kick ? 1 : 0;
 }
 
 /* The game's error report, 0x00A9DD58(file, line, message), from paths such as
