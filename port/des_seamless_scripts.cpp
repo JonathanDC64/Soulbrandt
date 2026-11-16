@@ -119,6 +119,22 @@ bool edit_global(std::string& t, const std::string& nl)
     if (!replace_in(t, "BlockClear2_2", "proxy:CustomLuaCallStart( 4063 , proxy:GetLocalPlayerId() );",
                     "--SEAMLESS proxy:CustomLuaCallStart( 4063 , proxy:GetLocalPlayerId() );"))
         return false;
+    // The boss's souls (SetClearBonus; everyone's in full, des_seamless_game.cpp's hook in it) paid at the kill, as
+    // a player alone gets them (SoloBlockClear's GetSoloClearBonus): in BlockClear2_2, right after a soul's revival
+    // (BlockClear2_1). Without the rating screen they waited for the player's next load (g_Initialize's
+    // AddBlockClearBonus). Once per boss: on a friend the boss clear starts twice (des_seamless_game.cpp's text hook),
+    // and a SetClearBonus after the payment would have them paid again at the next load. The load clears both values.
+    if (!replace_in(t, "BlockClear2", "proxy:SetClearBonus(ClearBossId);",
+                    "if SeamlessBonusBoss ~= ClearBossId then SeamlessBonusBoss = ClearBossId; SeamlessBonusPaid = false; "
+                    "proxy:SetClearBonus(ClearBossId); end --SEAMLESS: once per boss"))
+        return false;
+    if (!replace_in(t, "BlockClear2_2", "MissionSuccessed(proxy,param);",
+                    "if SeamlessBonusPaid == false then SeamlessBonusPaid = true; proxy:GetSoloClearBonus(ClearBossId); end "
+                    "MissionSuccessed(proxy,param); --SEAMLESS: the boss's souls now"))
+        return false;
+    if (!replace_in(t, "g_Initialize", "proxy:AddBlockClearBonus();",
+                    "proxy:AddBlockClearBonus(); SeamlessBonusBoss = nil; SeamlessBonusPaid = nil; --SEAMLESS"))
+        return false;
     // MissionSuccessed: no recall ("Objective met. Resurrecting in your own world.")
     if (!replace_in(t, "MissionSuccessed", "proxy:RecallMenuEvent( 0, 8933 );", "--SEAMLESS proxy:RecallMenuEvent( 0, 8933 );"))
         return false;
@@ -919,7 +935,9 @@ bool insert_first(std::string& t, const std::string& name, const std::string& li
 //     last words (9054) in that game. The host's call, a message in the friend's game, came first, used up the
 //     friend's registration and returned (messages were the others' business), so the friend's own call found none
 //     (11-16: no text, the King's bar stayed). A friend's game now runs the first of the two, once
-//     (SeamlessDemon450). In a party its next step (OnEvent_450_1) does nothing;
+//     (SeamlessDemon450). Its next step (OnEvent_450_1), which did nothing in a party, pays the King's souls and
+//     revives a host in soul form, as for a player alone. A player dead in the fight gets the souls at the King's
+//     death instead (OnEvent_70), paid by the load that brings it back;
 //   - plays that cutscene (71, the Maiden's prayer) in every game, whoever's game started it: its start tells the
 //     others (LuaCallStart(71, 79)), and each game's SEAMLESS_Scene_71 plays its own. Its end (the Maiden praying,
 //     the endings' watches, the player put beside her) is then each game's too. A friend's game never played it
@@ -960,6 +978,26 @@ bool final_area_for_all(std::string& t, const std::string& nl)
         return false;
     if (!replace_in(t, "OnEvent_450", "if proxy:IsLivePlayer() == true then",
                     "if proxy:IsLivePlayer() == true or proxy:IsWhiteGhost() == true then --SEAMLESS: a friend too"))
+        return false;
+    // the King's souls at the kill in a party too, as a player alone gets them (Clear_450), a friend's as the host's;
+    // a host in soul form is revived there too (the next step's party branch only logged an error)
+    if (!replace_in(t, "OnEvent_450_1", "if proxy:IsInParty() == true then", "if false then --SEAMLESS: in a party too"))
+        return false;
+    if (!replace_in(t, "OnEvent_450_1", "if proxy:IsLivePlayer() == true then",
+                    "if proxy:IsLivePlayer() == true or proxy:IsWhiteGhost() == true then --SEAMLESS: a friend too"))
+        return false;
+    // and for a player dead in the fight: its clear (450) returns while it is dead (4047), and once it is back the
+    // area's start sees the King dead (70) and sets 450 itself, so neither 450 nor 70 runs there again. The King's
+    // death sets its souls then, and the load that brings it back pays them. (The King's id, from OnEvent_451's call.)
+    size_t a451, e451;
+    std::smatch king;
+    const std::regex call450("CustomLuaCallStart\\(\\s*450\\s*,\\s*(\\d+)\\s*\\)");
+    if (!func_span(t, "OnEvent_451", &a451, &e451)) return false;
+    const std::string body451 = t.substr(a451, e451 - a451);
+    if (!std::regex_search(body451, king, call450)) return false;
+    if (!replace_in(t, "OnEvent_70", "proxy:SetEventFlag( 70, true );",
+                    "proxy:SetEventFlag( 70, true ); if proxy:IsCompleteEvent( 4047 ) == true then proxy:SetClearBonus( " +
+                        king[1].str() + " ); end --SEAMLESS: a player dead in the fight: the souls at its respawn's load"))
         return false;
     // the cutscene after the kill, in every game
     static const char kScene71[] = "proxy:RequestRemo(3,REMO_FLAG,71,1);";

@@ -2377,6 +2377,12 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
         // host does.
         if (m == co::Mode::Join) ctx->gpr[3] = 0;
         break;
+    case 0x0044A5E4u:   // SetClearBonus's native (0x0044A4B8), after bl 0x0052A5B0: r3 the session's member count
+        // A boss's souls wait in the player's game data (+0xD4) until they are paid (GetSoloClearBonus, or the next
+        // load's AddBlockClearBonus). With anyone in the session, the game cuts them to 75% for the host and 25% for
+        // a blue phantom. In seamless co-op every player gets the full souls, as it does an enemy's.
+        ctx->gpr[3] = 0;
+        break;
     case 0x0053B31Cu:   // the session's leave (0x0053B300), after lwz r9,0x9C(r3): 0 takes its "no session" return
         if (m == co::Mode::Host && (uint32_t)ctx->gpr[9] == kStateHost) {
             static uint32_t last = 0;

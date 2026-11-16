@@ -112,6 +112,9 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
   Vanguard outside its hall: it fell, and "The Demon Was Destroyed" showed before anyone saw it.
 - **Souls from enemies.** Every player gets an enemy's full souls when it dies, whoever killed it. (The original game
   gives a summoned phantom half.)
+- **Souls from bosses.** Every player gets a boss's full souls (Phalanx's 1,270), a few seconds after the kill and
+  after a soul's revival, as a player alone does. (The original game gives the host three quarters and a summoned
+  phantom a quarter.) Before, they came only at each player's next load.
 - **Progress is everyone's.** A boss killed, or a door, lever, elevator, shortcut, bridge or fog wall opened while
   friends are in the host's world counts in each friend's own world too.
 - **A boss's Demon's Soul is everyone's.** When one player takes it at the boss's Archstone, every other player in
@@ -563,6 +566,24 @@ alive.
   souls, but what dies with it pays the same way (Phalanx's 38 blobs, 35 each, killed by `PhalanxDead`). A killing
   blow of at least 1.5 times the enemy's most HP (`0x00280DC8` sets a bit at `+0x318`) adds a fifth on the game that
   dealt it; the result is rounded up.
+- **Souls from bosses.** A boss clear's `SetClearBonus` (US 0x0044A4B8) puts the boss's souls in the player's game
+  data (`+0xD4` of `*(*0x01B4EF9C + 8)`). With anyone in the session (`0x0052A5B0` counts the members) it cuts them
+  to 75% for the host (types 0 and 8) and 25% for a blue phantom (type 1). The hook after that call (0x0044A5E4) gives
+  0 members in seamless co-op, so every player gets the full souls; online co-op without seamless mode keeps the cut.
+  - **When they are paid:** `GetSoloClearBonus` pays the waiting souls and clears them, and so do the next load
+    (`g_Initialize`'s `AddBlockClearBonus`) and a death (`UpDateBloodMark`).
+  - A player alone is paid by `SoloBlockClear`, 3 s after `BlockClear2_1` (6 s in soul form, after its revival there).
+    A party's way went through the rating screen, which seamless co-op leaves out, so its players were paid only at
+    their next load. `BlockClear2_2` (0.5 s after `BlockClear2_1`, so after a soul's revival) now pays them.
+  - **Once per boss.** On a friend the boss clear starts twice, and a second `SetClearBonus` after the payment would
+    have the souls paid again at the next load. Two script values (`SeamlessBonusBoss`, `SeamlessBonusPaid`) let
+    each step run once; each load clears them.
+  - **The final boss.** The final area's clear (the Nexus's `OnEvent_450_1`) paid nothing in a party: its party
+    branch only logs an error. It now takes the solo way for every player (`Clear_450`, 3 s later), and revives a
+    host in soul form, as for a player alone. A player dead in the fight got nothing at all: its clear returns while
+    it is dead (4047), and once it is back the area's start sees the King dead (70) and sets 450 itself, so neither
+    450 nor 70 runs there again. The King's death (`OnEvent_70`, once per game) now sets the souls for a player dead
+    then, and the load that brings it back pays them.
 - **World tendency.** The game's QWC object (`*(*0x01B4EF9C + 0x24)`) holds the tendency in play at `+0x10`, two
   floats (white/black, left/right) for each of worlds 1-7, and the player's own at `+0x48`, which the save keeps
   (docs/69). In online co-op the host's game sends a phantom its values in play (P2P message 0x17, read at US
