@@ -142,6 +142,12 @@ swap is undone and the page says "A file in the game's folder is in use".
 - **The close button does nothing while the files go in place** (the install step: the unpack, the copy of the game
   build and the swap, a few seconds): ending the program then would end the engine half way (`updates::hold_close`,
   des_ui.cpp's WM_CLOSE).
+- **A save where a swap would take it** stops an update or a going back before anything is downloaded or moved
+  (`saves_in_the_way`). The engine looks inside the program folders (`release-files.txt`'s names) and in `.previous`
+  for a `gamedata` or `savedata` folder, a `PARAM.SFO` or a trophy file (`NPWR*.json`); no file of a release has one
+  of these names. It names what it found and asks the player to move it out. Issue #528: a player's `gamedata` was
+  dragged in Explorer onto `licenses/`, the folder below it. An update then put it in `.previous` with the old
+  version, and the update after that would have deleted it.
 - **Still possible:** a power cut in the two renames between the old exe out and the new exe in leaves no exe at the
   top. Extract the zip again over the folder; nothing of the player's is lost.
 - **Downloads** are https only (fetch.py), checked by SHA-256 against the release's SHA256SUMS, and SHA256SUMS is
