@@ -73,6 +73,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <map>
 #include <set>
 #include <filesystem>
 #include <initializer_list>
@@ -168,6 +169,8 @@ constexpr char kMsgGlow[4] = {'G', 'L', 'O', 'W'};
 // 14 x u32: the host's world tendency in use, two floats for each of worlds 1-7 (before each READY), as the game's own
 // message to a phantom (P2P 0x17) gives them
 constexpr char kMsgQwc[4] = {'Q', 'W', 'C', ' '};
+// u32 the host's load (trip) this game was in the world for: it arrived in the host's area after that load (sync_hold)
+constexpr char kMsgHere[4] = {'H', 'E', 'R', 'E'};
 constexpr uint32_t kRoomMax = 0x200;
 
 bool guest_ok(uint32_t a) { return a >= 0x00010000u && a < 0xF0000000u; }
@@ -320,6 +323,7 @@ bool sAskedWhere = false;            // a guest asked for a READY now (the host)
 struct HostFlag { uint32_t flag, area; };
 std::deque<HostFlag> sHostFlags;     // FLAGs not yet taken: a guest's from the host, the host's from its guests
 std::deque<uint32_t> sBack;          // BACKs not yet taken: the player ids
+std::map<uint32_t, std::set<uint32_t>> sHere;   // HEREs: for each host load (trip), the players that said they arrived
 std::atomic<bool> sDied{false};      // this game's player died in the session since its last BACK
 std::set<uint32_t> sDeadCopies;      // the others' characters seen dead (their game data's HP at 0), tick thread only
 std::set<uint32_t> sBackWaiting;     // BACKs taken that wait for their player's character (make_again), tick thread only
@@ -356,7 +360,6 @@ void putf(std::vector<uint8_t>& b, float f)
 
 void on_message(uint32_t from, const uint8_t* d, uint32_t n)
 {
-    (void)from;
     if (n < 4) return;
     std::lock_guard<std::mutex> g(sMsgLock);
     if (!std::memcmp(d, kMsgRoom, 4) && n > 4 && n - 4 <= kRoomMax) {
@@ -384,6 +387,10 @@ void on_message(uint32_t from, const uint8_t* d, uint32_t n)
         sHostFlags.push_back({get32(d + 4), get32(d + 8)});
     } else if (!std::memcmp(d, kMsgBack, 4) && n >= 8 && sBack.size() < 16) {
         sBack.push_back(get32(d + 4));
+    } else if (!std::memcmp(d, kMsgHere, 4) && n >= 8) {
+        const uint32_t trip = get32(d + 4);
+        while (sHere.size() >= 8) sHere.erase(sHere.begin());   // (the oldest loads: none waits on them now)
+        sHere[trip].insert(from);
     } else if (!std::memcmp(d, kMsgGlow, 4) && n >= 12) {
         const uint32_t id = get32(d + 4);
         const bool on = get32(d + 8) != 0;
@@ -1447,6 +1454,140 @@ void send_back_if_died()
     std::fprintf(stderr, "[coop] back after a death: the others make this player's character again\n");
 }
 
+// The area's characters over the network. The game keeps, for the area, tables of its characters' states by their
+// index in the area's list (chr+0x70), from the other players' P2P messages:
+//   - 3 (several, from each member, read at 0x002C9A18) and 0x26 (one, from the host, 0x002C9358): a character's
+//     place and facing, at +8 (24 bytes);
+//   - 0x21 (from each member, 0x002C9818): 8 bytes each at +0xC;
+//   - 4 (from the host, 0x002C96C0): 4 bytes each at +0x10.
+// Each connection (the session manager's list at +0xA8) keeps a queue of each message (the connection's +0x3C;
+// 0x00541B78 takes one), and a member's are read only while this game has a character for it (0x00532108, through
+// 0x00297410). The game's sessions never outlive
+// an area. A seamless session does: after a load the others' characters are placed as soon as this game arrives (the
+// member slots stay), so what another player sent from the old area before its own load, queued here meanwhile, is read
+// into the new area's tables, on the character with the same index. 11-15, in the tutorial: m08_00's no. 4 (an enemy
+// 16 m from the Archstone) put m08_01's no. 4, the Vanguard, at that enemy's place, outside the hall; it fell from
+// there once its logic woke (the player in its hall), and the demon was destroyed before anyone saw it.
+// So from the host's load (on the host, from its start; on a guest, from its follow) these four are read and dropped
+// until each other player in the session has said it arrived for that load (HERE); then each connection's queues of
+// them are emptied once more, at the next read (on the readers' thread, as the game's own reads). A HERE (through the
+// room server) is sent once its sender's load ended, a load's time after the last it sent from the old area (P2P).
+constexpr uint32_t kSyncMsgs[] = {0x03, 0x04, 0x21, 0x26};
+constexpr uint32_t kSyncBufSize = 0x400;   // the largest of them (0x21's)
+std::atomic<bool> sSyncHeld{false};        // read by the hooks
+std::atomic<bool> sSyncDrain{false};       // the hold ended: the next read empties every queue of them first
+std::atomic<uint32_t> sSyncBuf{0};         // guest memory for that (kSyncBufSize)
+std::atomic<uint32_t> sSyncDropped{0};
+struct SyncHold { bool on = false, arrived = false; uint32_t trip = 0; };
+SyncHold sHold;                            // tick thread only
+
+uint32_t drain_syncs(ppu_context* ctx, uint32_t mgr);
+
+// A read of one of them returned r3 bytes (the hooks, after the call; its arguments are in the reader's saved
+// registers, the session manager first; fn the read, this disc's). While held, the same queue is read until it is
+// empty, and the reader gets none.
+void sync_read(ppu_context* ctx, uint32_t fn, std::initializer_list<int64_t> args)
+{
+    if (sSyncDrain.exchange(false)) {
+        const uint32_t n = drain_syncs(ctx, (uint32_t)*args.begin()) + ((int32_t)ctx->gpr[3] > 0 ? 1 : 0);
+        ctx->gpr[3] = 0;
+        if (n) std::fprintf(stderr, "[coop] %u more area sync(s) from before the load dropped\n", n);
+        return;
+    }
+    if (!sSyncHeld.load() || (int32_t)ctx->gpr[3] <= 0) return;
+    uint32_t n = 1;
+    while (n < 256 && (int32_t)call_addr(ctx, fn, args) > 0) n++;
+    sSyncDropped += n;
+    ctx->gpr[3] = 0;
+}
+
+// Whether a member of the game's list is still in the room: the room library's members (sm+0x11C to +0x120, 0x30
+// bytes each) start with the same word as the member's +8. A friend's leave during the host's load (its own trip,
+// Leave co-op as the host warps) leaves its member in the game's list; the room library has dropped it.
+bool in_room(uint32_t sm, uint32_t m)
+{
+    const uint32_t id = vm_read32(m + 8), a = vm_read32(sm + 0x11C), b = vm_read32(sm + 0x120);
+    if (!guest_ok(a) || b < a || b - a > 0x30u * 8) return true;   // (no list to go by: as before)
+    for (uint32_t e = a; e < b; e += 0x30)
+        if (vm_read32(e) == id) return true;
+    return false;
+}
+
+// The other players in the session: the members with a slot (+0x38), as requeue takes them, still in the room.
+int others_in(uint32_t sm)
+{
+    const uint32_t msent = rd(sm + kSmMembers + 0xC);
+    int n = 0, k = 0;
+    for (uint32_t m = guest_ok(msent) ? rd(msent) : msent; m != msent && guest_ok(m) && k < 8; m = rd(m), k++)
+        if ((int32_t)vm_read32(m + 0x38) != -1 && in_room(sm, m)) n++;
+    return n;
+}
+
+// The session manager's connections are a list at +0xA8 (the sentinel at its +0xC, the connection at a node's +8),
+// as 0x00532108 walks it: each one's queues of the four emptied.
+uint32_t drain_syncs(ppu_context* ctx, uint32_t mgr)
+{
+    const uint32_t buf = sSyncBuf.load();
+    if (!guest_ok(mgr) || !buf) return 0;
+    const uint32_t sent = rd(mgr + 0xA8 + 0xC);
+    uint32_t n = 0;
+    int k = 0;
+    for (uint32_t node = guest_ok(sent) ? rd(sent) : sent; node != sent && guest_ok(node) && k < 8; node = rd(node), k++) {
+        const uint32_t conn = rd(node + 8);
+        if (!guest_ok(conn)) continue;
+        for (const uint32_t t : kSyncMsgs)
+            for (int i = 0; i < 256 && (int32_t)call_addr(ctx, DES_AT(0x00541B78u), {conn, t, buf, kSyncBufSize}) > 0; i++)
+                n++;
+    }
+    return n;
+}
+
+void sync_hold(uint32_t trip)
+{
+    sHold = SyncHold();
+    sHold.on = true;
+    sHold.trip = trip;
+    sSyncDropped = 0;
+    sSyncDrain = false;
+    sSyncHeld = true;
+}
+
+// This game is in the world for the host's load trip (its own arrival, a guest's join, follow or respawn): it says so.
+void say_here(uint32_t trip)
+{
+    std::vector<uint8_t> b;
+    put32(b, trip);
+    send(kMsgHere, b);
+    if (sHold.on && sHold.trip == trip) sHold.arrived = true;
+}
+
+// Each frame of a session: the hold ends once this game arrived and each other player said HERE for its load.
+void sync_hold_tick(ppu_context* ctx, uint32_t sm, bool session)
+{
+    if (!sSyncBuf.load()) sSyncBuf = guest_alloc(ctx, kSyncBufSize);
+    if (!session) {
+        sHold = SyncHold();
+        sSyncHeld = false;
+        std::lock_guard<std::mutex> l(sMsgLock);
+        sHere.clear();
+        return;
+    }
+    if (!sHold.on || !sHold.arrived) return;
+    size_t heard;
+    {
+        std::lock_guard<std::mutex> l(sMsgLock);
+        auto it = sHere.find(sHold.trip);
+        heard = it == sHere.end() ? 0 : it->second.size();
+    }
+    const int others = others_in(sm);
+    if ((int)heard < others) return;
+    sHold.on = false;
+    sSyncDrain = true;
+    sSyncHeld = false;
+    std::fprintf(stderr, "[coop] load %u: the %d other player(s) are in this area; %u area sync(s) from before it "
+                 "dropped\n", sHold.trip, others, sSyncDropped.load());
+}
+
 // The player's transform: *(*(character + 0x20) + 0x10), the rotation (the yaw at +4) then the position (+0x10), as
 // the game's getters read it (0x002E7420, 0x002E73E0). 0 with no player.
 uint32_t player_transform()
@@ -1581,6 +1722,7 @@ void host_tick(ppu_context* ctx, uint32_t sm, uint32_t gm, uint32_t st, bool wor
         std::vector<uint8_t> b;
         put32(b, ++g.trip);
         send(kMsgLead, b);
+        sync_hold(g.trip);
         std::fprintf(stderr, "[coop] load %u started: the guests follow\n", g.trip);
     } else if (g.in_load && world && vm_read32(sm + kSmArrival) == 4) {
         g.in_load = false;
@@ -1588,6 +1730,7 @@ void host_tick(ppu_context* ctx, uint32_t sm, uint32_t gm, uint32_t st, bool wor
         g.arrival = player_place();
         g.ready_frames = 0;
         send_ready(ctx, sm, g.trip, g.arrival);
+        say_here(g.trip);
         std::fprintf(stderr, "[coop] load %u done: area %08X\n", g.trip, vm_read32(sm + kSmArea));
         send_back_if_died();
     } else if (!g.in_load && world && (where || ++g.ready_frames >= 60)) {
@@ -1706,6 +1849,7 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
         if (here) {
             g.arrived = true;
             g.tries = 0;
+            say_here(g.trip);
             std::fprintf(stderr, "[coop] in the host's world\n");
         }
         return;
@@ -1717,6 +1861,7 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
         just_arrived = true;
         sKillShown = false;
         requeue(ctx, sm);
+        say_here(g.trip);
         const uint32_t man = rd(DES_AT(kChrMan));
         // and, after its death (its own respawn, or a load it followed while dead), the others make it again
         if (g.respawn.exchange(false)) sDied = true;
@@ -1731,6 +1876,7 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
     if (lead != g.trip && here) {
         g.trip = lead;
         g.follow = lead;
+        sync_hold(lead);
         call_addr(ctx, DES_AT(0x00441AB8u), {});   // SummonedMapReload
         std::fprintf(stderr, "[coop] following the host (its load %u)\n", lead);
     }
@@ -1931,6 +2077,7 @@ extern "C" void des_seamless_tick(ppu_context* ctx)
     }
     if (m == co::Mode::Host) host_tick(ctx, sm, gm, st, world);
     else guest_tick(ctx, sm, st, world);
+    sync_hold_tick(ctx, sm, session);
     // BACKs: once this game is in the world after its own load (the others' dead characters survive a load, and a
     // BACK can come while this game follows the same load); dropped out of a session. One that waits for its player's
     // character (make_again) is tried again each world frame.
@@ -2064,6 +2211,23 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
         // 11). A blue phantom whose player turned its glow off is drawn as an alive player (glow_tick).
         host_npc_type(ctx, m);
         if ((uint32_t)ctx->gpr[3] == 1 && !glow_shown((uint32_t)ctx->gpr[31])) ctx->gpr[3] = 0;
+        break;
+    // The area syncs' reads, after each call (r3 the bytes read; sync_read). From a member: 0x00532108(session
+    // manager, member, message, buffer, size); from the session's host (sm+0xE8): 0x00532358(sm, message, buffer, size).
+    case 0x002C9AECu:   // message 3 in 0x002C9A18: the manager *r27, the member r29, the buffer *(r31 + 0x28)
+        sync_read(ctx, DES_AT(0x00532108u), {rd((uint32_t)ctx->gpr[27]), (uint32_t)ctx->gpr[29], 0x03,
+                                     rd((uint32_t)ctx->gpr[31] + 0x28), 0x70});
+        break;
+    case 0x002C98C4u:   // message 0x21 in 0x002C9818: the manager *r27, the member r29, the buffer r25
+        sync_read(ctx, DES_AT(0x00532108u), {rd((uint32_t)ctx->gpr[27]), (uint32_t)ctx->gpr[29], 0x21,
+                                     (uint32_t)ctx->gpr[25], 0x400});
+        break;
+    case 0x002C9740u:   // message 4 in 0x002C96C0: the manager *r29, the buffer *(r31 + 0x30)
+        sync_read(ctx, DES_AT(0x00532358u), {rd((uint32_t)ctx->gpr[29]), 0x04, rd((uint32_t)ctx->gpr[31] + 0x30), 0x3C});
+        break;
+    case 0x002C9600u:   // message 0x26 in 0x002C9358, the first read and its loop's: the manager *r22, the buffer r29
+    case 0x002C96A8u:
+        sync_read(ctx, DES_AT(0x00532358u), {rd((uint32_t)ctx->gpr[22]), 0x26, (uint32_t)ctx->gpr[29], 0x18});
         break;
     case 0x00609338u:   // a cutscene's copy of a character set up (0x006087B8), after bl 0x0026F378: r3 its type, r31 the copy
         copy_seen(ctx);
