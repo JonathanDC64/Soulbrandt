@@ -500,6 +500,34 @@ int no_travel_alone(std::string& t)
 // open, once flag 8035 says a demon of another world is dead). A friend's game never watched it, so its gate stayed
 // shut while the host's opened (11-15), until a load (the area's start watches it for every player). Each player now
 // sees the cutscene as it walks to the gate. Returns the number of edits.
+// A treasure the host alone turns on in the moment: `if proxy:IsClient() == false then` with only
+// TreasureDispModeChange / EnableObjTreasure in it (a hanging corpse that falls in 1-1, 3-1's iron maidens that open).
+// The original's phantom never took those items, so its game left them off. A friend saw the object open and couldn't
+// take what was in it until the area loaded again (the area's start turns them on once their flag is set). Every game
+// turns them on now; each player's items are its own (des_seamless_game.cpp), so nobody gets one twice. Returns the
+// number of edits.
+int treasures_for_all(std::string& t)
+{
+    const std::regex block("(\\n[ \\t]*if\\s+)proxy:IsClient\\(\\)\\s*==\\s*false(\\s+then[ \\t]*\\r?\\n"
+                           "(?:[ \\t]*(?:--[^\\n]*|proxy:(?:TreasureDispModeChange|EnableObjTreasure)\\([^\\n]*)?\\r?\\n)+"
+                           "[ \\t]*end)");
+    std::string out;
+    size_t from = 0;
+    int n = 0;
+    for (auto it = std::sregex_iterator(t.begin(), t.end(), block); it != std::sregex_iterator(); ++it) {
+        const std::string body = (*it)[2].str();
+        if (body.find("proxy:") == std::string::npos) continue;   // (comments only)
+        out += t.substr(from, (size_t)it->position(0) - from);
+        out += (*it)[1].str() + "true" + body;
+        from = (size_t)it->position(0) + (size_t)it->length(0);
+        n++;
+    }
+    if (!n) return 0;
+    out += t.substr(from);
+    t = out;
+    return n;
+}
+
 int soul_steps_for_all(std::string& t)
 {
     std::set<std::string> ids;
@@ -788,6 +816,8 @@ int edit_area(std::string& t, bool nexus)
     n += pickups_for_all(t);
     // ... and the items the host alone took at an item prompt
     n += gifts_for_all(t);
+    // The treasures the host alone turned on in the moment (treasures_for_all)
+    n += treasures_for_all(t);
     for (const std::string& id : ids) {
         // in this stone's handlers, the session check passes for the host
         const std::regex fn("\nfunction OnEvent_" + id + "(?:_\\d+)?\\s*\\(");
