@@ -71,6 +71,8 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
   it, a friend goes on with its host: one that gets there first waits there for the host. A friend killed by the
   Vanguard comes back where it fell; when the host dies there, the group goes to the Nexus. Before, a friend whose game
   got there first left co-op, and its join back stalled.
+  The tutorial's end makes every player a soul: a friend that goes on to the Nexus with its host arrives in soul form,
+  with the tutorial over, as the host does (2026-11-15; before, it arrived in body form).
 - **Archstones:** the host can use them during co-op, and the group travels with it. A friend still gets "You can't
   return during multiplayer.", at the Nexus's stones too. No multiplayer wall closes the way back to an Archstone
   (in 1-2, the Phalanx room's wall to 1-2), so the host is never shut in with the Archstone after a death.
@@ -690,7 +692,10 @@ host's boss kill while the friend was away don't count in the friend's world.
 - **The form it goes home in.** The session's start records the player's form (GameMan `+0xA90`: 0 body form, 8 soul
   form), and on the trip home `SetChrTypeDataGreyNext` gives it back (from a blue phantom: soul form for 8, body form
   for 0). That word is the friend's form during the session: a death in body form (its HP at 0) sets 8, and a boss
-  kill sets 0.
+  kill sets 0. The tutorial's end sets 8 too: the player who dies there runs `m08_01`'s `OnEvent_14300_3` (revive,
+  `Tutorial_end`, `ChangeGreyGhost`, warp to the Nexus), but a friend following the host there never died. Its load
+  step, on a follow from `m08` to the Nexus (`m01`), sets 8 and makes `Tutorial_end`'s only write (its manager's
+  `+0xA95` to 0, US `0x0020D3C0`).
 - **The host's game closed:** the friend sees the game's own "The session has ended." once, and goes home. Two
   things keep it to that one box:
   - The program doesn't join again while the room server (the host's game) can't be reached: the room data and the
