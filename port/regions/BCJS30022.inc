@@ -204,7 +204,7 @@ DES_REGION_ADDR(0x00532108, 0x005303E8)  /* call des_seamless_game (by address):
 DES_REGION_ADDR(0x00532358, 0x00530638)  /* call des_seamless_game (by address): the host's P2P message read */
 DES_REGION_ADDR(0x0053B31C, 0x005395FC)  /* hook des_coop_hook: the session's leave */
 DES_REGION_ADDR(0x0053CFE8, 0x0053B2C8)  /* call des_seamless_game (by address) */
-DES_REGION_ADDR(0x0053E368, 0x0053C648)  /* hook des_coop_hook: the session event dispatch's member-left case (the host takes a leave during its load) */
+DES_REGION_ADDR(0x0053E368, 0x0053C648)  /* hook des_coop_hook: the session event dispatch's member-left case (a leave during a load taken at once) */
 DES_REGION_ADDR(0x0053EA2C, 0x0053CD0C)  /* hook des_coop_hook: the session's check of a joined guest (a friend joins in either form) */
 DES_REGION_ADDR(0x00540D90, 0x0053F070)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00541B78, 0x0053FE58)  /* call des_seamless_game (by address): a connection's P2P message read */

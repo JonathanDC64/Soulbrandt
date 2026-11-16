@@ -2291,9 +2291,11 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
     case 0x0053E368u:   // the session event dispatch 0x0053DFD8's member-left case, after bl 0x001A2028: r3 a byte the
         // game sets while it loads. While it is set, the dispatch drops the event and skips the member-left step
         // (0x0053B7F8), but the room library drops the member at once, and with it the id the game's member shares. So
-        // a friend that left during the host's load stayed in the host's member list, and its join again stopped half
-        // way. The host takes the leave at once, as outside a load.
-        if (m == co::Mode::Host && (ctx->gpr[3] & 0xFFu)) {
+        // a friend that left during a game's load stayed in that game's member list: on the host its join again stopped
+        // half way, and on another friend's game it never came back. Each game takes the leave at once, as outside a
+        // load. (The room server runs in the host's game, so a friend's game never gets the host's leave: when the host
+        // goes, the room goes.)
+        if (ctx->gpr[3] & 0xFFu) {
             std::fprintf(stderr, "[coop] a member left during the load: its leave taken now\n");
             ctx->gpr[3] = 0;
         }
