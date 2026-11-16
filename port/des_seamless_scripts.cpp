@@ -959,7 +959,21 @@ std::vector<uint32_t> progress_flags(const std::string& t, std::vector<uint32_t>
         size_t i = 8;
         const long id = read_number(f.first, &i);
         if (id < 0) continue;
-        for (const auto& h : handlers(id)) set_true(h.first, h.second, &kills);   // every flag they set to true
+        for (const auto& h : handlers(id)) {
+            set_true(h.first, h.second, &kills);   // every flag they set to true
+            // ... and the kill's next step when it has a name of its own (1-4's OnEvent_4481, a second after King
+            // Allant's kill, where the host alone sets Boletaria's clear, 8010): a function a handler names in quotes
+            // (as OnKeyTime2 takes it) that counts the bosses (GetBossFlagCount). Not every named function: those
+            // include NPCs' states, the warp-out pose's and the music's.
+            for (size_t q = t.find('"', h.first); q != std::string::npos && q < h.second; q = t.find('"', q + 1)) {
+                const size_t e = t.find('"', q + 1);
+                if (e == std::string::npos || e > h.second) break;
+                const auto it = funcs.find(t.substr(q + 1, e - q - 1));
+                if (it != funcs.end() && t.find("GetBossFlagCount(", it->second.first) < it->second.second)
+                    set_true(it->second.first, it->second.second, &kills);
+                q = e;
+            }
+        }
     }
     out = kills;
     if (boss) boss->assign(kills.begin(), kills.end());
