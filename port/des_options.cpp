@@ -133,7 +133,10 @@
  *   goes forwards and never moves a cursor off its default. It lets go for
  *   good when the level's script archive (script/m*.luabnd) opens. Read at
  *   each pad poll, so the settings window turns it on or off live until then;
- *   after the first level there is nothing left for it to do.
+ *   after the first level there is nothing left for it to do. With no
+ *   character in the save (a new save, or none) it presses nothing: there is
+ *   nothing to continue, and its CROSS opened New Game's name box over and
+ *   over (#471).
  *
  * The dev cheats and the warp are in des_dev.cpp, compiled into developer
  *   builds only (cmake -DDES_DEV=ON; docs/55).
@@ -755,10 +758,21 @@ bool auto_continue_on()   /* live: the settings window can turn it on or off bef
     return on;
 }
 
+std::atomic<int> s_auto_save{-1};   /* whether the save holds a character to continue: -1 not read yet */
+
 unsigned auto_continue_buttons()
 {
     /* From settings.ini the start screen still shows: press nothing until Play. */
     if (s_auto_done || !auto_continue_on() || des_ui_start_screen_up()) return 0;
+    /* With no character in the save (a new one, or none), the presses went into New Game and opened its name box
+     * over and over: each CROSS opened it again (#471). Read once, at the first press. */
+    int has = s_auto_save.load();
+    if (has < 0) {
+        has = des::seamless::save_has_character() ? 1 : 0;
+        s_auto_save.store(has);
+        if (!has) fprintf(stderr, "[des] DES_AUTO_CONTINUE: no character in the save to continue, so it presses nothing\n");
+    }
+    if (!has) return 0;
     using clock = std::chrono::steady_clock;
     static const clock::time_point t0 = clock::now();
     const long long ms =
@@ -1123,6 +1137,7 @@ extern "C" int des_cutscene_playing(void) { return cutscene_playing() ? 1 : 0; }
 extern "C" void des_auto_continue_again(void)
 {
     ps3_setenv("DES_AUTO_CONTINUE", "1");
+    s_auto_save = -1;   /* (the save read again: the run may have made a character since) */
     s_auto_done = false;
 }
 

@@ -162,6 +162,17 @@ std::vector<Character> characters_to_bring() {
     return out;
 }
 
+bool save_has_character() {
+    // (the root as cellSaveData.c takes it: PS3_SAVEDATA_ROOT, else the normal one, relative to the working folder)
+    const char* given = std::getenv("PS3_SAVEDATA_ROOT");
+    const fs::path dir = save_folder(given && *given ? fs::path(given) : fs::path(kNormalRoot));
+    std::vector<uint8_t> list;
+    if (!read_list(dir, &list)) return false;
+    for (int k = 0; k < kSlots; k++)
+        if (list[kListUsed + k] == 1 && has_character(dir, k)) return true;
+    return false;
+}
+
 std::string bring_character(int slot) {
     if (slot < 0 || slot >= kSlots) return "That isn't one of your characters.";
     if (given_root() || has_save(kCoopRoot)) return "Co-op already has its own characters.";
