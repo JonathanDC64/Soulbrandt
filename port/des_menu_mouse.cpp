@@ -70,6 +70,7 @@ extern "C" float des_hud_side_width(void);                                      
 extern "C" float des_hud_top_height(void);                                      /* des_aspect.cpp */
 extern "C" float des_frame_step(void);                                          /* des_options.cpp: this frame's game s */
 extern "C" volatile unsigned g_pad0_reads, g_pad0_empty_reads;                  /* cellPad.c */
+extern "C" void ps3_indirect_call(ppu_context* ctx);   /* ppu_loader.cpp: a call to the guest address in CTR */
 
 namespace {
 
@@ -97,6 +98,9 @@ constexpr uint32_t kSystemVt = 0x0186EF60u;    /* DsMenuDlgSystem: Options, Load
 constexpr int kBarTabVar = 0x4B;               /* the menu variable (0x00720F20/0x00720F50) that holds the bar's tab */
 constexpr int kTabs = 5;                       /* the bar's tabs (its step, 0x0079B2C0, wraps at 4) */
 constexpr int kDirectWait = 10;                /* passes a direct select may take to show before the walk does it */
+constexpr uint32_t kDlgInput = 0xA0u;          /* bit 31 set while the dialog takes input (0x00F55A18 asks it) */
+constexpr uint32_t kListPlaceFn = 0x007814F0u; /* DsMenuDlgListbox's cursor placement, its vt+0x8C: a list keeps it */
+constexpr uint32_t kListRows = 0xF4u, kListRow = 0x100u, kListItems = 0x104u, kListTop = 0x108u, kListPlace = 0x111u;
 
 /* The buttons that step a menu's columns, next then back, in the order they are tried. */
 constexpr unsigned kColPairs[3][2] = {{kPadRight, kPadLeft}, {kPadR1, kPadL1}, {kPadR2, kPadL2}};
@@ -1214,8 +1218,10 @@ const Menu* wheel_menu(float x, float y, int& si)
     return top;
 }
 
-/* Calls a game function on the game's thread with r3.. = a, and returns r3; the registers come back as they were. */
-uint32_t call_game(ppu_context* ctx, void (*fn)(ppu_context*), std::initializer_list<int64_t> a)
+/* Calls a game function on the game's thread with r3.. = a, and returns r3; the registers come back as they were.
+ * toc, if not 0, is r2 for it, and CTR is code (ps3_indirect_call goes to the address in CTR). */
+uint32_t call_at(ppu_context* ctx, void (*fn)(ppu_context*), uint32_t toc, uint32_t code,
+                 std::initializer_list<int64_t> a)
 {
     uint64_t g[32];
     double f[32];
@@ -1226,6 +1232,7 @@ uint32_t call_game(ppu_context* ctx, void (*fn)(ppu_context*), std::initializer_
     const uint64_t lr = ctx->lr, ctr = ctx->ctr;
     const uint32_t cr = ppu_cr_pack(ctx), xer = ctx->xer;
     ctx->gpr[1] -= 0x1000;
+    if (toc) ctx->gpr[2] = toc, ctx->ctr = code;
     int i = 0;
     for (int64_t x : a)
         if (i < 8) ctx->gpr[3 + i++] = (uint64_t)x;
@@ -1244,17 +1251,44 @@ uint32_t call_game(ppu_context* ctx, void (*fn)(ppu_context*), std::initializer_
     return r3;
 }
 
+uint32_t call_game(ppu_context* ctx, void (*fn)(ppu_context*), std::initializer_list<int64_t> a)
+{
+    return call_at(ctx, fn, 0, 0, a);
+}
+
+/* The virtual function at off in obj's table: the entry points at a descriptor {code, TOC}. */
+uint32_t call_virtual(ppu_context* ctx, uint32_t obj, uint32_t off, std::initializer_list<int64_t> a)
+{
+    const uint32_t d = vm_read32(vm_read32(obj) + off);
+    return call_at(ctx, ps3_indirect_call, vm_read32(d + 4), vm_read32(d), a);
+}
+
+/* The code a class's virtual function at off runs; 0 if its table can't be read. */
+uint32_t virtual_code(uint32_t vt, uint32_t off)
+{
+    if (!guest_ok(vt, 4)) return 0;
+    const uint32_t d = vm_read32(vt + off);
+    return guest_ok(d, 4) ? vm_read32(d) : 0;
+}
+
 /* Selects spot s of menu m at once, as the menu's own input code does it, with one tick; false where this menu
- * can't be (the walk does it then). Read from the game's code (docs/114 section 3):
+ * can't be (the walk does it then). Only while the menu's dialog takes input. Read from the game's code (docs/114
+ * section 3.1):
  * - The pause menu's bar, while it has the pad: its tab is a menu variable (0x4B). Its step (0x0079B2C0) sets it,
  *   then runs vt+0x80 (the help line), +0x90 and +0x88 (the cursor); the bytes +0x180, +0x181 and +0x182 have its
  *   update run the same three. +0x184 is only the tab it placed last.
  * - System: its row is +0xFC (0 to 2), and its update places the cursor and the help line from it every frame. Its
- *   input keeps to row 0 while +0xF5 is set, and steps over row 1 (Load Profile) while +0xF7 is. */
+ *   input keeps to row 0 while +0xF5 is set, and steps over row 1 (Load Profile) while +0xF7 is.
+ * - A list (DsMenuDlgListbox's: the inventory, ...; any class that keeps its cursor placement at vt+0x8C): the row
+ *   in its window is +0x100, of +0xF4 rows, from item +0x108 of +0x104. Its step (0x00780E80) sets the row and the
+ *   byte +0x111 (its update places the cursor and takes the item), then calls vt+0x84(this, up, moved): the class's
+ *   "row moved", the tick with it. A row in the window with an item needs no scrolling, so the same does it. */
 bool select_now(ppu_context* ctx, const Menu& m, const Spot& s)
 {
     if (m.cur < 0 || !grid_spot(s)) return false;
+    if (!(vm_read32(m.owner + kDlgInput) & 0x80000000u)) return false;   /* its input is off: a dialog over it has it */
     const uint32_t vt = vm_read32(m.owner);
+    bool tick = true;
     if (vt == DES_AT(kStartTabVt) && !m.stay) {
         if (s.r != 0 || s.c < 0 || s.c >= kTabs) return false;
         call_game(ctx, func_00720F50, {kBarTabVar, s.c});
@@ -1263,10 +1297,20 @@ bool select_now(ppu_context* ctx, const Menu& m, const Spot& s)
         if (s.c != 0 || s.r < 0 || s.r > 2) return false;
         if ((vm_read8(m.owner + 0xF5) && s.r != 0) || (vm_read8(m.owner + 0xF7) && s.r == 1)) return false;
         vm_write32(m.owner + 0xFC, (uint32_t)s.r);
+    } else if (virtual_code(vt, 0x8C) == DES_AT(kListPlaceFn)) {
+        for (const Spot& t : m.spots)
+            if (grid_spot(t) && t.c != 0) return false;   /* (a list shown as a grid of icons: its columns, not here) */
+        const int rows = (int)vm_read32(m.owner + kListRows), top = (int)vm_read32(m.owner + kListTop);
+        const int items = (int)vm_read32(m.owner + kListItems), from = (int)vm_read32(m.owner + kListRow);
+        if (s.c != 0 || s.r < 0 || s.r >= rows || top < 0 || top + s.r >= items) return false;
+        vm_write32(m.owner + kListRow, (uint32_t)s.r);
+        vm_write8(m.owner + kListPlace, 1);
+        call_virtual(ctx, m.owner, 0x84, {m.owner, s.r < from ? 1 : 0, 1});
+        tick = false;
     } else {
         return false;
     }
-    call_game(ctx, func_0072D970, {0});   /* the menu's tick, as a step plays it */
+    if (tick) call_game(ctx, func_0072D970, {0});   /* the menu's tick, as a step plays it */
     if (s_log) fprintf(stderr, "[mm] select %d_%d of 0x%08X at once\n", s.r, s.c, m.owner);
     return true;
 }

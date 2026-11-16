@@ -211,7 +211,8 @@ variables, not in the dialog (`0x00720F20` reads one, `0x00720F50` writes one). 
 found the pause menu's bar at +0x184, which is only the tab it placed last: writing it does nothing.
 
 A click in one of these menus selects the spot as that class's input code would, with one tick
-(`select_now`). The walk then waits for the cursor to show there and presses Cross. If it does not show within 10
+(`select_now`), but only while the menu's dialog takes input (bit 31 of its +0xA0, which the game's input query
+0x00F55A18 asks). The walk then waits for the cursor to show there and presses Cross. If it does not show within 10
 passes, the walk walks.
 - **The pause menu's bar, while it has the pad** (DsMenuDlgStartTab, vtable 0x018692C0): its tab is menu variable
   0x4B. Its step (0x0079B2C0) sets it, then runs its vt+0x80 (the help line), +0x90 and +0x88 (the cursor). The
@@ -220,6 +221,15 @@ passes, the walk walks.
 - **System** (DsMenuDlgSystem, vtable 0x0186EF60): its row is +0xFC (0 to 2), and its update places the cursor and
   the help line from it every frame. Its input keeps to row 0 while +0xF5 is set, and steps over row 1 (Load
   Profile) while +0xF7 is. A click on a row it would not go to walks instead.
+- **Lists** (DsMenuDlgListbox and the classes built on it: the inventory, an equipment slot's items, ...). A list is
+  told by its vt+0x8C, the list's own cursor placement (0x007814F0), so a class that keeps it counts, with no
+  table of screens.
+  - Its fields: +0x100 is the row in its window of +0xF4 rows, showing items from +0x108 of +0x104.
+  - Its step (0x00780E80) sets the row and the byte +0x111, then calls vt+0x84(this, up, moved), the class's "row
+    moved" (the inventory's sets its refresh flag, the cursor's move animation and the tick). The update then places
+    the cursor and takes the item at +0x108 plus the row (menu variable 0x72).
+  - A click on a row of the window that holds an item needs no scrolling, so it does the same. A row past the last
+    item walks (and stops, as before). A list shown as a grid of icons (spots with a column) walks.
 
 Every other menu still walks, the bar with a page open too: its pages turn one at a time. The game's own switch
 (0x007234E0, with the page's menu variable) goes to any page at once. Tried from World Tendency, though, it left
