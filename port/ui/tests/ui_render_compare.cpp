@@ -1536,6 +1536,9 @@ int main(int argc, char** argv) {
     using ui::menu::Command;
     pages.push_back({"settings-list", 1280, 720, false, 1.f, false,
                      [] { open_settings_row("Display", "Aspect ratio", Command::Confirm); }, {}});
+    // A list on a tab long enough to scroll: the rows' scroll box clips, so the list must stay whole.
+    pages.push_back({"settings-list-scrolls", 1280, 720, false, 1.f, false,
+                     [] { open_settings_row("Network", "Your glow colour", Command::Confirm); }, {}});
     pages.push_back({"settings-preview", 1280, 720, false, 1.f, false,
                      [] { open_settings_row("Picture", "Render resolution", Command::Preview); }, {}});
     pages.push_back({"settings-preview-start", 1280, 720, false, 1.f, false,
@@ -1702,6 +1705,8 @@ int main(int argc, char** argv) {
         pages.push_back({"des-display", 1280, 720, false, 1.f, false, in_band([] { open_settings("Display", false); }), {}});
         pages.push_back({"des-list", 1280, 720, false, 1.f, false,
                          in_band([] { open_settings_row("Display", "Aspect ratio", Command::Confirm); }), {}});
+        pages.push_back({"des-list-scrolls", 1280, 720, false, 1.f, false,
+                         in_band([] { open_settings_row("Network", "Your glow colour", Command::Confirm); }), {}});
         pages.push_back({"des-help", 1280, 720, false, 1.f, false,
                          in_band([] { open_settings_row("Display", "Display mode", Command::Help); }), {}});
         pages.push_back({"des-preview", 1280, 720, false, 1.f, false,

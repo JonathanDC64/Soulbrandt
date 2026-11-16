@@ -728,7 +728,10 @@ How it works:
     notes (why it is as it is, such as staying offline) and a stick's
     picture for a deadzone.
   - `listBeside`: a value's list opens beside the value, at its row. Without
-    it the list opens below the row.
+    it the list opens below the row. A list (or `menu-aside`) placed past
+    the rows' right end needs `clip: none`, or the rows' scroll box cuts it
+    off on a tab long enough to scroll; the page keeps both inside the rows'
+    height.
   - `menuHeight`: Interface > Menu height sizes Settings' frame. The shell
     sets that height inline, which a sheet can't override, so a look that
     sizes the frame itself turns this off and the row is hidden.
