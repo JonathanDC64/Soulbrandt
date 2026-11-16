@@ -204,6 +204,13 @@ before the first change and hands the vblank back to the PS3's 59.94 Hz. A
   cut off. Now it has 1 x. The setup screens take exactly what the window
   holds, as they did for the height. `DES_UI_DPI=<n>` tries another
   display's figure on this PC.
+- **The menus' width** (11-16). The F1 menu and Settings are laid out for
+  1280 dp of width (their sheet's `--menu-room`), more than those 960. While
+  one is open, the UI's scale, the UI scale setting's included, is never
+  more than the window holds of that width, in 1/16 steps down
+  (`Document::room`, `host::set_room`). A window under 1280 dp wide, or a
+  large UI scale, makes the menu smaller instead of cutting it off. At a
+  window of 1280 dp or more nothing changes.
 - It opens maximized on the primary display (Start maximized,
   `DES_MAXIMIZED`, on by default; it sets the runtime's `RSX_MAXIMIZED`,
   read once as the window is made, so a change takes effect at the next
@@ -710,6 +717,9 @@ How it works:
   `--menu-column` on the body, in dp or px. The shell sets `--menu-side`, the
   room each side of it in the window, for the sheet to pad its bands with.
   RmlUi has no `calc()`, so the shell works it out (`update_column`).
+  `--menu-room` (menu.rcss: 1280dp) is the window width the menu is laid out
+  for, what goes past the column included; a look whose menu needs more
+  sets its own.
 - **Body classes** carry the state: the level (`entries`, `page`), what the
   page has open (`listing`, `typing`, `preview`, `helping`, `comparing`),
   `hiding`, `closing`, `asking` (a question is up, `ui::asking()`) and

@@ -163,6 +163,7 @@ void MenuShell::show() {
         }
     }
     mClosing = false;
+    mCovered = false;
     mReleases = input::release_count();
     Document::show();
     focus();
@@ -171,6 +172,7 @@ void MenuShell::show() {
 
 void MenuShell::cover() {
     mCovering = true;
+    mCovered = Document::visible();
     Document::cover();
     mCovering = false;
 }
@@ -189,6 +191,7 @@ void MenuShell::hide(bool close) {
         mModel.closed();
     }
     if (close) mPendingClose = true;
+    if (!mCovering) mCovered = false;
     // Covered by another document (Controls, Trophies) or closed while the game runs: the document goes now. Closing
     // with the sheet's motion on, it goes once its transitions are done (update).
     if (mModel.level() == menu::Model::Level::Closed && host::animations_enabled() && !close) {
@@ -202,6 +205,11 @@ void MenuShell::hide(bool close) {
 
 bool MenuShell::visible() const {
     return Document::visible() && !mClosing;
+}
+
+// Open (closing included, and while a document it opened covers it): the width its look lays it out for.
+float MenuShell::room() const {
+    return Document::visible() || mCovered ? mRoom : 0.f;
 }
 
 bool MenuShell::focus() {
@@ -351,6 +359,14 @@ void MenuShell::update_column() {
             const float width = static_cast<float>(mDocument->GetContext()->GetDimensions().x);  // (the bands span it)
             side = std::max(0.f, std::round((width - n * ratio) / 2.f));
         }
+    }
+    // The width the look lays the menu out for, in dp (its sheet's --menu-room; room()).
+    mRoom = 0.f;
+    if (const Rml::Property* room = mBody->GetProperty("--menu-room")) {
+        const std::string text = room->ToString();
+        char* end = nullptr;
+        const float n = std::strtof(text.c_str(), &end);
+        if (end != text.c_str() && std::string_view(end).starts_with("dp")) mRoom = n;
     }
     if (side == mSide) return;
     mSide = side;

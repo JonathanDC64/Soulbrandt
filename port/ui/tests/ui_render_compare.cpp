@@ -1607,6 +1607,14 @@ int main(int argc, char** argv) {
     pages.push_back({"glyphs-xbox", 1280, 720, false, 1.f, false, with("DES_GLYPHS", "xbox"), {}});
     pages.push_back({"glyphs-keys", 1280, 720, false, 1.f, false, with("DES_GLYPHS", "keyboard"), {}});
     pages.push_back({"scale-150", 1920, 1080, false, 1.f, false, with("ui_scale", "150"), {}});
+    // Small windows: 1024 x 768 at the display's scale, and 900 x 650 at UI scale 125% with a value's list open. The
+    // menu must fit the window whole.
+    const auto small_list = [] {
+        use_setting("ui_scale", "125");
+        open_settings_row("Display", "Display mode", Command::Confirm);
+    };
+    pages.push_back({"small-1024", 1024, 768, false, 1.f, false, [] { open_settings("Display", false); }, {}});
+    pages.push_back({"small-list-125", 900, 650, false, 1.f, false, small_list, {}});
     pages.push_back({"window-1440", 2560, 1440, false, 1.f, false, [] { open_settings("Display", false); }, {}});
     pages.push_back({"settings-wide", 2560, 1080, false, 1.f, false, [] { open_settings("Display", false); }, {}});
     // Questions over their pages, in their short words: Host, Join, a player's, the start screen's Quit.
@@ -1696,6 +1704,9 @@ int main(int argc, char** argv) {
         pages.push_back({"des-glyphs-xbox", 1280, 720, false, 1.f, false, in_band(with("DES_GLYPHS", "xbox")), {}});
         pages.push_back({"des-glyphs-keys", 1280, 720, false, 1.f, false, in_band(with("DES_GLYPHS", "keyboard")), {}});
         pages.push_back({"des-scale-150", 1920, 1080, false, 1.f, false, in_band(with("ui_scale", "150")), {}});
+        pages.push_back({"des-small-1024", 1024, 768, false, 1.f, false,
+                         in_band([] { open_settings("Display", false); }), {}});
+        pages.push_back({"des-small-list-125", 900, 650, false, 1.f, false, in_band(small_list), {}});
         pages.push_back({"des-window-1440", 2560, 1440, false, 1.f, false,
                          in_band([] { open_settings("Display", false); }), {}});
         pages.push_back({"des-trophies-start", 1280, 720, false, 1.f, false, in_band([] {

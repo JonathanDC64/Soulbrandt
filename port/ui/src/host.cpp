@@ -180,6 +180,9 @@ std::unique_ptr<Renderer> make_renderer(void* device, void* queue) { return d3d1
 // as SDL gives the panel's real density (Windows gives the scale the player chose), and 2.25 x leaves 320 dp of height.
 //
 // While a full-window page is open (set_follow_height, the setup screens) the scale is simply what the window holds.
+//
+// A document that needs more width than that (the menus are laid out for 1280 dp: set_room) is never scaled past what
+// the window holds of its width, after the UI scale setting (render).
 float base_scale(int width, int height, unsigned dpi, bool follow_window) {
     const float display = std::max(1.0f, float(dpi) / 96.0f);  // (dpi 0 is not known. A TV can say less than 96.)
     if (width <= 0 || height <= 0) return display;
@@ -247,6 +250,7 @@ struct State {
     Rml::Context* rml = nullptr;
     float ui_scale = 0.0f;
     bool follow_height = false;
+    float room = 0.0f;  // set_room
     bool initialised = false;
     int pointer_x = 0, pointer_y = 0;  // set_pointer
     bool pointer_inside = false, cursor_wanted = false;
@@ -458,6 +462,7 @@ void set_hdr(float scale, bool srgb) {
     if (s.renderer) s.renderer->set_hdr(scale, srgb);
 }
 void set_follow_height(bool on) { s.follow_height = on; }
+void set_room(float dp) { s.room = std::max(0.0f, dp); }
 
 unsigned window_dpi() {
     // DES_UI_DPI=<n>: as if the display said so, to try another PC's on this one.
@@ -484,8 +489,9 @@ void render(void* back_buffer, unsigned index, int width, int height, const char
     if (!s.initialised) return;
     if (s.rml->GetDimensions() != Rml::Vector2i{width, height}) s.rml->SetDimensions({width, height});
     const float base = base_scale(width, height, window_dpi(), s.follow_height);
-    if (const float ratio = (s.ui_scale > 0.0f ? s.ui_scale : 1.0f) * base;
-        ratio != s.rml->GetDensityIndependentPixelRatio()) {
+    float ratio = (s.ui_scale > 0.0f ? s.ui_scale : 1.0f) * base;
+    if (s.room > 0.0f) ratio = std::min(ratio, std::max(0.5f, std::floor(float(width) / s.room * 16.0f) / 16.0f));
+    if (ratio != s.rml->GetDensityIndependentPixelRatio()) {
         s.rml->SetDensityIndependentPixelRatio(ratio);
         restyle_documents();
     }

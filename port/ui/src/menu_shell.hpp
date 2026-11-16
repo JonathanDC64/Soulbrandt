@@ -69,6 +69,7 @@ public:
     void update() override;
     bool focus() override;
     bool visible() const override;
+    float room() const override;
     bool permanent() const override { return !mModel.standalone(); }  // (the F1 menu is made once)
     void cover() override;
 
@@ -128,6 +129,7 @@ private:
     bool mHiding = false;
     bool mClosing = false;
     bool mCovering = false;
+    bool mCovered = false;  // shown, then covered by another document (Controls...): it is still open
     clock::time_point mCloseAt{};
     unsigned mReleases = 0;
     Rml::Element* mBody = nullptr;
@@ -150,6 +152,7 @@ private:
     Insets mSafeArea{};
     float mFrameMax = -1.f;  // the frame's max-height set, in px; -1 = none (the look's sheet)
     float mSide = -1.f;      // --menu-side set, in px; -1 = none (the look has no column)
+    float mRoom = 0.f;       // --menu-room, in dp: the width the look lays the menu out for (room())
 };
 
 }  // namespace ui
