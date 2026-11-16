@@ -693,8 +693,9 @@ int edit_area(std::string& t, bool nexus)
     };
     sub(std::regex("(function Check_\\d+_PT\\(proxy\\)\\s*\\r?\\n)(\\s*)if proxy:IsInParty\\(\\) == false then"),
         "$1$2if true then --SEAMLESS: the walls drop as in solo play");
-    sub(std::regex("(IsClient\\(\\) == true then\\s*\\r?\\n\\s*)proxy:PlayAnimation\\(\\s*LOCAL_PLAYER\\s*,\\s*8284\\s*\\);"),
-        "$1--SEAMLESS proxy:PlayAnimation( LOCAL_PLAYER , 8284 );");
+    // The warp-out pose a phantom plays at a boss kill, on its way home (some areas name the player 10000)
+    sub(std::regex("(IsClient\\(\\) == true then\\s*\\r?\\n\\s*)proxy:PlayAnimation\\(\\s*(LOCAL_PLAYER|10000)\\s*,\\s*8284\\s*\\);"),
+        "$1--SEAMLESS proxy:PlayAnimation( $2 , 8284 );");
     // No room lock. LockSession (here as a player walks into a boss room, and in global_event.lua's BlockClear2 at a
     // kill) sets the session's lock (sm+0x2CA), which stays until the host's game leaves its room (UnLockSession is
     // empty): the original ends the session after a boss. A locked host kicks every new join (the member handler at
