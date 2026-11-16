@@ -118,10 +118,18 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
   gate needs, each player sees the gate's cutscene as it walks up to the gate, and then the gate is open in its
   game. Before, if the Tower Knight died during the visit, the gate opened for the host alone, and stayed shut for a
   friend until the next load.
-- **So are keys and the items only the host could take:** 3-1's prison keys, and the items pulled from the ground or
-  a corpse at a prompt (1-1's sword, the glowing corpse in 2-2 and the others like them). Whoever takes one, the
-  others get it too. A player who joins later and doesn't have it yet still finds it there, in the host's world and
-  in its own.
+- **3-1's flight to the next part works in a session.** After the Fool's Idol, the player who walks onto the flight's
+  spot sees its cutscene, and every other player is taken to the same landing as it starts. Before, nobody in a
+  session could take it: its handler did nothing in a party, as the original ends the session at the kill.
+- **Boletaria's clear counts in a friend's own world too** (1-4's flag 8010), so its own Nexus can open the way down
+  once all five worlds are cleared there.
+- **So are keys and the items only the host could take:** 3-1's prison keys, the items pulled from the ground or a
+  corpse at a prompt (1-1's sword, the glowing corpse in 2-2, the sword after the final boss and the others like
+  them), and the items the host's game alone made takeable in the moment (1-1's hanging corpse, 3-1's iron
+  maidens). Whoever takes one, the others get it too. A player who joins later and doesn't have it yet still finds it
+  there, in the host's world and in its own.
+- **The final boss is the host's alone,** as in the original: its fog lets in only the host (and players in their own
+  world), and friends wait outside. The endings are the host's too.
 - **Your own world stays yours.** In a friend's world you see it as it is there. Your own world's doors, items and
   people stay as they were, and what the group did is added when you go back.
 - **World tendency.** In the host's world a friend plays in the host's world tendency, as a summoned phantom does in
@@ -344,6 +352,10 @@ alive.
   and its save then holds its own world.
 - **Progress for everyone.** From each area script as it is read, the program lists the progress flags:
   - every flag a boss kill's handlers set (the events whose handler starts the boss clear, `CustomLuaCallStart(4050)`);
+  - the flags of a handler that a kill's handler names in quotes (a timer's, `OnKeyTime2(..., "<name>", ...)`), when
+    that handler counts the cleared worlds (`GetBossFlagCount(`). That is 1-4's `OnEvent_4481`, which sets
+    Boletaria's clear (8010) for the host alone; the other worlds' clears (8011-8014) are in their kill handlers
+    already. Wider (every named handler) would also take Ostrava's flags, the warp-out poses' and the boss music's;
   - the events whose header comment names a door, lever, elevator, shortcut, bridge or fog wall, and names no
     treasure, item, corpse, shop, talk, checkpoint, host-only wall or cutscene.
 
@@ -374,6 +386,26 @@ alive.
   one (11-15). The area's start watches it for every player (Tower Knight dead, flag 571 clear), or opens it (571
   set), so a load put that right. A friend's game sets 571 in the host's flags in play only: it isn't a progress
   flag, and its own world keeps its own gate.
+- **Treasures the host's game alone turned on** (`treasures_for_all`): a block under `if proxy:IsClient() == false
+  then` whose code is only `TreasureDispModeChange` and `EnableObjTreasure` becomes `if true then`. Seven blocks match:
+  1-1's hanging corpse (`OnEvent_280_1`) and 3-1's iron maidens (`OnEvent_492`, 496, 497, 501, 502 and 503; 493-495
+  and 498-500 are in a block comment). A friend saw the item and couldn't take it until the next load, whose area start
+  turns it on from the flag. Items are each game's own, so nobody gets one twice.
+- **A handler that does nothing in a party** (`party_gates`): a handler whose first statement is `if
+  proxy:IsInParty() == true then return; end` loses that line. One matches, 3-1's flight to the next part
+  (`OnEvent_410`). The original ends the session at the Fool's Idol's kill, so the host is no longer in a party when it
+  walks there; a seamless session stays, and the flight did nothing for anyone. (The Nexus's `OnEvent_450_1`, a bonus
+  for a solo clear, and `global_event.lua` don't match: neither starts with it.)
+- **A watch the host's game alone starts after a kill** (`kill_watches_for_all`): an `if proxy:IsClient() == false
+  then` block whose code is only `NotNetMessage_begin`, `OnKeyTime2(<n>, "<handler>", ...)` and `NotNetMessage_end`,
+  where that handler registers an `OnRegion*` watch, becomes `if true then`. One matches, the Fool's Idol's
+  `OnEvent_5123_1` (its timer starts the flight's watch, `OnEvent_410_1`). The flight itself: `OnEvent_410` asks for
+  the cutscene (40001, flag 410 at its end) in the walker's game. Its start (`REMO_START`) is a network event, so every
+  game in the area runs `OnEvent_410_RemoStart`, which puts its own player at the landing (point 2031), and its end
+  removes the watch in every game. So the walker sees the cutscene, and the others are taken along without it. Flag
+  410 is set in the walker's game alone; a player whose flag is still clear gets the watch again at its next load.
+- **The sword after the final boss** (141, item lot 10730): the Nexus's script runs `gifts_for_all` too. Before, it
+  returned before that step, so the sword stayed the host's.
 - **Whose flag.** On a friend the flags in play are the host's, so as an area's script is read (before the area
   starts) each of these pickup flags is made the friend's own world's (`des_seamless_area_read`). A friend that hasn't
   taken a soul sees the prompt even where the host has; one that has sees none, and gets no second one.
@@ -834,9 +866,13 @@ the newer generation, and saves as usual.
 - Items for a friend: the area's items and enemy drops (above). Not covered: a drop that an item lot allows only once
   (its flag is read from the host's flags in play), and the scripted pickups (the Demonbrand, the keys) that an
   area's script offers to the host and to players in their own world only, as the boss souls were.
-- The final area under the Nexus (King Allant, `m01_00`) was made for sessions: its soul prompts are the host's, as
-  in the levels, so the soul edit above gives a friend its own. The solo clear bonus is skipped in a party, and only
-  the host's game sets the clear state and plays the ending. Not tested.
+- The final area under the Nexus (King Allant, `m01_00`) is the host's alone (corrected 11-15; an earlier note here
+  said it was made for sessions). Its fog (`OnPlayerActionInRegionAttribute(61, 2895, ...)`, host, alive or soul
+  form) has no second entry for the others: no `LuaCall(61, 5, ...)` is registered, and `OnEvent_61_3` would send
+  `LuaCallStart(61, 5)` only while flag 61 is clear, which `OnEvent_61` has just set. The boss has no soul prompt;
+  its sword (141) is for everyone now. After the kill, `OnEvent_450` sets flag 450 only in body or soul form, and the
+  way on to the Old One (`OnEvent_71`) waits for it, so a friend's game doesn't go on. Only the host's game sets the
+  clear state and plays the ending; what a friend's game does then is not tested.
 - Watching a boss fight after dying, scripted: host and friend were put in 1-1's boss arena, and the fight started
   for both (the boss's health bar on both screens). The friend was then killed. It stayed down and watched for the
   half minute until the host killed the boss, then came back at the area's start, and the host made its character
@@ -862,6 +898,27 @@ the newer generation, and saves as usual.
   then both put into the gate's region (2250), the friend 3 s after the host. Before, only the host's game played the
   gate's cutscene (scene 20101) and set 571, as in the user's session. With the edit, both games played it and set
   571. Not yet by hand, and not run on the other discs.
+- The rest of the game's scripts, checked for steps kept for the host (11-15): every area script's 218 `if` lines on
+  the host and the client (83 at an area start, 135 in handlers), and the other ways a script tells them apart
+  (`IsSession`, `ATTR_NOSESSION`, host-only prompts, `IsNetMessage`, `IsInParty`). Apart from the edits above, the
+  host-only steps are "the host decides, every game does it" broadcasts, NPCs, the boss rooms' first entries and the
+  bosses' thinking, all fine as they are. Two kinds are left as the original has them: the dragons' item drops in 1-2
+  and 1-4 (`OnEvent_800_3_syncro_anime`, `HiryuOsaDead`, the host's alone, with a trophy) and the final boss (above).
+  Every area script through the edits before and after (a test program built from this file): only 1-1, 1-2, 1-3,
+  1-4 (its progress flags), 2-3, 3-1 and the Nexus change, each as described.
+- 3-1's flight with a friend (11-15, two copies, scripted, the pinned tutorial save, god mode on both): flag 5123
+  set on the host, both loaded into `m04_00` (the friend following), then one player put on the flight's region
+  (2030):
+  - The host first: the host's game played the cutscene (scene 40001), the friend's played it too, and both stood
+    at the landing (y 53.88) when it ended. Flag 410 was set in the host's game.
+  - The friend first: the friend's game played the cutscene, and the host's game put the host at the landing
+    without it, within 25 s. Flag 410 was set in the friend's game only; the host's watch was gone (the cutscene's
+    end removes it everywhere), so the host walking back onto the spot did nothing until a load.
+  - The host kept its session through both ("the host stays in its session": the warp's leave held back, as at the
+    other trips).
+
+  Without the edits the handler returns at once in a party, so nothing happens for anyone (read from the script, not
+  run). Not yet by hand, and not run on the other discs.
 - A friend that leaves during the host's load and joins again isn't placed. The host's game keeps its old member
   through the load (the room library drops it), and the new join stops half way: the friend waits, out of the host's
   world, until the host's session ends. Seen at the tutorial's end before a friend went with its host (11-15); a
