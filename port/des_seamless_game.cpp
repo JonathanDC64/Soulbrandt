@@ -483,6 +483,7 @@ struct Game {
     bool in_load = false;     // a load seen since the last arrival
     uint32_t trip = 0;        // the host: its loads in this session; a guest: the host's load it follows
     std::atomic<uint32_t> follow{0};   // a guest: the trip its summoned reload follows (0: none)
+    std::atomic<uint32_t> follow_from{kNoArea};   // a guest: the area that follow leaves (its load step reads it)
     std::atomic<bool> respawn{false};  // a guest: its summoned reload is a respawn (BACK once it has arrived)
     bool loading = false;     // a guest: a load asked for (gm's next area) and the world not back since (Quit Game
                               // to the title asks for none)
@@ -1902,6 +1903,7 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
     }
     if (lead != g.trip && here) {
         g.trip = lead;
+        g.follow_from = vm_read32(sm + kSmArea);
         g.follow = lead;
         sync_hold(lead);
         call_addr(ctx, DES_AT(0x00441AB8u), {});   // SummonedMapReload
@@ -1964,6 +1966,19 @@ void guest_load_step(ppu_context* ctx)
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
     const Place at = trip || !joined ? r.now : r.arrived;
+    // The tutorial's end, its trip from m08 to the Nexus: there the game's own player has died, and m08_01's
+    // OnEvent_14300_3 revives it, ends the tutorial (Tutorial_end), makes it a soul (ChangeGreyGhost) and takes it
+    // to the Nexus. A friend that follows the host there hasn't died, so none of that ran for it: it arrived in body
+    // form with the tutorial still on. It gets the same here: the tutorial's flag off (Tutorial_end's only call) and
+    // soul form as the form it goes home in.
+    const uint32_t from = sGame.follow_from.exchange(kNoArea);
+    if (trip && from != kNoArea && from >> 24 == 8 && r.area >> 24 == 1) {
+        call_addr(ctx, DES_AT(0x0020D3C0u), {});   // Tutorial_end's: the tutorial's flag (+0xA95 of its manager) off
+        const bool was_body = body_form();
+        set_form(false);
+        std::fprintf(stderr, "[coop] follow: the tutorial's end, as for the host: the tutorial over, %s\n",
+                     was_body ? "a soul from now on" : "a soul already");
+    }
     take_host_flags(flag_base());   // the host's flags where it is now (sent just before that READY), for this load
     take_host_qwc(why);             // and its tendency in use, before this load's area scripts read it
     char want[16];
