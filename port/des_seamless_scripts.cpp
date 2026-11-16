@@ -492,6 +492,77 @@ int no_travel_alone(std::string& t)
     return (int)n;
 }
 
+// A treasure the host alone turns on in the moment: `if proxy:IsClient() == false then` with only
+// TreasureDispModeChange / EnableObjTreasure in it (a hanging corpse that falls in 1-1, 3-1's iron maidens that open).
+// The original's phantom never took those items, so its game left them off. A friend saw the object open and couldn't
+// take what was in it until the area loaded again (the area's start turns them on once their flag is set). Every game
+// turns them on now; each player's items are its own (des_seamless_game.cpp), so nobody gets one twice. Returns the
+// number of edits.
+int treasures_for_all(std::string& t)
+{
+    const std::regex block("(\\n[ \\t]*if\\s+)proxy:IsClient\\(\\)\\s*==\\s*false(\\s+then[ \\t]*\\r?\\n"
+                           "(?:[ \\t]*(?:--[^\\n]*|proxy:(?:TreasureDispModeChange|EnableObjTreasure)\\([^\\n]*)?\\r?\\n)+"
+                           "[ \\t]*end)");
+    std::string out;
+    size_t from = 0;
+    int n = 0;
+    for (auto it = std::sregex_iterator(t.begin(), t.end(), block); it != std::sregex_iterator(); ++it) {
+        const std::string body = (*it)[2].str();
+        if (body.find("proxy:") == std::string::npos) continue;   // (comments only)
+        out += t.substr(from, (size_t)it->position(0) - from);
+        out += (*it)[1].str() + "true" + body;
+        from = (size_t)it->position(0) + (size_t)it->length(0);
+        n++;
+    }
+    if (!n) return 0;
+    out += t.substr(from);
+    t = out;
+    return n;
+}
+
+// A handler that does nothing in a party: `if proxy:IsInParty() == true then return; end` as its first statement (3-1's
+// OnEvent_410, the gargoyle's flight from the Fool's Idol's room to the next block). In the original the kill ends the
+// session, so the host is alone again when it gets there; a seamless session stays, so nobody, the host included, was
+// ever carried on. The check is commented out. Returns the number of edits.
+int party_gates(std::string& t)
+{
+    const std::regex gate("(\\nfunction \\w+\\s*\\(\\s*proxy\\s*,\\s*param\\s*\\)[^\\n]*\\n)([ \\t]*)if\\s+proxy:IsInParty\\(\\)"
+                          "\\s*==\\s*true\\s+then\\s*\\r?\\n\\s*return;?\\s*\\r?\\n\\s*end");
+    const auto n = std::distance(std::sregex_iterator(t.begin(), t.end(), gate), std::sregex_iterator());
+    if (n) t = std::regex_replace(t, gate, "$1$2--SEAMLESS (a session stays after a kill): if IsInParty() then return; end");
+    return (int)n;
+}
+
+// A watch the host alone starts after a kill: `if proxy:IsClient() == false then` with only a local timer in it
+// (NotNetMessage_begin, OnKeyTime2(<id>, "<handler>", ...), NotNetMessage_end), whose handler registers a region watch
+// (3-1's OnEvent_5123_1 -> OnEvent_410_1, the gargoyle's flight). The original's phantom went home at the kill. Every
+// game starts it now: each player's watch is its own (it is registered between NotNetMessage_begin and _end). The
+// area's start registers the same watch once the kill's flag is set, so this is for the visit of the kill. Returns the
+// number of edits.
+int kill_watches_for_all(std::string& t)
+{
+    const std::regex block("(\\n[ \\t]*if\\s+)proxy:IsClient\\(\\)\\s*==\\s*false(\\s+then[ \\t]*\\r?\\n"
+                           "[ \\t]*proxy:NotNetMessage_begin\\(\\);[^\\n]*\\n"
+                           "[ \\t]*proxy:OnKeyTime2\\(\\s*\\d+\\s*,\\s*\"(\\w+)\"[^\\n]*\\n"
+                           "[ \\t]*proxy:NotNetMessage_end\\(\\);[^\\n]*\\n[ \\t]*end)");
+    const std::regex watch("proxy:OnRegion\\w*\\(");
+    std::string out;
+    size_t from = 0;
+    int n = 0;
+    for (auto it = std::sregex_iterator(t.begin(), t.end(), block); it != std::sregex_iterator(); ++it) {
+        size_t a, e;
+        if (!func_span(t, (*it)[3].str(), &a, &e) || !std::regex_search(code_of(t.substr(a, e - a)), watch)) continue;
+        out += t.substr(from, (size_t)it->position(0) - from);
+        out += (*it)[1].str() + "true" + (*it)[2].str();
+        from = (size_t)it->position(0) + (size_t)it->length(0);
+        n++;
+    }
+    if (!n) return 0;
+    out += t.substr(from);
+    t = out;
+    return n;
+}
+
 // A boss's soul taken: what its handlers (OnEvent_<id>, OnEvent_<id>_<k>) do for the host alone (a block under
 // "if proxy:IsClient() == false then") they now do for a friend too. In the original a phantom goes home after the
 // boss, so only the host's world goes on from there; a friend in a seamless session stays, and takes its own soul
@@ -693,8 +764,9 @@ int edit_area(std::string& t, bool nexus)
     };
     sub(std::regex("(function Check_\\d+_PT\\(proxy\\)\\s*\\r?\\n)(\\s*)if proxy:IsInParty\\(\\) == false then"),
         "$1$2if true then --SEAMLESS: the walls drop as in solo play");
-    sub(std::regex("(IsClient\\(\\) == true then\\s*\\r?\\n\\s*)proxy:PlayAnimation\\(\\s*LOCAL_PLAYER\\s*,\\s*8284\\s*\\);"),
-        "$1--SEAMLESS proxy:PlayAnimation( LOCAL_PLAYER , 8284 );");
+    // The warp-out pose a phantom plays at a boss kill, on its way home (some areas name the player 10000)
+    sub(std::regex("(IsClient\\(\\) == true then\\s*\\r?\\n\\s*)proxy:PlayAnimation\\(\\s*(LOCAL_PLAYER|10000)\\s*,\\s*8284\\s*\\);"),
+        "$1--SEAMLESS proxy:PlayAnimation( $2 , 8284 );");
     // No room lock. LockSession (here as a player walks into a boss room, and in global_event.lua's BlockClear2 at a
     // kill) sets the session's lock (sm+0x2CA), which stays until the host's game leaves its room (UnLockSession is
     // empty): the original ends the session after a boss. A locked host kicks every new join (the member handler at
@@ -741,6 +813,9 @@ int edit_area(std::string& t, bool nexus)
         for (const std::string& h : own)
             sub(std::regex("(\\nfunction " + h + "\\s*\\(\\s*proxy\\s*,\\s*param\\s*\\)[^\\n]*\\n)"),
                 "$1\tif param:IsNetMessage() == true then return; end --SEAMLESS: another player's, not this one's\n");
+        // The sword the host alone pulled out after the final boss (141, item lot 10730): for every player, as the
+        // levels' item prompts (gifts_for_all)
+        n += gifts_for_all(t);
         // Each game's timers and checks stay its own (local_timers)
         n += local_timers(t);
         return n;
@@ -787,6 +862,12 @@ int edit_area(std::string& t, bool nexus)
     n += pickups_for_all(t);
     // ... and the items the host alone took at an item prompt
     n += gifts_for_all(t);
+    // The treasures the host alone turned on in the moment (treasures_for_all)
+    n += treasures_for_all(t);
+    // A handler that does nothing in a party (party_gates), and a watch the host alone starts after a kill
+    // (kill_watches_for_all): 3-1's flight to the next block
+    n += party_gates(t);
+    n += kill_watches_for_all(t);
     for (const std::string& id : ids) {
         // in this stone's handlers, the session check passes for the host
         const std::regex fn("\nfunction OnEvent_" + id + "(?:_\\d+)?\\s*\\(");
@@ -928,7 +1009,21 @@ std::vector<uint32_t> progress_flags(const std::string& t, std::vector<uint32_t>
         size_t i = 8;
         const long id = read_number(f.first, &i);
         if (id < 0) continue;
-        for (const auto& h : handlers(id)) set_true(h.first, h.second, &kills);   // every flag they set to true
+        for (const auto& h : handlers(id)) {
+            set_true(h.first, h.second, &kills);   // every flag they set to true
+            // ... and the kill's next step when it has a name of its own (1-4's OnEvent_4481, a second after King
+            // Allant's kill, where the host alone sets Boletaria's clear, 8010): a function a handler names in quotes
+            // (as OnKeyTime2 takes it) that counts the bosses (GetBossFlagCount). Not every named function: those
+            // include NPCs' states, the warp-out pose's and the music's.
+            for (size_t q = t.find('"', h.first); q != std::string::npos && q < h.second; q = t.find('"', q + 1)) {
+                const size_t e = t.find('"', q + 1);
+                if (e == std::string::npos || e > h.second) break;
+                const auto it = funcs.find(t.substr(q + 1, e - q - 1));
+                if (it != funcs.end() && t.find("GetBossFlagCount(", it->second.first) < it->second.second)
+                    set_true(it->second.first, it->second.second, &kills);
+                q = e;
+            }
+        }
     }
     out = kills;
     if (boss) boss->assign(kills.begin(), kills.end());
