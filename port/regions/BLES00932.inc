@@ -111,6 +111,8 @@ DES_REGION_ADDR(0x00286614, 0x002873EC)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x0028B224, 0x0028BFFC)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x002977C0, 0x00298598)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x002986B8, 0x00299488)  /* call */
+DES_REGION_ADDR(0x00299B74, 0x0029A944)  /* hook des_coop_hook: an NPC's setup after lbz r0,0xE8(r9) (a friend notes the NPCs it sets up as the host's) */
+DES_REGION_ADDR(0x00299BB0, 0x0029A980)  /* hook des_coop_hook: an NPC's setup after mr r23,r3, its new character (the same) */
 DES_REGION_ADDR(0x0029EC08, 0x0029F9D8)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x002A6AA8, 0x002A7880)  /* wrapped kChrInsThread */
 DES_REGION_ADDR(0x002A6AF4, 0x002A78CC)  /* return address in 0x002A6AA8 */
