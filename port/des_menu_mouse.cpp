@@ -112,6 +112,19 @@ constexpr int kOptionOk = 11;                  /* the row of OK (and DEFAULT, it
 constexpr uint32_t kProfileVt = 0x0186BE58u;   /* DsMenuDlgSelectProfile, the profile list: its row is +0xF8 */
 constexpr uint32_t kPromptVt = 0x01869FB8u;    /* the system layer's prompts (yes/no, Drop's count): button +0x110 */
 constexpr uint32_t kGetMenuVarFn = 0x00720F20u;
+/* The pause menu's pages, by the bar's tab. The game's page switch (0x007234E0(the page's variable)) closes only
+ * the new page's two neighbours, so a jump also closes the page it leaves. A page takes R2 and L2 only once open
+ * (its state variable at its idle value) and while its own dialog has the pad. */
+constexpr uint32_t kPageSwitchFn = 0x007234E0u;
+struct PausePage { int open_var, state_var, idle; };   /* the switch's variable; the page's state, open and idle */
+constexpr PausePage kPages[] = {{2, 2, 2}, {3, 3, 1}, {0x15, 0x15, 1}, {0x16, 0x16, 1}, {0x13, 0x2A, 3}};
+static_assert(sizeof kPages / sizeof kPages[0] == kTabs, "a page for each of the bar's tabs");
+/* Each page's own close (Inventory, Equipment, Status, World Tendency, System, and Options with System), as the
+ * switch calls them (with 0: the pause menu stays). */
+constexpr uint32_t kInvCloseFn = 0x0081FA40u, kEquipCloseFn = 0x00736BB0u, kStatusCloseFn = 0x0082A440u;
+constexpr uint32_t kWorldCloseFn = 0x00841A90u, kSystemCloseFn = 0x008ABD18u, kOptionCloseFn = 0x007C8260u;
+/* The pages' own dialogs (the inventory's list and its categories, the equipment's slots); System's is kSystemVt. */
+constexpr uint32_t kInventoryVt = 0x0186C318u, kInvTabsVt = 0x01866570u, kEquipSlotsVt = 0x01866068u;
 constexpr uint32_t kPromptButton = 0x110u, kPromptState = 0xF8u;
 constexpr int kPromptKindVar = 0x11;           /* its kind: 0 and 1 take no left or right, 6 and 9 place no cursor */
 
@@ -1295,6 +1308,58 @@ uint32_t virtual_code(uint32_t vt, uint32_t off)
     return guest_ok(d, 4) ? vm_read32(d) : 0;
 }
 
+int menu_var(ppu_context* ctx, int id)
+{
+    return (int)call_addr(ctx, DES_AT(kGetMenuVarFn), {id});
+}
+
+/* Closes the pause page of tab t, as the page switch closes a neighbour of the page it opens. */
+void close_page(ppu_context* ctx, int t)
+{
+    switch (t) {
+    case 0: call_addr(ctx, DES_AT(kInvCloseFn), {0}); break;
+    case 1: call_addr(ctx, DES_AT(kEquipCloseFn), {0}); break;
+    case 2: call_addr(ctx, DES_AT(kStatusCloseFn), {0}); break;
+    case 3: call_addr(ctx, DES_AT(kWorldCloseFn), {0}); break;
+    default:
+        call_addr(ctx, DES_AT(kOptionCloseFn), {0});
+        call_addr(ctx, DES_AT(kSystemCloseFn), {0});
+        break;
+    }
+}
+
+/* The pause page of tab t takes R2 and L2 now: it is open and idle, and nothing is over it (every menu shown
+ * besides the bar is a part of the page, and the page's own dialog has the pad). */
+bool page_ready(ppu_context* ctx, int t)
+{
+    if (menu_var(ctx, kPages[t].state_var) != kPages[t].idle) return false;
+    for (const Menu& o : s_menus) {
+        if (o.stay) continue;
+        const uint32_t vt = vm_read32(o.owner);
+        const bool own = (t == 0 && vt == DES_AT(kInventoryVt)) || (t == 1 && vt == DES_AT(kEquipSlotsVt)) ||
+                         (t == 4 && vt == DES_AT(kSystemVt));
+        if (!own && !(t == 0 && vt == DES_AT(kInvTabsVt))) return false;   /* a prompt, a list, Options, ... */
+        if (own && !(vm_read32(o.owner + kDlgInput) & 0x80000000u)) return false;
+    }
+    return true;
+}
+
+/* A click on another tab of the bar while a page is open: the page switch to that page at once, and the page left
+ * closed when the switch doesn't close it (it closes only the new page's two neighbours: from World Tendency to
+ * the inventory, World Tendency's statues stayed drawn). Only while the page left would take R2 and L2. The
+ * switch plays the tick, and the bar's cursor follows the tab by itself. */
+bool turn_page_now(ppu_context* ctx, const Spot& s)
+{
+    const int from = menu_var(ctx, kBarTabVar), to = s.c;
+    if (s.r != 0 || to < 0 || to >= kTabs || from < 0 || from >= kTabs || to == from) return false;
+    if (!page_ready(ctx, from)) return false;
+    if (!call_addr(ctx, DES_AT(kPageSwitchFn), {kPages[to].open_var})) return false;   /* refused: still closing */
+    const int d = (to - from + kTabs) % kTabs;
+    if (d != 1 && d != kTabs - 1) close_page(ctx, from);
+    if (s_log) fprintf(stderr, "[mm] page %d to %d at once\n", from, to);
+    return true;
+}
+
 /* Selects spot s of menu m at once, as the menu's own input code does it, with one tick; false where this menu
  * can't be (the walk does it then). Only while the menu's dialog takes input. Read from the game's code (docs/114
  * section 3.1):
@@ -1319,12 +1384,14 @@ uint32_t virtual_code(uint32_t vt, uint32_t off)
  *   no row skipped, and its update places the cursor from it every frame.
  * - The system layer's prompts (yes/no, Drop's count): the button is +0x110, from 1. Its steps (vt+0x8C, +0x90)
  *   move it by one, and its update places the cursor from it every frame while it is open (+0xF8 is 0) and its kind
- *   (menu variable 0x11) takes left and right. */
+ *   (menu variable 0x11) takes left and right.
+ * - The bar with a page open: turn_page_now. */
 bool select_now(ppu_context* ctx, const Menu& m, const Spot& s)
 {
     if (m.cur < 0 || !grid_spot(s)) return false;
-    if (!(vm_read32(m.owner + kDlgInput) & 0x80000000u)) return false;   /* its input is off: a dialog over it has it */
     const uint32_t vt = vm_read32(m.owner);
+    if (vt == DES_AT(kStartTabVt) && m.stay) return turn_page_now(ctx, s);   /* (the page has the pad, not the bar) */
+    if (!(vm_read32(m.owner + kDlgInput) & 0x80000000u)) return false;   /* its input is off: a dialog over it has it */
     bool tick = true;
     if (vt == DES_AT(kStartTabVt) && !m.stay) {
         if (s.r != 0 || s.c < 0 || s.c >= kTabs) return false;
@@ -1381,7 +1448,14 @@ void handle_events(ppu_context* ctx)
         std::lock_guard<std::mutex> lk(s_ev_mu);
         evs.swap(s_evs);
     }
-    for (const Ev& e : evs) {
+    for (size_t k = 0; k < evs.size(); k++) {
+        if (s_walk.on && s_walk.direct > 0) {   /* a select at once not shown yet: the rest wait for it, so that a
+                                                   click right after reads the cursor where it is, not where it was */
+            std::lock_guard<std::mutex> lk(s_ev_mu);
+            s_evs.insert(s_evs.begin(), evs.begin() + (std::ptrdiff_t)k, evs.end());
+            break;
+        }
+        const Ev& e = evs[k];
         switch (e.kind) {
         case kEvClick: {
             if (s_menus.size() == 1 && s_menus[0].start) {   /* the title: anywhere */

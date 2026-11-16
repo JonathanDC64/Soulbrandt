@@ -213,11 +213,27 @@ found the pause menu's bar at +0x184, which is only the tab it placed last: writ
 A click in one of these menus selects the spot as that class's input code would, with one tick
 (`select_now`), but only while the menu's dialog takes input (bit 31 of its +0xA0, which the game's input query
 0x00F55A18 asks). The walk then waits for the cursor to show there and presses Cross. If it does not show within 10
-passes, the walk walks.
+passes, the walk walks. Until it shows, the mouse's next events wait, so a click right after one reads the cursor
+where it is then.
 - **The pause menu's bar, while it has the pad** (DsMenuDlgStartTab, vtable 0x018692C0): its tab is menu variable
   0x4B. Its step (0x0079B2C0) sets it, then runs its vt+0x80 (the help line), +0x90 and +0x88 (the cursor). The
   bytes +0x180, +0x181 and +0x182 have its next update run the same three. The step goes round 0 to 4 and skips no
   tab.
+- **The bar with a page open** (the same class, a stay menu): a click on another tab goes to that page at once.
+  - The pages are menu variables too. Inventory is 2, Equipment 3, Status 0x15, World Tendency 0x16 and System 0x2A
+    (Options 0x13). A page opens when its variable is set, and closes when it is set back.
+  - The game's page switch (`0x007234E0`, with the page's variable: 2, 3, 0x15, 0x16 or 0x13) sets the bar's tab,
+    plays the tick and opens the page. But it closes only that page's two neighbours, the only pages R2 and L2 come
+    from. So a jump also closes the page it leaves with that page's own close: `0x0081FA40(0)`, `0x00736BB0(0)`,
+    `0x0082A440`, `0x00841A90`, and for System `0x007C8260` then `0x008ABD18(0)`. Without it, from World Tendency to
+    the inventory, World Tendency's statues stayed drawn over the inventory.
+  - Only while the page left would take R2 and L2:
+    - its variable is at its idle value: 2 for the inventory, 1 for the others, 3 for System. The first is 1 while
+      the inventory opens, and 3 while Status or World Tendency open, for 0.16 to 0.24 game seconds.
+    - each menu shown besides the bar is a part of the page: the inventory's list (DsMenuDlgInventory, 0x0186C318)
+      and categories (0x01866570), the equipment's slots (0x01866068), System. Those of the page also have the pad.
+      So the command menu, a prompt, an equipment slot's item list, Options and Status's Stat Guide keep the walk.
+  - The switch refuses the inventory while its variable is not 0 (and Status likewise); then the walk walks.
 - **System** (DsMenuDlgSystem, vtable 0x0186EF60): its row is +0xFC (0 to 2), and its update places the cursor and
   the help line from it every frame. Its input keeps to row 0 while +0xF5 is set, and steps over row 1 (Load
   Profile) while +0xF7 is. A click on a row it would not go to walks instead.
@@ -261,11 +277,8 @@ passes, the walk walks.
 - A click on an arrow or a value's half on another row (section 3) goes to that row the same way first, then
   presses the arrow: an Options value changes in one click with no walk.
 
-Every other menu still walks. Among them: the bar with a page open (its pages turn one at a time), the title's
-NEW GAME / LOAD GAME (one step; the menu the port sees there is the cursor's dialog, not the title's), Options'
-DEFAULT, and lists shown as a grid of icons. The game's own switch
-(0x007234E0, with the page's menu variable) goes to any page at once. Tried from World Tendency, though, it left
-World Tendency's statues drawn over the next page: the page's own R2 does more first, not found yet.
+Every other menu still walks. Among them: the title's NEW GAME / LOAD GAME (one step; the menu the port sees there
+is the cursor's dialog, not the title's), Options' DEFAULT, and lists shown as a grid of icons.
 
 ## 4. The UI's side (port/ui/src/game_menu.cpp)
 
@@ -301,7 +314,7 @@ On the pinned regression save, by `DES_UI_MOUSE` (the steps and the shots are in
 | Create Profile | a click on Class's label selects it at once (with its help line); a click on Gender's right half selects Gender at once and steps it, and the game asks its gender question (as it does after a walk); click on Class ▶ steps it; wheel over Gender; the gender prompt's OK / CANCEL; a click on the profile under the prompt does nothing |
 | Edit Appearance | glow on a slider; a click on Age's track from the Origin row walks down 3 and slides the thumb there; a drag moves it back; 3 wheel notches over Gender walk there and step it 3 times |
 | Pause menu bar | glow on a tab, click opens its page, ◀ ▶ click and hold, wheel; no glow in the gaps between tabs |
-| Pause menu pages | with a page open, a click on another tab turns to it (R2), right click closes the page; the same after Use Item, when the game has made the pause menu anew (in a level, from a copy of a player's save) |
+| Pause menu pages | with a page open, a click on another tab goes to its page at once, any distance (from World Tendency to the inventory with no statues left, from the equipment to System); from Options and with Status's Stat Guide open it walks (L2), and with the command menu open nothing turns, as with the pad; two clicks in one step: the second waits for the first page, then walks one page; right click closes the page; the same after Use Item, when the game has made the pause menu anew (in a level, from a copy of a player's save) |
 | Inventory | glow on a row (its whole width), wheel, click opens the command menu, right click closes it, click on a category; closed on the armor category and opened again (it opens there), glow and clicks on its rows and tabs |
 | Equipment | a click on a slot selects it at once and opens its item list (from the first slot: a bolt slot, then an item slot; the same lists as in a walk-only run); glow on a row, wheel, right click back |
 | System | a click on the pause bar's last tab selects it at once and opens System; a click on Options opens it; a click on Quit Game selects it at once |
