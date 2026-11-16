@@ -492,6 +492,41 @@ int no_travel_alone(std::string& t)
     return (int)n;
 }
 
+// A boss's soul taken: what its handlers (OnEvent_<id>, OnEvent_<id>_<k>) do for the host alone (a block under
+// "if proxy:IsClient() == false then") they now do for a friend too. In the original a phantom goes home after the
+// boss, so only the host's world goes on from there; a friend in a seamless session stays, and takes its own soul
+// (each player's prompt is its own, see edit_area). The one such block is 1-2's: the Tower Knight's soul (4252) starts
+// the watch on the castle gate (OnRegionJustIn 570, in the player's game alone: at the gate, its cutscene and the gate
+// open, once flag 8035 says a demon of another world is dead). A friend's game never watched it, so its gate stayed
+// shut while the host's opened (11-15), until a load (the area's start watches it for every player). Each player now
+// sees the cutscene as it walks to the gate. Returns the number of edits.
+int soul_steps_for_all(std::string& t)
+{
+    std::set<std::string> ids;
+    const std::regex prompt("OnDistanceActionAttribute\\(\\s*(\\d+)\\s*,[^\\n]*?\"OnEvent_(\\d+)\"[^\\n]*?,\\s*10010180\\s*,");
+    for (auto it = std::sregex_iterator(t.begin(), t.end(), prompt); it != std::sregex_iterator(); ++it)
+        if ((*it)[1].str() == (*it)[2].str()) ids.insert((*it)[1].str());
+    const std::regex host_only("(\\n[ \\t]*if\\s+)proxy:IsClient\\(\\)\\s*==\\s*false(\\s+then)");
+    int n = 0;
+    for (const std::string& id : ids) {
+        const std::regex fn("\\nfunction OnEvent_" + id + "(?:_\\d+)?\\s*\\(");
+        std::vector<std::pair<size_t, size_t>> spans;
+        for (auto it = std::sregex_iterator(t.begin(), t.end(), fn); it != std::sregex_iterator(); ++it) {
+            const size_t a = (size_t)it->position(0), e = t.find("\nfunction ", a + 5);
+            spans.emplace_back(a, e == std::string::npos ? t.size() : e);
+        }
+        for (auto s = spans.rbegin(); s != spans.rend(); ++s) {   // from the end, so the earlier spans stay put
+            std::string body = t.substr(s->first, s->second - s->first);
+            const auto k = std::distance(std::sregex_iterator(body.begin(), body.end(), host_only), std::sregex_iterator());
+            if (!k) continue;
+            body = std::regex_replace(body, host_only, "$1true$2");
+            t.replace(s->first, s->second - s->first, body);
+            n += (int)k;
+        }
+    }
+    return n;
+}
+
 // A pickup's "another player did it" branch in its handler: Luafunc_PlaySynchroAnimation(proxy, param, ANIMEID_PICK).
 const std::regex& synchro_branch()
 {
@@ -745,6 +780,9 @@ int edit_area(std::string& t, bool nexus)
     sub(std::regex("proxy:(OnDistanceActionAttribute\\(\\s*\\d+\\s*,[^\\n]*?,\\s*10010180\\s*,\\s*0\\s*,\\s*180\\s*,\\s*)"
                    "ATTR_NOSESSION(\\s*,\\s*once\\s*\\)\\s*;)"),
         "proxy:NotNetMessage_begin(); proxy:$1ATTR_SESSION + ATTR_NOSESSION$2 proxy:NotNetMessage_end();");
+    // ... what its handlers do for the host alone, a friend's game does too (soul_steps_for_all; before the copies
+    // pickups_for_all makes of them)
+    n += soul_steps_for_all(t);
     // ... and when one player takes it, the others get it too; the same for the keys (pickups_for_all)
     n += pickups_for_all(t);
     // ... and the items the host alone took at an item prompt
