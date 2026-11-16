@@ -813,8 +813,8 @@ int edit_area(std::string& t, bool nexus)
         for (const std::string& h : own)
             sub(std::regex("(\\nfunction " + h + "\\s*\\(\\s*proxy\\s*,\\s*param\\s*\\)[^\\n]*\\n)"),
                 "$1\tif param:IsNetMessage() == true then return; end --SEAMLESS: another player's, not this one's\n");
-        // The sword the host alone pulled out after the final boss (141, Soulbrandt): for every player, as the levels'
-        // item prompts (gifts_for_all)
+        // The sword the host alone pulled out after the final boss (141, item lot 10730): for every player, as the
+        // levels' item prompts (gifts_for_all)
         n += gifts_for_all(t);
         // Each game's timers and checks stay its own (local_timers)
         n += local_timers(t);
