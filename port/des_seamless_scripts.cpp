@@ -492,14 +492,6 @@ int no_travel_alone(std::string& t)
     return (int)n;
 }
 
-// A boss's soul taken: what its handlers (OnEvent_<id>, OnEvent_<id>_<k>) do for the host alone (a block under
-// "if proxy:IsClient() == false then") they now do for a friend too. In the original a phantom goes home after the
-// boss, so only the host's world goes on from there; a friend in a seamless session stays, and takes its own soul
-// (each player's prompt is its own, see edit_area). The one such block is 1-2's: the Tower Knight's soul (4252) starts
-// the watch on the castle gate (OnRegionJustIn 570, in the player's game alone: at the gate, its cutscene and the gate
-// open, once flag 8035 says a demon of another world is dead). A friend's game never watched it, so its gate stayed
-// shut while the host's opened (11-15), until a load (the area's start watches it for every player). Each player now
-// sees the cutscene as it walks to the gate. Returns the number of edits.
 // A treasure the host alone turns on in the moment: `if proxy:IsClient() == false then` with only
 // TreasureDispModeChange / EnableObjTreasure in it (a hanging corpse that falls in 1-1, 3-1's iron maidens that open).
 // The original's phantom never took those items, so its game left them off. A friend saw the object open and couldn't
@@ -528,6 +520,57 @@ int treasures_for_all(std::string& t)
     return n;
 }
 
+// A handler that does nothing in a party: `if proxy:IsInParty() == true then return; end` as its first statement (3-1's
+// OnEvent_410, the gargoyle's flight from the Fool's Idol's room to the next block). In the original the kill ends the
+// session, so the host is alone again when it gets there; a seamless session stays, so nobody, the host included, was
+// ever carried on. The check is commented out. Returns the number of edits.
+int party_gates(std::string& t)
+{
+    const std::regex gate("(\\nfunction \\w+\\s*\\(\\s*proxy\\s*,\\s*param\\s*\\)[^\\n]*\\n)([ \\t]*)if\\s+proxy:IsInParty\\(\\)"
+                          "\\s*==\\s*true\\s+then\\s*\\r?\\n\\s*return;?\\s*\\r?\\n\\s*end");
+    const auto n = std::distance(std::sregex_iterator(t.begin(), t.end(), gate), std::sregex_iterator());
+    if (n) t = std::regex_replace(t, gate, "$1$2--SEAMLESS (a session stays after a kill): if IsInParty() then return; end");
+    return (int)n;
+}
+
+// A watch the host alone starts after a kill: `if proxy:IsClient() == false then` with only a local timer in it
+// (NotNetMessage_begin, OnKeyTime2(<id>, "<handler>", ...), NotNetMessage_end), whose handler registers a region watch
+// (3-1's OnEvent_5123_1 -> OnEvent_410_1, the gargoyle's flight). The original's phantom went home at the kill. Every
+// game starts it now: each player's watch is its own (it is registered between NotNetMessage_begin and _end). The
+// area's start registers the same watch once the kill's flag is set, so this is for the visit of the kill. Returns the
+// number of edits.
+int kill_watches_for_all(std::string& t)
+{
+    const std::regex block("(\\n[ \\t]*if\\s+)proxy:IsClient\\(\\)\\s*==\\s*false(\\s+then[ \\t]*\\r?\\n"
+                           "[ \\t]*proxy:NotNetMessage_begin\\(\\);[^\\n]*\\n"
+                           "[ \\t]*proxy:OnKeyTime2\\(\\s*\\d+\\s*,\\s*\"(\\w+)\"[^\\n]*\\n"
+                           "[ \\t]*proxy:NotNetMessage_end\\(\\);[^\\n]*\\n[ \\t]*end)");
+    const std::regex watch("proxy:OnRegion\\w*\\(");
+    std::string out;
+    size_t from = 0;
+    int n = 0;
+    for (auto it = std::sregex_iterator(t.begin(), t.end(), block); it != std::sregex_iterator(); ++it) {
+        size_t a, e;
+        if (!func_span(t, (*it)[3].str(), &a, &e) || !std::regex_search(code_of(t.substr(a, e - a)), watch)) continue;
+        out += t.substr(from, (size_t)it->position(0) - from);
+        out += (*it)[1].str() + "true" + (*it)[2].str();
+        from = (size_t)it->position(0) + (size_t)it->length(0);
+        n++;
+    }
+    if (!n) return 0;
+    out += t.substr(from);
+    t = out;
+    return n;
+}
+
+// A boss's soul taken: what its handlers (OnEvent_<id>, OnEvent_<id>_<k>) do for the host alone (a block under
+// "if proxy:IsClient() == false then") they now do for a friend too. In the original a phantom goes home after the
+// boss, so only the host's world goes on from there; a friend in a seamless session stays, and takes its own soul
+// (each player's prompt is its own, see edit_area). The one such block is 1-2's: the Tower Knight's soul (4252) starts
+// the watch on the castle gate (OnRegionJustIn 570, in the player's game alone: at the gate, its cutscene and the gate
+// open, once flag 8035 says a demon of another world is dead). A friend's game never watched it, so its gate stayed
+// shut while the host's opened (11-15), until a load (the area's start watches it for every player). Each player now
+// sees the cutscene as it walks to the gate. Returns the number of edits.
 int soul_steps_for_all(std::string& t)
 {
     std::set<std::string> ids;
@@ -818,6 +861,10 @@ int edit_area(std::string& t, bool nexus)
     n += gifts_for_all(t);
     // The treasures the host alone turned on in the moment (treasures_for_all)
     n += treasures_for_all(t);
+    // A handler that does nothing in a party (party_gates), and a watch the host alone starts after a kill
+    // (kill_watches_for_all): 3-1's flight to the next block
+    n += party_gates(t);
+    n += kill_watches_for_all(t);
     for (const std::string& id : ids) {
         // in this stone's handlers, the session check passes for the host
         const std::regex fn("\nfunction OnEvent_" + id + "(?:_\\d+)?\\s*\\(");
