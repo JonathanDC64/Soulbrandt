@@ -103,6 +103,9 @@ struct Character {
 // The normal characters a player can bring into co-op, once: none when co-op already has a save of its own, when
 // PS3_SAVEDATA_ROOT is given (co-op then uses that folder too), or on a disc co-op refuses.
 std::vector<Character> characters_to_bring();
+// Whether the save the game uses holds a character (PS3_SAVEDATA_ROOT's save, else the normal one; co-op's once
+// co-op has set that root). DES_AUTO_CONTINUE presses only then (des_options.cpp).
+bool save_has_character();
 // Copies one of them into co-op's save, which must have none yet; the normal save is only read. "" when done, else
 // why not, in plain words.
 std::string bring_character(int slot);
