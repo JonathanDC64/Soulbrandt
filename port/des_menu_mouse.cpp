@@ -101,6 +101,13 @@ constexpr int kDirectWait = 10;                /* passes a direct select may tak
 constexpr uint32_t kDlgInput = 0xA0u;          /* bit 31 set while the dialog takes input (0x00F55A18 asks it) */
 constexpr uint32_t kListPlaceFn = 0x007814F0u; /* DsMenuDlgListbox's cursor placement, its vt+0x8C: a list keeps it */
 constexpr uint32_t kListRows = 0xF4u, kListRow = 0x100u, kListItems = 0x104u, kListTop = 0x108u, kListPlace = 0x111u;
+/* DsMenuDlgButtonGroup's hook before a step (its vt+0x88, "return 0"): a group (the inventory's command menu, ...)
+ * keeps it. Its row +0xF4 and column +0xF8, of +0xFC by +0x100; its placement of the cursor from them. */
+constexpr uint32_t kGroupNoHookFn = 0x00776C98u, kGroupPlaceFn = 0x00776F68u;
+constexpr uint32_t kGroupRow = 0xF4u, kGroupCol = 0xF8u, kGroupRows = 0xFCu, kGroupCols = 0x100u;
+/* DsMenuDlgOption: its step up (this, _, from, wrap) and its placement of the cursor from menu variable 0x51. */
+constexpr uint32_t kOptionVt = 0x0186A398u, kOptionUpFn = 0x007CC598u, kOptionPlaceFn = 0x007CA320u;
+constexpr int kOptionOk = 11;                  /* the row of OK (and DEFAULT, its column 1) */
 
 /* The buttons that step a menu's columns, next then back, in the order they are tried. */
 constexpr unsigned kColPairs[3][2] = {{kPadRight, kPadLeft}, {kPadR1, kPadL1}, {kPadR2, kPadL2}};
@@ -1196,10 +1203,15 @@ bool on_cursor_row(const Menu& m, int si)
     return m.cur >= 0 && band(m.spots[m.cur], m.spots[si]) > 4.0f;
 }
 
-/* Walks to spot si's row first, then presses b (an arrow's, on another row than the cursor's). */
-void walk_then(const Menu& m, int row, unsigned b, int times)
+bool select_now(ppu_context* ctx, const Menu& m, const Spot& s);
+
+/* Goes to spot si's row first (at once where the menu can be, else by walking), then presses b (an arrow's, on
+ * another row than the cursor's). */
+void walk_then(ppu_context* ctx, const Menu& m, int row, unsigned b, int times)
 {
+    const bool now = !s_walk_only && m.cur != row && select_now(ctx, m, m.spots[row]);
     start_walk(m, m.spots[row]);
+    if (now) s_walk.direct = kDirectWait;
     s_walk.confirm = false;
     s_walk.then = b;
     s_walk.then_times = times;
@@ -1263,6 +1275,12 @@ uint32_t call_virtual(ppu_context* ctx, uint32_t obj, uint32_t off, std::initial
     return call_at(ctx, ps3_indirect_call, vm_read32(d + 4), vm_read32(d), a);
 }
 
+/* A game function by its address (the running disc's), with the game's TOC as it is. */
+uint32_t call_addr(ppu_context* ctx, uint32_t code, std::initializer_list<int64_t> a)
+{
+    return call_at(ctx, ps3_indirect_call, (uint32_t)ctx->gpr[2], code, a);
+}
+
 /* The code a class's virtual function at off runs; 0 if its table can't be read. */
 uint32_t virtual_code(uint32_t vt, uint32_t off)
 {
@@ -1282,7 +1300,12 @@ uint32_t virtual_code(uint32_t vt, uint32_t off)
  * - A list (DsMenuDlgListbox's: the inventory, ...; any class that keeps its cursor placement at vt+0x8C): the row
  *   in its window is +0x100, of +0xF4 rows, from item +0x108 of +0x104. Its step (0x00780E80) sets the row and the
  *   byte +0x111 (its update places the cursor and takes the item), then calls vt+0x84(this, up, moved): the class's
- *   "row moved", the tick with it. A row in the window with an item needs no scrolling, so the same does it. */
+ *   "row moved", the tick with it. A row in the window with an item needs no scrolling, so the same does it.
+ * - A button group (DsMenuDlgButtonGroup and the classes that keep its vt+0x88: the inventory's command menu): its
+ *   step (0x00777A18) sets the row +0xF4 (the column +0xF8) and calls vt+0x84(this, moved), the class's "moved"
+ *   (the command menu's plays the tick); its update places the cursor only after a step, so 0x00776F68 places it.
+ * - Options: its row is menu variable 0x51. Its step up (0x007CC598, from the row below) sets it, the help line
+ *   for it and every row's arrows; 0x007CA320 then places the cursor. DEFAULT (OK's column 1) is walked. */
 bool select_now(ppu_context* ctx, const Menu& m, const Spot& s)
 {
     if (m.cur < 0 || !grid_spot(s)) return false;
@@ -1307,6 +1330,18 @@ bool select_now(ppu_context* ctx, const Menu& m, const Spot& s)
         vm_write8(m.owner + kListPlace, 1);
         call_virtual(ctx, m.owner, 0x84, {m.owner, s.r < from ? 1 : 0, 1});
         tick = false;
+    } else if (virtual_code(vt, 0x88) == DES_AT(kGroupNoHookFn)) {
+        const int rows = (int)vm_read32(m.owner + kGroupRows), cols = (int)vm_read32(m.owner + kGroupCols);
+        if (s.r < 0 || s.r >= rows || s.c < 0 || s.c >= cols) return false;
+        vm_write32(m.owner + kGroupRow, (uint32_t)s.r);
+        vm_write32(m.owner + kGroupCol, (uint32_t)s.c);
+        call_addr(ctx, DES_AT(kGroupPlaceFn), {m.owner});
+        call_virtual(ctx, m.owner, 0x84, {m.owner, 1});
+        tick = false;
+    } else if (vt == DES_AT(kOptionVt)) {
+        if (s.c != 0 || s.r < 0 || s.r > kOptionOk) return false;
+        call_addr(ctx, DES_AT(kOptionUpFn), {m.owner, 0, s.r + 1, 0});
+        call_addr(ctx, DES_AT(kOptionPlaceFn), {m.owner});
     } else {
         return false;
     }
@@ -1343,7 +1378,7 @@ void handle_events(ppu_context* ctx)
                 s_mouse_down = true;
                 const int row = row_spot(m, si);
                 if ((dir == 1 || dir == -1) && row >= 0 && !on_cursor_row(m, si)) {   /* another row's: there first */
-                    walk_then(m, row, arrow_button(m, dir), 1);
+                    walk_then(ctx, m, row, arrow_button(m, dir), 1);
                     break;
                 }
                 press(arrow_button(m, dir), 1, true);
@@ -1358,7 +1393,7 @@ void handle_events(ppu_context* ctx)
                 s_mouse_down = true;
                 const int row = row_spot(m, si);
                 if (row >= 0 && !on_cursor_row(m, si)) {   /* another row's: there first */
-                    walk_then(m, row, 0, 0);
+                    walk_then(ctx, m, row, 0, 0);
                     s_walk.then_slide = m.spots[si].slider;
                     s_slide.target = e.x;
                     break;
@@ -1413,7 +1448,7 @@ void handle_events(ppu_context* ctx)
                         s_walk.then_times = std::min(s_walk.then_times + times, 8);
                         break;
                     }
-                    walk_then(*m, row, b, times);
+                    walk_then(ctx, *m, row, b, times);
                     break;
                 }
             }

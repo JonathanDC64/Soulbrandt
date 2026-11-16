@@ -230,6 +230,23 @@ passes, the walk walks.
     the cursor and takes the item at +0x108 plus the row (menu variable 0x72).
   - A click on a row of the window that holds an item needs no scrolling, so it does the same. A row past the last
     item walks (and stops, as before). A list shown as a grid of icons (spots with a column) walks.
+- **Button groups** (DsMenuDlgButtonGroup and the classes that keep its vt+0x88, the hook before a step: the
+  inventory's command menu, ...).
+  - Its fields: the row is +0xF4 and the column +0xF8, of +0xFC rows by +0x100 columns.
+  - Its step (0x00777A18) skips spots with no `cursor<r>_<c>` piece (a clicked spot always has one; a greyed
+    button such as Drop has one too, as with the pad), sets the row, and calls vt+0x84(this, moved). That is the
+    class's "moved": the command menu's plays the cursor's move animation and the tick, the plain group's does
+    nothing.
+  - Its update places the cursor only after a step, so 0x00776F68 places it. The command menu's update also sets
+    its help line from the row every frame.
+- **Options** (DsMenuDlgOption, vtable 0x0186A398).
+  - Its row is menu variable 0x51 (0 to 12; OK is 11, DEFAULT 12, drawn as row 11's column 1).
+  - Its step up (0x007CC598(this, _, from, wrap)) sets it to the row above `from`, with the help line for that row,
+    and redraws every row's arrows. Called from the row below the clicked one, it selects that one; 0x007CA320 then
+    places the cursor.
+  - DEFAULT is a step right of OK and is walked.
+- A click on an arrow or a value's half on another row (section 3) goes to that row the same way first, then
+  presses the arrow: an Options value changes in one click with no walk.
 
 Every other menu still walks, the bar with a page open too: its pages turn one at a time. The game's own switch
 (0x007234E0, with the page's menu variable) goes to any page at once. Tried from World Tendency, though, it left
