@@ -102,8 +102,9 @@ constexpr uint32_t kDlgInput = 0xA0u;          /* bit 31 set while the dialog ta
 constexpr uint32_t kListPlaceFn = 0x007814F0u; /* DsMenuDlgListbox's cursor placement, its vt+0x8C: a list keeps it */
 constexpr uint32_t kListRows = 0xF4u, kListRow = 0x100u, kListItems = 0x104u, kListTop = 0x108u, kListPlace = 0x111u;
 /* DsMenuDlgButtonGroup's hook before a step (its vt+0x88, "return 0"): a group (the inventory's command menu, ...)
- * keeps it. Its row +0xF4 and column +0xF8, of +0xFC by +0x100; its placement of the cursor from them. */
-constexpr uint32_t kGroupNoHookFn = 0x00776C98u, kGroupPlaceFn = 0x00776F68u;
+ * keeps it, or its input (vt+0x8C: the equipment's slots keep it, with a hook of their own). Its row +0xF4 and
+ * column +0xF8, of +0xFC by +0x100; its placement of the cursor from them. */
+constexpr uint32_t kGroupNoHookFn = 0x00776C98u, kGroupInputFn = 0x00777C90u, kGroupPlaceFn = 0x00776F68u;
 constexpr uint32_t kGroupRow = 0xF4u, kGroupCol = 0xF8u, kGroupRows = 0xFCu, kGroupCols = 0x100u;
 /* DsMenuDlgOption: its step up (this, _, from, wrap) and its placement of the cursor from menu variable 0x51. */
 constexpr uint32_t kOptionVt = 0x0186A398u, kOptionUpFn = 0x007CC598u, kOptionPlaceFn = 0x007CA320u;
@@ -1306,9 +1307,12 @@ uint32_t virtual_code(uint32_t vt, uint32_t off)
  *   in its window is +0x100, of +0xF4 rows, from item +0x108 of +0x104. Its step (0x00780E80) sets the row and the
  *   byte +0x111 (its update places the cursor and takes the item), then calls vt+0x84(this, up, moved): the class's
  *   "row moved", the tick with it. A row in the window with an item needs no scrolling, so the same does it.
- * - A button group (DsMenuDlgButtonGroup and the classes that keep its vt+0x88: the inventory's command menu): its
- *   step (0x00777A18) sets the row +0xF4 (the column +0xF8) and calls vt+0x84(this, moved), the class's "moved"
- *   (the command menu's plays the tick); its update places the cursor only after a step, so 0x00776F68 places it.
+ * - A button group (DsMenuDlgButtonGroup and the classes that keep its vt+0x88 or its input at vt+0x8C: the
+ *   inventory's command menu, the equipment's slots): its step (0x00777A18) sets the row +0xF4 (the column +0xF8)
+ *   and calls vt+0x84(this, moved), the class's "moved" (the command menu's and the equipment's play the tick); its
+ *   update places the cursor only after a step, so 0x00776F68 places it. (The equipment's own vt+0x88 changes only
+ *   a step from row 6, column 0, and its grid is 2 by 9; its update shows the slot of the row and column every
+ *   frame.)
  * - Options: its row is menu variable 0x51. Its step up (0x007CC598, from the row below) sets it, the help line
  *   for it and every row's arrows; 0x007CA320 then places the cursor. DEFAULT (OK's column 1) is walked.
  * - The profile list (LOAD GAME's, and System's Load Profile): its row is +0xF8, 0 to 3. Its step goes one row with
@@ -1340,7 +1344,7 @@ bool select_now(ppu_context* ctx, const Menu& m, const Spot& s)
         vm_write8(m.owner + kListPlace, 1);
         call_virtual(ctx, m.owner, 0x84, {m.owner, s.r < from ? 1 : 0, 1});
         tick = false;
-    } else if (virtual_code(vt, 0x88) == DES_AT(kGroupNoHookFn)) {
+    } else if (virtual_code(vt, 0x88) == DES_AT(kGroupNoHookFn) || virtual_code(vt, 0x8C) == DES_AT(kGroupInputFn)) {
         const int rows = (int)vm_read32(m.owner + kGroupRows), cols = (int)vm_read32(m.owner + kGroupCols);
         if (s.r < 0 || s.r >= rows || s.c < 0 || s.c >= cols) return false;
         vm_write32(m.owner + kGroupRow, (uint32_t)s.r);

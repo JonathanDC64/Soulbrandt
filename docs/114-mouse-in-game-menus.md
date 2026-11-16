@@ -231,15 +231,17 @@ passes, the walk walks.
     the cursor and takes the item at +0x108 plus the row (menu variable 0x72).
   - A click on a row of the window that holds an item needs no scrolling, so it does the same. A row past the last
     item walks (and stops, as before). A list shown as a grid of icons (spots with a column) walks.
-- **Button groups** (DsMenuDlgButtonGroup and the classes that keep its vt+0x88, the hook before a step: the
-  inventory's command menu, ...).
+- **Button groups** (DsMenuDlgButtonGroup and the classes that keep its vt+0x88, the hook before a step, or its
+  input at vt+0x8C, 0x00777C90: the inventory's command menu, the equipment's slots (DsMenuDlgEquip), ...).
   - Its fields: the row is +0xF4 and the column +0xF8, of +0xFC rows by +0x100 columns.
   - Its step (0x00777A18) skips spots with no `cursor<r>_<c>` piece (a clicked spot always has one; a greyed
     button such as Drop has one too, as with the pad), sets the row, and calls vt+0x84(this, moved). That is the
-    class's "moved": the command menu's plays the cursor's move animation and the tick, the plain group's does
-    nothing.
+    class's "moved": the command menu's and the equipment's play the cursor's move animation and the tick, the
+    plain group's does nothing.
   - Its update places the cursor only after a step, so 0x00776F68 places it. The command menu's update also sets
-    its help line from the row every frame.
+    its help line from the row every frame, and the equipment's shows the slot of the row and column (its grid is 2
+    by 9, with no slot at row 1, column 6).
+  - The equipment's own hook (0x007317C0) changes only a step from row 6, column 0, which its grid does not have.
 - **Options** (DsMenuDlgOption, vtable 0x0186A398).
   - Its row is menu variable 0x51 (0 to 12; OK is 11, DEFAULT 12, drawn as row 11's column 1).
   - Its step up (0x007CC598(this, _, from, wrap)) sets it to the row above `from`, with the help line for that row,
@@ -260,8 +262,8 @@ passes, the walk walks.
   presses the arrow: an Options value changes in one click with no walk.
 
 Every other menu still walks. Among them: the bar with a page open (its pages turn one at a time), the title's
-NEW GAME / LOAD GAME (one step; the menu the port sees there is the cursor's dialog, not the title's), the
-equipment's slot grid, Options' DEFAULT, and lists shown as a grid of icons. The game's own switch
+NEW GAME / LOAD GAME (one step; the menu the port sees there is the cursor's dialog, not the title's), Options'
+DEFAULT, and lists shown as a grid of icons. The game's own switch
 (0x007234E0, with the page's menu variable) goes to any page at once. Tried from World Tendency, though, it left
 World Tendency's statues drawn over the next page: the page's own R2 does more first, not found yet.
 
@@ -301,7 +303,7 @@ On the pinned regression save, by `DES_UI_MOUSE` (the steps and the shots are in
 | Pause menu bar | glow on a tab, click opens its page, ◀ ▶ click and hold, wheel; no glow in the gaps between tabs |
 | Pause menu pages | with a page open, a click on another tab turns to it (R2), right click closes the page; the same after Use Item, when the game has made the pause menu anew (in a level, from a copy of a player's save) |
 | Inventory | glow on a row (its whole width), wheel, click opens the command menu, right click closes it, click on a category; closed on the armor category and opened again (it opens there), glow and clicks on its rows and tabs |
-| Equipment | a click on a slot opens its item list; glow on a row, wheel, right click back |
+| Equipment | a click on a slot selects it at once and opens its item list (from the first slot: a bolt slot, then an item slot; the same lists as in a walk-only run); glow on a row, wheel, right click back |
 | System | a click on the pause bar's last tab selects it at once and opens System; a click on Options opens it; a click on Quit Game selects it at once |
 | Yes/no prompts in play | Auto Sort's "Automatically resort all items?": glow on OK, OK (from CANCEL) is selected at once and sorts; Quit Game's: CANCEL, and OK (selected at once) goes to the title; Load Profile's "Load profile and exit current game?": CANCEL |
 | Options | glow on a value; a click on Camera Speed's right half goes there at once and steps it 5 to 6, its left half back to 5; 2 wheel notches over Music walk there and step it 10 to 8; a click on a label selects its row at once, and only that; right click brings the game's "Cancel option changes and return?" |
