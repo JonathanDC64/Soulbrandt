@@ -2303,6 +2303,18 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
             ctx->gpr[9] = 0;
         }
         break;
+    case 0x0053E368u:   // the session event dispatch 0x0053DFD8's member-left case, after bl 0x001A2028: r3 a byte the
+        // game sets while it loads. While it is set, the dispatch drops the event and skips the member-left step
+        // (0x0053B7F8), but the room library drops the member at once, and with it the id the game's member shares. So
+        // a friend that left during a game's load stayed in that game's member list: on the host its join again stopped
+        // half way, and on another friend's game it never came back. Each game takes the leave at once, as outside a
+        // load. (The room server runs in the host's game, so a friend's game never gets the host's leave: when the host
+        // goes, the room goes.)
+        if (ctx->gpr[3] & 0xFFu) {
+            std::fprintf(stderr, "[coop] a member left during the load: its leave taken now\n");
+            ctx->gpr[3] = 0;
+        }
+        break;
     case 0x00467628u: { // the start of 0x00467628 (cmpwi r4,0): r4 names a script event the game raises by name
         // global_event.lua's handlers for the session's ends and joins (OnRoomTimeOut, OnRoomDisappeared,
         // OnIrregularLeaveSession, OnLeave_Limit, the kicks, the failed joins) come this way. The co-op log names

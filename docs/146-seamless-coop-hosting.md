@@ -303,10 +303,22 @@ the four are emptied once more, at the next read, on the readers' thread. A `HER
 once its sender's load has ended, so what that player sent from the old area (peer to peer) left a load's time
 before it.
 
-The players waited on are the game's members with a slot (`+0x38`) that are still in the room. A friend that leaves
-during the host's load (its own trip, say) stays in the game's member list, but the room library has dropped it: its
-members (`sm+0x11C` to `+0x120`, 0x30 bytes each) start with the word a member has at `+8`. Before, the host's game
-waited on such a friend until it joined again.
+The players waited on are the game's members with a slot (`+0x38`) that are still in the room. A player that left
+during a game's load used to stay in that game's member list (each game now takes such a leave at once, below), but
+the room library had dropped it: its members (`sm+0x11C` to `+0x120`, 0x30 bytes each) start with the word a member
+has at `+8`. Before, the host's game waited on such a friend until it joined again.
+
+**A friend that leaves during the host's load.** The session's event dispatch (`0x0053DFD8`) takes a member's leave
+through the game's member-left step (`0x0053B7F8`) only while a byte the game sets during its loads is clear
+(`bl 0x001A2028`). While it is set, the dispatch drops the event. The room library drops the member anyway, and the id
+the game's member shares with the room entry is freed. So the host's game kept such a friend as a member, and when the
+friend joined again, the step ran with the freed id and found nothing: the join stopped half way, with the friend
+outside the host's world until the host's session ended. Another friend's game, following that load, did the same:
+it kept the old member, and the friend that joined again never came back there. That check now reads 0 on every game
+(a hook after the `bl`), so the leave is taken at once. With no friend left, the host's session ends there and it
+opens a new room, as when a friend's game closes during the load, and the friend's next join goes like a first one.
+With another friend still there, the session goes on. A friend's game never gets the host's leave: the room server
+runs in the host's game, so when the host goes, the room goes too.
 
 **A player back after a death.** A dead phantom leaves the game's sessions, so the game never brings its character
 back: on the other games that character stays in its death animation, faded out, and plays none of its moves after.
@@ -925,13 +937,28 @@ the newer generation, and saves as usual.
   Without the edits the handler returns at once in a party, so nothing happens for anyone (read from the script, not
   run). Not yet by hand, and not run on the other discs.
 - A friend that leaves during the host's load and joins again isn't placed. The host's game keeps its old member
-  through the load (the room library drops it), and the new join stops half way: the friend waits, out of the host's
-  world, until the host's session ends. Seen at the tutorial's end before a friend went with its host (11-15); a
-  friend's Leave co-op just as the host travels may do the same (not tried). The room event comes ("left", 0x1102),
-  but the game's member-left handler (0x0053B7F8, from the session's event dispatch 0x0053DFD8) never runs for it
-  (a scratch hook at its entry, 11-15). The old member's name (`+8`) looks freed by then: the friend's new room entry
-  had the same address. A friend whose game closes during the host's load is different: the host's game left its
-  room and opened a new one, with no member kept.
+  through the load: so it was before the change above ("A friend that leaves during the host's load", 11-16). The
+  change, checked with two copies (scripted, the pinned tutorial save, god mode on the friend, a test switch that
+  brings back the friend's own trip at the tutorial's end, so that its leave comes during the host's load). Before
+  it, twice: the friend joined the room again but was never placed (once through 150 s of the friend's Cross
+  presses). With the change, six times (twice as a test switch): the host took the leave during its load, its
+  session ended and it opened a new room, and the friend was back in the host's world, about a minute after the
+  host's arrival where timed. A friend's game closed 0.5 s and 2 s into the host's load: both times the game took
+  the leave itself (the byte not set yet, then the load over), and the host's session ended and it opened a new room.
+  - Three copies, the host and two friends, one friend leaving during the host's load. With the change on the host
+    alone (twice), the host's session went on with the other friend, who followed into the Nexus, and the friend
+    that left joined again; but the other friend's game kept the old member, and after the rejoin it had no member
+    for that friend (its list read once). With the change on every game, that friend's game took the leave during
+    its own follow load, and after the rejoin it had the friend as a member again.
+  - Four copies, the host and three friends, one friend leaving during the host's load (twice, the change on every
+    game): the host and both other friends took the leave during their loads, the host's session went on, the
+    friend joined again, and afterwards every game had the other three players as members.
+  - The host's game closed 0.5 s, 2 s, 3 s and 8 s into a friend's follow (the Nexus's long load for 3 s and 8 s):
+    the friend lost the room, went home and played on, with no member-left for the host. The same with the change on
+    the host alone.
+
+  Not run: a leave outside any load (the test trip's leave always came during one; the change does nothing then),
+  a friend's Leave co-op just as the host travels, and the other discs.
 - The Japanese and Asian discs (with their 1.04 update) play with the others ("Which discs" above). What is checked
   beside the runs:
   - Co-op's rows in `port/regions/BCJS30022.inc` and `BCAS20071.inc` come from `tools/region/region_table.py find`
