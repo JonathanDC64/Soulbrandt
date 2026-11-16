@@ -178,6 +178,7 @@ bool edit_global(std::string& t, const std::string& nl)
                       "function PartyGhostDeath_1(proxy,param)\n"
                       "\t--SEAMLESS: no recall menu and no trip home; PartyGhostDeath_2 brings the phantom back\n"
                       "\tproxy:UpDateBloodMark();\n"
+                      "\tSeamlessFightDeath = SeamlessBossFight == true;\n"
                       "\tproxy:NotNetMessage_begin();\n"
                       "\t\tproxy:OnKeyTime2(4000,\"PartyGhostDeath_2\",1.0,0,6,once);\n"
                       "\tproxy:NotNetMessage_end();\n"
@@ -188,6 +189,9 @@ bool edit_global(std::string& t, const std::string& nl)
     // edit_area) the phantom first watches until the fight ends: it looks again each second (two timer slots in turn,
     // so a handler never sets up its own slot) until the boss is dead, or the host has died: the host's respawn
     // then takes everyone back (des_seamless_game.cpp's follow), and this phantom goes with it at full health.
+    // Once the boss is dead, a phantom that died in the fight (SeamlessFightDeath, noted at its death) comes back at
+    // its own bloodstain, in the boss's room, not at the area's start: flag 19993 (past the game's last flag; only
+    // des_seamless_game.cpp's flag hook reads it) just before the reload says so.
     // The session can end meanwhile (the host's game gone or out of reach). The game's own handlers for that
     // (OnRoomDisappeared, OnIrregularLeaveSession_1) start the trip home, but skip it while flag 4047 (a reload under
     // way) is set, and the phantom holds it from its death until it is back. So the watch never ended (no boss fight
@@ -221,6 +225,9 @@ bool edit_global(std::string& t, const std::string& nl)
                       "\t\treturn;\n"
                       "\tend\n"
                       "\tproxy:RequestFullRecover();\n"
+                      "\tif SeamlessFightDeath == true then\n"
+                      "\t\tproxy:SetEventFlag(19993, true);\n"
+                      "\tend\n"
                       "\tproxy:SummonedMapReload();\n"
                       "\tproxy:SetEventFlag(4047, false);\n"
                       "\tproxy:SetEventFlag(4000, false);\n"
@@ -912,7 +919,8 @@ bool insert_first(std::string& t, const std::string& name, const std::string& li
 //     the other games' message (a kill's message reaches its handler whatever the game's own registration did), and
 //     everything it set up came twice: the sword's pickup steps (OnEvent_141_WAIT), so one pull gave the host two
 //     swords (11-16). The first call runs, whichever it is (a script value, SeamlessKingDead: flag 70 can come from
-//     the host's world before a friend's own call). The pickup's last step (OnEvent_141_1) runs once too;
+//     the host's world before a friend's own call). The pickup's last step (OnEvent_141_1) runs once too. The King's
+//     death also ends the boss fight (SeamlessBossFight), so a friend who died in it comes back;
 //   - shows a friend "The Demon Was Destroyed" after the King's last words, as the host gets it, clears its boss
 //     health bar, and sets 450 at the text's end (OnEvent_450; the cutscene after the kill, 71, waits for 450). The
 //     handler is registered once (CustomLuaCall(450, ..., once)), and each game's own call comes after the King's
@@ -949,6 +957,11 @@ bool final_area_for_all(std::string& t, const std::string& nl)
                       "(its own copy's death, then the others' message)", nl))
         return false;
     if (!insert_first(t, "OnEvent_141_1", "\tif proxy:IsCompleteEvent( 141 ) == true then return; end --SEAMLESS: once", nl))
+        return false;
+    // the fight over at the King's death, in every game: a friend who died in it stops watching and comes back (at
+    // the other bosses, BlockClear's ClearBoss ends the watch at the kill). The bar's clearing, OnEvent_450, comes
+    // only after the King's last words and skips a game whose player is dead (4047), so a dead friend watched forever
+    if (!insert_first(t, "OnEvent_70", "\tSeamlessBossFight = false; --SEAMLESS: the fight is over", nl))
         return false;
     // "The Demon Was Destroyed", the boss's bar cleared and 450, for a friend too: from the host's message, once
     if (!replace_in(t, "OnEvent_450", "if param:IsNetMessage() == true then",
@@ -1035,6 +1048,13 @@ int edit_area(std::string& t, bool nexus)
     // back from a trip of its own (each player's at the tutorial's end) was kicked. (Not the calls already in a
     // comment.)
     sub(std::regex("([^-])proxy:LockSession\\(\\);"), "$1--[[SEAMLESS proxy:LockSession();]]");
+    // A boss fight is on from the boss's health bar to its clearing (each is a statement of its own in every area's
+    // script): a guest who dies in it watches until it ends (global_event.lua's PartyGhostDeath_2). The Nexus's script
+    // holds the final area and its boss too, so it gets this as well (its other edits first).
+    auto boss_fight = [&] {
+        sub(std::regex("proxy:SetBossGauge\\s*\\("), "SeamlessBossFight = true; proxy:SetBossGauge(");
+        sub(std::regex("proxy:ClearBossGauge\\s*\\("), "SeamlessBossFight = false; proxy:ClearBossGauge(");
+    };
     if (nexus) {
         // The Nexus's Archstones (OnDistanceAction(<id>, 10000, <stone>, "OnEvent_<id>", WarpGimmickDist_A, ...)) have
         // no session check: no phantom reaches the Nexus in the original game. A guest's own touch took it out of the
@@ -1091,12 +1111,10 @@ int edit_area(std::string& t, bool nexus)
         }
         // Each game's timers and checks stay its own (local_timers)
         n += local_timers(t);
+        boss_fight();
         return n;
     }
-    // A boss fight is on from the boss's health bar to its clearing (each is a statement of its own in every area's
-    // script): a guest who dies in it watches until it ends (global_event.lua's PartyGhostDeath_2)
-    sub(std::regex("proxy:SetBossGauge\\s*\\("), "SeamlessBossFight = true; proxy:SetBossGauge(");
-    sub(std::regex("proxy:ClearBossGauge\\s*\\("), "SeamlessBossFight = false; proxy:ClearBossGauge(");
+    boss_fight();
     // The wandering ghosts' sightings: each player's own (local_wander_loops)
     n += local_wander_loops(t);
     // The light walls: one a player walks through is gone in every player's game (walls_for_watchers)
