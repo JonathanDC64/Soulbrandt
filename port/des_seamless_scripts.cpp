@@ -577,12 +577,13 @@ int kill_watches_for_all(std::string& t)
 //     others (LuaCallStart(<id>, 79)) before it asks for the cutscene;
 //   - SEAMLESS_Flight_<id> (LuaCall(<id>, 79), registered with the REMO_START handler) plays the same cutscene in each
 //     other game and sets the flag the walker's sets, unless that game played it already;
-//   - the landing is one point, and two players put there at the same moment pushed each other off the ledge (both
-//     fell to their death, 11-16). So a friend's game starts the cutscene 1.5 s x its player number
-//     (GetLocalPlayerId) later, whether it walked in or was told (SEAMLESS_FlightLater_<id>): the host lands first,
-//     then each friend, as when a player who was taken along stood at the landing and the walker came down beside it.
-// So every player sees the cutscene, and each player's own start puts that player at the landing. Solo play and the
-// host's game don't wait. Returns the number of edits.
+//   - the landing is one point, on the edge of a narrow walkway, and two players put there pushed each other off: both
+//     at once fell (11-16), and a friend landing 2 s after the host still pushed the host off. For a landing
+//     des_seamless_game.cpp has spots for (kBesideLandings: 3-1's 2031), a friend's start then tells co-op its spot
+//     right after the warp (SEAMLESS_FlightBeside_<id>: SetEventFlag(19990 + spot - 1), by its player number, past the
+//     game's last flag, so the game ignores it), and co-op moves the waiting warp there (beside_landing).
+// So every player sees the cutscene, and each player's own start takes that player to the landing. Returns the number
+// of edits.
 int flights_for_all(std::string& t)
 {
     const std::string nl = t.find("\r\n") != std::string::npos ? "\r\n" : "\n";
@@ -612,16 +613,18 @@ int flights_for_all(std::string& t)
     };
     const std::regex start("proxy:LuaCall\\(\\s*(\\d+)\\s*,\\s*REMO_START\\s*,\\s*\"(\\w+)\"\\s*,\\s*once\\s*\\)\\s*;");
     const std::regex warp("proxy:Warp\\(\\s*LOCAL_PLAYER\\s*,");
-    std::set<std::string> ids;
+    std::map<std::string, std::string> ids;   // the ID -> its REMO_START handler
     for (auto it = std::sregex_iterator(t.begin(), t.end(), start); it != std::sregex_iterator(); ++it) {
         size_t a, e;
         if (!live((size_t)it->position(0)) || in_not_net(t, (size_t)it->position(0)) ||
             !func_span(t, (*it)[2].str(), &a, &e) || !std::regex_search(code_of(t.substr(a, e - a)), warp))
             continue;
-        ids.insert((*it)[1].str());
+        ids.emplace((*it)[1].str(), (*it)[2].str());
     }
+    // the landings des_seamless_game.cpp has spots for beside the point (kBeside): the ID and the warp's point
+    static const std::set<std::pair<std::string, std::string>> kBesideLandings = {{"410", "2031"}};
     int n = 0;
-    for (const std::string& id : ids) {
+    for (const auto& [id, on_start] : ids) {
         // the walker's own watch, and its handler's request for the cutscene (and the flag it sets)
         const std::regex watch("proxy:OnRegion\\w*\\(\\s*" + id + "\\s*,\\s*LOCAL_PLAYER\\s*,\\s*\\d+\\s*,\\s*\"(\\w+)\"");
         std::smatch w;
@@ -639,15 +642,31 @@ int flights_for_all(std::string& t)
         const std::string set = std::regex_search(body, f, flag) && live(a + (size_t)f.position(0)) ? f[0].str() : "";
         size_t sa, se;
         if (!reg(id, "REMO_START", &sa, &se)) continue;
+        // the start's warp, for a landing with spots beside it
+        size_t wa, we;
+        std::smatch wp;
+        std::string beside_at;   // where the friend's call goes: after the warp's statement
+        size_t beside_pos = std::string::npos;
+        if (func_span(t, on_start, &wa, &we)) {
+            const std::string sb = t.substr(wa, we - wa);
+            const std::regex to("proxy:Warp\\(\\s*LOCAL_PLAYER\\s*,\\s*(\\d+)\\s*\\)\\s*;");
+            if (std::regex_search(sb, wp, to) && live(wa + (size_t)wp.position(0)) &&
+                kBesideLandings.count({id, wp[1].str()})) {
+                beside_pos = wa + (size_t)wp.position(0) + (size_t)wp.length(0);
+                beside_at = wp[1].str();
+            }
+        }
         // every insert at its place in the text as it is now, made from the end backwards
         std::vector<std::pair<size_t, std::string>> ins;
-        // the walker's handler: once per visit, and the others are told before it asks for the cutscene (a friend's
-        // later; the handler's request and flag then come from the timer)
+        // the walker's handler: once per visit, and the others are told before it asks for the cutscene
         const size_t at = a + (size_t)r.position(0);
         ins.emplace_back(at, "proxy:LuaCallStart( " + id + " , 79 ); --SEAMLESS: every player's game plays it" + nl +
-                                 indent(at) + "if SEAMLESS_FlightLater_" + id +
-                                 "(proxy) == true then return; end --SEAMLESS: a friend lands after the host" + nl +
                                  indent(at));
+        // the start's warp: a friend goes to its own spot beside the point
+        if (beside_pos != std::string::npos)
+            ins.emplace_back(beside_pos, " SEAMLESS_FlightBeside_" + id +
+                                             "(proxy); --SEAMLESS: a friend beside point " + beside_at +
+                                             " (des_seamless_game.cpp)");
         ins.emplace_back(t.find('\n', a) + 1, "\tif SeamlessFlight" + id + " == true then return; end SeamlessFlight" +
                                                   id + " = true; --SEAMLESS: once per visit (its own walk, or another "
                                                   "player's)" + nl);
@@ -665,22 +684,21 @@ int flights_for_all(std::string& t)
         }
         std::stable_sort(ins.begin(), ins.end(), [](const auto& x, const auto& y) { return x.first > y.first; });
         for (const auto& [pos, text] : ins) t.insert(pos, text);
-        // the other players' games: the same cutscene and flag, once; a friend's later (its own timer, sub-ID 7)
+        // the other players' games: the same cutscene and flag, once
         t += nl + "--SEAMLESS: a cutscene that takes its player on, in every player's game (flights_for_all)" + nl +
              "function SEAMLESS_Flight_" + id + "(proxy, param)" + nl +
              "\tif param:IsNetMessage() == false or SeamlessFlight" + id + " == true then return; end" + nl +
-             "\tSeamlessFlight" + id + " = true;" + nl +
-             "\tif SEAMLESS_FlightLater_" + id + "(proxy) == true then return; end" + nl +
-             "\tSEAMLESS_FlightGo_" + id + "(proxy, param);" + nl + "end" + nl +
-             "function SEAMLESS_FlightLater_" + id + "(proxy)" + nl +
-             "\tif proxy:IsClient() == false then return false; end" + nl +
-             "\tlocal k = proxy:GetLocalPlayerId();" + nl +
-             "\tif k == nil or k < 1 or k > 3 then k = 1; end" + nl +
-             "\tproxy:NotNetMessage_begin();" + nl +
-             "\t\tproxy:OnKeyTime2( " + id + " , \"SEAMLESS_FlightGo_" + id + "\" , 1.5 * k , 0 , 7 , once );" + nl +
-             "\tproxy:NotNetMessage_end();" + nl + "\treturn true;" + nl + "end" + nl +
-             "function SEAMLESS_FlightGo_" + id + "(proxy, param)" + nl + "\t" + remo + nl +
-             (set.empty() ? "" : "\t" + set + nl) + "end" + nl;
+             "\tSeamlessFlight" + id + " = true;" + nl + "\t" + remo + nl + (set.empty() ? "" : "\t" + set + nl) +
+             "end" + nl;
+        // a friend's spot to co-op, past the game's last flag (the game ignores it): the first friend's player number
+        // is 2 (11-16), so 2, 3 and 4 take spots 1, 2 and 3 (any other number spot 3)
+        if (beside_pos != std::string::npos)
+            t += "function SEAMLESS_FlightBeside_" + id + "(proxy)" + nl +
+                 "\tif proxy:IsClient() == false then return; end" + nl +
+                 "\tlocal k = proxy:GetLocalPlayerId();" + nl +
+                 "\tlocal spot = 3;" + nl +
+                 "\tif k == 2 then spot = 1; elseif k == 3 then spot = 2; end" + nl +
+                 "\tproxy:SetEventFlag( 19990 + spot - 1 , true );" + nl + "end" + nl;
         n++;
     }
     return n;

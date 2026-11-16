@@ -1654,6 +1654,42 @@ Place player_place()
     return p;
 }
 
+// 3-1's flight (des_seamless_scripts.cpp's flights_for_all): every player's game plays the cutscene, and each one's own
+// start puts its player at the landing, point 2031 (247.15 53.88 -89.84). That point is 0.2-0.3 m from the edge of a
+// walkway about 2 m wide, and two players put there pushed each other off: both at once fell (11-16), and a friend
+// landing 2 s after the host still pushed the host off. A friend's start then sets kBesideMarker + k (k = its spot - 1,
+// 0-2, by its player number; past the game's last flag, as kEndingMarker) right after its warp, and this moves that
+// warp to a spot of its own on the walkway. The script's Warp (0x00428028 -> 0x002E7808) doesn't move the player at
+// once: it leaves its target in the character's mover (*(chr + 0x20)): the position at +0xC0, the facing at +0xD0, and
+// +0xB8 = 1, and the game moves the player there at its next update. So the target's position is changed while it
+// waits (the facing stays the landing's). The spots, from 3-2's navmesh: floor all round to 0.7, 0.6 and 0.4 m, 1.3 m
+// or more from the landing and from each other. Only a warp still waiting, to within 1.5 m of the landing, is changed.
+constexpr uint32_t kBesideMarker = 19990;
+constexpr uint32_t kMoverWarpWaits = 0xB8, kMoverWarpPos = 0xC0;
+constexpr float kLanding[3] = {247.15f, 53.88f, -89.84f};
+constexpr float kBeside[3][3] = {{248.15f, 53.88f, -90.84f}, {247.45f, 53.88f, -91.94f}, {248.30f, 53.88f, -89.20f}};
+void beside_landing(uint32_t k)
+{
+    const uint32_t chr = player_chr();
+    const uint32_t mover = guest_ok(chr) ? rd(chr + 0x20) : 0;
+    if (!guest_ok(mover) || k > 2) return;
+    float p[3];
+    for (int i = 0; i < 3; i++) p[i] = rdf(mover + kMoverWarpPos + 4 * i);
+    const float d = std::hypot(p[0] - kLanding[0], p[1] - kLanding[1], p[2] - kLanding[2]);
+    if (vm_read8(mover + kMoverWarpWaits) != 1 || d > 1.5f) {
+        std::fprintf(stderr, "[coop] 3-1's flight: no warp to the landing waits (%u, %.1f m from it), so this player "
+                             "lands where the game puts it\n", vm_read8(mover + kMoverWarpWaits), d);
+        return;
+    }
+    for (int i = 0; i < 3; i++) {
+        uint32_t b;
+        std::memcpy(&b, &kBeside[k][i], 4);
+        vm_write32(mover + kMoverWarpPos + 4 * i, b);
+    }
+    std::fprintf(stderr, "[coop] 3-1's flight: this friend lands beside the landing point, at spot %u "
+                         "(%.2f %.2f %.2f)\n", k + 1, kBeside[k][0], kBeside[k][1], kBeside[k][2]);
+}
+
 // This game's dead-character record of its area, built as a guest's join builds its own (0x004174A8): the world's
 // characters *(*(*(TOC - 0x788C) - 0x7FFC)) written to a buffer by 0x002977C0(world, buf, 76). Empty if there is no
 // world.
@@ -2401,6 +2437,10 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
         if (flag == kEndingMarker && (uint32_t)ctx->gpr[5] != 0 && m == co::Mode::Join) {   // the final area's script
             const uint32_t sm = session_manager();
             if (guest_ok(sm) && vm_read32(sm + kSmState) == kStateClient) ending_started();
+            break;
+        }
+        if (flag >= kBesideMarker && flag < kBesideMarker + 3) {   // 3-1's flight: a friend's own spot at the landing
+            if ((uint32_t)ctx->gpr[5] != 0 && m == co::Mode::Join) beside_landing(flag - kBesideMarker);
             break;
         }
         if ((uint32_t)ctx->gpr[5] == 0 || flag >= kFlagCount) break;   // flags only move forward

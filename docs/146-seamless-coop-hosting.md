@@ -121,8 +121,8 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
   game. Before, if the Tower Knight died during the visit, the gate opened for the host alone, and stayed shut for a
   friend until the next load.
 - **3-1's flight to the next part works in a session.** After the Fool's Idol, when any player walks onto the
-  flight's spot, every player's game plays its cutscene and takes that player to the landing (the host first, each
-  friend a moment later, so nobody is pushed off the ledge). Before, nobody in a session could take it: its handler
+  flight's spot, every player's game plays its cutscene and takes that player to the landing (each friend to a spot of
+  its own beside the host's, so nobody is pushed off the ledge). Before, nobody in a session could take it: its handler
   did nothing in a party, as the original ends the session at the kill. Then (#575 to 11-16) only the walker saw it,
   and the others were taken along without it.
 - **Boletaria's clear counts in a friend's own world too** (1-4's flag 8010), so its own Nexus can open the way down
@@ -433,15 +433,23 @@ alive.
     others (`LuaCallStart(410, 79)`) before it asks for the cutscene;
   - each other game's `SEAMLESS_Flight_410` (`LuaCall(410, 79)`, registered with the start's handler) plays the same
     cutscene and sets flag 410, unless that game played it already. Players who walk in together each see it once;
-  - the landing is a single point. Two players put there at the same moment pushed each other off the ledge, and both
-    fell to their death (the first test, below). A friend's game therefore starts the cutscene 1.5 s × its player number
-    (`GetLocalPlayerId`) later, whether it walked in or was told (`SEAMLESS_FlightLater_410`, a timer of its own).
-    The host lands first, then each friend beside it, nudged aside as when one player already stands there. Solo play
-    and the host's game don't wait.
+  - the landing is a single point, 0.2-0.3 m from the edge of a walkway about 2 m wide (3-2's navmesh). Two players
+    put there pushed each other off. Both at once fell to their death (the first test, below), and with a friend
+    landing 2 s after the host, the friend still pushed the host off (the user's run, 11-16). So a friend's start, right
+    after its warp, tells co-op its spot (`SEAMLESS_FlightBeside_410`: `SetEventFlag(19990 + spot - 1)`, past the
+    game's last flag, as the ending's marker). The spot comes from its player number (`GetLocalPlayerId`; the first
+    friend's is 2): 2, 3 and 4 take spots 1, 2 and 3. Co-op (`beside_landing`) then moves that warp to a spot of the
+    friend's own on the walkway. The script's `Warp` (0x00428028 -> 0x002E7808) doesn't move the player at once: it
+    leaves its target in the character's mover (`*(chr + 0x20)`): the position at +0xC0, the facing at +0xD0, and
+    +0xB8 = 1. The game moves the player there at its next update, so co-op changes the waiting target's position, and
+    the facing stays the landing's. (Moving the player at once, as the scripts' `LoadChrPos` does, was undone by the
+    waiting warp a moment later.) The three spots have floor all round to 0.7, 0.6 and 0.4 m, and are 1.3 m or more
+    from the landing and from each other. Only a waiting warp to within 1.5 m of the landing is changed.
 
-  So every player sees the cutscene, and each one's own start puts that player at the landing. The edit applies to a
+  So every player sees the cutscene, and each one's own start takes that player to the landing. The edit applies to a
   `REMO_START` handler outside `NotNetMessage` that warps `LOCAL_PLAYER`, with a `LOCAL_PLAYER` region watch of the
-  same ID whose handler asks for that ID's cutscene. Only 3-1's matches.
+  same ID whose handler asks for that ID's cutscene. Only 3-1's matches. The spots beside the point are for 3-1's
+  landing alone (`kBesideLandings` in the scripts' edit, `kBeside` in co-op).
 - **The sword after the final boss** (141, item lot 10730): the Nexus's script runs `gifts_for_all` too. Before, it
   returned before that step, so the sword stayed the host's.
 - **The final area and the endings** (`final_area_for_all`, the Nexus's script, all or nothing). In the original only
@@ -1015,17 +1023,26 @@ the newer generation, and saves as usual.
   Without the edits the handler returns at once in a party, so nothing happens for anyone (read from the script, not
   run). Not yet by hand, and not run on the other discs.
 - 3-1's flight in every game (`flights_for_all`, 11-16; the same setup as above, both copies at below-normal
-  priority). Each run checks that each game opens scene 40001 once, that each player stands at the landing (y 53.88)
-  30 s after it lands, and that flag 410 is set in both:
-  - The friend first: both games played it (the host's 0.3 s after the walk, the friend's 3.3 s after), the host
-    landed 2.1 s before the friend, and both stood about 0.8 m apart at the landing. Pass.
-  - The host first: the same, with the landings 2.6 s apart. Pass.
-  - Both at once (put on the spot 0.1 s apart): the same, with the landings 2.1 s apart, one cutscene each. Pass.
-  - Before the stagger (the friend first): both games played it and both players landed at the same moment, then
-    fell off the ledge within 5 s and died.
+  priority). Each run checks that:
+  - each game opens scene 40001 once;
+  - each player stands at the landing (y 53.88) 30 s after it lands;
+  - the two are 1 m or more apart;
+  - the friend's game logs its spot;
+  - flag 410 is set in both.
 
-  Every area script through the edits (the test program as above): only 3-1's changes. Not yet by hand, not with
-  three or four players, and not run on the other discs.
+  Results:
+  - The friend first, the host first, and both at once (put on the spot 0.1 s apart): all pass, the same each time.
+    Both games played the cutscene at once, the host landed on the point (247.15 53.88 -89.84), and the friend on
+    spot 1 (248.15 53.88 -90.84), 1.41 m away. Neither moved in the 30 s after.
+  - Without the spots, both players landed on the point at the same moment, then fell off the walkway within 5 s
+    and died. Moving the friend at once with the call behind `LoadChrPos` (0x00273BE0) did the same: the waiting
+    warp undid it.
+  - In between, a friend's cutscene started 1.5 s × its player number later (the landings 2-3 s apart). It passed
+    these tests, with the two pushed about 0.8 m apart. In the user's hand test with the scripted friend (11-16),
+    though, the friend landed on the host, who hadn't moved, and pushed the host off the walkway.
+
+  Every area script through the edits (the test program as above): only 3-1's changes. Not yet by hand with the
+  spots, not with three or four players, and not run on the other discs.
 - The final area and the endings (11-16, two copies, scripted, saves from just before the final area, god mode on
   both; the King and the Maiden killed by test switches, the host's trip down set by its flags). Twice, the same up
   to the ending:
