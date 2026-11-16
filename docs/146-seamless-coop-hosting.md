@@ -88,6 +88,7 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
 - **A friend who joins during a boss fight** fights the boss too. Before, in 1-1, Phalanx wasn't in its game: it
   saw only the host fighting, and its blows did nothing.
 - **A friend who dies** comes back where the host last arrived (the start of the area) and stays in the session.
+  After a death in a boss fight, it comes back at its own bloodstain instead (below).
   Once it is back, the others see it again, with its rolls, attacks and other moves.
 - **Bloodstains.** A player who dies drops its souls in a bloodstain where it died, a friend too. Only that player
   sees and touches its own stain. A friend can take its souls back in the host's world, or, if it goes home first,
@@ -101,7 +102,8 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
   do you. Each player picks its own, so in a party of four each friend can have its own. Soul form stays the game's.
   Cutscenes that show you (the tutorial's opening, for one) show your glow and its colour as you chose them too.
 - **In a boss fight,** a friend who dies first watches until the fight ends. Once the boss is dead, it comes back at
-  the area's start. If the host dies too, it goes back with everyone. If the connection to the host is lost while it
+  its own bloodstain in the boss's room, where it can take its souls back at once. Before, it came back at the area's
+  start. If the host dies too, it goes back with everyone. If the connection to the host is lost while it
   watches, it goes home (with the game's own message for a lost session) and joins again from there.
 - **Bosses get more health with friends,** as in the original game: half as much again with one friend, double with
   two. Three friends get double too (the original has nothing for three, so a boss had its solo health).
@@ -658,6 +660,14 @@ their first instruction):
     `ClearBoss` isn't. Two timer slots take turns, so a handler never sets up its own slot. Once the host has died
     (`HostDead` sets `SeamlessHostDown`), it asks for full health and leaves the load to the host's respawn, which
     takes everyone back.
+  - A death in a boss fight comes back at the bloodstain. `PartyGhostDeath_1` notes whether `SeamlessBossFight` was
+    set at the death (`SeamlessFightDeath`). If so, `PartyGhostDeath_2` sets flag 19993 just before its reload (past
+    the game's last flag, as 19999 for the ending). The flag hook then reads the stain's record, which the death's
+    `UpDateBloodMark` (US `0x00447590` -> `0x00419670(manager, player, 1)`) has just filled. The record is the game
+    data's `+0x1C`: its place at `+0x0` (x, y, z), the player's rotation at `+0xC` (`+0x10` the yaw) and its map
+    at `+0x20`, copied from the character's `+0x640` (`+0x24`, `+0x30`, `+0x3C`). The reload's load step puts the
+    player right there, facing the way it died, instead of 1 m beside where the host arrived. A stain in another
+    map than the host's falls back to that.
   - Out of the session (`proxy:IsSession() == false`: the host's game gone or out of reach), `PartyGhostDeath_2`
     starts the trip home as `OnRoomDisappeared` does: its message (20001000), then `OnLeave_Limit` 5 s later. The
     game's own handlers for a lost session (`OnRoomDisappeared`, `OnIrregularLeaveSession_1`) skip it while flag 4047
@@ -693,7 +703,12 @@ their first instruction):
   A boss fight is
   marked from its health bar: every `proxy:SetBossGauge(` (a statement of its own in every area) sets
   `SeamlessBossFight`, and `proxy:ClearBossGauge(` clears it. All of a map's scripts share one set of globals, as
-  the area scripts' calls to `global_event.lua`'s functions show.
+  the area scripts' calls to `global_event.lua`'s functions show. The Nexus's script (`m01_00`) gets this too, after
+  its own edits: it holds the final area and its boss's health bar (`OnEvent_422`). Before, a friend who died in that
+  fight didn't watch: it came back at once where the host had arrived, in the Nexus above. The King's fight ends at
+  its death (`OnEvent_70`, in every game). At the other bosses the kill's `ClearBoss` ends a dead friend's watch, but
+  this bar's clearing (`OnEvent_450`) comes only after the King's last words and skips a game whose player is dead
+  (flag 4047), so a dead friend would have watched forever.
 - The wandering ghosts' sightings (a scripted phantom that walks by and fades, over and over: `OnWanderFade`) are
   each player's own. The tutorial's two (`m08_00`'s 14400, `m08_01`'s 14411) loop through timers registered between
   `RepeatMessage_begin` and `_end` with no `NotNetMessage`, as the tutorial has no co-op. In a session each pass is

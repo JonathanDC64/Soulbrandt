@@ -486,6 +486,9 @@ struct Game {
     std::atomic<uint32_t> follow{0};   // a guest: the trip its summoned reload follows (0: none)
     std::atomic<uint32_t> follow_from{kNoArea};   // a guest: the area that follow leaves (its load step reads it)
     std::atomic<bool> respawn{false};  // a guest: its summoned reload is a respawn (BACK once it has arrived)
+    Place stain;                       // a guest: its bloodstain's place, when it died in a boss fight (stain_mark)
+    uint32_t stain_map = 0;            // and the stain's map
+    std::atomic<bool> at_stain{false}; // set after those two: the next respawn goes there (its load step reads it)
     bool loading = false;     // a guest: a load asked for (gm's next area) and the world not back since (Quit Game
                               // to the title asks for none)
     uint32_t record_buf = 0;  // a guest: guest memory for the host's dead-character record (its load step)
@@ -1690,6 +1693,42 @@ void beside_landing(uint32_t k)
                          "(%.2f %.2f %.2f)\n", k + 1, kBeside[k][0], kBeside[k][1], kBeside[k][2]);
 }
 
+// A friend that died in a boss fight comes back at its own bloodstain once the boss is dead, in the boss's room, not
+// at the area's start where the host arrived. The edited PartyGhostDeath_1 notes whether the boss's health bar was up
+// at the death, and PartyGhostDeath_2 sets kStainMarker (past the game's last flag, as kEndingMarker) just before its
+// reload. The death's UpDateBloodMark (US 0x00447590 -> 0x00419670(manager, player, 1)) has filled the stain's record
+// (the game data's +0x1C) by then: its place at +0x0 (x, y, z), the player's rotation at +0xC (+0x10 the yaw, as in
+// its transform) and its map at +0x20, from the character's +0x640 (+0x24, +0x30, +0x3C), where the game puts the
+// stain too. That respawn's load step puts the player there, facing the way it died, if the stain is in the area it
+// loads (the host's); else where the host arrived, as for any other death.
+constexpr uint32_t kStainMarker = 19993;
+constexpr uint32_t kStainPlace = 0x0, kStainFacing = 0xC, kStainMap = 0x20;
+void stain_mark()
+{
+    const uint32_t gd = rd(DES_AT(kPgdRoot));
+    const uint32_t rec = guest_ok(gd) ? rd(gd + kStainRecord) : 0;
+    if (!guest_ok(rec)) {
+        std::fprintf(stderr, "[coop] died in a boss fight: no bloodstain record, so it comes back where the host "
+                             "arrived\n");
+        return;
+    }
+    Place p;
+    p.x = rdf(rec + kStainPlace);
+    p.y = rdf(rec + kStainPlace + 4);
+    p.z = rdf(rec + kStainPlace + 8);
+    p.yaw = rdf(rec + kStainFacing + 4);
+    if (!std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.z)) {
+        std::fprintf(stderr, "[coop] died in a boss fight: the bloodstain's place isn't readable, so it comes back "
+                             "where the host arrived\n");
+        return;
+    }
+    sGame.stain = p;
+    sGame.stain_map = rd(rec + kStainMap);
+    sGame.at_stain = true;
+    std::fprintf(stderr, "[coop] died in a boss fight: the boss is dead, so this friend comes back at its bloodstain "
+                         "(%.2f %.2f %.2f facing %.2f, map %08X)\n", p.x, p.y, p.z, p.yaw, sGame.stain_map);
+}
+
 // This game's dead-character record of its area, built as a guest's join builds its own (0x004174A8): the world's
 // characters *(*(*(TOC - 0x788C) - 0x7FFC)) written to a buffer by 0x002977C0(world, buf, 76). Empty if there is no
 // world.
@@ -1987,7 +2026,7 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
 //   - a join: beside the host;
 //   - a follow: waits for the host's arrival, then beside it;
 //   - a respawn: asks the host where it is, then goes where the host last arrived (the area's start after a trip or
-//     a death).
+//     a death); after a death in a boss fight, to its own bloodstain instead (stain_mark), right on it.
 // Which of the area's characters are dead: a join's load applies the host's record, which the game's own join brought
 // (0x005286F4). A follow or a respawn brings none, so the host's latest one (READY) goes in its place (0x0020E788,
 // slot 0); without it the area loads with every character alive, and the host's game then kills on this one the
@@ -1997,6 +2036,7 @@ void guest_load_step(ppu_context* ctx)
 {
     const uint32_t trip = sGame.follow.exchange(0);
     const bool joined = sGame.arrived.load();
+    const bool stain = sGame.at_stain.exchange(false) && joined && !trip;
     const char* why = trip ? "follow" : joined ? "respawn" : "join";
     if (joined && !trip) sGame.respawn = true;
     // In body form (the type at the load's request 0), as soul form to the load: it makes a blue phantom of soul form
@@ -2034,7 +2074,18 @@ void guest_load_step(ppu_context* ctx)
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
-    const Place at = trip || !joined ? r.now : r.arrived;
+    Place at = trip || !joined ? r.now : r.arrived;
+    float side = 1.0f;   // beside the host's place
+    const char* where = joined && !trip ? "arrived" : "stands";
+    if (stain && sGame.stain_map == r.area) {
+        at = sGame.stain;   // right on its own bloodstain, facing the way it faced when it died
+        if (!std::isfinite(at.yaw)) at.yaw = r.now.yaw;
+        side = 0.0f;
+        where = "and this friend goes to its bloodstain";
+    } else if (stain) {
+        std::fprintf(stderr, "[coop] respawn: the bloodstain is in map %08X, not the host's %08X, so it comes back "
+                             "where the host arrived\n", sGame.stain_map, r.area);
+    }
     // The tutorial's end, its trip from m08 to the Nexus: there the game's own player has died, and m08_01's
     // OnEvent_14300_3 revives it, ends the tutorial (Tutorial_end), makes it a soul (ChangeGreyGhost) and takes it
     // to the Nexus. A friend that follows the host there hasn't died, so none of that ran for it: it arrived in body
@@ -2065,7 +2116,7 @@ void guest_load_step(ppu_context* ctx)
     const char* dead = "the join's";
     if (guest_ok(gm)) {
         for (uint32_t off : kGmPlace) {
-            wrf(gm + off, at.x + 1.0f);   // 1 m to the side
+            wrf(gm + off, at.x + side);   // 1 m to the side of the host
             wrf(gm + off + 4, at.y);
             wrf(gm + off + 8, at.z);
         }
@@ -2088,7 +2139,7 @@ void guest_load_step(ppu_context* ctx)
     std::fprintf(stderr,
                  "[coop] %s: the host is in %s, %s at %.2f %.2f %.2f facing %.2f; dead characters: %s "
                  "(waited %ld ms, %d names)\n",
-                 why, want, joined && !trip ? "arrived" : "stands", at.x, at.y, at.z, at.yaw, dead, ms, swapped);
+                 why, want, where, at.x, at.y, at.z, at.yaw, dead, ms, swapped);
 }
 
 // A guest's connection to the host's game (co::Status::link), kept by des_seamless_tick for the Co-op window.
@@ -2441,6 +2492,10 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
         }
         if (flag >= kBesideMarker && flag < kBesideMarker + 3) {   // 3-1's flight: a friend's own spot at the landing
             if ((uint32_t)ctx->gpr[5] != 0 && m == co::Mode::Join) beside_landing(flag - kBesideMarker);
+            break;
+        }
+        if (flag == kStainMarker) {   // a friend's respawn after its death in a boss fight: at its bloodstain
+            if ((uint32_t)ctx->gpr[5] != 0 && m == co::Mode::Join) stain_mark();
             break;
         }
         if ((uint32_t)ctx->gpr[5] == 0 || flag >= kFlagCount) break;   // flags only move forward
