@@ -120,9 +120,11 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
   gate needs, each player sees the gate's cutscene as it walks up to the gate, and then the gate is open in its
   game. Before, if the Tower Knight died during the visit, the gate opened for the host alone, and stayed shut for a
   friend until the next load.
-- **3-1's flight to the next part works in a session.** After the Fool's Idol, the player who walks onto the flight's
-  spot sees its cutscene, and every other player is taken to the same landing as it starts. Before, nobody in a
-  session could take it: its handler did nothing in a party, as the original ends the session at the kill.
+- **3-1's flight to the next part works in a session.** After the Fool's Idol, when any player walks onto the
+  flight's spot, every player's game plays its cutscene and takes that player to the landing (the host first, each
+  friend a moment later, so nobody is pushed off the ledge). Before, nobody in a session could take it: its handler
+  did nothing in a party, as the original ends the session at the kill. Then (#575 to 11-16) only the walker saw it,
+  and the others were taken along without it.
 - **Boletaria's clear counts in a friend's own world too** (1-4's flag 8010), so its own Nexus can open the way down
   once all five worlds are cleared there.
 - **So are keys and the items only the host could take:** 3-1's prison keys, the items pulled from the ground or a
@@ -417,11 +419,29 @@ alive.
 - **A watch the host's game alone starts after a kill** (`kill_watches_for_all`): an `if proxy:IsClient() == false
   then` block whose code is only `NotNetMessage_begin`, `OnKeyTime2(<n>, "<handler>", ...)` and `NotNetMessage_end`,
   where that handler registers an `OnRegion*` watch, becomes `if true then`. One matches, the Fool's Idol's
-  `OnEvent_5123_1` (its timer starts the flight's watch, `OnEvent_410_1`). The flight itself: `OnEvent_410` asks for
-  the cutscene (40001, flag 410 at its end) in the walker's game. Its start (`REMO_START`) is a network event, so every
-  game in the area runs `OnEvent_410_RemoStart`, which puts its own player at the landing (point 2031), and its end
-  removes the watch in every game. So the walker sees the cutscene, and the others are taken along without it. Flag
-  410 is set in the walker's game alone; a player whose flag is still clear gets the watch again at its next load.
+  `OnEvent_5123_1` (its timer starts the flight's watch, `OnEvent_410_1`).
+- **A cutscene that takes its player on, for everyone** (`flights_for_all`): 3-1's flight. `OnEvent_410`, the
+  walker's own region watch at the altar, asks for the cutscene (40001) and sets flag 410. The cutscene's start
+  (`OnEvent_410_RemoStart`) puts the player at the landing (point 2031), and its end removes the watch. The game
+  registers those two handlers once each, as network events, so the walker's start ran in every game: the others
+  were put at the landing without the cutscene, and their own handlers were used up, so a player who later played the
+  cutscene itself stayed below (11-16, with the host taken along by its friend's walk). The game's own cutscene for a
+  party (4-2's Patches, 1165) does it this way: the start tells the others, each game plays the cutscene, and the
+  start and end handlers are each game's own. Now:
+  - the start and end handlers are registered between `NotNetMessage_begin` and `_end`;
+  - the walker's handler runs once per visit (`SeamlessFlight410`; the script starts anew at each load) and tells the
+    others (`LuaCallStart(410, 79)`) before it asks for the cutscene;
+  - each other game's `SEAMLESS_Flight_410` (`LuaCall(410, 79)`, registered with the start's handler) plays the same
+    cutscene and sets flag 410, unless that game played it already. Players who walk in together each see it once;
+  - the landing is a single point. Two players put there at the same moment pushed each other off the ledge, and both
+    fell to their death (the first test, below). A friend's game therefore starts the cutscene 1.5 s × its player number
+    (`GetLocalPlayerId`) later, whether it walked in or was told (`SEAMLESS_FlightLater_410`, a timer of its own).
+    The host lands first, then each friend beside it, nudged aside as when one player already stands there. Solo play
+    and the host's game don't wait.
+
+  So every player sees the cutscene, and each one's own start puts that player at the landing. The edit applies to a
+  `REMO_START` handler outside `NotNetMessage` that warps `LOCAL_PLAYER`, with a `LOCAL_PLAYER` region watch of the
+  same ID whose handler asks for that ID's cutscene. Only 3-1's matches.
 - **The sword after the final boss** (141, item lot 10730): the Nexus's script runs `gifts_for_all` too. Before, it
   returned before that step, so the sword stayed the host's.
 - **The final area and the endings** (`final_area_for_all`, the Nexus's script, all or nothing). In the original only
@@ -982,8 +1002,10 @@ the newer generation, and saves as usual.
 - 3-1's flight with a friend (11-15, two copies, scripted, the pinned tutorial save, god mode on both): flag 5123
   set on the host, both loaded into `m04_00` (the friend following), then one player put on the flight's region
   (2030):
-  - The host first: the host's game played the cutscene (scene 40001), the friend's played it too, and both stood
-    at the landing (y 53.88) when it ended. Flag 410 was set in the host's game.
+  - The host first: the host's game played the cutscene (scene 40001), and both stood at the landing (y 53.88) when
+    it ended. Flag 410 was set in the host's game. (Read again on 11-16: the friend's game did not play it then; the
+    friend was at the landing before its own walk, and its cutscene came from that walk, after which it stayed
+    below, its start's handler used up.)
   - The friend first: the friend's game played the cutscene, and the host's game put the host at the landing
     without it, within 25 s. Flag 410 was set in the friend's game only; the host's watch was gone (the cutscene's
     end removes it everywhere), so the host walking back onto the spot did nothing until a load.
@@ -992,6 +1014,18 @@ the newer generation, and saves as usual.
 
   Without the edits the handler returns at once in a party, so nothing happens for anyone (read from the script, not
   run). Not yet by hand, and not run on the other discs.
+- 3-1's flight in every game (`flights_for_all`, 11-16; the same setup as above, both copies at below-normal
+  priority). Each run checks that each game opens scene 40001 once, that each player stands at the landing (y 53.88)
+  30 s after it lands, and that flag 410 is set in both:
+  - The friend first: both games played it (the host's 0.3 s after the walk, the friend's 3.3 s after), the host
+    landed 2.1 s before the friend, and both stood about 0.8 m apart at the landing. Pass.
+  - The host first: the same, with the landings 2.6 s apart. Pass.
+  - Both at once (put on the spot 0.1 s apart): the same, with the landings 2.1 s apart, one cutscene each. Pass.
+  - Before the stagger (the friend first): both games played it and both players landed at the same moment, then
+    fell off the ledge within 5 s and died.
+
+  Every area script through the edits (the test program as above): only 3-1's changes. Not yet by hand, not with
+  three or four players, and not run on the other discs.
 - The final area and the endings (11-16, two copies, scripted, saves from just before the final area, god mode on
   both; the King and the Maiden killed by test switches, the host's trip down set by its flags). Twice, the same up
   to the ending:

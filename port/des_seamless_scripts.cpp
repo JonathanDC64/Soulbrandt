@@ -564,6 +564,128 @@ int kill_watches_for_all(std::string& t)
     return n;
 }
 
+// A cutscene that takes its player on: 3-1's flight (410). The walker's own region watch (OnEvent_410) asks for the
+// cutscene (40001), whose start (REMO_START) puts the player at the landing (Warp(LOCAL_PLAYER, 2031)) and whose end
+// (REMO_FINISH) removes the watch. Those two handlers are registered once each, as network events, so the walker's
+// start ran in every game: the others were put at the landing without the cutscene, and their once-only handlers were
+// used up, so a player who later played the cutscene itself stayed below (11-16). The game's own cutscene for a party
+// (4-2's Patches, 1165) does it this way: the start tells the others (LuaCallStart), each game plays the cutscene, and
+// the start and end handlers are each game's own. So now, for a REMO_START handler (outside NotNetMessage) that warps
+// LOCAL_PLAYER, with a LOCAL_PLAYER region watch of the same ID whose handler asks for that ID's cutscene:
+//   - its REMO_START and REMO_FINISH handlers are registered between NotNetMessage_begin and _end;
+//   - the watch's handler runs once per visit (SeamlessFlight<id>: the script starts anew at each load) and tells the
+//     others (LuaCallStart(<id>, 79)) before it asks for the cutscene;
+//   - SEAMLESS_Flight_<id> (LuaCall(<id>, 79), registered with the REMO_START handler) plays the same cutscene in each
+//     other game and sets the flag the walker's sets, unless that game played it already;
+//   - the landing is one point, and two players put there at the same moment pushed each other off the ledge (both
+//     fell to their death, 11-16). So a friend's game starts the cutscene 1.5 s x its player number
+//     (GetLocalPlayerId) later, whether it walked in or was told (SEAMLESS_FlightLater_<id>): the host lands first,
+//     then each friend, as when a player who was taken along stood at the landing and the walker came down beside it.
+// So every player sees the cutscene, and each player's own start puts that player at the landing. Solo play and the
+// host's game don't wait. Returns the number of edits.
+int flights_for_all(std::string& t)
+{
+    const std::string nl = t.find("\r\n") != std::string::npos ? "\r\n" : "\n";
+    // pos's line, up to pos, has no comment
+    const auto live = [&](size_t pos) {
+        const size_t line = t.rfind('\n', pos);
+        return t.substr(line == std::string::npos ? 0 : line + 1, pos - (line == std::string::npos ? 0 : line + 1))
+                   .find("--") == std::string::npos;
+    };
+    // the indentation of pos's line
+    const auto indent = [&](size_t pos) {
+        const size_t line = t.rfind('\n', pos) + 1;
+        return t.substr(line, t.find_first_not_of(" \t", line) - line);
+    };
+    // [a, e) of the first live registration `proxy:LuaCall(<id>, <kind>, ...);` outside NotNetMessage; false if none
+    const auto reg = [&](const std::string& id, const char* kind, size_t* a, size_t* e) {
+        const std::regex re(std::string("proxy:LuaCall\\(\\s*") + id + "\\s*,\\s*" + kind +
+                            "\\s*,\\s*\"\\w+\"\\s*,\\s*once\\s*\\)\\s*;");
+        for (auto it = std::sregex_iterator(t.begin(), t.end(), re); it != std::sregex_iterator(); ++it) {
+            const size_t p = (size_t)it->position(0);
+            if (!live(p) || in_not_net(t, p)) continue;
+            *a = p;
+            *e = p + (size_t)it->length(0);
+            return true;
+        }
+        return false;
+    };
+    const std::regex start("proxy:LuaCall\\(\\s*(\\d+)\\s*,\\s*REMO_START\\s*,\\s*\"(\\w+)\"\\s*,\\s*once\\s*\\)\\s*;");
+    const std::regex warp("proxy:Warp\\(\\s*LOCAL_PLAYER\\s*,");
+    std::set<std::string> ids;
+    for (auto it = std::sregex_iterator(t.begin(), t.end(), start); it != std::sregex_iterator(); ++it) {
+        size_t a, e;
+        if (!live((size_t)it->position(0)) || in_not_net(t, (size_t)it->position(0)) ||
+            !func_span(t, (*it)[2].str(), &a, &e) || !std::regex_search(code_of(t.substr(a, e - a)), warp))
+            continue;
+        ids.insert((*it)[1].str());
+    }
+    int n = 0;
+    for (const std::string& id : ids) {
+        // the walker's own watch, and its handler's request for the cutscene (and the flag it sets)
+        const std::regex watch("proxy:OnRegion\\w*\\(\\s*" + id + "\\s*,\\s*LOCAL_PLAYER\\s*,\\s*\\d+\\s*,\\s*\"(\\w+)\"");
+        std::smatch w;
+        if (!std::regex_search(t, w, watch) || !live((size_t)w.position(0)) || !in_not_net(t, (size_t)w.position(0)))
+            continue;
+        const std::string walk = w[1].str();
+        size_t a, e;
+        if (!func_span(t, walk, &a, &e)) continue;
+        const std::string body = t.substr(a, e - a);
+        std::smatch r, f;
+        const std::regex ask("proxy:RequestRemo\\(\\s*\\d+\\s*,\\s*REMO_FLAG\\s*,\\s*" + id + "\\s*,\\s*1\\s*\\)\\s*;");
+        const std::regex flag("proxy:SetEventFlag\\(\\s*" + id + "\\s*,\\s*(1|true)\\s*\\)\\s*;");
+        if (!std::regex_search(body, r, ask) || !live(a + (size_t)r.position(0))) continue;
+        const std::string remo = r[0].str();
+        const std::string set = std::regex_search(body, f, flag) && live(a + (size_t)f.position(0)) ? f[0].str() : "";
+        size_t sa, se;
+        if (!reg(id, "REMO_START", &sa, &se)) continue;
+        // every insert at its place in the text as it is now, made from the end backwards
+        std::vector<std::pair<size_t, std::string>> ins;
+        // the walker's handler: once per visit, and the others are told before it asks for the cutscene (a friend's
+        // later; the handler's request and flag then come from the timer)
+        const size_t at = a + (size_t)r.position(0);
+        ins.emplace_back(at, "proxy:LuaCallStart( " + id + " , 79 ); --SEAMLESS: every player's game plays it" + nl +
+                                 indent(at) + "if SEAMLESS_FlightLater_" + id +
+                                 "(proxy) == true then return; end --SEAMLESS: a friend lands after the host" + nl +
+                                 indent(at));
+        ins.emplace_back(t.find('\n', a) + 1, "\tif SeamlessFlight" + id + " == true then return; end SeamlessFlight" +
+                                                  id + " = true; --SEAMLESS: once per visit (its own walk, or another "
+                                                  "player's)" + nl);
+        // the cutscene's start and end handlers: each game's own; the start's line is followed by the others' call
+        ins.emplace_back(sa, "proxy:NotNetMessage_begin(); ");
+        ins.emplace_back(se, " proxy:NotNetMessage_end(); --SEAMLESS: each game's own");
+        const size_t line_end = t.find('\n', se);
+        ins.emplace_back(line_end == std::string::npos ? t.size() : line_end + 1,
+                         indent(sa) + "proxy:LuaCall( " + id + " , 79 , \"SEAMLESS_Flight_" + id +
+                             "\" , everytime ); --SEAMLESS: another player's walk" + nl);
+        size_t fa, fe;
+        if (reg(id, "REMO_FINISH", &fa, &fe)) {
+            ins.emplace_back(fa, "proxy:NotNetMessage_begin(); ");
+            ins.emplace_back(fe, " proxy:NotNetMessage_end(); --SEAMLESS: each game's own");
+        }
+        std::stable_sort(ins.begin(), ins.end(), [](const auto& x, const auto& y) { return x.first > y.first; });
+        for (const auto& [pos, text] : ins) t.insert(pos, text);
+        // the other players' games: the same cutscene and flag, once; a friend's later (its own timer, sub-ID 7)
+        t += nl + "--SEAMLESS: a cutscene that takes its player on, in every player's game (flights_for_all)" + nl +
+             "function SEAMLESS_Flight_" + id + "(proxy, param)" + nl +
+             "\tif param:IsNetMessage() == false or SeamlessFlight" + id + " == true then return; end" + nl +
+             "\tSeamlessFlight" + id + " = true;" + nl +
+             "\tif SEAMLESS_FlightLater_" + id + "(proxy) == true then return; end" + nl +
+             "\tSEAMLESS_FlightGo_" + id + "(proxy, param);" + nl + "end" + nl +
+             "function SEAMLESS_FlightLater_" + id + "(proxy)" + nl +
+             "\tif proxy:IsClient() == false then return false; end" + nl +
+             "\tlocal k = proxy:GetLocalPlayerId();" + nl +
+             "\tif k == nil or k < 1 or k > 3 then k = 1; end" + nl +
+             "\tproxy:NotNetMessage_begin();" + nl +
+             "\t\tproxy:OnKeyTime2( " + id + " , \"SEAMLESS_FlightGo_" + id + "\" , 1.5 * k , 0 , 7 , once );" + nl +
+             "\tproxy:NotNetMessage_end();" + nl + "\treturn true;" + nl + "end" + nl +
+             "function SEAMLESS_FlightGo_" + id + "(proxy, param)" + nl + "\t" + remo + nl +
+             (set.empty() ? "" : "\t" + set + nl) + "end" + nl;
+        n++;
+    }
+    return n;
+}
+
 // A boss's soul taken: what its handlers (OnEvent_<id>, OnEvent_<id>_<k>) do for the host alone (a block under
 // "if proxy:IsClient() == false then") they now do for a friend too. In the original a phantom goes home after the
 // boss, so only the host's world goes on from there; a friend in a seamless session stays, and takes its own soul
@@ -1001,6 +1123,9 @@ int edit_area(std::string& t, bool nexus)
     // (kill_watches_for_all): 3-1's flight to the next block
     n += party_gates(t);
     n += kill_watches_for_all(t);
+    // ... and its cutscene in every player's game (flights_for_all; after party_gates, whose check is the handler's
+    // first line)
+    n += flights_for_all(t);
     for (const std::string& id : ids) {
         // in this stone's handlers, the session check passes for the host
         const std::regex fn("\nfunction OnEvent_" + id + "(?:_\\d+)?\\s*\\(");
