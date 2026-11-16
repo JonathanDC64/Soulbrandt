@@ -27,6 +27,8 @@
 //   - a boss that wakes only for the player who walks through its fog wakes for one put in its room too
 //     (standby_in_the_room);
 //   - the room is never locked (LockSession), here or at a kill in global_event.lua, so a friend can always join again;
+//   - a friend in a session doesn't travel alone: an area script's own trip (WarpNextStage) takes only the host or a
+//     player out of a session, and the host's trip takes its friends along (no_travel_alone);
 //   - the Nexus's timers and checks are each player's own (local_timers), and so is the kneel at a level-up.
 // And from each area's script, the flags that move forward in every player's world (progress_flags), the soul
 // pickups each player makes for itself (own_flags) and the cutscenes each player sees for itself (the Nexus's,
@@ -467,6 +469,29 @@ int standby_in_the_room(std::string& t)
     return n;
 }
 
+// A friend in a session doesn't travel alone. An area script's trip (WarpNextStage) ends a friend's session in the
+// game's own co-op: at the area's teardown a client that didn't ask for a summoned reload leaves (docs/145). The
+// tutorial's trips are each player's own:
+//   - at each part's end (m08_00's, m08_01's) the player who got there goes on;
+//   - at its end (m08_02's dragon god) every game plays the cutscene and runs the same trip to the Nexus, whoever
+//     stepped in;
+//   - a death in m08_01 (the Vanguard's part) takes that player to the Nexus (m08_01Death, then OnEvent_14300_3).
+// A friend whose game got there first left the session, went to its own Nexus, and its rejoin then stalled on the
+// host (11-15). Each such call now runs only for the host or a player out of a session; the host's trip takes its
+// friends along, as everywhere else. A friend's death there brings it back where it fell (the script revives it
+// first). The levels' other trips (the boss's Archstone back to the Nexus) are the host's alone already: a friend gets
+// "You can't return during multiplayer." there. Returns the number of edits.
+int no_travel_alone(std::string& t)
+{
+    // (No comment added: a call can share its line with more code, as in "if playerId ==0 then proxy:WarpNextStage(
+    // 8,02,00,00, 30); end".)
+    const std::regex call("([^-])proxy:WarpNextStage\\(([^()\\n]*)\\)\\s*;");
+    const auto n = std::distance(std::sregex_iterator(t.begin(), t.end(), call), std::sregex_iterator());
+    if (n) t = std::regex_replace(t, call, "$1if proxy:IsSession() == false or proxy:IsClient() == false then "
+                                           "proxy:WarpNextStage($2); end");
+    return (int)n;
+}
+
 // A pickup's "another player did it" branch in its handler: Luafunc_PlaySynchroAnimation(proxy, param, ANIMEID_PICK).
 const std::regex& synchro_branch()
 {
@@ -695,6 +720,8 @@ int edit_area(std::string& t, bool nexus)
     n += walls_for_watchers(t);
     // A boss that wakes only for the player who walked through its fog wakes for a player put in its room too
     n += standby_in_the_room(t);
+    // A friend in a session goes with its host, not on an area script's trip of its own (no_travel_alone)
+    n += no_travel_alone(t);
     // The Archstones: the OnEvent_<id>[_k] handlers that show "Return to the Nexus?" (10010710) or "You can't
     // return during multiplayer." (10010720).
     std::set<std::string> ids;
