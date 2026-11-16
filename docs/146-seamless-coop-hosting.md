@@ -114,6 +114,10 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
   friends are in the host's world counts in each friend's own world too.
 - **A boss's Demon's Soul is everyone's.** When one player takes it at the boss's Archstone, every other player in
   the session gets it too, unless it already took that soul in its own world. A friend can take it itself as well.
+- **1-2's castle gate opens for friends too.** When the host's world has the demon of another world dead that the
+  gate needs, each player sees the gate's cutscene as it walks up to the gate, and then the gate is open in its
+  game. Before, if the Tower Knight died during the visit, the gate opened for the host alone, and stayed shut for a
+  friend until the next load.
 - **So are keys and the items only the host could take:** 3-1's prison keys, and the items pulled from the ground or
   a corpse at a prompt (1-1's sword, the glowing corpse in 2-2 and the others like them). Whoever takes one, the
   others get it too. A player who joins later and doesn't have it yet still finds it there, in the host's world and
@@ -358,6 +362,18 @@ alive.
   prompt (`DeleteEvent`) and runs the handler without that branch (`SEAMLESS_Give_<id>`): the same items, flag and
   steps after, with no pickup animation. A player whose flag is set (it took the soul in its own world) gets
   nothing.
+- **What the soul's handlers kept for the host** (`soul_steps_for_all`, before `pickups_for_all` copies them): a block
+  under `if proxy:IsClient() == false then` in a soul's handlers (`OnEvent_<id>`, `OnEvent_<id>_<k>`) becomes
+  `if true then`. In the original a phantom goes home after the boss, so only the host's world went on from there. A
+  friend in a seamless session stays. The one such block (every area's script checked) is 1-2's: the Tower Knight's
+  soul (4252, `OnEvent_4252_1`) starts the watch on the castle gate, `OnRegionJustIn(570, 10000, 2250, "OnEvent_570",
+  everytime)` between `NotNetMessage_begin` and `_end`. At the gate, with flag 8035 set (a demon of another world dead,
+  from those worlds' scripts and the Nexus's; not a world's own flag, so on a friend it is the host's), `OnEvent_570` plays the gate's cutscene (scene 20101) and
+  sets flag 571, and the cutscene's end opens the gate (`EndAnimation(1270, 2)`). Without the edit, a friend's game
+  never watched the gate when the Tower Knight died during the visit, and its gate stayed shut beside the host's open
+  one (11-15). The area's start watches it for every player (Tower Knight dead, flag 571 clear), or opens it (571
+  set), so a load put that right. A friend's game sets 571 in the host's flags in play only: it isn't a progress
+  flag, and its own world keeps its own gate.
 - **Whose flag.** On a friend the flags in play are the host's, so as an area's script is read (before the area
   starts) each of these pickup flags is made the friend's own world's (`des_seamless_area_read`). A friend that hasn't
   taken a soul sees the prompt even where the host has; one that has sees none, and gets no second one.
@@ -840,6 +856,12 @@ the newer generation, and saves as usual.
     straight to the Nexus, and the friend followed.
 
   Not yet by hand, and not run on the other discs.
+- 1-2's castle gate with a friend (11-15, two copies, scripted, the pinned tutorial save, god mode on both): flag
+  8035 set on the host, both in `m02_01` (the friend had 8035 there too, from the host's flags), the Tower Knight
+  killed by a test switch after the fight's start (4224 on both), the host's soul taken (the friend got its own, 4252),
+  then both put into the gate's region (2250), the friend 3 s after the host. Before, only the host's game played the
+  gate's cutscene (scene 20101) and set 571, as in the user's session. With the edit, both games played it and set
+  571. Not yet by hand, and not run on the other discs.
 - A friend that leaves during the host's load and joins again isn't placed. The host's game keeps its old member
   through the load (the room library drops it), and the new join stops half way: the friend waits, out of the host's
   world, until the host's session ends. Seen at the tutorial's end before a friend went with its host (11-15); a
