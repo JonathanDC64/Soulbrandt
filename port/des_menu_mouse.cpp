@@ -67,6 +67,7 @@ extern "C" unsigned des_flip_count(void);                                       
 extern "C" int des_hud_obj_rect(ppu_context* ctx, uint32_t obj, float out[4]);  /* des_hud.cpp */
 extern "C" float des_hud_side_width(void);                                      /* des_aspect.cpp */
 extern "C" float des_hud_top_height(void);                                      /* des_aspect.cpp */
+extern "C" float des_frame_step(void);                                          /* des_options.cpp: this frame's game s */
 extern "C" volatile unsigned g_pad0_reads, g_pad0_empty_reads;                  /* cellPad.c */
 
 namespace {
@@ -99,6 +100,10 @@ constexpr int kPressesMax = 12;  /* a round's */
 constexpr int kSettle = 3;       /* frames the cursor stays on one spot before it counts as settled */
 constexpr int kLostMax = 10;     /* frames a walk's menu may be gone (a redraw) before the walk ends */
 constexpr int kOffSpotMax = 120; /* frames the cursor may be between spots (sliding, a page turning) */
+/* Game seconds after a stay menu's page turns in which its page button may go unheard: the game takes the next only
+ * once the new page is up (0.19 s at a high frame rate, up to 0.37 s at 30 fps). Within them a press that did not
+ * turn the page is pressed again; after them it counts as not working, as in any menu. */
+constexpr float kTurnWait = 1.0f;
 
 bool guest_ok(uint32_t a, uint32_t align)
 {
@@ -887,8 +892,15 @@ struct Walk {
     unsigned then = 0;            /* there: this button (an arrow's, on the row it was beside) */
     int then_times = 0;
     uint32_t then_slide = 0;      /* there: slide this slider (on the row it was beside) */
+    int retries = 0, retries_all = 0;   /* a stay menu's page button pressed again while the page turned */
 };
 Walk s_walk;
+
+/* The stay menu on screen (the pause menu's bar with a page open), the page its cursor is on and the game seconds
+ * since that last changed: a page turned, or the page opened. */
+uint32_t s_stay_owner = 0;
+int s_stay_cur = -1;
+float s_stay_quiet = 0.0f;
 bool s_mouse_down;   /* the left button is down (a click, not yet let go): an arrow's press is held meanwhile */
 uint32_t s_held_owner;   /* the menu an arrow is held down in: let go if it goes */
 
@@ -953,7 +965,13 @@ void walk_step()
         if (++w.still < kSettle) return;
         w.settling = false;
         const bool moved_r = r0 != w.from_r, moved_c = c0 != w.from_c;
-        if (!moved_r && !moved_c) {
+        if (w.stay && (moved_r || moved_c)) {
+            if (s_log) fprintf(stderr, "[mm] walk: the page turned, pressed %d times\n", w.retries + 1);
+            w.retries = 0;
+        }
+        if (!moved_r && !moved_c && w.stay && w.axis == 1 && s_stay_quiet < kTurnWait) {
+            w.retries++, w.retries_all++;   /* the page before is still turning: the same button again */
+        } else if (!moved_r && !moved_c) {
             if (w.axis == 0) w.rows_dead = true;
             else if (++l.pair >= (w.stay ? 2 : 3)) l.pair = 0, w.cols_dead = true;
             if (s_log) fprintf(stderr, "[mm] walk: the %s did not move it\n", w.axis ? "column buttons" : "up/down");
@@ -977,7 +995,7 @@ void walk_step()
                 if (s.slider == w.then_slide) start_slide(*m, s, s_slide.target);
         return;
     }
-    if (++w.rounds > kRoundsMax) {
+    if (++w.rounds > kRoundsMax + w.retries_all) {   /* (a press again, for a page still turning, is no new round) */
         walk_end("too many rounds");
         return;
     }
@@ -1004,7 +1022,10 @@ void walk_step()
     w.from_c = w.seen_c = c0;
     w.still = 0;
     w.settling = true;
-    if (s_log) fprintf(stderr, "[mm] walk: at %d_%d, 0x%04X x%d\n", r0, c0, b, times);
+    /* A stay menu's pages one at a time: while one turns the game takes no page button, so of several presses it
+     * took one, or two at 30 fps, and the walk stopped a page or more short. */
+    if (w.stay) times = 1;
+    if (s_log && !w.retries) fprintf(stderr, "[mm] walk: at %d_%d, 0x%04X x%d\n", r0, c0, b, times);
     press(b, std::min(times, kPressesMax));
 }
 
@@ -1282,10 +1303,30 @@ void handle_events()
     }
 }
 
+/* Keeps s_stay_quiet: the game seconds since the stay menu's page last changed (or it came up). */
+void watch_stay()
+{
+    const Menu* m = nullptr;
+    for (const Menu& t : s_menus)
+        if (t.stay) m = &t;
+    if (!m) {
+        s_stay_owner = 0;
+        return;
+    }
+    if (m->owner != s_stay_owner || (m->cur >= 0 && m->cur != s_stay_cur)) {
+        s_stay_owner = m->owner;
+        s_stay_cur = m->cur;
+        s_stay_quiet = 0.0f;
+        return;
+    }
+    s_stay_quiet += des_frame_step();
+}
+
 void end_frame(ppu_context* ctx)
 {
     build_menus(ctx);
     publish();
+    watch_stay();
     if (s_held_owner && !menu_of(s_held_owner, false) && !menu_of(s_held_owner, true)) {   /* its menu went */
         let_go();
         s_held_owner = 0;

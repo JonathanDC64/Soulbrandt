@@ -182,6 +182,13 @@ does, so every screen keeps its own rules, sounds and help text.
   many times as the columns differ, then waits until the cursor has stayed on one spot for 3 frames. Then it looks
   again. It ends on the spot (Cross, unless it is a tab or a stay menu), after 8 rounds, or when nothing moves the
   cursor.
+- The pause menu's bar with a page open (a stay menu) turns one page a round. While a page turns the game takes no
+  page button: it takes the next about 0.2 game seconds after the last turn unlocked, and up to 0.37 s at 30 fps.
+  A round of several presses turned one page (two at 30 fps), and the walk took the presses that went unheard for a
+  button that does not work there. So a click three tabs away turned one page, at most two, and stopped (issue
+  #582). Now a press that turned no page is pressed again while less than 1 game second has
+  passed since the page last turned or opened; after that it counts as not working, as in any menu. A page that
+  takes no page button at all (the inventory's command menu is up) gets one press of each pair, as before.
 - What each menu's buttons do is learnt as it walks, by the owner's class and the host piece's name: right and left,
   or R1 and L1, or R2 and L2 for the columns (tried in that order when one does not move the cursor), and whether
   the spots' rows run across (down and up change the second number). The pause menu's stay bar starts with R2/L2.
