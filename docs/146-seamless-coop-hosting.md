@@ -130,8 +130,10 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
   them), and the items the host's game alone made takeable in the moment (1-1's hanging corpse, 3-1's iron
   maidens). Whoever takes one, the others get it too. A player who joins later and doesn't have it yet still finds it
   there, in the host's world and in its own.
-- **The final boss is the host's alone,** as in the original: its fog lets in only the host (and players in their own
-  world), and friends wait outside. The endings are the host's too.
+- **The final boss and the endings are everyone's.** Friends get the prompt at King Allant's fog in the Old One, as
+  at every other boss. The cutscene after him (the Maiden's prayer) plays for everyone, whoever walks up first. The
+  ending one player starts, good or bad, is everyone's: every game plays it, and every player goes on to New Game+ in
+  their own world. A friend's game plays its own credits and NG+ start, then joins the host again in the NG+ Nexus.
 - **Your own world stays yours.** In a friend's world you see it as it is there. Your own world's doors, items and
   people stay as they were, and what the group did is added when you go back.
 - **World tendency.** In the host's world a friend plays in the host's world tendency, as a summoned phantom does in
@@ -143,7 +145,9 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
   own co-op. The tutorial's wandering ghosts (white phantoms on the way and in the demon's hall) are ghosts for everyone.
 - **The Nexus's cutscenes** (the one after a boss, the Monumental's story) play for each player who hasn't seen them
   in their own world yet, even when the host has. So does an area's opening, such as the dragon's flight at 1-1's
-  start.
+  start. Of the ones the Nexus plays as you arrive (your first visit, the Maiden's return, the seal lifting once all
+  five worlds are cleared), a friend sees only the newest one the host has seen, so its Nexus is the host's. The
+  final area's cutscenes play for everyone when they happen, never again later.
 - **Skipping a cutscene** (START, then Cross) works for everyone and skips only your own: the others' go on.
 - **The Monumental's question:** whoever talks to the Monumental answers it. Once the other Archstones open, they open
   in every player's world. His story plays only for the one who hears it: when a friend hears it first, the host then
@@ -420,6 +424,43 @@ alive.
   410 is set in the walker's game alone; a player whose flag is still clear gets the watch again at its next load.
 - **The sword after the final boss** (141, item lot 10730): the Nexus's script runs `gifts_for_all` too. Before, it
   returned before that step, so the sword stayed the host's.
+- **The final area and the endings** (`final_area_for_all`, the Nexus's script, all or nothing). In the original only
+  the host (and players in their own world) go in: the fog has no phantom's entry, the kill's last steps and the
+  endings run in the host's game alone, and a phantom goes home at the kill. Now:
+  - The fog (`OnPlayerActionInRegionAttribute(61, 2895, ...)`, each player's own prompt) takes `+ ATTR_WHITE`.
+  - The King's death (`OnEvent_70`) runs once per game. Each game ran it for its own copy of the King and again for
+    the other games' message, and what it set up came twice: the sword's pickup steps (`OnEvent_141_WAIT`), so one
+    pull gave the host two swords (11-16). The first call runs, whichever it is: the guard is a script value
+    (`SeamlessKingDead`), not flag 70, which can reach a friend from the host's world before its own call. The
+    pickup's last step (`OnEvent_141_1`) runs once too.
+  - A friend gets "The Demon Was Destroyed" after the King's last words, and flag 450 at its end, as the host does
+    (`OnEvent_450`'s live branch). The cutscene after the kill waits for 450.
+  - That cutscene (71, the Maiden's prayer; region 2082 once the King's last words, 9054, and 450 are set) plays in
+    every game: its start sends `LuaCallStart(71, 79)`, and each game's `SEAMLESS_Scene_71` plays its own. Its end
+    is then each game's too: the Maiden praying, the endings' watches, and the player put beside her (point 2083).
+    Before, a friend's game never played it (9054 and 450 weren't set there), so the Maiden didn't pray there and
+    no ending could start.
+  - The good ending's prompt (81, region 2010) takes `+ ATTR_WHITE`. The ending's step (`OnEvent_80`, the Maiden
+    killed; `OnEvent_81_2`, the prompt) was for the host's game alone (`IsClient() == false`): the clear state, the
+    clear count, the items the clear takes (`LastRemoveEquip`) and the end flow (`OnEndFlow`), which resets every
+    flag for NG+. It now runs in every game, once (`SeamlessEnding`, so the first ending started is everyone's), and
+    sends `LuaCallStart(<id>, 79)`, whose `SEAMLESS_End_<id>` runs it in the others. Each game plays the ending's
+    cutscene once (`SeamlessEndScene`).
+  - Checked in a game alone (11-16, the user's save before the final area, the bad ending): the ending's step clears
+    every flag, the world banks too, and takes the clear count from 0 to 1, before the ending's cutscene, the
+    credits and the NG+ load.
+- **A friend's NG+.** The ending resets the flags in play, which on a friend are the host's, and the friend's own
+  world was kept apart (`keep_own_world`). The ending's step tells co-op that it started in this game: it sets flag
+  19999 (`SetEventFlag(19999, true)`), past the game's last flag. `SetEventFlag`'s native lets ids up to 0x4E1F
+  through, and the flags' set (0x005086F8) returns for any id above 0x427F, so the game ignores it, and only the
+  co-op flag hook sees it (`ending_started`). The clear count can't tell: its object
+  (`*(*(*(TOC - 0x788C) - 0x8000))`) is the world in play's, which on a friend is the host's, and a join can read a
+  stale one. From then on nothing is kept apart: the game's flags, reset for NG+, are its own world's, and its trip
+  home puts nothing back. It doesn't follow the host's next
+  load: its game plays its own ending, its credits and its NG+ start, which leaves the session (the host's game keeps
+  its own, "the host stays in its session"), and it joins the host again from its own NG+ Nexus. Before, the friend
+  only followed the host's NG+ load, its own world still in the first playthrough (fewer souls from each enemy: each
+  game pays its own player by its own clear count).
 - **Whose flag.** On a friend the flags in play are the host's, so as an area's script is read (before the area
   starts) each of these pickup flags is made the friend's own world's (`des_seamless_area_read`). A friend that hasn't
   taken a soul sees the prompt even where the host has; one that has sees none, and gets no second one.
@@ -552,11 +593,20 @@ alive.
   clears each of those flags that the friend hasn't set in its own world, and the cutscene plays there. Seeing it sets
   the flag in the friend's own world, as any other. The script sets it as the area starts, before the friend counts
   as arrived, so a cutscene's flag is kept from then on.
+  Not the final area's (40 and 60, the trip down; 71, after the King; 80 and 81, the endings): they play in every
+  game when they happen, and their flags set up the way down, the Old One and the Maiden as the area starts, so a
+  friend's game keeps them as the host has them. One cleared to be seen again took the way down, the King and the
+  Maiden's place out of a friend's Nexus while the host's had them.
 - **An area's opening.** The same goes for the cutscene an area's start plays: its script's `Initialize` calls the
   event's handler itself (1-1's dragon, event 2:
   `if proxy:IsCompleteEvent( 2 ) == false then ... OnEvent_2(proxy,param); end`).
   Only those: an area's other cutscenes start from something a player does there (a fog walked through, a place
-  reached), and play in every player's game as they did.
+  reached), and play in every player's game as they did. Of the opening's, a friend's game plays only the newest the
+  host has seen. The start plays one a visit, the first one not seen (the Nexus's 30, the first visit; 31, the
+  Maiden back after the first demon; 39, the seal over the way down lifted once five worlds are cleared). With more of
+  them cleared, it played an older one, and the newer ones, cleared to be played later, left the area as it was
+  before them: a friend whose own world hadn't seen 39 stood in its host's Nexus with the seal still there (11-16).
+  The older ones stay as the host has them.
 - **The Archstones' seal.** The events whose header names the seal (要石の封印), and the flags their handlers set, are
   the seal's. When one is set on a friend, it is kept in the friend's own world and sent to the host (`FLAG`), whose
   world sets it through the game's own flag setter. The host's own, as other progress, goes to its friends.
@@ -883,13 +933,11 @@ the newer generation, and saves as usual.
 - Items for a friend: the area's items and enemy drops (above). Not covered: a drop that an item lot allows only once
   (its flag is read from the host's flags in play), and the scripted pickups (the Demonbrand, the keys) that an
   area's script offers to the host and to players in their own world only, as the boss souls were.
-- The final area under the Nexus (King Allant, `m01_00`) is the host's alone (corrected 11-15; an earlier note here
-  said it was made for sessions). Its fog (`OnPlayerActionInRegionAttribute(61, 2895, ...)`, host, alive or soul
-  form) has no second entry for the others: no `LuaCall(61, 5, ...)` is registered, and `OnEvent_61_3` would send
-  `LuaCallStart(61, 5)` only while flag 61 is clear, which `OnEvent_61` has just set. The boss has no soul prompt;
-  its sword (141) is for everyone now. After the kill, `OnEvent_450` sets flag 450 only in body or soul form, and the
-  way on to the Old One (`OnEvent_71`) waits for it, so a friend's game doesn't go on. Only the host's game sets the
-  clear state and plays the ending; what a friend's game does then is not tested.
+- The final area under the Nexus (King Allant, `m01_00`) is the host's alone in the original. Its fog
+  (`OnPlayerActionInRegionAttribute(61, 2895, ...)`, host, alive or soul form) has no second entry for the others: no
+  `LuaCall(61, 5, ...)` is registered, and `OnEvent_61_3` would send `LuaCallStart(61, 5)` only while flag 61 is
+  clear, which `OnEvent_61` has just set. So the edit gives everyone the first entry instead ("The final area and the
+  endings" above). The boss has no soul prompt.
 - Watching a boss fight after dying, scripted: host and friend were put in 1-1's boss arena, and the fight started
   for both (the boss's health bar on both screens). The friend was then killed. It stayed down and watched for the
   half minute until the host killed the boss, then came back at the area's start, and the host made its character
@@ -920,7 +968,8 @@ the newer generation, and saves as usual.
   (`IsSession`, `ATTR_NOSESSION`, host-only prompts, `IsNetMessage`, `IsInParty`). Apart from the edits above, the
   host-only steps are "the host decides, every game does it" broadcasts, NPCs, the boss rooms' first entries and the
   bosses' thinking, all fine as they are. Two kinds are left as the original has them: the dragons' item drops in 1-2
-  and 1-4 (`OnEvent_800_3_syncro_anime`, `HiryuOsaDead`, the host's alone, with a trophy) and the final boss (above).
+  and 1-4 (`OnEvent_800_3_syncro_anime`, `HiryuOsaDead`, the host's alone, with a trophy) and the final boss (since
+  11-16 everyone's: "The final area and the endings" above).
   Every area script through the edits before and after (a test program built from this file): only 1-1, 1-2, 1-3,
   1-4 (its progress flags), 2-3, 3-1 and the Nexus change, each as described.
 - 3-1's flight with a friend (11-15, two copies, scripted, the pinned tutorial save, god mode on both): flag 5123
@@ -936,6 +985,23 @@ the newer generation, and saves as usual.
 
   Without the edits the handler returns at once in a party, so nothing happens for anyone (read from the script, not
   run). Not yet by hand, and not run on the other discs.
+- The final area and the endings (11-16, two copies, scripted, saves from just before the final area, god mode on
+  both; the King and the Maiden killed by test switches, the host's trip down set by its flags). Twice, the same up
+  to the ending:
+  - In the Nexus the friend's game played only 39 and 303 of the host's cutscenes, and the seal over the way down
+    was lifted. Before, it played 30 and 31 too, and the seal stayed (the user's run).
+  - After the host's trip down and back (a load the friend followed), the friend kept 40.
+  - The friend went through the fog by its own prompt (61), and the King died in both games.
+  - The host pulled the sword once; each player got one (+1 each). Before, the host got two.
+  - The cutscene after the kill (71) played in the friend's game too, and its Maiden prayed (16145).
+  - The bad ending, from the host's game (the Maiden killed): the friend's game took the marker once, went through
+    its own ending without following the host's NG+ load, left the session, and joined the host again from its own
+    NG+ Nexus. Both clear counts 1, the same clear state.
+  - The good ending, from the friend's game (its prompt at the way out, region 2010): the host's game ran it too
+    (clear state 1 on both), the host stayed in its session through the ending's leave and loaded into NG+, and
+    the friend went through its own and joined again from its own NG+ Nexus.
+
+  Not yet by hand (the endings' cutscenes and credits were skipped), and not run on the other discs.
 - A friend that leaves during the host's load and joins again isn't placed. The host's game keeps its old member
   through the load: so it was before the change above ("A friend that leaves during the host's load", 11-16). The
   change, checked with two copies (scripted, the pinned tutorial save, god mode on the friend, a test switch that

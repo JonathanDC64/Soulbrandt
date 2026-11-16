@@ -52,9 +52,10 @@
 #include <vector>
 
 extern "C" void ds_malloc(ppu_context* ctx);   // des_heap.cpp: the guest heap
-// des_seamless_game.cpp: an area script of world was just read (its cutscenes each player sees, and its soul, key
-// and item pickups), before the area starts
-void des_seamless_area_read(uint32_t world, const std::vector<uint32_t>& scenes, const std::vector<uint32_t>& own);
+// des_seamless_game.cpp: an area script of world was just read (its cutscenes each player sees, of them its opening's,
+// and its soul, key and item pickups), before the area starts
+void des_seamless_area_read(uint32_t world, const std::vector<uint32_t>& scenes, const std::vector<uint32_t>& chain,
+                            const std::vector<uint32_t>& own);
 
 namespace {
 
@@ -750,6 +751,114 @@ int gifts_for_all(std::string& t)
     return n;
 }
 
+// A statement at the top of function `name`, after its first line; false if the function isn't there.
+bool insert_first(std::string& t, const std::string& name, const std::string& line, const std::string& nl)
+{
+    size_t a, e;
+    if (!func_span(t, name, &a, &e)) return false;
+    const size_t at = t.find('\n', a);
+    if (at == std::string::npos || at >= e) return false;
+    t.insert(at + 1, line + nl);
+    return true;
+}
+
+// The final area under the Nexus (King Allant in the Old One) and the endings, for every player in the session. The
+// original lets only the host (and players in their own world) in: the boss's fog has no phantom's entry, the kill's
+// last steps and the endings run in the host's game alone, and a phantom goes home at the kill. A seamless session
+// stays, so the Nexus's script now:
+//   - offers the fog (61) to a friend too; each player's prompt is its own (it is registered between
+//     NotNetMessage_begin and _end), as at every other boss;
+//   - runs the King's death (OnEvent_70) once per game. Each game ran it for its own copy of the King and again for
+//     the other games' message (a kill's message reaches its handler whatever the game's own registration did), and
+//     everything it set up came twice: the sword's pickup steps (OnEvent_141_WAIT), so one pull gave the host two
+//     swords (11-16). The first call runs, whichever it is (a script value, SeamlessKingDead: flag 70 can come from
+//     the host's world before a friend's own call). The pickup's last step (OnEvent_141_1) runs once too;
+//   - shows a friend "The Demon Was Destroyed" after the King's last words, as the host gets it, and sets 450 at its
+//     end (OnEvent_450); the cutscene after the kill (71) waits for 450;
+//   - plays that cutscene (71, the Maiden's prayer) in every game, whoever's game started it: its start tells the
+//     others (LuaCallStart(71, 79)), and each game's SEAMLESS_Scene_71 plays its own. Its end (the Maiden praying,
+//     the endings' watches, the player put beside her) is then each game's too. A friend's game never played it
+//     before (its own talk with the King, 9054, and 450 weren't set there): the Maiden didn't pray there, and no
+//     ending could start;
+//   - lets a friend start the good ending too (81, its prompt beside the Maiden), and runs the ending a player starts
+//     in every game, the first one started (80, the Maiden killed; 81, the prompt). Its step (the clear state, the
+//     clear count, the items the clear takes, and the end flow, which resets every flag for NG+) was for the host's
+//     game alone (IsClient() == false). It now runs in every game, once (SeamlessEnding), and tells the others
+//     (LuaCallStart(<id>, 79)), whose SEAMLESS_End_<id> runs theirs. Each game then plays the ending's cutscene once
+//     (SeamlessEndScene: the end flow's step may come twice, as the kill's did), and every player goes on to NG+ in
+//     its own world: the step sets flag 19999 too, past the game's last flag, which the game ignores and the flag
+//     hook reads as "this game's ending started" (des_seamless_game.cpp's ending_started).
+// All or nothing: false (t unchanged by the caller) if one edit doesn't fit.
+bool final_area_for_all(std::string& t, const std::string& nl)
+{
+    static const char kInit[] = "Initialize_m01_00_00_00";
+    // the fog, for a friend too
+    if (!replace_in(t, kInit,
+                    "proxy:OnPlayerActionInRegionAttribute( 61, 2895, \"OnEvent_61\", HELPID_GO_TO_IN, possible_chr_type, once );",
+                    "proxy:OnPlayerActionInRegionAttribute( 61, 2895, \"OnEvent_61\", HELPID_GO_TO_IN, possible_chr_type + ATTR_WHITE, "
+                    "once ); --SEAMLESS: a friend too"))
+        return false;
+    // the King's death, once per game; the sword's last step too
+    if (!insert_first(t, "OnEvent_70",
+                      "\tif SeamlessKingDead == true then return; end SeamlessKingDead = true; --SEAMLESS: once per game "
+                      "(its own copy's death, then the others' message)", nl))
+        return false;
+    if (!insert_first(t, "OnEvent_141_1", "\tif proxy:IsCompleteEvent( 141 ) == true then return; end --SEAMLESS: once", nl))
+        return false;
+    // "The Demon Was Destroyed" and 450, for a friend too
+    if (!replace_in(t, "OnEvent_450", "if proxy:IsLivePlayer() == true then",
+                    "if proxy:IsLivePlayer() == true or proxy:IsWhiteGhost() == true then --SEAMLESS: a friend too"))
+        return false;
+    // the cutscene after the kill, in every game
+    static const char kScene71[] = "proxy:RequestRemo(3,REMO_FLAG,71,1);";
+    if (!replace_in(t, "OnEvent_71", kScene71,
+                    "proxy:LuaCallStart( 71 , 79 ); --SEAMLESS: every player's game plays it" + nl + "\t" + kScene71))
+        return false;
+    // the good ending's prompt, for a friend too (the area's start registers it once 71 has played, and 71's end)
+    static const char kPrompt81[] = "proxy:OnPlayerActionInRegionAttribute( 81, 2010, \"OnEvent_81\", 10010405, possible_chr_type, once );";
+    static const char kPrompt81w[] =
+        "proxy:OnPlayerActionInRegionAttribute( 81, 2010, \"OnEvent_81\", 10010405, possible_chr_type + ATTR_WHITE, once ); "
+        "--SEAMLESS: a friend too";
+    if (!replace_in(t, kInit, kPrompt81, kPrompt81w) || !replace_in(t, "OnEvent_71_RemoFinish", kPrompt81, kPrompt81w))
+        return false;
+    // the endings, in every game: the first one started
+    static const struct { const char* id; const char* fn; } kEnds[] = {{"80", "OnEvent_80"}, {"81", "OnEvent_81_2"}};
+    for (const auto& end : kEnds) {
+        const std::string id = end.id;
+        if (!replace_in(t, end.fn, "if proxy:IsClient() == false then",
+                        "if SeamlessEnding == nil then --SEAMLESS: every player's game, the first ending started" + nl +
+                            "\t\tSeamlessEnding = " + id + ";" + nl + "\t\tproxy:LuaCallStart( " + id + " , 79 );" + nl +
+                            "\t\tproxy:SetEventFlag( 19999 , true ); --SEAMLESS: tells co-op this game's ending started "
+                            "(past the last flag: the game ignores it)"))
+            return false;
+    }
+    for (const char* fn : {"OnEvent_80_2", "OnEvent_81_3"})
+        if (!insert_first(t, fn,
+                          "\tif SeamlessEndScene == true then return; end SeamlessEndScene = true; --SEAMLESS: the "
+                          "ending's cutscene once",
+                          nl))
+            return false;
+    // the handlers the others' calls reach, registered as the area starts
+    const std::regex init("(\\nfunction Initialize_m01_00_00_00\\s*\\([^)]*\\)[^\\n]*\\n)");
+    std::smatch m;
+    if (!std::regex_search(t, m, init)) return false;
+    t.insert((size_t)m.position(0) + (size_t)m.length(0),
+             "\tproxy:LuaCall( 71 , 79 , \"SEAMLESS_Scene_71\" , everytime ); --SEAMLESS" + nl +
+                 "\tproxy:LuaCall( 80 , 79 , \"SEAMLESS_End_80\" , everytime ); --SEAMLESS" + nl +
+                 "\tproxy:LuaCall( 81 , 79 , \"SEAMLESS_End_81\" , everytime ); --SEAMLESS" + nl);
+    t += nl + "--SEAMLESS: the final area for every player in the session (final_area_for_all)" + nl +
+         "function SEAMLESS_Scene_71(proxy, param)" + nl +
+         "\tif param:IsNetMessage() == false or proxy:IsCompleteEvent( 71 ) == true then return; end" + nl +
+         "\tproxy:StopPointSE( 1 );" + nl + "\t" + kScene71 + nl + "\tproxy:SetEventFlag( 71, true );" + nl + "end" + nl +
+         "function SEAMLESS_End_80(proxy, param)" + nl +
+         "\tif param:IsNetMessage() == false or SeamlessEnding ~= nil then return; end" + nl +
+         "\tOnEvent_80(proxy, param);" + nl + "end" + nl +
+         "function SEAMLESS_End_81(proxy, param)" + nl +
+         "\tif param:IsNetMessage() == false or SeamlessEnding ~= nil then return; end" + nl +
+         "\tOnEvent_81_2(proxy, param);" + nl + "end" + nl;
+    return true;
+}
+
 // An area's script: the party walls, the warp-out pose and the Archstones. Returns the number of edits.
 int edit_area(std::string& t, bool nexus)
 {
@@ -816,6 +925,18 @@ int edit_area(std::string& t, bool nexus)
         // The sword the host alone pulled out after the final boss (141, item lot 10730): for every player, as the
         // levels' item prompts (gifts_for_all)
         n += gifts_for_all(t);
+        // The final area and the endings, for every player (final_area_for_all; after gifts_for_all, whose step it
+        // runs once). All or nothing: without them it stays the host's, as in the original.
+        {
+            const std::string nl = t.find("\r\n") != std::string::npos ? "\r\n" : "\n";
+            std::string fa = t;
+            if (final_area_for_all(fa, nl)) {
+                t.swap(fa);
+                n += 14;
+            } else {
+                std::fprintf(stderr, "[coop] the final area: an edit didn't fit; it stays the host's alone\n");
+            }
+        }
         // Each game's timers and checks stay its own (local_timers)
         n += local_timers(t);
         return n;
@@ -1141,8 +1262,16 @@ struct Copy {
     std::vector<uint32_t> boss;       // the ones a boss kill sets
     std::vector<uint32_t> own;        // its soul and key pickups
     std::vector<uint32_t> scenes;     // the cutscenes each player sees: the Nexus's, an area's opening
+    std::vector<uint32_t> chain;      // of those, the opening's (the area's start plays one: opening_flags)
     std::vector<uint32_t> seal;       // and the Archstones' seal (the Nexus)
 };
+
+// The final area's cutscenes in the Nexus's script: the trip down (40, and 60, which its end runs), the one after King
+// Allant (71) and the endings (80, 81). Each plays in every player's game when it happens (40 through the talk's
+// call, the others through final_area_for_all), and their flags set up the way down, the Old One and the Maiden at the
+// area's start. So a friend's game keeps them as the host has them: one cleared to be seen again took the way down,
+// the King and the Maiden's place from a friend's Nexus while its host's had them.
+constexpr uint32_t kFinalScenes[] = {40, 60, 71, 80, 81};
 std::mutex sLock;
 std::map<std::pair<uint32_t, uint64_t>, Copy> sCopies;
 // Each world's flags, from its area scripts (a load reads every area script of its world): sorted, no repeats.
@@ -1205,7 +1334,7 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
             learn(it->second);
             const Copy c = it->second;
             g.unlock();
-            if (!global) des_seamless_area_read(c.world, c.scenes, c.own);
+            if (!global) des_seamless_area_read(c.world, c.scenes, c.chain, c.own);
             if (!c.addr) return false;
             *out = c.addr;
             *out_size = c.size;
@@ -1237,9 +1366,15 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
         // "function Initialize_mXX_": the world is XX - 1
         const char d0 = t[ar + 21], d1 = t[ar + 22];
         if (d0 >= '0' && d0 <= '9' && d1 >= '1' && d1 <= '9') c.world = (uint32_t)((d0 - '0') * 10 + (d1 - '0') - 1);
-        // The Nexus: all its cutscenes. Elsewhere only an area's opening: the others start fights or follow what a
-        // player did there, and they play in every player's game.
-        c.scenes = c.world == 0 ? scene_flags(t) : opening_flags(t);
+        // The Nexus: all its cutscenes but the final area's. Elsewhere only an area's opening: the others start fights
+        // or follow what a player did there, and they play in every player's game.
+        c.chain = opening_flags(t);
+        c.scenes = c.world == 0 ? scene_flags(t) : c.chain;
+        if (c.world == 0)
+            c.scenes.erase(std::remove_if(c.scenes.begin(), c.scenes.end(),
+                                          [](uint32_t f) { return std::find(std::begin(kFinalScenes), std::end(kFinalScenes), f) !=
+                                                                  std::end(kFinalScenes); }),
+                           c.scenes.end());
     }
     std::fprintf(stderr, "[coop] script %s: %s%s\n", global ? "global_event.lua" : t.substr(ar + 20, 12).c_str(),
                  addr ? (std::to_string(edits) + " edits for co-op").c_str() : global ? "left as it is (an edit didn't fit)"
@@ -1252,7 +1387,7 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
         learn(c);
         sCopies[key] = c;
     }
-    if (!global) des_seamless_area_read(c.world, c.scenes, c.own);
+    if (!global) des_seamless_area_read(c.world, c.scenes, c.chain, c.own);
     if (!addr) return false;
     *out = addr;
     *out_size = n;

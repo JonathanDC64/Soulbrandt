@@ -65,6 +65,7 @@
 #include "ps3emu/psnr_host.h"
 #include "des_region.h"      // DES_AT: the running disc's addresses
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -509,6 +510,31 @@ struct Own {
     std::vector<uint32_t> taken;   // the boss souls it took in the session (its view keeps them taken)
 };
 Own sOwn;
+// This guest's game is running an ending it started in the session (ending_started), until the session ends
+std::atomic<bool> sEnding{false};
+
+// The final area's script tells us its ending step started in this game (des_seamless_scripts.cpp's final_area_for_all
+// sets flag kEndingMarker there, past the game's last flag: SetEventFlag's native lets ids up to 0x4E1F through, and the
+// flags' set at 0x005086F8 returns for any above 0x427F, so the game ignores it and only the hook sees it). That step's
+// clear (SetClearState, AddClearCount, then the end flow) resets every flag for NG+, each world's bank too: in play,
+// the host's. This player's own world, kept apart for the session, goes on to NG+ with it: nothing is kept apart any
+// more (the game's own flags are its own again, and its trip home puts nothing back). Its game then goes through its own
+// ending, its credits and its own NG+ start, out of the session (the ending's leave), without following the host's load
+// meanwhile (guest_tick), and joins the host again from there. (The clear count can't tell: its object is the world in
+// play's, the host's, and a join can read a stale one.)
+constexpr uint32_t kEndingMarker = 19999;
+void ending_started()
+{
+    {
+        std::lock_guard<std::mutex> l(sOwn.lock);
+        sOwn.kept = false;
+        sOwn.sent = false;
+        sOwn.taken.clear();
+    }
+    if (!sEnding.exchange(true))
+        std::fprintf(stderr, "[coop] the ending: started in this game; its own world goes on to NG+ too, and its game goes "
+                             "through the ending on its own\n");
+}
 
 bool own_kept()
 {
@@ -1774,6 +1800,9 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
     const int lv = sLeave.load();
     if (lv != kLeaveNone && (st == 0 || lv != kLeaveAsked)) return;
     if (st == 0) {
+        if (sEnding.exchange(false))
+            std::fprintf(stderr, "[coop] the ending: out of the session; this player joins again in NG+ once it stands in its "
+                                 "own world\n");
         g.arrived = false;
         g.in_load = false;
         g.follow = 0;   // a follow or a respawn whose load never came: not the next session's
@@ -1900,6 +1929,10 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
     {
         std::lock_guard<std::mutex> l(sMsgLock);
         lead = sLeadTrip;
+    }
+    if (lead != g.trip && sEnding.load()) {   // the host's load after its ending: this game is in its own (above)
+        g.trip = lead;
+        std::fprintf(stderr, "[coop] the host's load %u: not followed, this player's own ending goes on\n", lead);
     }
     if (lead != g.trip && here) {
         g.trip = lead;
@@ -2152,20 +2185,31 @@ bool own_has(uint32_t world, uint32_t flag)
 // An area script was just read (des_seamless_scripts.cpp), before the area starts. On a guest in a session:
 // - each Nexus cutscene, or area opening, the host has seen and this player hasn't plays here too: its flag in play
 //   becomes the host's and this player's own. Once it has played, the flag goes into this player's own world
-//   (des_coop_hook's flag set, kind 4);
+//   (des_coop_hook's flag set, kind 4). Of the opening's (chain: the area's start plays the first one not seen, the
+//   Nexus's 30, 31 and 39 in turn), only the newest the host has seen: the start plays one a visit, so with more of
+//   them cleared it played an older one, and the newer ones, cleared to be played later, left the area as it was
+//   before them. A friend whose own world hadn't seen the Nexus's 39 (the five worlds cleared: the seal over the way
+//   down lifted) stood in its host's Nexus with the seal still there (11-16). The older ones stay as the host has
+//   them;
 // - each boss's soul, key and item of the host's item prompts (own: the soul prompts, 3-1's keys, a sword pulled out)
 //   is as this player's own world has it, whoever took it in the host's world: its prompt is here if this player
 //   hasn't taken it (and it gets it when another player takes it, the scripts' pickups_for_all and gifts_for_all), and
 //   not if it has (no second one).
-void des_seamless_area_read(uint32_t world, const std::vector<uint32_t>& scenes, const std::vector<uint32_t>& own)
+void des_seamless_area_read(uint32_t world, const std::vector<uint32_t>& scenes, const std::vector<uint32_t>& chain,
+                            const std::vector<uint32_t>& own)
 {
     if ((scenes.empty() && own.empty()) || co::active() != co::Mode::Join) return;
     const uint32_t sm = session_manager(), fb = flag_base();
     if (!guest_ok(sm) || !guest_ok(fb) || vm_read32(sm + kSmState) != kStateClient) return;
     std::lock_guard<std::mutex> l(sOwn.lock);
     if (!sOwn.kept) return;
+    auto in_play = [&](uint32_t flag) { return flag < kFlagCount && ((vm_read8(fb + (flag >> 3)) >> (flag & 7)) & 1); };
+    uint32_t newest = kNoArea;   // the opening's newest the host has seen
+    for (const uint32_t flag : chain)
+        if (in_play(flag) && (newest == kNoArea || flag > newest)) newest = flag;
     for (const uint32_t flag : scenes) {
         if (flag >= kFlagCount) continue;
+        if (flag != newest && std::find(chain.begin(), chain.end(), flag) != chain.end()) continue;
         const uint8_t bit = (uint8_t)(1u << (flag & 7));
         const uint32_t a = fb + (flag >> 3);
         const uint8_t v = vm_read8(a);
@@ -2351,6 +2395,11 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
     }
     case 0x005086F8u: { // the event flags' set, after its cmpwi: r3 = the flags, r4 = the flag, r5 = the value
         const uint32_t flag = (uint32_t)ctx->gpr[4];
+        if (flag == kEndingMarker && (uint32_t)ctx->gpr[5] != 0 && m == co::Mode::Join) {   // the final area's script
+            const uint32_t sm = session_manager();
+            if (guest_ok(sm) && vm_read32(sm + kSmState) == kStateClient) ending_started();
+            break;
+        }
         if ((uint32_t)ctx->gpr[5] == 0 || flag >= kFlagCount) break;   // flags only move forward
         const uint32_t fb = (uint32_t)ctx->gpr[3];
         if (!guest_ok(fb) || fb != flag_base()) break;
