@@ -29,6 +29,7 @@ Date: 2026-10-27. Status: experimental, off by default (Settings > Controls > Mo
 |---|---|---|
 | `DES_MENU_MOUSE` | `0` | `1`: the mouse in the game's menus (experimental). `0`: the game's menus take no mouse, and the buttons and wheel are the keyboard layout's. Its row is Mouse in game menus (experimental). Live. |
 | `DES_MENU_MOUSE_PRESS` | `1` | Frames (and pad packets) each of the clicks' presses is held, and let go after (section 3). |
+| `DES_MENU_MOUSE_WALK` | `0` | `1`: every click walks, also in the menus a click selects at once (section 3.1). For a test against the walk. |
 | `DES_MENU_MOUSE_LOG` | `0` | `1`: the menus found, each time they change and once their spots come to rest after a slide, and each walk. It also lists the menus left out, with why (`under` a higher menu's spots, `beneath` a menu over it) and the menu they went for, and the pass's draws. When the mouse stops in a menu, that tells a menu over it from one not found. `2`: also the arrow pieces on screen. `3`: also every visible dialog with its pieces, each time the set changes (the census used to learn a screen). |
 
 Tests click with the UI's `DES_UI_MOUSE` (des_ui.cpp): over a menu of the game, `x,y` moves the pointer there (back
@@ -166,18 +167,15 @@ stops drawing its menus.
 ## 3. A click: walking the game's cursor
 
 A click on a spot walks the game's own cursor there with the pad's presses, then presses Cross. Pressing is all it
-does, so every screen keeps its own rules, sounds and help text.
+does, so every screen keeps its own rules, sounds and help text. In the menus of section 3.1 the spot is selected at
+once instead, and the walk only presses Cross.
 
 - The presses go in through cellPad's title hook (`des_mm_pad_buttons`, beside DES_AUTO_CONTINUE's in
   des_options.cpp). Each is held for `DES_MENU_MOUSE_PRESS` frames *and* as many pad packets the game took
   (`g_pad0_reads - g_pad0_empty_reads`), then let go for as long: one press each, at any frame rate. The default,
   one frame down and one up, is the fastest the game counts: a row every 2 frames (66 ms at 30 fps, a few ms
   unlocked). A walk of 10 rows on the Options page took one round at 30 fps. (It was 2 frames each, a row every 4.)
-- A walk is the game's cursor stepping, row by row, with the game's tick each time. Going straight to the row would
-  mean writing the selection. Each class keeps it in its own place: the pause menu's bar at owner +0x184, the
-  inventory at +0x100 and +0x134 (with the item at +0x14C). The profile list, System and Options keep it in none of
-  the owner (0x1000 bytes), the cursor's dialog or the dialogs above. So the walk stays, made as quick as the game
-  takes it.
+- A walk is the game's cursor stepping, row by row, with the game's tick each time.
 - A walk goes in rounds. A round presses down or up as many times as the rows differ, then the column buttons as
   many times as the columns differ, then waits until the cursor has stayed on one spot for 3 frames. Then it looks
   again. It ends on the spot (Cross, unless it is a tab or a stay menu), after 8 rounds, or when nothing moves the
@@ -204,6 +202,28 @@ does, so every screen keeps its own rules, sounds and help text.
   column buttons (up is the right one), walking to that row first if need be (notches during that walk add up).
   Over no spot it goes to the top menu that is not tabs (the inventory's list, not its categories).
 - Right click is Circle, and drops a walk under way.
+
+### 3.1 Selecting at once
+
+The game has no one "select item N": each menu class keeps its selection in its own place, and its input code
+moves it, plays the tick (`0x0072D970(0)`) and places the cursor itself. Many keep it in a table of menu
+variables, not in the dialog (`0x00720F20` reads one, `0x00720F50` writes one). So a memory diff of the dialogs
+found the pause menu's bar at +0x184, which is only the tab it placed last: writing it does nothing.
+
+A click in one of these menus selects the spot as that class's input code would, with one tick
+(`select_now`). The walk then waits for the cursor to show there and presses Cross. If it does not show within 10
+passes, the walk walks.
+- **The pause menu's bar, while it has the pad** (DsMenuDlgStartTab, vtable 0x018692C0): its tab is menu variable
+  0x4B. Its step (0x0079B2C0) sets it, then runs its vt+0x80 (the help line), +0x90 and +0x88 (the cursor). The
+  bytes +0x180, +0x181 and +0x182 have its next update run the same three. The step goes round 0 to 4 and skips no
+  tab.
+- **System** (DsMenuDlgSystem, vtable 0x0186EF60): its row is +0xFC (0 to 2), and its update places the cursor and
+  the help line from it every frame. Its input keeps to row 0 while +0xF5 is set, and steps over row 1 (Load
+  Profile) while +0xF7 is. A click on a row it would not go to walks instead.
+
+Every other menu still walks, the bar with a page open too: its pages turn one at a time. The game's own switch
+(0x007234E0, with the page's menu variable) goes to any page at once. Tried from World Tendency, though, it left
+World Tendency's statues drawn over the next page: the page's own R2 does more first, not found yet.
 
 ## 4. The UI's side (port/ui/src/game_menu.cpp)
 

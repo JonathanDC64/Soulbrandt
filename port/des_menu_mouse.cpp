@@ -58,6 +58,7 @@
 #include <cstring>
 #include <deque>
 #include <functional>
+#include <initializer_list>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -90,6 +91,12 @@ constexpr unsigned kPadUp = 0x0010u, kPadRight = 0x0020u, kPadDown = 0x0040u, kP
 constexpr unsigned kPadL2 = 0x0100u, kPadR2 = 0x0200u, kPadL1 = 0x0400u, kPadR1 = 0x0800u;
 constexpr unsigned kPadCircle = 0x2000u, kPadCross = 0x4000u, kPadStart = 0x0008u;
 constexpr uint32_t kTitleVt = 0x0186A968u;     /* DsMenuDlgTitle: "PRESS START BUTTON", no cursor */
+/* Menus a click selects at once (select_now), as their own input code does it. */
+constexpr uint32_t kStartTabVt = 0x018692C0u;  /* DsMenuDlgStartTab: the pause menu's bar */
+constexpr uint32_t kSystemVt = 0x0186EF60u;    /* DsMenuDlgSystem: Options, Load Profile, Quit Game */
+constexpr int kBarTabVar = 0x4B;               /* the menu variable (0x00720F20/0x00720F50) that holds the bar's tab */
+constexpr int kTabs = 5;                       /* the bar's tabs (its step, 0x0079B2C0, wraps at 4) */
+constexpr int kDirectWait = 10;                /* passes a direct select may take to show before the walk does it */
 
 /* The buttons that step a menu's columns, next then back, in the order they are tried. */
 constexpr unsigned kColPairs[3][2] = {{kPadRight, kPadLeft}, {kPadR1, kPadL1}, {kPadR2, kPadL2}};
@@ -283,7 +290,7 @@ struct Menu {
 
 /* ---- The game's thread: the frame's draws and the menus in them. ---- */
 
-int s_on = 0, s_log = 0;
+int s_on = 0, s_log = 0, s_walk_only = 0;
 std::vector<Drawn> s_draws;
 thread_local unsigned t_pad_reads = 0;   /* the pad reads this thread made (des_mm_pad_buttons, each read of pad 0) */
 std::vector<Menu> s_menus;
@@ -893,6 +900,7 @@ struct Walk {
     int then_times = 0;
     uint32_t then_slide = 0;      /* there: slide this slider (on the row it was beside) */
     int retries = 0, retries_all = 0;   /* a stay menu's page button pressed again while the page turned */
+    int direct = 0;               /* the spot was selected at once (select_now): passes left for the cursor to show it */
 };
 Walk s_walk;
 
@@ -949,6 +957,14 @@ void walk_step()
         return;
     }
     w.lost = 0;
+    if (w.direct > 0) {   /* selected at once: the menu places its cursor in its next update; no presses meanwhile */
+        if (m->cur >= 0 && m->spots[m->cur].r == w.r && m->spots[m->cur].c == w.c) {
+            w.direct = 0;
+        } else {
+            if (--w.direct == 0 && s_log) fprintf(stderr, "[mm] walk: the select did not show, walking\n");
+            return;
+        }
+    }
     if (pressing()) return;
     if (m->cur < 0) {
         if (++w.off_spot > kOffSpotMax) walk_end("the cursor is not on a spot");
@@ -1198,8 +1214,66 @@ const Menu* wheel_menu(float x, float y, int& si)
     return top;
 }
 
-void handle_events()
+/* Calls a game function on the game's thread with r3.. = a, and returns r3; the registers come back as they were. */
+uint32_t call_game(ppu_context* ctx, void (*fn)(ppu_context*), std::initializer_list<int64_t> a)
 {
+    uint64_t g[32];
+    double f[32];
+    uint8_t v[32][16];
+    memcpy(g, ctx->gpr, sizeof g);
+    memcpy(f, ctx->fpr, sizeof f);
+    memcpy(v, ctx->vr, sizeof v);
+    const uint64_t lr = ctx->lr, ctr = ctx->ctr;
+    const uint32_t cr = ppu_cr_pack(ctx), xer = ctx->xer;
+    ctx->gpr[1] -= 0x1000;
+    int i = 0;
+    for (int64_t x : a)
+        if (i < 8) ctx->gpr[3 + i++] = (uint64_t)x;
+    fn(ctx);
+    while (g_trampoline_fn) {
+        void (*tf)(void*) = g_trampoline_fn;
+        g_trampoline_fn = nullptr;
+        tf(ctx);
+    }
+    const uint32_t r3 = (uint32_t)ctx->gpr[3];
+    memcpy(ctx->gpr, g, sizeof g);
+    memcpy(ctx->fpr, f, sizeof f);
+    memcpy(ctx->vr, v, sizeof v);
+    ctx->lr = lr, ctx->ctr = ctr, ctx->xer = xer;
+    ppu_cr_unpack(ctx, cr);
+    return r3;
+}
+
+/* Selects spot s of menu m at once, as the menu's own input code does it, with one tick; false where this menu
+ * can't be (the walk does it then). Read from the game's code (docs/114 section 3):
+ * - The pause menu's bar, while it has the pad: its tab is a menu variable (0x4B). Its step (0x0079B2C0) sets it,
+ *   then runs vt+0x80 (the help line), +0x90 and +0x88 (the cursor); the bytes +0x180, +0x181 and +0x182 have its
+ *   update run the same three. +0x184 is only the tab it placed last.
+ * - System: its row is +0xFC (0 to 2), and its update places the cursor and the help line from it every frame. Its
+ *   input keeps to row 0 while +0xF5 is set, and steps over row 1 (Load Profile) while +0xF7 is. */
+bool select_now(ppu_context* ctx, const Menu& m, const Spot& s)
+{
+    if (m.cur < 0 || !grid_spot(s)) return false;
+    const uint32_t vt = vm_read32(m.owner);
+    if (vt == DES_AT(kStartTabVt) && !m.stay) {
+        if (s.r != 0 || s.c < 0 || s.c >= kTabs) return false;
+        call_game(ctx, func_00720F50, {kBarTabVar, s.c});
+        for (uint32_t k = 0x180; k <= 0x182; k++) vm_write8(m.owner + k, 1);
+    } else if (vt == DES_AT(kSystemVt)) {
+        if (s.c != 0 || s.r < 0 || s.r > 2) return false;
+        if ((vm_read8(m.owner + 0xF5) && s.r != 0) || (vm_read8(m.owner + 0xF7) && s.r == 1)) return false;
+        vm_write32(m.owner + 0xFC, (uint32_t)s.r);
+    } else {
+        return false;
+    }
+    call_game(ctx, func_0072D970, {0});   /* the menu's tick, as a step plays it */
+    if (s_log) fprintf(stderr, "[mm] select %d_%d of 0x%08X at once\n", s.r, s.c, m.owner);
+    return true;
+}
+
+void handle_events(ppu_context* ctx)
+{
+    PS3_KNOB(s_walk_only, ps3_env_int("DES_MENU_MOUSE_WALK", 0));
     std::vector<Ev> evs;
     {
         std::lock_guard<std::mutex> lk(s_ev_mu);
@@ -1248,7 +1322,11 @@ void handle_events()
                 start_slide(m, m.spots[si], e.x);
                 break;
             }
+            /* Where the menu can be, the spot is selected at once; the walk then only confirms (or walks, if the
+             * select did not show). */
+            const bool now = !s_walk_only && m.cur != si && select_now(ctx, m, m.spots[si]);
             start_walk(m, m.spots[si]);
+            if (now) s_walk.direct = kDirectWait;
             break;
         }
         case kEvDrag:   /* a slider's thumb follows (one being slid, or one a walk goes to) */
@@ -1331,7 +1409,7 @@ void end_frame(ppu_context* ctx)
         let_go();
         s_held_owner = 0;
     }
-    handle_events();
+    handle_events(ctx);
     walk_step();
     slide_step();
     s_draws.clear();
