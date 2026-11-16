@@ -886,14 +886,17 @@ the newer generation, and saves as usual.
   - Three copies, the host and two friends, one friend leaving during the host's load. With the change on the host
     alone (twice), the host's session went on with the other friend, who followed into the Nexus, and the friend
     that left joined again; but the other friend's game kept the old member, and after the rejoin it had no member
-    for that friend (its list read once). With the change on every game, that friend's game took the leave during its own follow load,
-    and after the rejoin it had the friend as a member again.
+    for that friend (its list read once). With the change on every game, that friend's game took the leave during
+    its own follow load, and after the rejoin it had the friend as a member again.
+  - Four copies, the host and three friends, one friend leaving during the host's load (twice, the change on every
+    game): the host and both other friends took the leave during their loads, the host's session went on, the
+    friend joined again, and afterwards every game had the other three players as members.
   - The host's game closed 0.5 s, 2 s, 3 s and 8 s into a friend's follow (the Nexus's long load for 3 s and 8 s):
     the friend lost the room, went home and played on, with no member-left for the host. The same with the change on
     the host alone.
 
   Not run: a leave outside any load (the test trip's leave always came during one; the change does nothing then),
-  a friend's Leave co-op just as the host travels, four players, and the other discs.
+  a friend's Leave co-op just as the host travels, and the other discs.
 - The Japanese and Asian discs (with their 1.04 update) play with the others ("Which discs" above). What is checked
   beside the runs:
   - Co-op's rows in `port/regions/BCJS30022.inc` and `BCAS20071.inc` come from `tools/region/region_table.py find`
