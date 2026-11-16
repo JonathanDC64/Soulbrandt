@@ -2141,7 +2141,10 @@ extern "C" void des_seamless_tick(ppu_context* ctx)
                              (m == co::Mode::Join && st == kStateClient && own_kept());
         stone_tick(ctx, session, m == co::Mode::Join && session && !body_form());
         stain_tick(ctx, session && world);
-        glow_tick(ctx, session);
+        // A friend whose ending started keeps its own world apart no more (ending_started), but stays in the session,
+        // and keeps its glow and colour, until its game leaves after the ending's cutscene (11-16: its colour went to
+        // the game's blue at the Maiden's kill)
+        glow_tick(ctx, session || (m == co::Mode::Join && st == kStateClient && sEnding.load()));
     }
     const bool session = st == kStateHost || st == kStateClient;
     if (world && session) dead_copies_tick();

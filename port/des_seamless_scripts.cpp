@@ -773,8 +773,13 @@ bool insert_first(std::string& t, const std::string& name, const std::string& li
 //     everything it set up came twice: the sword's pickup steps (OnEvent_141_WAIT), so one pull gave the host two
 //     swords (11-16). The first call runs, whichever it is (a script value, SeamlessKingDead: flag 70 can come from
 //     the host's world before a friend's own call). The pickup's last step (OnEvent_141_1) runs once too;
-//   - shows a friend "The Demon Was Destroyed" after the King's last words, as the host gets it, and sets 450 at its
-//     end (OnEvent_450); the cutscene after the kill (71) waits for 450;
+//   - shows a friend "The Demon Was Destroyed" after the King's last words, as the host gets it, clears its boss
+//     health bar, and sets 450 at the text's end (OnEvent_450; the cutscene after the kill, 71, waits for 450). The
+//     handler is registered once (CustomLuaCall(450, ..., once)), and each game's own call comes after the King's
+//     last words (9054) in that game. The host's call, a message in the friend's game, came first, used up the
+//     friend's registration and returned (messages were the others' business), so the friend's own call found none
+//     (11-16: no text, the King's bar stayed). A friend's game now runs the first of the two, once
+//     (SeamlessDemon450). In a party its next step (OnEvent_450_1) does nothing;
 //   - plays that cutscene (71, the Maiden's prayer) in every game, whoever's game started it: its start tells the
 //     others (LuaCallStart(71, 79)), and each game's SEAMLESS_Scene_71 plays its own. Its end (the Maiden praying,
 //     the endings' watches, the player put beside her) is then each game's too. A friend's game never played it
@@ -805,7 +810,14 @@ bool final_area_for_all(std::string& t, const std::string& nl)
         return false;
     if (!insert_first(t, "OnEvent_141_1", "\tif proxy:IsCompleteEvent( 141 ) == true then return; end --SEAMLESS: once", nl))
         return false;
-    // "The Demon Was Destroyed" and 450, for a friend too
+    // "The Demon Was Destroyed", the boss's bar cleared and 450, for a friend too: from the host's message, once
+    if (!replace_in(t, "OnEvent_450", "if param:IsNetMessage() == true then",
+                    "if SeamlessDemon450 == true or (param:IsNetMessage() == true and proxy:IsClient() == false) then "
+                    "--SEAMLESS: a friend's game runs the host's, once"))
+        return false;
+    if (!replace_in(t, "OnEvent_450", "print(\"OnEvent_450 begin\");",
+                    "SeamlessDemon450 = true; print(\"OnEvent_450 begin\"); --SEAMLESS"))
+        return false;
     if (!replace_in(t, "OnEvent_450", "if proxy:IsLivePlayer() == true then",
                     "if proxy:IsLivePlayer() == true or proxy:IsWhiteGhost() == true then --SEAMLESS: a friend too"))
         return false;
@@ -932,7 +944,7 @@ int edit_area(std::string& t, bool nexus)
             std::string fa = t;
             if (final_area_for_all(fa, nl)) {
                 t.swap(fa);
-                n += 14;
+                n += 16;
             } else {
                 std::fprintf(stderr, "[coop] the final area: an edit didn't fit; it stays the host's alone\n");
             }

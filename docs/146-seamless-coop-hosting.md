@@ -433,8 +433,14 @@ alive.
     pull gave the host two swords (11-16). The first call runs, whichever it is: the guard is a script value
     (`SeamlessKingDead`), not flag 70, which can reach a friend from the host's world before its own call. The
     pickup's last step (`OnEvent_141_1`) runs once too.
-  - A friend gets "The Demon Was Destroyed" after the King's last words, and flag 450 at its end, as the host does
-    (`OnEvent_450`'s live branch). The cutscene after the kill waits for 450.
+  - A friend gets "The Demon Was Destroyed" after the King's last words, its boss health bar cleared, and flag 450
+    at the text's end, as the host does (`OnEvent_450`'s live branch). The cutscene after the kill waits for 450.
+    The handler is registered once (`CustomLuaCall(450, ..., once)`), and each game's own call comes after the
+    King's last words (9054) in that game. The host's call, a message in a friend's game, came first, used up the
+    friend's registration and returned, so the friend's own call found none (11-16: no text on the friend, and the
+    King's health bar stayed; in three scripted runs the friend's game set 9054 but never 450). A friend's game now
+    runs the first of the two, once (`SeamlessDemon450`). In a party the handler's next step (`OnEvent_450_1`) does
+    nothing.
   - That cutscene (71, the Maiden's prayer; region 2082 once the King's last words, 9054, and 450 are set) plays in
     every game: its start sends `LuaCallStart(71, 79)`, and each game's `SEAMLESS_Scene_71` plays its own. Its end
     is then each game's too: the Maiden praying, the endings' watches, and the player put beside her (point 2083).
@@ -456,7 +462,8 @@ alive.
   co-op flag hook sees it (`ending_started`). The clear count can't tell: its object
   (`*(*(*(TOC - 0x788C) - 0x8000))`) is the world in play's, which on a friend is the host's, and a join can read a
   stale one. From then on nothing is kept apart: the game's flags, reset for NG+, are its own world's, and its trip
-  home puts nothing back. It doesn't follow the host's next
+  home puts nothing back. It keeps its glow and colour until its game leaves the session, after the ending's
+  cutscene (before, they went to the game's blue at once). It doesn't follow the host's next
   load: its game plays its own ending, its credits and its NG+ start, which leaves the session (the host's game keeps
   its own, "the host stays in its session"), and it joins the host again from its own NG+ Nexus. Before, the friend
   only followed the host's NG+ load, its own world still in the first playthrough (fewer souls from each enemy: each
@@ -1000,8 +1007,13 @@ the newer generation, and saves as usual.
   - The good ending, from the friend's game (its prompt at the way out, region 2010): the host's game ran it too
     (clear state 1 on both), the host stayed in its session through the ending's leave and loaded into NG+, and
     the friend went through its own and joined again from its own NG+ Nexus.
+  - The user's playthrough of it (by hand, with the bot as the friend) found the friend without "The Demon Was
+    Destroyed", the King's health bar left on its screen, and its colour gone to the game's blue at the Maiden's
+    kill. After the change for the text (a third scripted run, the bad ending): the friend's game set 450 at the
+    text's end, which it never did in the three runs before, and the other checks passed again. The colour is
+    checked by hand only.
 
-  Not yet by hand (the endings' cutscenes and credits were skipped), and not run on the other discs.
+  The endings' cutscenes and credits were skipped in the scripted runs, and the other discs weren't run.
 - A friend that leaves during the host's load and joins again isn't placed. The host's game keeps its old member
   through the load: so it was before the change above ("A friend that leaves during the host's load", 11-16). The
   change, checked with two copies (scripted, the pinned tutorial save, god mode on the friend, a test switch that
