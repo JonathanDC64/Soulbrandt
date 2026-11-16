@@ -600,10 +600,12 @@ menu-value input {
 }
 
 /* ---- A value's list: beside its box (looks.hpp's listBeside), in the same box, the cursor on a blood bar. (On its
-   row: the start screen's list of choices is a menu-list too.) ---- */
+   row: the start screen's list of choices is a menu-list too.) It lies past the rows' scroll box, as the aside does,
+   so it isn't clipped by it once the rows scroll (the page keeps it inside the rows' height). ---- */
 menu-row menu-list {
     left: 764dp;
     right: auto;
+    clip: none;
     width: 240dp;
     padding: 5dp 3dp;
     border-width: 0;
