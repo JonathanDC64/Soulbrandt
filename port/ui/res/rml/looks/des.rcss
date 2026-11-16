@@ -48,6 +48,8 @@
     100% { opacity: 1; }
 }
 
+/* (--menu-room, menu.rcss's 1280dp, holds the column and its 64dp sides, where the list and the notes beside a row
+   reach: 52dp past the column.) */
 body {
     --menu-column: 1152dp;
     --menu-side: 64dp;

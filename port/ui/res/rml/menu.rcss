@@ -6,7 +6,11 @@
    The body's classes say what shows: entries (the F1 menu's bar), page (a page in its frame), closed, standalone
    (Settings from the start screen or setup), preview, listing, typing, comparing, hiding (Shift or R3 held), asking (a
    question is up), motion (the transitions; off for the tests' pictures). */
+/* --menu-room: the window width the menu is laid out for. While it is open the UI's scale is never more than the window
+   holds of it, so a small window or a large UI scale shrinks the menu instead of cutting it off (menu_shell.cpp's
+   room()). Alpha UI: the frame's 1152dp at most and the body's 64dp each side. */
 body {
+    --menu-room: 1280dp;
     display: flex;
     width: 100%;
     height: 100%;

@@ -227,6 +227,12 @@ void update() noexcept {
     // scale, so the page behind them is not laid out again when they open and close.
     host::set_follow_height(std::any_of(sDocumentStack.begin(), sDocumentStack.end(),
         [](const auto& doc) { return !doc->closed() && doc->scales_with_window(); }));
+    // The widest an open document is laid out for (Document::room).
+    float room = 0.f;
+    for (const auto& doc : sDocumentStack) {
+        if (!doc->closed()) room = std::max(room, doc->room());
+    }
+    host::set_room(room);
 
     input::sync_input_block();
 }
