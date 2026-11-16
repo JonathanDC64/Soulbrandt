@@ -108,6 +108,11 @@ constexpr uint32_t kGroupRow = 0xF4u, kGroupCol = 0xF8u, kGroupRows = 0xFCu, kGr
 /* DsMenuDlgOption: its step up (this, _, from, wrap) and its placement of the cursor from menu variable 0x51. */
 constexpr uint32_t kOptionVt = 0x0186A398u, kOptionUpFn = 0x007CC598u, kOptionPlaceFn = 0x007CA320u;
 constexpr int kOptionOk = 11;                  /* the row of OK (and DEFAULT, its column 1) */
+constexpr uint32_t kProfileVt = 0x0186BE58u;   /* DsMenuDlgSelectProfile, the profile list: its row is +0xF8 */
+constexpr uint32_t kPromptVt = 0x01869FB8u;    /* the system layer's prompts (yes/no, Drop's count): button +0x110 */
+constexpr uint32_t kGetMenuVarFn = 0x00720F20u;
+constexpr uint32_t kPromptButton = 0x110u, kPromptState = 0xF8u;
+constexpr int kPromptKindVar = 0x11;           /* its kind: 0 and 1 take no left or right, 6 and 9 place no cursor */
 
 /* The buttons that step a menu's columns, next then back, in the order they are tried. */
 constexpr unsigned kColPairs[3][2] = {{kPadRight, kPadLeft}, {kPadR1, kPadL1}, {kPadR2, kPadL2}};
@@ -1305,7 +1310,12 @@ uint32_t virtual_code(uint32_t vt, uint32_t off)
  *   step (0x00777A18) sets the row +0xF4 (the column +0xF8) and calls vt+0x84(this, moved), the class's "moved"
  *   (the command menu's plays the tick); its update places the cursor only after a step, so 0x00776F68 places it.
  * - Options: its row is menu variable 0x51. Its step up (0x007CC598, from the row below) sets it, the help line
- *   for it and every row's arrows; 0x007CA320 then places the cursor. DEFAULT (OK's column 1) is walked. */
+ *   for it and every row's arrows; 0x007CA320 then places the cursor. DEFAULT (OK's column 1) is walked.
+ * - The profile list (LOAD GAME's, and System's Load Profile): its row is +0xF8, 0 to 3. Its step goes one row with
+ *   no row skipped, and its update places the cursor from it every frame.
+ * - The system layer's prompts (yes/no, Drop's count): the button is +0x110, from 1. Its steps (vt+0x8C, +0x90)
+ *   move it by one, and its update places the cursor from it every frame while it is open (+0xF8 is 0) and its kind
+ *   (menu variable 0x11) takes left and right. */
 bool select_now(ppu_context* ctx, const Menu& m, const Spot& s)
 {
     if (m.cur < 0 || !grid_spot(s)) return false;
@@ -1342,6 +1352,15 @@ bool select_now(ppu_context* ctx, const Menu& m, const Spot& s)
         if (s.c != 0 || s.r < 0 || s.r > kOptionOk) return false;
         call_addr(ctx, DES_AT(kOptionUpFn), {m.owner, 0, s.r + 1, 0});
         call_addr(ctx, DES_AT(kOptionPlaceFn), {m.owner});
+    } else if (vt == DES_AT(kProfileVt)) {
+        if (s.c != 0 || s.r < 0 || s.r > 3) return false;
+        vm_write32(m.owner + 0xF8, (uint32_t)s.r);
+    } else if (vt == DES_AT(kPromptVt)) {
+        const int kind = (int)call_addr(ctx, DES_AT(kGetMenuVarFn), {kPromptKindVar});
+        if (kind == 0 || kind == 1 || kind == 6 || kind == 9 || vm_read32(m.owner + kPromptState) != 0) return false;
+        const Spot& at = m.spots[m.cur];
+        if (s.r != 0 || at.r != 0 || s.c < 0 || (int)vm_read32(m.owner + kPromptButton) != at.c + 1) return false;
+        vm_write32(m.owner + kPromptButton, (uint32_t)(s.c + 1));
     } else {
         return false;
     }

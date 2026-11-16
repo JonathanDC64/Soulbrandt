@@ -221,7 +221,8 @@ passes, the walk walks.
 - **System** (DsMenuDlgSystem, vtable 0x0186EF60): its row is +0xFC (0 to 2), and its update places the cursor and
   the help line from it every frame. Its input keeps to row 0 while +0xF5 is set, and steps over row 1 (Load
   Profile) while +0xF7 is. A click on a row it would not go to walks instead.
-- **Lists** (DsMenuDlgListbox and the classes built on it: the inventory, an equipment slot's items, ...). A list is
+- **Lists** (DsMenuDlgListbox and the classes built on it: the inventory, an equipment slot's items, Create
+  Profile's rows, ...). A list is
   told by its vt+0x8C, the list's own cursor placement (0x007814F0), so a class that keeps it counts, with no
   table of screens.
   - Its fields: +0x100 is the row in its window of +0xF4 rows, showing items from +0x108 of +0x104.
@@ -245,10 +246,22 @@ passes, the walk walks.
     and redraws every row's arrows. Called from the row below the clicked one, it selects that one; 0x007CA320 then
     places the cursor.
   - DEFAULT is a step right of OK and is walked.
+- **The profile list** (DsMenuDlgSelectProfile, vtable 0x0186BE58: LOAD GAME's, and System's Load Profile): its row
+  is +0xF8 (0 to 3). Its step goes one row and skips none (empty slots too), and its update places the cursor from
+  it every frame.
+- **The prompts** (vtable 0x01869FB8: the yes/no of Auto Sort, Quit Game, Create Profile, ..., and the notices with
+  one OK). The button is +0x110, counted from 1 (button `c` is `c + 1`).
+  - Its steps (vt+0x8C right, +0x90 left) move it by one, with the tick. Its update places the cursor from it every
+    frame while the prompt is open (+0xF8 is 0).
+  - Its kind is menu variable 0x11 (`0x00720F20` reads it). Kinds 0 and 1 take no left or right, and with 6 and 9
+    the update places nothing, so those walk.
+  - Only when +0x110 matches the spot the cursor is on: any other numbering walks.
 - A click on an arrow or a value's half on another row (section 3) goes to that row the same way first, then
   presses the arrow: an Options value changes in one click with no walk.
 
-Every other menu still walks, the bar with a page open too: its pages turn one at a time. The game's own switch
+Every other menu still walks. Among them: the bar with a page open (its pages turn one at a time), the title's
+NEW GAME / LOAD GAME (one step; the menu the port sees there is the cursor's dialog, not the title's), the
+equipment's slot grid, Options' DEFAULT, and lists shown as a grid of icons. The game's own switch
 (0x007234E0, with the page's menu variable) goes to any page at once. Tried from World Tendency, though, it left
 World Tendency's statues drawn over the next page: the page's own R2 does more first, not found yet.
 
@@ -282,16 +295,16 @@ On the pinned regression save, by `DES_UI_MOUSE` (the steps and the shots are in
 | PRESS START BUTTON | glow, click anywhere is Start |
 | Title menu (NEW GAME / LOAD GAME) | glow, click walks up and confirms |
 | "Cannot connect to the server" and "Start the game in Offline Mode" | glow on OK, click |
-| Profile list | glow, wheel down and up, click loads the profile |
-| Create Profile | click on Class ▶ walks to Class then steps it; wheel over Gender; the gender prompt's OK / CANCEL; a click on the profile under the prompt does nothing |
+| Profile list | glow, wheel down and up, click loads the profile; at LOAD GAME and in System's Load Profile, a click on an empty row selects it at once (Cross on it does nothing) |
+| Create Profile | a click on Class's label selects it at once (with its help line); a click on Gender's right half selects Gender at once and steps it, and the game asks its gender question (as it does after a walk); click on Class ▶ steps it; wheel over Gender; the gender prompt's OK / CANCEL; a click on the profile under the prompt does nothing |
 | Edit Appearance | glow on a slider; a click on Age's track from the Origin row walks down 3 and slides the thumb there; a drag moves it back; 3 wheel notches over Gender walk there and step it 3 times |
 | Pause menu bar | glow on a tab, click opens its page, ◀ ▶ click and hold, wheel; no glow in the gaps between tabs |
 | Pause menu pages | with a page open, a click on another tab turns to it (R2), right click closes the page; the same after Use Item, when the game has made the pause menu anew (in a level, from a copy of a player's save) |
 | Inventory | glow on a row (its whole width), wheel, click opens the command menu, right click closes it, click on a category; closed on the armor category and opened again (it opens there), glow and clicks on its rows and tabs |
 | Equipment | a click on a slot opens its item list; glow on a row, wheel, right click back |
-| System | a click on the pause bar's last tab walks 3 right to it; a click on Options opens it |
-| Yes/no prompts in play | Auto Sort's "Automatically resort all items?": glow on OK, OK sorts; Quit Game's: CANCEL, and OK goes to the title; Load Profile's "Load profile and exit current game?": CANCEL |
-| Options | glow on a value; a click on Camera Speed's right half walks there and steps it 5 to 6, its left half back to 5; 2 wheel notches over Music walk there and step it 10 to 8; a click on a label selects its row only; right click brings the game's "Cancel option changes and return?" |
+| System | a click on the pause bar's last tab selects it at once and opens System; a click on Options opens it; a click on Quit Game selects it at once |
+| Yes/no prompts in play | Auto Sort's "Automatically resort all items?": glow on OK, OK (from CANCEL) is selected at once and sorts; Quit Game's: CANCEL, and OK (selected at once) goes to the title; Load Profile's "Load profile and exit current game?": CANCEL |
+| Options | glow on a value; a click on Camera Speed's right half goes there at once and steps it 5 to 6, its left half back to 5; 2 wheel notches over Music walk there and step it 10 to 8; a click on a label selects its row at once, and only that; right click brings the game's "Cancel option changes and return?" |
 
 Drop's "Please select the number of items to drop." with its ▲ ▼ arrows was tried by hand in play: the
 arrows step the number. Not tried yet: the shops, the blacksmith, storage and the Maiden in Black's level up
