@@ -35,7 +35,6 @@ const Rml::String kDocumentSource = R"RML(
             <hero class="intro-item delay-0">
                 <title-logo />
                 <title-rule />
-                <eyebrow>Demon's Souls on PC</eyebrow>
             </hero>
             <menu-list id="menu-list" />
         </menu>

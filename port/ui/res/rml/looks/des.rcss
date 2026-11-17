@@ -1201,14 +1201,6 @@ body.prelaunch title-rule {
     display: none;
 }
 
-body.prelaunch eyebrow {
-    font-family: Old Standard TT;
-    font-size: 19dp;
-    letter-spacing: 1.5dp;
-    text-transform: none;
-    color: var(--des-tan);
-}
-
 body.prelaunch menu-list {
     align-items: center;
     gap: 2dp;

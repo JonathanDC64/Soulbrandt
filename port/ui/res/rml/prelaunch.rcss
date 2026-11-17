@@ -85,15 +85,6 @@ title-rule {
     decorator: horizontal-gradient(rgba(var(--color-border-rgb), 100%) rgba(var(--color-border-rgb), 0%));
 }
 
-eyebrow {
-    display: block;
-    font-family: var(--font-family-heading);
-    font-size: var(--font-size-lg);
-    letter-spacing: 6dp;
-    text-transform: uppercase;
-    color: var(--color-prelaunch-muted);
-}
-
 menu-list {
     display: flex;
     flex-direction: column;
