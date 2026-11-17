@@ -71,6 +71,9 @@ extern "C" float des_hud_top_height(void);                                      
 extern "C" float des_frame_step(void);                                          /* des_options.cpp: this frame's game s */
 extern "C" volatile unsigned g_pad0_reads, g_pad0_empty_reads;                  /* cellPad.c */
 extern "C" void ps3_indirect_call(ppu_context* ctx);   /* ppu_loader.cpp: a call to the guest address in CTR */
+#ifndef PS3_GAME_SPLIT   /* DES_SPLIT: the game DLL's (ps3emu/game_split.h) */
+extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
+#endif
 
 namespace {
 
