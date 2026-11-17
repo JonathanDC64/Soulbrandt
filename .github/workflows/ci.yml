@@ -318,9 +318,6 @@ jobs:
           done
           exit $fail
 
-      - name: Storage hook installation (synthetic functions, injected failures)
-        run: python tools/ci/check_storage_hooks.py --cxx c++
-
       - name: Storage capacity guard (synthetic native queries)
         run: python tools/ci/check_storage_capacity.py --cxx c++
 

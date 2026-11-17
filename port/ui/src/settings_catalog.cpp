@@ -278,10 +278,7 @@ std::vector<TabDesc> make_tabs() {
                 "Use on a soul item, such as an Unknown Soldier's Soul, asks how many to use, like Drop does. Boss "
                 "souls are not affected."),
             toggle("Send to Storage", "DES_STORAGE",
-                "The inventory's command menu gains Send to Storage under Drop. Choose a quantity to put in Stockpile "
-                "Thomas's storage. An item the box refuses, such as one you have equipped, stays in the inventory. "
-                "Picking up an item that does not fit Item Burden asks whether to send that item to storage instead; "
-                "No leaves it on the ground."),
+                "Send to Storage, under Drop in the inventory, puts items in Stockpile Thomas's storage from anywhere."),
             toggle("Stat respec in the Nexus", "DES_RESPEC",
                 "Pick Respecialization in the Maiden in Black's menu, or press Cross facing the statue in front of "
                 "where you wake in the Nexus (no prompt shows there). It can put your stats back to your class's and "

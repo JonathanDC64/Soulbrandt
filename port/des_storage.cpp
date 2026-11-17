@@ -3,24 +3,22 @@
  * The inventory's command menu is the dialog whose pieces include
  * grayout_drop00 and grayout_drop01: Use and Drop. With the knob on, a line
  * is added under them, labelled "Send to Storage". Choosing it calls the
- * game's own deposit (the US lift's func_00924BB8): the box at PGD+0x478, the
- * inventory at PGD+0x128, the selected slot, and the chosen quantity. Its
- * successful return does not guarantee the whole quantity reached the box:
- * stack additions can clamp. The picker and the final deposit therefore
- * check the native storage count and limit first. Send greys with Drop's
- * overlay when the item is equipped or protected; Cross then plays the
- * cancel sound and stays on the command, the same as greyed Drop.
+ * game's own deposit (currently the US lift's func_00924BB8): the box at
+ * PGD+0x478, the inventory at PGD+0x128, the selected slot, and the chosen
+ * quantity. The picker and final deposit check the native storage count and
+ * limit first. Send greys with Drop's overlay when the item is equipped or
+ * protected; Cross then plays the cancel sound and stays on the command, the
+ * same as greyed Drop.
  *
  * The quantity picker is Drop's (message 2000). While that picker is ours,
  * 2000 is consumed and deposited; falling through to native 2000 drops the
- * stack on the ground. The tick must not clear Asking just because the picker
- * left mode 9 or rewrote its prompt — that happens on OK before 2000 arrives.
+ * stack on the ground. The tick must keep ownership after the picker leaves
+ * mode 9 or rewrites its prompt, because that happens on OK before 2000 arrives.
  *
  * Use and Drop are unchanged. The line is a copy of the Drop piece, so the
  * menu's own two commands stay where they are. A disc whose lift does not
- * name that deposit function does not get the line: the other discs' addresses
- * are not in the region tables, and a guessed address would call the wrong
- * code.
+ * name that deposit function does not get the line; other disc addresses are
+ * not yet resolved here.
  *
  * DES_STORAGE_LOG=1 also prints the command menu's pieces the first time it
  * opens. DES_STORAGE_NAV_TRACE=1 records native selection transitions and
@@ -38,7 +36,6 @@
 #include <initializer_list>
 #include <string>
 #include <vector>
-#include <limits>
 
 #ifndef PS3_GAME_SPLIT
 extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
@@ -1290,186 +1287,7 @@ extern "C" int des_storage_command(ppu_context* ctx)
     return 1;
 }
 
-/* Ground pickup is a direct call, so a vtable hook never sees it. A prologue
- * detour does. Only an approved matching pickup may bypass burden inside
- * add-item; the native deposit completes before pickup consumes the world item. */
 constexpr uint32_t kMenusRoot = 0x019ADD50u;
-constexpr uint32_t kBurden = 0x498u;
-constexpr uint32_t kSlotDialog = 0x11u;
-constexpr uint32_t kDialogAnswer = 0x82Cu;
-constexpr int32_t kDialogYesNo = 2;
-
-enum class Ask { Idle, Armed, Asking, Approved };
-Ask s_ask = Ask::Idle;
-void (*s_pickup)(ppu_context*) = nullptr;
-int s_redirect = 0;
-bool s_pickup_hooks_ready = false;
-bool s_notice_held = false;
-unsigned s_owner_wait = 0;
-void (*s_remove_pile)(ppu_context*) = nullptr;
-void (*s_pickup_notice)(ppu_context*) = nullptr;
-struct RefusedPile {
-    uint32_t manager = 0, node = 0, key = 0;
-} s_refused_pile;
-std::vector<RefusedPile> s_prior_piles;
-uint32_t s_ground_manager = 0;
-struct PickupRequest {
-    uint32_t player = 0;
-    uint64_t category = 0, id = 0, count = 0, tag = 0;
-    uint64_t caller = 0, source = 0, toc = 0;
-};
-PickupRequest s_request;
-void (*s_add)(ppu_context*) = nullptr;
-thread_local bool s_pickup_redirect = false;
-thread_local bool s_in_ground_pickup = false;
-thread_local uint32_t s_pickup_inventory = 0;
-int32_t burden_reason();
-struct Added { int slot, count; Entry item; };
-thread_local std::vector<Added> s_added;
-
-PickupRequest pickup_request(ppu_context* ctx)
-{
-    return {pgd(), ctx->gpr[4], ctx->gpr[5], ctx->gpr[6], ctx->gpr[7], ctx->lr, ctx->gpr[31], ctx->gpr[2]};
-}
-
-bool same_pickup(const PickupRequest& a, const PickupRequest& b)
-{
-    return a.player && a.player == b.player && a.category == b.category &&
-           a.id == b.id && a.count == b.count && a.tag == b.tag && a.caller == b.caller && a.source == b.source && a.toc == b.toc;
-}
-
-uint32_t pickup_category(uint32_t cat)
-{
-    switch (cat) {
-    case 0xB: return 0;
-    case 0xC: return 1u << 28;
-    case 0xD: return 2u << 28;
-    case 0xA: return 4u << 28;
-    default: return cat;
-    }
-}
-
-// Native dropped-lot manager: count +8, linked head +0xC, tail +0x10.
-// A node's +8 is its unique key and +0x20 is {category,id,count,metadata}.
-// func_0036D760 removes a node through func_0036C238 before attempting pickup;
-// on refusal the native path creates a new node. Identify that new exact lot.
-bool ground_piles(uint32_t manager, std::vector<RefusedPile>& out)
-{
-    if (!guest_ok(manager, 4) || !guest_ok(vm_read32(manager), 4)) return false;
-    const uint32_t count = vm_read32(manager + 8), tail = vm_read32(manager + 0x10);
-    uint32_t node = vm_read32(manager + 0xC), previous = 0;
-    if (count > 256) return false;
-    for (uint32_t i = 0; i < count; ++i) {
-        if (!guest_ok(node, 4) || vm_read32(node + 4) != previous) return false;
-        out.push_back({manager, node, vm_read32(node + 8)});
-        previous = node;
-        node = vm_read32(node);
-    }
-    return !node && tail == previous;
-}
-
-bool matching_pile(const RefusedPile& pile)
-{
-    const uint32_t r = pile.node + 0x20;
-    return pickup_category(vm_read32(r)) == pickup_category((uint32_t)s_request.category) &&
-        vm_read32(r + 4) == (uint32_t)s_request.id &&
-        vm_read32(r + 8) == (uint32_t)s_request.count &&
-        vm_read32(r + 12) == (uint32_t)s_request.tag;
-}
-
-bool find_refused_pile()
-{
-    std::vector<RefusedPile> live;
-    if (!ground_piles(s_ground_manager, live)) return false;
-    RefusedPile found;
-    for (const auto& pile : live) {
-        bool old = false;
-        for (const auto& prior : s_prior_piles) if (prior.key == pile.key) old = true;
-        if (old || !matching_pile(pile)) continue;
-        if (found.manager) return false; // ambiguous: never authorize another lot
-        found = pile;
-    }
-    s_refused_pile = found;
-    return found.manager != 0;
-}
-
-void release_refused_pile(ppu_context*)
-{
-    if (s_refused_pile.manager) fprintf(stderr, "[des] storage: refused pile left on ground\n");
-    s_refused_pile = {};
-}
-
-void pickup_notice_detour(ppu_context* ctx)
-{
-    // This wrapper only queues the native failure notice and returns its input.
-    // Hold a -1 notice during a watched ground pickup; after pickup returns,
-    // reason 1 stays held for ask_storage and any other reason is played.
-    if (s_pickup_hooks_ready && on() && (int32_t)ctx->gpr[3] == -1 &&
-        (s_ask == Ask::Armed || s_in_ground_pickup)) {
-        s_notice_held = true;
-        fprintf(stderr, "[des] storage: suppressed native burden notice\n");
-        return;
-    }
-    s_pickup_notice(ctx);
-}
-
-/* Only called inside the one ground pickup approved by the player. Other
- * add-item calls (withdrawal, scripts and developer grants) are forwarded. */
-void add_detour(ppu_context* ctx)
-{
-    if (!s_pickup_redirect || (uint32_t)ctx->gpr[3] != s_pickup_inventory) {
-        s_add(ctx);
-        return;
-    }
-    const uint32_t p = pgd(), inv = s_pickup_inventory;
-    const uint32_t stats = vm_read32(inv + 0x1A8);
-    const uint32_t box = p ? vm_read32(p + kPgdBox) : 0;
-    auto deposit = deposit_fn();
-    const uint32_t list = inv + 0xCC;
-    const uint32_t capacity = vm_read32(list + 0x0C);
-    if (!guest_ok(stats, 4) || !guest_ok(box, 4) || !deposit || capacity > 8192) {
-        fprintf(stderr,
-                "[des] storage: approved add skipped (stats %u box %u deposit %d cap %u)\n",
-                guest_ok(stats, 4), guest_ok(box, 4), deposit ? 1 : 0, capacity);
-        storage_write32(inv + 0x1B0, 1);
-        ctx->gpr[3] = (uint64_t)(int64_t)-1;
-        return;
-    }
-    std::vector<Entry> before(capacity);
-    for (uint32_t i = 0; i < capacity; i++) before[i] = entry_at(p, (int)i);
-    const uint32_t limit_at = stats + kBurden;
-    const uint32_t saved_limit = vm_read32(limit_at);
-    const int requested = (int32_t)ctx->gpr[6];
-    vm_writef(limit_at, std::numeric_limits<float>::max());
-    s_add(ctx);
-    storage_write32(limit_at, saved_limit); // restored before any deposit or return
-    const int slot = (int32_t)ctx->gpr[3];
-    if (slot < 0) {
-        fprintf(stderr, "[des] storage: approved add returned %d (reason %u)\n", slot,
-                vm_read32(inv + 0x1B0));
-        return; // preserve stack-limit and all other native failures
-    }
-    const Entry after = entry_at(p, slot);
-    const Entry old = (size_t)slot < before.size() ? before[(size_t)slot] : Entry{};
-    const int delta = after.count - ((old.cat == after.cat && old.id == after.id) ? old.count : 0);
-    if (delta <= 0) {
-        fprintf(stderr, "[des] storage: approved add delta %d at slot %d\n", delta, slot);
-        storage_write32(inv + 0x1B0, 1);
-        ctx->gpr[3] = (uint64_t)(int64_t)-1;
-        return;
-    }
-    if (delta != requested) {
-        call_game(ctx, func_008FD2A8, {inv, slot, -delta, 1});
-        storage_write32(inv + 0x1B0, 1);
-        ctx->gpr[3] = (uint64_t)(int64_t)-1;
-        fprintf(stderr, "[des] storage: partial ground add %d of %d undone; pile retained\n", delta, requested);
-        return;
-    }
-    // Keep the slot alive until the pickup helper finishes applying durability
-    // and optional instance metadata. Transfer before its world-item caller resumes.
-    s_added.push_back({slot, delta, after});
-
-}
 
 uint32_t menus_obj()
 {
@@ -1573,276 +1391,6 @@ extern "C" int des_storage_inventory_message(ppu_context* ctx)
     return 1;
 }
 
-int32_t burden_reason()
-{
-    const uint32_t p = pgd();
-    return p ? (int32_t)vm_read32(p + kPgdInv + 0x1B0u) : 0;
-}
-
-void ask_storage(ppu_context* ctx)
-{
-    const uint32_t m = menus_obj();
-    const uint32_t text = guest_text(ctx, "Item Burden limit reached.\nSend this item to Stockpile Thomas?\nCancel leaves it on the ground.");
-    const uint32_t yes = guest_text(ctx, "Send to Storage");
-    const uint32_t no = guest_text(ctx, "Cancel");
-    if (!m || !text || !yes || !no) {
-        fprintf(stderr, "[des] storage: the pickup prompt could not open\n");
-        s_ask = Ask::Idle;
-        release_refused_pile(ctx);
-        return;
-    }
-
-    call_game(ctx, func_007216D0, {-1, -1});
-    call_game(ctx, func_00720F50, {(int64_t)kSlotDialog, kDialogYesNo});
-    call_game(ctx, func_00720F50, {0x54, 0});
-    call_game(ctx, func_007216F0, {text, yes, no});
-    call_game(ctx, func_00720F50, {0x4E, -1});
-    call_game(ctx, func_00720F50, {0x4F, -1});
-    s_ask = Ask::Asking;
-    s_notice_held = false;
-    fprintf(stderr, "[des] storage: pickup prompt\n");
-}
-
-
-#ifdef _WIN32
-extern "C" __declspec(dllimport) int __stdcall VirtualProtect(void*, size_t, unsigned long, unsigned long*);
-extern "C" __declspec(dllimport) void* __stdcall VirtualAlloc(void*, size_t, unsigned long, unsigned long);
-extern "C" __declspec(dllimport) int __stdcall VirtualFree(void*, size_t, unsigned long);
-extern "C" __declspec(dllimport) int __stdcall FlushInstructionCache(void*, const void*, size_t);
-extern "C" __declspec(dllimport) void* __stdcall GetCurrentProcess(void);
-#endif
-
-int steal_len(const uint8_t* p)
-{
-    int i = 0;
-    if (p[0] == 0xF3 && p[1] == 0x0F && p[2] == 0x1E && p[3] == 0xFA) i = 4;
-    while (i < 14 && i < 32) {
-        if (p[i] >= 0x50 && p[i] <= 0x57) {
-            i += 1;
-            continue;
-        }
-        if (p[i] == 0x41 && p[i + 1] >= 0x50 && p[i + 1] <= 0x57) {
-            i += 2;
-            continue;
-        }
-        if (p[i] == 0x48 && p[i + 1] == 0x83 && p[i + 2] == 0xEC) {
-            i += 4;
-            continue;
-        }
-        if (p[i] == 0x48 && p[i + 1] == 0x81 && p[i + 2] == 0xEC) {
-            i += 7;
-            continue;
-        }
-        // Register and base+displacement moves contain no PC-relative operand.
-        if (p[i] == 0x48 && (p[i + 1] == 0x89 || p[i + 1] == 0x8B)) {
-            const unsigned mod = p[i + 2] >> 6, rm = p[i + 2] & 7;
-            if (mod == 3) { i += 3; continue; }
-            if (mod == 1 && rm != 4) { i += 4; continue; }
-            if (mod == 2 && rm != 4) { i += 7; continue; }
-        }
-        // movaps xmm0..7, [rsp+disp8], the non-REX spill used by the
-        // native refused-pile constructor. Copy the complete instruction.
-        if (p[i] == 0x0F && p[i + 1] == 0x29 &&
-            (p[i + 2] & 0xC7) == 0x44 && p[i + 3] == 0x24) {
-            i += 5;
-            continue;
-        }
-        /* movaps xmm, [rsp+disp8]: the lift spills xmm this way, and it does not use rip. */
-        if (p[i] == 0x44 && p[i + 1] == 0x0F && p[i + 2] == 0x29 && (p[i + 3] == 0x5C || p[i + 3] == 0x54) &&
-            p[i + 4] == 0x24) {
-            i += 6;
-            continue;
-        }
-        return 0;
-    }
-    return i >= 14 ? i : 0;
-}
-
-void write_abs_jmp(uint8_t* at, void* dest)
-{
-    at[0] = 0xFF;
-    at[1] = 0x25;
-    at[2] = at[3] = at[4] = at[5] = 0;
-    memcpy(at + 6, &dest, 8);
-}
-
-void pickup_detour(ppu_context* ctx);
-int32_t burden_reason();
-
-struct LiftHook {
-    const char* name;
-    void (*replacement)(ppu_context*);
-    void (**original)(ppu_context*);
-    uint8_t* code = nullptr;
-    uint8_t* gate = nullptr;
-    int size = 0;
-    unsigned long protection = 0;
-};
-
-bool hook_lifts(LiftHook* hooks, size_t count)
-{
-#if defined(PS3_GAME_SPLIT) && defined(_WIN32)
-    size_t writable = 0;
-    auto abandon = [&]() {
-        // Two entry points may share a page. Restore in reverse order so the
-        // first protection we saw, not a later PAGE_EXECUTE_READWRITE, wins.
-        while (writable) {
-            LiftHook& h = hooks[--writable];
-            unsigned long unused;
-            if (!VirtualProtect(h.code, (size_t)h.size, h.protection, &unused))
-                fprintf(stderr, "[des] storage: could not restore protection for %s\n", h.name);
-        }
-        for (size_t i = 0; i < count; i++)
-            if (hooks[i].gate) {
-                VirtualFree(hooks[i].gate, 0, 0x8000);
-                hooks[i].gate = nullptr;
-            }
-        return false;
-    };
-    // Resolve and prepare every trampoline before modifying any entry point.
-    // A missing symbol, unsupported prologue or allocation failure must not
-    // leave a notice/add hook behind when pickup itself cannot be hooked.
-    for (size_t i = 0; i < count; i++) {
-        LiftHook& h = hooks[i];
-        h.code = (uint8_t*)des_lift_find(h.name);
-        if (!h.code) return abandon();
-        h.size = steal_len(h.code);
-        if (!h.size) {
-            fprintf(stderr, "[des] storage: unsupported prologue for %s\n", h.name);
-            return abandon();
-        }
-        h.gate = (uint8_t*)VirtualAlloc(nullptr, 64, 0x3000, 0x40);
-        if (!h.gate) return abandon();
-        memcpy(h.gate, h.code, (size_t)h.size);
-        write_abs_jmp(h.gate + h.size, h.code + h.size);
-        FlushInstructionCache(GetCurrentProcess(), h.gate, 64);
-    }
-    // Acquire all write permissions first. Failure here still leaves every
-    // function's bytes and every original callback unchanged.
-    for (size_t i = 0; i < count; i++) {
-        LiftHook& h = hooks[i];
-        if (!VirtualProtect(h.code, (size_t)h.size, 0x40, &h.protection)) return abandon();
-        writable++;
-    }
-    for (size_t i = 0; i < count; i++) *hooks[i].original = (void (*)(ppu_context*))hooks[i].gate;
-    for (size_t i = 0; i < count; i++) {
-        LiftHook& h = hooks[i];
-        write_abs_jmp(h.code, (void*)h.replacement);
-        FlushInstructionCache(GetCurrentProcess(), h.code, (size_t)h.size);
-    }
-    while (writable) {
-        LiftHook& h = hooks[--writable];
-        unsigned long unused;
-        if (!VirtualProtect(h.code, (size_t)h.size, h.protection, &unused))
-            fprintf(stderr, "[des] storage: could not restore protection for %s\n", h.name);
-    }
-    return true;
-#else
-    return false;
-#endif
-}
-
-void install_pickup()
-{
-    static bool tried = false;
-    if (tried || !on()) return;
-    tried = true;
-#ifdef PS3_GAME_SPLIT
-    s_remove_pile = des_lift_find("func_0036C238");
-#endif
-    LiftHook hooks[] = {
-        {"func_004C7B20", pickup_notice_detour, &s_pickup_notice},
-        {"func_008FB4F0", add_detour, &s_add},
-        {"func_004C6DF0", pickup_detour, &s_pickup},
-    };
-    if (!s_remove_pile || !hook_lifts(hooks, sizeof hooks / sizeof hooks[0])) {
-        fprintf(stderr, "[des] storage: pickup hooks unavailable; native pickup retained\n");
-        return;
-    }
-    s_pickup_hooks_ready = true;
-    fprintf(stderr, "[des] storage: ground pickup hooks installed\n");
-}
-
-void pickup_detour(ppu_context* ctx)
-{
-    const PickupRequest request = pickup_request(ctx);
-    std::vector<RefusedPile> prior;
-    const bool ground_owner = on() && s_ask == Ask::Idle &&
-        ground_piles((uint32_t)request.source, prior);
-    const bool redirect = on() && s_redirect && same_pickup(request, s_request);
-    const uint32_t inv = request.player ? request.player + kPgdInv : 0;
-    const uint32_t reason = inv ? vm_read32(inv + 0x1B0) : 0;
-    if (redirect) {
-        s_redirect = 0;
-        s_pickup_redirect = true;
-        s_pickup_inventory = inv;
-        s_added.clear();
-    }
-    s_in_ground_pickup = on() && !redirect && s_ask == Ask::Idle;
-    s_pickup(ctx);
-    drain(ctx);
-    s_in_ground_pickup = false;
-    s_pickup_redirect = false;
-    s_pickup_inventory = 0;
-    if (!redirect && s_notice_held && ((int32_t)ctx->gpr[3] != -1 || burden_reason() != 1)) {
-        s_notice_held = false;
-        call_game(ctx, s_pickup_notice, {-1});
-    }
-    if (redirect) {
-        const uint32_t box = vm_read32(request.player + kPgdBox);
-        // The box is an inline array of 2048 records, with a 12-byte header and
-        // the high-water index at +0xA00C. Save it to roll back a multi-entry lot.
-        constexpr uint32_t box_bytes = 0xA010;
-        std::vector<uint32_t> before(box_bytes / 4);
-        for (uint32_t i = 0; i < box_bytes / 4; i++) before[i] = vm_read32(box + i * 4);
-        const int32_t result = (int32_t)ctx->gpr[3];
-        bool ok = result == 0 && !s_added.empty();
-        size_t moved = 0;
-        for (; ok && moved < s_added.size(); moved++) {
-            const Added& a = s_added[moved];
-            ok = a.count <= storage_room(ctx, box, a.item) &&
-                call_game(ctx, deposit_fn(), {box, inv, a.slot, a.count}) == 1;
-            if (!ok) break;
-        }
-        if (!ok) {
-            // Deposited additions are already absent from inventory; remove the
-            // remaining additions and undo all box writes before returning failure.
-            for (uint32_t i = 0; i < box_bytes / 4; i++) storage_write32(box + i * 4, before[i]);
-            for (size_t i = moved; i < s_added.size(); i++) {
-                const Added& a = s_added[i];
-                call_game(ctx, func_008FD2A8, {inv, a.slot, -a.count, 1});
-            }
-            ctx->gpr[3] = (uint64_t)(int64_t)-1;
-            fprintf(stderr, "[des] storage: approved ground pickup failed (result %d, added %u); pile left unconsumed\n",
-                    result, (unsigned)s_added.size());
-        } else {
-            for (const Added& a : s_added)
-                fprintf(stderr, "[des] storage: ground deposit category %08x id %u x%d\n", a.item.cat, a.item.id, a.count);
-            ctx->gpr[3] = 0;
-        }
-        s_added.clear();
-        storage_write32(inv + 0x1B0, reason);
-        return;
-    }
-    if (!s_pickup_hooks_ready || !on() || s_ask != Ask::Idle || s_redirect || s_inventory_transfer.state != InventoryAsk::Idle) return;
-    if ((int32_t)ctx->gpr[3] != -1 || burden_reason() != 1) return;
-    s_request = request;
-    s_ground_manager = ground_owner ? (uint32_t)request.source : 0;
-    s_prior_piles = std::move(prior);
-    s_ask = Ask::Armed;
-    s_owner_wait = 0;
-    fprintf(stderr, "[des] storage: burden refused a ground pickup (caller %llx source %llx)\n",
-            (unsigned long long)request.caller, (unsigned long long)request.source);
-}
-
-void approved_pickup(ppu_context* ctx)
-{
-    ctx->gpr[2] = s_request.toc;
-    ctx->gpr[31] = s_request.source;
-    ctx->lr = s_request.caller;
-    pickup_detour(ctx);
-}
-
 void ensure_help_blank_text(ppu_context* ctx)
 {
     if (!s_help_blank_text) s_help_blank_text = guest_text(ctx, "");
@@ -1852,7 +1400,6 @@ void ensure_help_blank_text(ppu_context* ctx)
 void storage_tick(ppu_context* ctx)
 {
     ++s_nav_tick;
-    install_pickup();
     sync_navigation("tick");
     if (on()) ensure_help_blank_text(ctx);
     sync_send_help_blank();
@@ -1866,95 +1413,9 @@ void storage_tick(ppu_context* ctx)
             s_line_state = 0;
         }
         s_forced = 0;
-        s_redirect = 0;
-        s_ask = Ask::Idle;
-        release_refused_pile(ctx);
-        if (s_notice_held && s_request.player == pgd()) call_game(ctx, s_pickup_notice, {-1});
-        s_notice_held = false;
         return;
     }
-    if (s_request.player && s_request.player != pgd()) {
-        s_ask = Ask::Idle;
-        s_redirect = 0;
-        s_request = {};
-        s_refused_pile = {}; // the original level no longer owns this manager
-        s_notice_held = false;
-    }
-    // A held pickup/confirm button must be released before the default action
-    // becomes available, so one press cannot both pick up and send the item.
-    if (s_ask == Ask::Armed && !(g_pad0_buttons & 0x6000u)) {
-        if (find_refused_pile()) {
-            fprintf(stderr, "[des] storage: validated refused ground key %u id %u x%u\n",
-                    s_refused_pile.key, (unsigned)s_request.id, (unsigned)s_request.count);
-            ask_storage(ctx);
-        }
-        else if (++s_owner_wait > 30) {
-            s_ask = Ask::Idle;
-            if (s_notice_held) call_game(ctx, s_pickup_notice, {-1});
-            s_notice_held = false;
-            fprintf(stderr, "[des] storage: pickup has no deferred ground owner; native failure retained\n");
-        }
-    }
-    // The Storage question can close the native acquisition window. Repeat
-    // the dropped-lot caller's acquisition setup before replaying pickup;
-    // without it native pickup returns zero without adding anything.
-    if (s_ask == Ask::Approved && !(g_pad0_buttons & 0x6000u)) {
-        s_ask = Ask::Idle;
-        if (find_refused_pile()) {
-            const uint32_t p = pgd();
-            const uint32_t box = p ? vm_read32(p + kPgdBox) : 0;
-            const Entry item{pickup_category((uint32_t)s_request.category), (uint32_t)s_request.id,
-                             (int32_t)s_request.count};
-            // Reject before native acquisition can queue its success window.
-            // The inner deposit guard still rechecks capacity at commit time.
-            if (s_request.count < 1 || s_request.count > 9999 ||
-                item.count > storage_room(ctx, box, item)) {
-                fprintf(stderr, "[des] storage: box cannot fit ground id %u x%d; pile retained\n", item.id, item.count);
-                release_refused_pile(ctx);
-                call_game(ctx, func_0072D970, {200});
-                return;
-            }
-#ifdef PS3_GAME_SPLIT
-            static auto prepare = des_lift_find("func_004C58F0");
-            static auto mode = des_lift_find("func_004C2B98");
-            if (!prepare || !mode) {
-                release_refused_pile(ctx);
-                s_request = {};
-                return;
-            }
-            call_game(ctx, prepare, {0, 0, 0, 30, 0, 1});
-            call_game(ctx, mode, {7});
-#endif
-            const RefusedPile pile = s_refused_pile;
-            s_redirect = 1;
-            const uint32_t result = call_game(ctx, approved_pickup,
-                {(int64_t)s_request.player, (int64_t)s_request.category, (int64_t)s_request.id,
-                 (int64_t)s_request.count, (int64_t)s_request.tag});
-            s_redirect = 0;
-            if (result == 0) {
-                call_game(ctx, s_remove_pile, {pile.manager, pile.key});
-                s_refused_pile = {};
-                fprintf(stderr, "[des] storage: approved pickup completed without another Cross\n");
-            } else release_refused_pile(ctx);
-        } else release_refused_pile(ctx);
-        s_request = {};
-    }
-    if (s_ask == Ask::Asking) {
-        const uint32_t m = menus_obj();
-        if (m && (int32_t)vm_read32(m + 0x14 + 4 * kSlotDialog) == 0) {
-            const int32_t answer = (int32_t)vm_read32(m + kDialogAnswer);
-            fprintf(stderr, "[des] storage: pickup answer %d\n", answer);
-            s_ask = Ask::Idle;
-            if (answer == 1 && find_refused_pile()) {
-                s_ask = Ask::Approved;
-            } else {
-                release_refused_pile(ctx);
-                s_request = {};
-            }
-        }
-    }
 }
-
 } // namespace
 
 extern "C" void des_storage_tick(ppu_context* ctx) { storage_tick(ctx); }
