@@ -23,11 +23,13 @@
  * code.
  *
  * DES_STORAGE_LOG=1 also prints the command menu's pieces the first time it
- * opens. */
+ * opens. DES_STORAGE_NAV_TRACE=1 records native selection transitions and
+ * confirmation, with menu ticks and draws, for timing diagnostics. */
 
 #include "ps3emu/ppu_lift.h"
 #include "des_region.h"
 #include "des_game_calls.h"
+#include "des_storage_navigation.h"
 #include "ps3emu/ps3_knob.h"
 #include <cmath>
 #include <cstdint>
@@ -43,7 +45,7 @@ extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
 #endif
 extern "C" void ds_malloc(ppu_context* ctx);
 extern "C" int des_hud_obj_rect(ppu_context* ctx, uint32_t obj, float out[4]);
-extern "C" volatile unsigned g_pad0_buttons, g_pad0_reads;
+extern "C" volatile unsigned g_pad0_buttons, g_pad0_reads, g_pad0_empty_reads;
 #ifdef PS3_GAME_SPLIT
 extern "C" void (*des_lift_find(const char* name))(ppu_context*);
 #endif
@@ -61,7 +63,6 @@ constexpr uint32_t kKids = 0x0Cu, kKidCount = 0x10u;
 constexpr uint32_t kObjFlags = 0x18u, kObjRecord = 0x1Cu;
 constexpr uint32_t kObjDrawn = 0x40000000u;
 constexpr uint32_t kRect = 0x74u, kLayout = 0x84u;
-constexpr unsigned kPadUp = 0x0010u, kPadDown = 0x0040u;
 constexpr uint32_t kToc = 0x019B5040u;
 
 bool guest_ok(uint32_t a, uint32_t align)
@@ -139,6 +140,13 @@ bool logging()
     static int s_log = 0;
     PS3_KNOB(s_log, ps3_env_int("DES_STORAGE_LOG", 0));
     return s_log != 0;
+}
+
+bool navigation_trace()
+{
+    static int enabled = 0;
+    PS3_KNOB(enabled, ps3_env_int("DES_STORAGE_NAV_TRACE", 0));
+    return enabled != 0;
 }
 
 void drain(ppu_context* ctx)
@@ -556,14 +564,10 @@ uint32_t s_grayout = 0; /* Drop's disabled overlay, shifted onto Send */
 uint32_t s_text_at = 0; /* the word that holds the line's text pointer */
 uint32_t s_label_ptr = 0;
 float s_top = 0, s_bot = 0, s_drop_y = 0, s_gap = 0;
-int s_vis = 0;
+DesStorageNavigation s_navigation;
+int& s_vis = s_navigation.row;
 int s_forced = 0;
-int s_before = -1;
-int s_game_max = 0;
-unsigned s_prev_pad = 0;
-int s_arm = 1;
-unsigned s_reads = 0;
-int s_saw = 0;
+uint64_t s_nav_tick = 0, s_nav_draw = 0;
 
 int s_have_target = 0;
 uint32_t s_dlg = 0;
@@ -705,10 +709,8 @@ bool ensure_line(ppu_context* ctx, uint32_t dlg)
         native_kids = vm_read32(dlg + kKids);
         native_count = vm_read32(dlg + kKidCount);
         s_layout_writes.clear();
-        s_vis = 0;
-        s_before = -1;
+        s_navigation.reset();
         s_forced = 0;
-        s_arm = 1;
         s_dlg = dlg;
         s_line = 0;
         s_mark = 0;
@@ -1004,26 +1006,49 @@ void show_line()
 bool send_blocked(ppu_context* ctx, uint32_t dlg);
 void sync_send_grayout(ppu_context* ctx, uint32_t dlg);
 
+bool command_open()
+{
+    return s_dlg && guest_ok(s_dlg, 4) && is_command(s_dlg) && vm_read8(s_dlg + 0x94) != 0;
+}
+
+int sync_navigation(const char* phase, bool confirming = false)
+{
+    // Native dispatch may hide the command before invoking its callback. Keep
+    // that callback's established selection until it has consumed the action.
+    const bool dispatching = confirming && s_navigation.active() && s_dlg &&
+                             guest_ok(s_dlg, 4) && is_command(s_dlg);
+    if (!on() || (!command_open() && !dispatching)) {
+        s_navigation.reset();
+        s_forced = 0;
+        return 0;
+    }
+    const int native = (int32_t)vm_read32(s_dlg + kCmdRow);
+    if (native < 0 || native > 3) return 0;
+    const int previous = s_vis, expected = s_navigation.expected;
+    const int step = s_navigation.observe(native);
+    s_forced = s_navigation.send();
+    // Publish the projection immediately: another draw or a confirm cannot
+    // consume the same native transition a second time.
+    vm_write32(s_dlg + kCmdRow, (uint32_t)s_navigation.projected());
+    s_navigation.expected = s_navigation.projected();
+    if (step && navigation_trace())
+        fprintf(stderr, "[storage-nav] phase=%s tick=%llu draw=%llu dlg=%08x reads=%u empty=%u pad=%04x native=%d expected=%d from=%d to=%d step=%d\n",
+                phase, (unsigned long long)s_nav_tick, (unsigned long long)s_nav_draw, s_dlg,
+                (unsigned)g_pad0_reads, (unsigned)g_pad0_empty_reads, (unsigned)g_pad0_buttons,
+                native, expected, previous, s_vis, step);
+    return step;
+}
+
 /* Visual row: 0 Use, 1 Drop, 2 Send to Storage, 3 Reorganize, 4 Auto Sort.
  * The game's own row skips 2 (Send sits between Drop and Reorganize). */
 
 void on_draw(ppu_context* ctx, uint32_t dlg)
 {
+    ++s_nav_draw;
     sync_send_help_blank();
-    const unsigned reads = g_pad0_reads;
-    if (reads != s_reads) {
-        if (!s_saw) {
-            s_before = -1;
-            s_game_max = 0;
-            s_vis = 0;
-            s_forced = 0;
-            s_arm = 1;
-        }
-        s_saw = 0;
-        s_reads = reads;
-    }
     if (!on()) {
         if (is_command(dlg)) hide_line();
+        s_navigation.reset();
         s_forced = 0;
         return;
     }
@@ -1034,8 +1059,8 @@ void on_draw(ppu_context* ctx, uint32_t dlg)
         fprintf(stderr, "[des] storage: draw hook\n");
     }
     if (!is_command(dlg) || vm_read8(dlg + 0x94) == 0) return;
-    s_saw = 1;
     if (!ensure_line(ctx, dlg)) return;
+    const int step = sync_navigation("draw");
     show_line();
     sync_send_grayout(ctx, dlg);
     // The fifth plate owns its shape. Tint its textured fill for Auto Sort;
@@ -1047,32 +1072,8 @@ void on_draw(ppu_context* ctx, uint32_t dlg)
         storage_write8(shape + 0x12, 96);
         storage_write8(shape + 0x13, 255);
     }
-    const unsigned pad = g_pad0_buttons;
     const int game_row = (int)(int32_t)vm_read32(dlg + kCmdRow);
-    if (s_arm) {
-        s_prev_pad = pad;
-        s_arm = 0;
-        s_before = game_row;
-        s_game_max = game_row;
-        return;
-    }
-    const unsigned down = (pad & kPadDown) && !(s_prev_pad & kPadDown);
-    const unsigned up = (pad & kPadUp) && !(s_prev_pad & kPadUp);
-    s_prev_pad = pad;
     const float cy = cursor_top(ctx, dlg);
-    if (game_row > s_game_max) s_game_max = game_row;
-    /* One step. If the game already moved its row for this press, that is the step. */
-    int step = 0;
-    if (down) step = 1;
-    if (up) step = -1;
-    if (!step && game_row != s_before && s_before >= 0) {
-        // Native four-row navigation wraps at 3; our fifth visual row does not.
-        step = s_before == 3 && game_row == 0 ? 1 :
-               s_before == 0 && game_row == 3 ? -1 : game_row > s_before ? 1 : -1;
-    }
-    if (step > 0 && s_vis < 4) s_vis++;
-    if (step < 0 && s_vis > 0) s_vis--;
-    s_forced = s_vis == 2;
     sync_send_help_blank();
 
     if (s_text_at && s_label_ptr) storage_write32(s_text_at, s_label_ptr);
@@ -1096,9 +1097,6 @@ void on_draw(ppu_context* ctx, uint32_t dlg)
      * and Reorganize the fourth. Auto Sort is past those four, so the bar stays on
      * the fourth slot until its own highlight is shown, and the confirm puts the
      * game's row back before the original command runs. */
-    const int mapped = s_vis < 4 ? s_vis : 3;
-    s_before = mapped;
-    vm_write32(dlg + kCmdRow, (uint32_t)mapped);
     const char* slots[] = {"cursor", "cursor0_0", "cursor1_0", "cursor2_0", "cursor3_0", "cursor4_0"};
     for (int i = 0; i < 6; i++) {
         const uint32_t obj = find_named(dlg, slots[i]);
@@ -1233,8 +1231,7 @@ int deposit_inventory(ppu_context* ctx, const InventoryTransfer& pending)
         storage_write8(inv + 0x140, 1);
         storage_write8(inv + 0x141, 1);
         s_forced = 0;
-        s_vis = 0;
-        s_arm = 1;
+        s_navigation.reset();
         call_game(ctx, func_0072D970, {100});
         // The native picker already owns its return transition. Re-entering
         // inventory mode here can leave its old quantity dialog alive.
@@ -1246,17 +1243,17 @@ int deposit_inventory(ppu_context* ctx, const InventoryTransfer& pending)
     return 1;
 }
 
-bool send_row_active(ppu_context* ctx)
+bool send_row_active()
 {
-    if (s_vis == 2) return true;
-    if (!s_have_target || s_gap <= 0.0f || !s_dlg) return false;
-    const float cy = cursor_top(ctx, s_dlg);
-    if (cy < 0.0f) return false;
-    return std::fabs(cy - (s_drop_y + s_gap)) <= s_gap * 0.45f;
+    return s_navigation.send();
 }
 
 extern "C" int des_storage_command(ppu_context* ctx)
 {
+    if (navigation_trace())
+        fprintf(stderr, "[storage-nav] confirm tick=%llu draw=%llu dlg=%08x visual=%d native=%d pad=%04x\n",
+                (unsigned long long)s_nav_tick, (unsigned long long)s_nav_draw, (uint32_t)ctx->gpr[3], s_vis,
+                s_dlg ? (int32_t)vm_read32(s_dlg + kCmdRow) : -1, (unsigned)g_pad0_buttons);
     // A new command choice revokes an Armed request so Use/Drop can open
     // their own picker. Asking/Ready still own message 2000; clearing them
     // here would let that 2000 fall through to native Drop.
@@ -1265,10 +1262,12 @@ extern "C" int des_storage_command(ppu_context* ctx)
     if (!on() || (uint32_t)ctx->gpr[3] != s_dlg || !is_command(s_dlg)) return 0;
     if (s_inventory_transfer.state == InventoryAsk::Asking ||
         s_inventory_transfer.state == InventoryAsk::Ready) return 1;
-    const bool send = send_row_active(ctx);
+    sync_navigation("confirm", true);
+    const bool send = send_row_active();
     if (s_vis > 2 && !send) {
-        fprintf(stderr, "[des] storage: confirm visual row %d -> native row %u\n", s_vis, s_vis == 3 ? 2u : 3u);
-        storage_write32(s_dlg + kCmdRow, s_vis == 3 ? 2u : 3u);
+        const uint32_t command = (uint32_t)s_navigation.dispatch();
+        fprintf(stderr, "[des] storage: confirm visual row %d -> native row %u\n", s_vis, command);
+        storage_write32(s_dlg + kCmdRow, command);
         return 0;
     }
     if (!send) return 0;
@@ -1852,7 +1851,9 @@ void ensure_help_blank_text(ppu_context* ctx)
 
 void storage_tick(ppu_context* ctx)
 {
+    ++s_nav_tick;
     install_pickup();
+    sync_navigation("tick");
     if (on()) ensure_help_blank_text(ctx);
     sync_send_help_blank();
     inventory_confirmation_tick(ctx);
