@@ -243,7 +243,7 @@ where it is then.
   the help line from it every frame. Its input keeps to row 0 while +0xF5 is set, and steps over row 1 (Load
   Profile) while +0xF7 is. A click on a row it would not go to walks instead.
 - **Lists** (DsMenuDlgListbox and the classes built on it: the inventory, an equipment slot's items, Create
-  Profile's rows, ...). A list is
+  Profile's rows, an NPC's talk menu, ...). A list is
   told by its vt+0x8C, the list's own cursor placement (0x007814F0), so a class that keeps it counts, with no
   table of screens.
   - Its fields: +0x100 is the row in its window of +0xF4 rows, showing items from +0x108 of +0x104.
@@ -252,6 +252,9 @@ where it is then.
     the cursor and takes the item at +0x108 plus the row (menu variable 0x72).
   - A click on a row of the window that holds an item needs no scrolling, so it does the same. A row past the last
     item walks (and stops, as before). A list shown as a grid of icons (spots with a column) walks.
+  - Then it places the cursor itself (vt+0x8C, which clears +0x111). An NPC's talk menu (DsMenuDlgTalkMsgbox,
+    0x01868DF8: Thomas's Deposit Item / Take Item, Boldwin's) places nothing in its update; its input calls vt+0x8C
+    after each step. Without that, a click there set the row unseen and the walk then went past it and back.
 - **Button groups** (DsMenuDlgButtonGroup and the classes that keep its vt+0x88, the hook before a step, or its
   input at vt+0x8C, 0x00777C90: the inventory's command menu, the equipment's slots (DsMenuDlgEquip), ...).
   - Its fields: the row is +0xF4 and the column +0xF8, of +0xFC rows by +0x100 columns.
@@ -271,18 +274,29 @@ where it is then.
   - DEFAULT is the step right from OK (0x007CA7E0(this, _, 11, _, _)): it sets row 12 with DEFAULT's help line,
     places the cursor and plays the tick. A click on DEFAULT goes to OK first as above (unless the cursor is on OK),
     then takes that step and redraws OK's row (0x007CAA70), as the input does after a step right.
-- **The inventory's categories** (DsMenuDlgEquipListTab, vtable 0x01866570).
-  - The category shown is the menu variable that tabs +0x108 names (the inventory's +0x144 names the same one), of
-    tabs +0xF4 to +0xF4 + +0xF8. +0x104 points to a word for each tab: a step passes over a tab whose word is not 0.
-  - The inventory's input takes left and right in its state 2 (+0x158), and none while 0x00778AB8 says so. Each
-    calls 0x00820DD0(this, right, wrap). That keeps the list's place (+0x108) in menu variable 0x12D plus the category
-    left, steps the tabs (their property 0xBCB), takes the new category's place, and builds its list.
+- **The category tabs** (DsMenuDlgEquipListTab, vtable 0x01866570) of the inventory, Thomas's Deposit Item and Take
+  Item, a merchant's Buy Item and the blacksmith's Repair Equipment.
+  - The category shown is the menu variable that tabs +0x108 names (the owner's +0x144 names the same one), of
+    tabs +0xF4 to +0xF4 + +0xF8. +0x104 points to a word for each tab: a step passes over a tab whose word is not 0
+    (a shop's greyed categories). The pad never reaches those, so a click on one does nothing (a walk to it went
+    round the others and stopped on one of them).
+  - The owner's input calls its category change (this, right, wrap) on left and right. Each begins with the shared
+    step 0x007413E8: it keeps the list's place (+0x108) in menu variable 0x12D plus the category left, steps the
+    tabs (their property 0xBCB) and takes the new category's place; then the class builds its list.
+
+    | Owner | Class, vtable | Category change | Its input's left and right |
+    |---|---|---|---|
+    | Inventory | DsMenuDlgInventory, 0x0186C318 | 0x00820DD0 | in state 2 (+0x158), none while 0x00778AB8 says so |
+    | Deposit Item | DsMenuDlgDepository, 0x0186C8A0 | 0x00835E10 | always |
+    | Take Item | DsMenuDlgRepository, 0x0186C9F8 | 0x00839748 | in state 2 (+0x16C) |
+    | Buy Item | DsMenuDlgBasicShop, 0x0186DC08 | 0x008725F8 | always; then sets the list's +0x111 |
+    | Repair Equipment | DsMenuDlgFixShop, 0x0186DD88 | 0x00877980 (it plays the tick) | always; then sets +0x111 |
   - A step sets tabs +0xFC and is refused while it is set, and the tabs' update clears it: one step a frame. So
     two presses showed the category between for a frame.
   - A click on another category sets the tabs to the one beside it first. It also keeps the list's place for the
-    category left, and gives the inventory the place kept for the tab beside it, so that the step keeps it unchanged.
+    category left, and gives the owner the place kept for the tab beside it, so that the step keeps it unchanged.
     Then one category change goes to the clicked one, with the tick.
-  - The inventory is found among the dialogs drawn, not the menus: a category with no items gives its list no spots.
+  - The owner is found among the dialogs drawn, not the menus: a category with no items gives its list no spots.
 - **The profile list** (DsMenuDlgSelectProfile, vtable 0x0186BE58: LOAD GAME's, and System's Load Profile): its row
   is +0xF8 (0 to 3). Its step goes one row and skips none (empty slots too), and its update places the cursor from
   it every frame.
@@ -297,8 +311,8 @@ where it is then.
   presses the arrow: an Options value changes in one click with no walk.
 
 Every other menu still walks. Among them: the title's NEW GAME / LOAD GAME (one step; the menu the port sees there
-is the cursor's dialog, not the title's), lists shown as a grid of icons, and the same category tabs in other
-dialogs (each calls the tabs' step from a category change of its own).
+is the cursor's dialog, not the title's), lists shown as a grid of icons, and the same category tabs where the
+step is called from inside an input (0x00739C98).
 
 ## 4. The UI's side (port/ui/src/game_menu.cpp)
 
