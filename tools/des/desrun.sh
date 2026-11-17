@@ -9,6 +9,13 @@
 # launches a copy in $DES_SCRATCH/bin (des_stage_exe), so rebuilding never
 # fails on a locked exe while it runs.
 # COLD_CACHE=1 wipes the game's HDD cache first (the default keeps it).
+# DES_ELF=setup starts the program as a player's start does, with no ELF: the
+# program's own launch step then takes the game setup built from
+# DES_SETUP_DATA's setup/ready.txt (its module, the disc folder, the update,
+# the decrypted .sdat copies, the EBOOT; port/ui/src/des_ui.cpp). That is how
+# to run a player build (a release zip's program and its setup's data folder):
+# it cannot decrypt, so with the default ELF argument the title's .sdat files
+# have no decrypted copy and no level loads. DES_ELF=<file> passes another ELF.
 # Defaults (VFS root, quiet logs, priority, affinity) are in deslib.sh.
 set -uo pipefail
 . "$(dirname "$0")/deslib.sh"
@@ -19,6 +26,13 @@ case "$OUT" in /*|?:*) ;; *) OUT="$DES_SCRATCH/$OUT" ;; esac
 
 des_env_defaults
 for kv in "$@"; do export "$kv"; done
+ELF=("${DES_ELF:-work/game/EBOOT.ELF}")
+if [ "${DES_ELF:-}" = setup ]; then
+  # Without DES_SETUP_DATA the launch step would take the player's own data folder.
+  [ -n "${DES_SETUP_DATA:-}" ] || { echo "desrun: DES_ELF=setup needs DES_SETUP_DATA (a setup's data folder)"; exit 1; }
+  ELF=()
+  export DES_KEEP_CWD=1   # the launch step would move the run into the staged exe's folder
+fi
 
 # A leftover game from an earlier run of ours would keep a core busy.
 des_kill_own
@@ -26,7 +40,7 @@ if [ "${COLD_CACHE:-0}" = 1 ]; then rm -rf "$(des_cache_dir)"; fi
 EXE="$(des_stage_exe)" || { echo "desrun: could not stage the exe"; exit 1; }
 des_window_launch   # (DES_WINDOW: hidden while someone is at the PC)
 START=$SECONDS
-timeout "$TIMEOUT" "${DES_LAUNCH[@]}" "$EXE" work/game/EBOOT.ELF > "$OUT" 2>&1
+timeout "$TIMEOUT" "${DES_LAUNCH[@]}" "$EXE" "${ELF[@]}" > "$OUT" 2>&1
 rc=$?
 des_wait_own $((TIMEOUT - (SECONDS - START)))   # the game that setup's Play started, if any
 des_kill_own

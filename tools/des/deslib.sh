@@ -19,9 +19,22 @@ if [ "${DES_KIND:-test}" = play ]; then
   DES_BIN="$DES_SCRATCH/play_bin"; DES_OWN_MARK=".des_play"
 else
   DES_PIDFILE="$(cygpath -m "$DES_SCRATCH" 2>/dev/null || echo "$DES_SCRATCH")/des_boot.pids"
-  DES_BIN="$DES_SCRATCH/bin"; DES_OWN_MARK=".des_staged"
+  DES_BIN="$DES_SCRATCH/bin"; DES_OWN_MARK=".des_staged${DES_TEST_MARK:+.$DES_TEST_MARK}"
 fi
-DES_STAGED_MARK=".des_staged"   # beside each test run's staged des_boot.exe
+# Beside each test run's staged des_boot.exe. A test run's des_kill_own stops every game staged with it, in any
+# DES_SCRATCH. Two sessions that run tests side by side each set their own DES_TEST_MARK=<name> (letters and digits):
+# their marker is then .des_staged.<name>, so neither one's runs stop the other's games, and each still clears its own
+# leftovers. A play session clears every test run, whatever its marker (des_test_copy_in).
+DES_STAGED_MARK=".des_staged${DES_TEST_MARK:+.$DES_TEST_MARK}"
+
+# des_test_copy_in <dir>: a test run's staged copy is in <dir>: one with this run's marker, or for a play session one
+# with any test marker.
+des_test_copy_in() {
+  [ "${DES_KIND:-test}" = play ] || { [ -f "$1/$DES_STAGED_MARK" ]; return; }
+  local f
+  for f in "$1"/.des_staged "$1"/.des_staged.*; do [ -f "$f" ] && return 0; done
+  return 1
+}
 
 # True while the Windows session is at the lock screen (LogonUI is running).
 des_session_locked() {
@@ -151,8 +164,8 @@ des_stage_exe() {
 # by hand is left alone. Two sources, so it works from any shell: the pid file
 # of the current DES_SCRATCH and kind, and every running des_boot.exe whose exe
 # has the test-run staging marker beside it (any DES_SCRATCH, including runs
-# started from an earlier shell with a different one). The build output and a
-# play session's copy have no test-run marker.
+# started from an earlier shell with a different one; DES_TEST_MARK above). The
+# build output and a play session's copy have no test-run marker.
 # It returns once they have gone: taskkill only starts a process's end, and a
 # save put back meanwhile could take the game's last writes. Then it looks
 # once more, for a game one of them had just started (setup's Play starts the
@@ -173,7 +186,7 @@ des_kill_own() {
     while IFS='|' read -r pid exe _; do
       pid="${pid//[!0-9]/}"; exe="$(printf %s "$exe" | tr -d '\015')"   # powershell writes CRLF
       [ -n "$pid" ] && [ -n "$exe" ] || continue
-      [ -f "$(dirname "$(cygpath -u "$exe")")/$DES_STAGED_MARK" ] || continue
+      des_test_copy_in "$(dirname "$(cygpath -u "$exe")")" || continue
       taskkill //F //PID "$pid" > /dev/null 2>&1; ids="$ids $pid"
     done < <(des_games)
     [ -n "$ids" ] || break
