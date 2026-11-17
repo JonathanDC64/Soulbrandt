@@ -1678,6 +1678,11 @@ void handle_events(ppu_context* ctx)
             /* Where the menu can be, the spot is selected at once; the walk then only confirms (or walks, if the
              * select did not show). */
             const bool now = !s_walk_only && m.cur != si && select_now(ctx, m, m.spots[si]);
+            if (now && des_storage_mouse_row(m.owner) >= 0 && !m.tabs && !m.stay) {
+                s_walk.on = false;
+                press(kPadCross);
+                break;
+            }
             start_walk(m, m.spots[si]);
             if (now) s_walk.direct = kDirectWait;
             break;
