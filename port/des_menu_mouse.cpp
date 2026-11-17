@@ -58,6 +58,7 @@
 #include <cstring>
 #include <deque>
 #include <functional>
+#include <initializer_list>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -69,6 +70,7 @@ extern "C" float des_hud_side_width(void);                                      
 extern "C" float des_hud_top_height(void);                                      /* des_aspect.cpp */
 extern "C" float des_frame_step(void);                                          /* des_options.cpp: this frame's game s */
 extern "C" volatile unsigned g_pad0_reads, g_pad0_empty_reads;                  /* cellPad.c */
+extern "C" void ps3_indirect_call(ppu_context* ctx);   /* ppu_loader.cpp: a call to the guest address in CTR */
 
 namespace {
 
@@ -90,6 +92,41 @@ constexpr unsigned kPadUp = 0x0010u, kPadRight = 0x0020u, kPadDown = 0x0040u, kP
 constexpr unsigned kPadL2 = 0x0100u, kPadR2 = 0x0200u, kPadL1 = 0x0400u, kPadR1 = 0x0800u;
 constexpr unsigned kPadCircle = 0x2000u, kPadCross = 0x4000u, kPadStart = 0x0008u;
 constexpr uint32_t kTitleVt = 0x0186A968u;     /* DsMenuDlgTitle: "PRESS START BUTTON", no cursor */
+/* Menus a click selects at once (select_now), as their own input code does it. */
+constexpr uint32_t kStartTabVt = 0x018692C0u;  /* DsMenuDlgStartTab: the pause menu's bar */
+constexpr uint32_t kSystemVt = 0x0186EF60u;    /* DsMenuDlgSystem: Options, Load Profile, Quit Game */
+constexpr int kBarTabVar = 0x4B;               /* the menu variable (0x00720F20/0x00720F50) that holds the bar's tab */
+constexpr int kTabs = 5;                       /* the bar's tabs (its step, 0x0079B2C0, wraps at 4) */
+constexpr int kDirectWait = 10;                /* passes a direct select may take to show before the walk does it */
+constexpr uint32_t kDlgInput = 0xA0u;          /* bit 31 set while the dialog takes input (0x00F55A18 asks it) */
+constexpr uint32_t kListPlaceFn = 0x007814F0u; /* DsMenuDlgListbox's cursor placement, its vt+0x8C: a list keeps it */
+constexpr uint32_t kListRows = 0xF4u, kListRow = 0x100u, kListItems = 0x104u, kListTop = 0x108u, kListPlace = 0x111u;
+/* DsMenuDlgButtonGroup's hook before a step (its vt+0x88, "return 0"): a group (the inventory's command menu, ...)
+ * keeps it, or its input (vt+0x8C: the equipment's slots keep it, with a hook of their own). Its row +0xF4 and
+ * column +0xF8, of +0xFC by +0x100; its placement of the cursor from them. */
+constexpr uint32_t kGroupNoHookFn = 0x00776C98u, kGroupInputFn = 0x00777C90u, kGroupPlaceFn = 0x00776F68u;
+constexpr uint32_t kGroupRow = 0xF4u, kGroupCol = 0xF8u, kGroupRows = 0xFCu, kGroupCols = 0x100u;
+/* DsMenuDlgOption: its step up (this, _, from, wrap) and its placement of the cursor from menu variable 0x51. */
+constexpr uint32_t kOptionVt = 0x0186A398u, kOptionUpFn = 0x007CC598u, kOptionPlaceFn = 0x007CA320u;
+constexpr int kOptionOk = 11;                  /* the row of OK (and DEFAULT, its column 1) */
+constexpr uint32_t kProfileVt = 0x0186BE58u;   /* DsMenuDlgSelectProfile, the profile list: its row is +0xF8 */
+constexpr uint32_t kPromptVt = 0x01869FB8u;    /* the system layer's prompts (yes/no, Drop's count): button +0x110 */
+constexpr uint32_t kGetMenuVarFn = 0x00720F20u;
+/* The pause menu's pages, by the bar's tab. The game's page switch (0x007234E0(the page's variable)) closes only
+ * the new page's two neighbours, so a jump also closes the page it leaves. A page takes R2 and L2 only once open
+ * (its state variable at its idle value) and while its own dialog has the pad. */
+constexpr uint32_t kPageSwitchFn = 0x007234E0u;
+struct PausePage { int open_var, state_var, idle; };   /* the switch's variable; the page's state, open and idle */
+constexpr PausePage kPages[] = {{2, 2, 2}, {3, 3, 1}, {0x15, 0x15, 1}, {0x16, 0x16, 1}, {0x13, 0x2A, 3}};
+static_assert(sizeof kPages / sizeof kPages[0] == kTabs, "a page for each of the bar's tabs");
+/* Each page's own close (Inventory, Equipment, Status, World Tendency, System, and Options with System), as the
+ * switch calls them (with 0: the pause menu stays). */
+constexpr uint32_t kInvCloseFn = 0x0081FA40u, kEquipCloseFn = 0x00736BB0u, kStatusCloseFn = 0x0082A440u;
+constexpr uint32_t kWorldCloseFn = 0x00841A90u, kSystemCloseFn = 0x008ABD18u, kOptionCloseFn = 0x007C8260u;
+/* The pages' own dialogs (the inventory's list and its categories, the equipment's slots); System's is kSystemVt. */
+constexpr uint32_t kInventoryVt = 0x0186C318u, kInvTabsVt = 0x01866570u, kEquipSlotsVt = 0x01866068u;
+constexpr uint32_t kPromptButton = 0x110u, kPromptState = 0xF8u;
+constexpr int kPromptKindVar = 0x11;           /* its kind: 0 and 1 take no left or right, 6 and 9 place no cursor */
 
 /* The buttons that step a menu's columns, next then back, in the order they are tried. */
 constexpr unsigned kColPairs[3][2] = {{kPadRight, kPadLeft}, {kPadR1, kPadL1}, {kPadR2, kPadL2}};
@@ -283,7 +320,7 @@ struct Menu {
 
 /* ---- The game's thread: the frame's draws and the menus in them. ---- */
 
-int s_on = 0, s_log = 0;
+int s_on = 0, s_log = 0, s_walk_only = 0;
 std::vector<Drawn> s_draws;
 thread_local unsigned t_pad_reads = 0;   /* the pad reads this thread made (des_mm_pad_buttons, each read of pad 0) */
 std::vector<Menu> s_menus;
@@ -893,6 +930,7 @@ struct Walk {
     int then_times = 0;
     uint32_t then_slide = 0;      /* there: slide this slider (on the row it was beside) */
     int retries = 0, retries_all = 0;   /* a stay menu's page button pressed again while the page turned */
+    int direct = 0;               /* the spot was selected at once (select_now): passes left for the cursor to show it */
 };
 Walk s_walk;
 
@@ -949,6 +987,14 @@ void walk_step()
         return;
     }
     w.lost = 0;
+    if (w.direct > 0) {   /* selected at once: the menu places its cursor in its next update; no presses meanwhile */
+        if (m->cur >= 0 && m->spots[m->cur].r == w.r && m->spots[m->cur].c == w.c) {
+            w.direct = 0;
+        } else {
+            if (--w.direct == 0 && s_log) fprintf(stderr, "[mm] walk: the select did not show, walking\n");
+            return;
+        }
+    }
     if (pressing()) return;
     if (m->cur < 0) {
         if (++w.off_spot > kOffSpotMax) walk_end("the cursor is not on a spot");
@@ -1176,10 +1222,15 @@ bool on_cursor_row(const Menu& m, int si)
     return m.cur >= 0 && band(m.spots[m.cur], m.spots[si]) > 4.0f;
 }
 
-/* Walks to spot si's row first, then presses b (an arrow's, on another row than the cursor's). */
-void walk_then(const Menu& m, int row, unsigned b, int times)
+bool select_now(ppu_context* ctx, const Menu& m, const Spot& s);
+
+/* Goes to spot si's row first (at once where the menu can be, else by walking), then presses b (an arrow's, on
+ * another row than the cursor's). */
+void walk_then(ppu_context* ctx, const Menu& m, int row, unsigned b, int times)
 {
+    const bool now = !s_walk_only && m.cur != row && select_now(ctx, m, m.spots[row]);
     start_walk(m, m.spots[row]);
+    if (now) s_walk.direct = kDirectWait;
     s_walk.confirm = false;
     s_walk.then = b;
     s_walk.then_times = times;
@@ -1198,14 +1249,213 @@ const Menu* wheel_menu(float x, float y, int& si)
     return top;
 }
 
-void handle_events()
+/* Calls a game function on the game's thread with r3.. = a, and returns r3; the registers come back as they were.
+ * toc, if not 0, is r2 for it, and CTR is code (ps3_indirect_call goes to the address in CTR). */
+uint32_t call_at(ppu_context* ctx, void (*fn)(ppu_context*), uint32_t toc, uint32_t code,
+                 std::initializer_list<int64_t> a)
 {
+    uint64_t g[32];
+    double f[32];
+    uint8_t v[32][16];
+    memcpy(g, ctx->gpr, sizeof g);
+    memcpy(f, ctx->fpr, sizeof f);
+    memcpy(v, ctx->vr, sizeof v);
+    const uint64_t lr = ctx->lr, ctr = ctx->ctr;
+    const uint32_t cr = ppu_cr_pack(ctx), xer = ctx->xer;
+    ctx->gpr[1] -= 0x1000;
+    if (toc) ctx->gpr[2] = toc, ctx->ctr = code;
+    int i = 0;
+    for (int64_t x : a)
+        if (i < 8) ctx->gpr[3 + i++] = (uint64_t)x;
+    fn(ctx);
+    while (g_trampoline_fn) {
+        void (*tf)(void*) = g_trampoline_fn;
+        g_trampoline_fn = nullptr;
+        tf(ctx);
+    }
+    const uint32_t r3 = (uint32_t)ctx->gpr[3];
+    memcpy(ctx->gpr, g, sizeof g);
+    memcpy(ctx->fpr, f, sizeof f);
+    memcpy(ctx->vr, v, sizeof v);
+    ctx->lr = lr, ctx->ctr = ctr, ctx->xer = xer;
+    ppu_cr_unpack(ctx, cr);
+    return r3;
+}
+
+uint32_t call_game(ppu_context* ctx, void (*fn)(ppu_context*), std::initializer_list<int64_t> a)
+{
+    return call_at(ctx, fn, 0, 0, a);
+}
+
+/* The virtual function at off in obj's table: the entry points at a descriptor {code, TOC}. */
+uint32_t call_virtual(ppu_context* ctx, uint32_t obj, uint32_t off, std::initializer_list<int64_t> a)
+{
+    const uint32_t d = vm_read32(vm_read32(obj) + off);
+    return call_at(ctx, ps3_indirect_call, vm_read32(d + 4), vm_read32(d), a);
+}
+
+/* A game function by its address (the running disc's), with the game's TOC as it is. */
+uint32_t call_addr(ppu_context* ctx, uint32_t code, std::initializer_list<int64_t> a)
+{
+    return call_at(ctx, ps3_indirect_call, (uint32_t)ctx->gpr[2], code, a);
+}
+
+/* The code a class's virtual function at off runs; 0 if its table can't be read. */
+uint32_t virtual_code(uint32_t vt, uint32_t off)
+{
+    if (!guest_ok(vt, 4)) return 0;
+    const uint32_t d = vm_read32(vt + off);
+    return guest_ok(d, 4) ? vm_read32(d) : 0;
+}
+
+int menu_var(ppu_context* ctx, int id)
+{
+    return (int)call_addr(ctx, DES_AT(kGetMenuVarFn), {id});
+}
+
+/* Closes the pause page of tab t, as the page switch closes a neighbour of the page it opens. */
+void close_page(ppu_context* ctx, int t)
+{
+    switch (t) {
+    case 0: call_addr(ctx, DES_AT(kInvCloseFn), {0}); break;
+    case 1: call_addr(ctx, DES_AT(kEquipCloseFn), {0}); break;
+    case 2: call_addr(ctx, DES_AT(kStatusCloseFn), {0}); break;
+    case 3: call_addr(ctx, DES_AT(kWorldCloseFn), {0}); break;
+    default:
+        call_addr(ctx, DES_AT(kOptionCloseFn), {0});
+        call_addr(ctx, DES_AT(kSystemCloseFn), {0});
+        break;
+    }
+}
+
+/* The pause page of tab t takes R2 and L2 now: it is open and idle, and nothing is over it (every menu shown
+ * besides the bar is a part of the page, and the page's own dialog has the pad). */
+bool page_ready(ppu_context* ctx, int t)
+{
+    if (menu_var(ctx, kPages[t].state_var) != kPages[t].idle) return false;
+    for (const Menu& o : s_menus) {
+        if (o.stay) continue;
+        const uint32_t vt = vm_read32(o.owner);
+        const bool own = (t == 0 && vt == DES_AT(kInventoryVt)) || (t == 1 && vt == DES_AT(kEquipSlotsVt)) ||
+                         (t == 4 && vt == DES_AT(kSystemVt));
+        if (!own && !(t == 0 && vt == DES_AT(kInvTabsVt))) return false;   /* a prompt, a list, Options, ... */
+        if (own && !(vm_read32(o.owner + kDlgInput) & 0x80000000u)) return false;
+    }
+    return true;
+}
+
+/* A click on another tab of the bar while a page is open: the page switch to that page at once, and the page left
+ * closed when the switch doesn't close it (it closes only the new page's two neighbours: from World Tendency to
+ * the inventory, World Tendency's statues stayed drawn). Only while the page left would take R2 and L2. The
+ * switch plays the tick, and the bar's cursor follows the tab by itself. */
+bool turn_page_now(ppu_context* ctx, const Spot& s)
+{
+    const int from = menu_var(ctx, kBarTabVar), to = s.c;
+    if (s.r != 0 || to < 0 || to >= kTabs || from < 0 || from >= kTabs || to == from) return false;
+    if (!page_ready(ctx, from)) return false;
+    if (!call_addr(ctx, DES_AT(kPageSwitchFn), {kPages[to].open_var})) return false;   /* refused: still closing */
+    const int d = (to - from + kTabs) % kTabs;
+    if (d != 1 && d != kTabs - 1) close_page(ctx, from);
+    if (s_log) fprintf(stderr, "[mm] page %d to %d at once\n", from, to);
+    return true;
+}
+
+/* Selects spot s of menu m at once, as the menu's own input code does it, with one tick; false where this menu
+ * can't be (the walk does it then). Only while the menu's dialog takes input. Read from the game's code (docs/114
+ * section 3.1):
+ * - The pause menu's bar, while it has the pad: its tab is a menu variable (0x4B). Its step (0x0079B2C0) sets it,
+ *   then runs vt+0x80 (the help line), +0x90 and +0x88 (the cursor); the bytes +0x180, +0x181 and +0x182 have its
+ *   update run the same three. +0x184 is only the tab it placed last.
+ * - System: its row is +0xFC (0 to 2), and its update places the cursor and the help line from it every frame. Its
+ *   input keeps to row 0 while +0xF5 is set, and steps over row 1 (Load Profile) while +0xF7 is.
+ * - A list (DsMenuDlgListbox's: the inventory, ...; any class that keeps its cursor placement at vt+0x8C): the row
+ *   in its window is +0x100, of +0xF4 rows, from item +0x108 of +0x104. Its step (0x00780E80) sets the row and the
+ *   byte +0x111 (its update places the cursor and takes the item), then calls vt+0x84(this, up, moved): the class's
+ *   "row moved", the tick with it. A row in the window with an item needs no scrolling, so the same does it.
+ * - A button group (DsMenuDlgButtonGroup and the classes that keep its vt+0x88 or its input at vt+0x8C: the
+ *   inventory's command menu, the equipment's slots): its step (0x00777A18) sets the row +0xF4 (the column +0xF8)
+ *   and calls vt+0x84(this, moved), the class's "moved" (the command menu's and the equipment's play the tick); its
+ *   update places the cursor only after a step, so 0x00776F68 places it. (The equipment's own vt+0x88 changes only
+ *   a step from row 6, column 0, and its grid is 2 by 9; its update shows the slot of the row and column every
+ *   frame.)
+ * - Options: its row is menu variable 0x51. Its step up (0x007CC598, from the row below) sets it, the help line
+ *   for it and every row's arrows; 0x007CA320 then places the cursor. DEFAULT (OK's column 1) is walked.
+ * - The profile list (LOAD GAME's, and System's Load Profile): its row is +0xF8, 0 to 3. Its step goes one row with
+ *   no row skipped, and its update places the cursor from it every frame.
+ * - The system layer's prompts (yes/no, Drop's count): the button is +0x110, from 1. Its steps (vt+0x8C, +0x90)
+ *   move it by one, and its update places the cursor from it every frame while it is open (+0xF8 is 0) and its kind
+ *   (menu variable 0x11) takes left and right.
+ * - The bar with a page open: turn_page_now. */
+bool select_now(ppu_context* ctx, const Menu& m, const Spot& s)
+{
+    if (m.cur < 0 || !grid_spot(s)) return false;
+    const uint32_t vt = vm_read32(m.owner);
+    if (vt == DES_AT(kStartTabVt) && m.stay) return turn_page_now(ctx, s);   /* (the page has the pad, not the bar) */
+    if (!(vm_read32(m.owner + kDlgInput) & 0x80000000u)) return false;   /* its input is off: a dialog over it has it */
+    bool tick = true;
+    if (vt == DES_AT(kStartTabVt) && !m.stay) {
+        if (s.r != 0 || s.c < 0 || s.c >= kTabs) return false;
+        call_game(ctx, func_00720F50, {kBarTabVar, s.c});
+        for (uint32_t k = 0x180; k <= 0x182; k++) vm_write8(m.owner + k, 1);
+    } else if (vt == DES_AT(kSystemVt)) {
+        if (s.c != 0 || s.r < 0 || s.r > 2) return false;
+        if ((vm_read8(m.owner + 0xF5) && s.r != 0) || (vm_read8(m.owner + 0xF7) && s.r == 1)) return false;
+        vm_write32(m.owner + 0xFC, (uint32_t)s.r);
+    } else if (virtual_code(vt, 0x8C) == DES_AT(kListPlaceFn)) {
+        for (const Spot& t : m.spots)
+            if (grid_spot(t) && t.c != 0) return false;   /* (a list shown as a grid of icons: its columns, not here) */
+        const int rows = (int)vm_read32(m.owner + kListRows), top = (int)vm_read32(m.owner + kListTop);
+        const int items = (int)vm_read32(m.owner + kListItems), from = (int)vm_read32(m.owner + kListRow);
+        if (s.c != 0 || s.r < 0 || s.r >= rows || top < 0 || top + s.r >= items) return false;
+        vm_write32(m.owner + kListRow, (uint32_t)s.r);
+        vm_write8(m.owner + kListPlace, 1);
+        call_virtual(ctx, m.owner, 0x84, {m.owner, s.r < from ? 1 : 0, 1});
+        tick = false;
+    } else if (virtual_code(vt, 0x88) == DES_AT(kGroupNoHookFn) || virtual_code(vt, 0x8C) == DES_AT(kGroupInputFn)) {
+        const int rows = (int)vm_read32(m.owner + kGroupRows), cols = (int)vm_read32(m.owner + kGroupCols);
+        if (s.r < 0 || s.r >= rows || s.c < 0 || s.c >= cols) return false;
+        vm_write32(m.owner + kGroupRow, (uint32_t)s.r);
+        vm_write32(m.owner + kGroupCol, (uint32_t)s.c);
+        call_addr(ctx, DES_AT(kGroupPlaceFn), {m.owner});
+        call_virtual(ctx, m.owner, 0x84, {m.owner, 1});
+        tick = false;
+    } else if (vt == DES_AT(kOptionVt)) {
+        if (s.c != 0 || s.r < 0 || s.r > kOptionOk) return false;
+        call_addr(ctx, DES_AT(kOptionUpFn), {m.owner, 0, s.r + 1, 0});
+        call_addr(ctx, DES_AT(kOptionPlaceFn), {m.owner});
+    } else if (vt == DES_AT(kProfileVt)) {
+        if (s.c != 0 || s.r < 0 || s.r > 3) return false;
+        vm_write32(m.owner + 0xF8, (uint32_t)s.r);
+    } else if (vt == DES_AT(kPromptVt)) {
+        const int kind = (int)call_addr(ctx, DES_AT(kGetMenuVarFn), {kPromptKindVar});
+        if (kind == 0 || kind == 1 || kind == 6 || kind == 9 || vm_read32(m.owner + kPromptState) != 0) return false;
+        const Spot& at = m.spots[m.cur];
+        if (s.r != 0 || at.r != 0 || s.c < 0 || (int)vm_read32(m.owner + kPromptButton) != at.c + 1) return false;
+        vm_write32(m.owner + kPromptButton, (uint32_t)(s.c + 1));
+    } else {
+        return false;
+    }
+    if (tick) call_game(ctx, func_0072D970, {0});   /* the menu's tick, as a step plays it */
+    if (s_log) fprintf(stderr, "[mm] select %d_%d of 0x%08X at once\n", s.r, s.c, m.owner);
+    return true;
+}
+
+void handle_events(ppu_context* ctx)
+{
+    PS3_KNOB(s_walk_only, ps3_env_int("DES_MENU_MOUSE_WALK", 0));
     std::vector<Ev> evs;
     {
         std::lock_guard<std::mutex> lk(s_ev_mu);
         evs.swap(s_evs);
     }
-    for (const Ev& e : evs) {
+    for (size_t k = 0; k < evs.size(); k++) {
+        if (s_walk.on && s_walk.direct > 0) {   /* a select at once not shown yet: the rest wait for it, so that a
+                                                   click right after reads the cursor where it is, not where it was */
+            std::lock_guard<std::mutex> lk(s_ev_mu);
+            s_evs.insert(s_evs.begin(), evs.begin() + (std::ptrdiff_t)k, evs.end());
+            break;
+        }
+        const Ev& e = evs[k];
         switch (e.kind) {
         case kEvClick: {
             if (s_menus.size() == 1 && s_menus[0].start) {   /* the title: anywhere */
@@ -1225,7 +1475,7 @@ void handle_events()
                 s_mouse_down = true;
                 const int row = row_spot(m, si);
                 if ((dir == 1 || dir == -1) && row >= 0 && !on_cursor_row(m, si)) {   /* another row's: there first */
-                    walk_then(m, row, arrow_button(m, dir), 1);
+                    walk_then(ctx, m, row, arrow_button(m, dir), 1);
                     break;
                 }
                 press(arrow_button(m, dir), 1, true);
@@ -1240,7 +1490,7 @@ void handle_events()
                 s_mouse_down = true;
                 const int row = row_spot(m, si);
                 if (row >= 0 && !on_cursor_row(m, si)) {   /* another row's: there first */
-                    walk_then(m, row, 0, 0);
+                    walk_then(ctx, m, row, 0, 0);
                     s_walk.then_slide = m.spots[si].slider;
                     s_slide.target = e.x;
                     break;
@@ -1248,7 +1498,11 @@ void handle_events()
                 start_slide(m, m.spots[si], e.x);
                 break;
             }
+            /* Where the menu can be, the spot is selected at once; the walk then only confirms (or walks, if the
+             * select did not show). */
+            const bool now = !s_walk_only && m.cur != si && select_now(ctx, m, m.spots[si]);
             start_walk(m, m.spots[si]);
+            if (now) s_walk.direct = kDirectWait;
             break;
         }
         case kEvDrag:   /* a slider's thumb follows (one being slid, or one a walk goes to) */
@@ -1291,7 +1545,7 @@ void handle_events()
                         s_walk.then_times = std::min(s_walk.then_times + times, 8);
                         break;
                     }
-                    walk_then(*m, row, b, times);
+                    walk_then(ctx, *m, row, b, times);
                     break;
                 }
             }
@@ -1331,7 +1585,7 @@ void end_frame(ppu_context* ctx)
         let_go();
         s_held_owner = 0;
     }
-    handle_events();
+    handle_events(ctx);
     walk_step();
     slide_step();
     s_draws.clear();

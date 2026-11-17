@@ -29,6 +29,7 @@ Date: 2026-10-27. Status: experimental, off by default (Settings > Controls > Mo
 |---|---|---|
 | `DES_MENU_MOUSE` | `0` | `1`: the mouse in the game's menus (experimental). `0`: the game's menus take no mouse, and the buttons and wheel are the keyboard layout's. Its row is Mouse in game menus (experimental). Live. |
 | `DES_MENU_MOUSE_PRESS` | `1` | Frames (and pad packets) each of the clicks' presses is held, and let go after (section 3). |
+| `DES_MENU_MOUSE_WALK` | `0` | `1`: every click walks, also in the menus a click selects at once (section 3.1). For a test against the walk. |
 | `DES_MENU_MOUSE_LOG` | `0` | `1`: the menus found, each time they change and once their spots come to rest after a slide, and each walk. It also lists the menus left out, with why (`under` a higher menu's spots, `beneath` a menu over it) and the menu they went for, and the pass's draws. When the mouse stops in a menu, that tells a menu over it from one not found. `2`: also the arrow pieces on screen. `3`: also every visible dialog with its pieces, each time the set changes (the census used to learn a screen). |
 
 Tests click with the UI's `DES_UI_MOUSE` (des_ui.cpp): over a menu of the game, `x,y` moves the pointer there (back
@@ -166,18 +167,15 @@ stops drawing its menus.
 ## 3. A click: walking the game's cursor
 
 A click on a spot walks the game's own cursor there with the pad's presses, then presses Cross. Pressing is all it
-does, so every screen keeps its own rules, sounds and help text.
+does, so every screen keeps its own rules, sounds and help text. In the menus of section 3.1 the spot is selected at
+once instead, and the walk only presses Cross.
 
 - The presses go in through cellPad's title hook (`des_mm_pad_buttons`, beside DES_AUTO_CONTINUE's in
   des_options.cpp). Each is held for `DES_MENU_MOUSE_PRESS` frames *and* as many pad packets the game took
   (`g_pad0_reads - g_pad0_empty_reads`), then let go for as long: one press each, at any frame rate. The default,
   one frame down and one up, is the fastest the game counts: a row every 2 frames (66 ms at 30 fps, a few ms
   unlocked). A walk of 10 rows on the Options page took one round at 30 fps. (It was 2 frames each, a row every 4.)
-- A walk is the game's cursor stepping, row by row, with the game's tick each time. Going straight to the row would
-  mean writing the selection. Each class keeps it in its own place: the pause menu's bar at owner +0x184, the
-  inventory at +0x100 and +0x134 (with the item at +0x14C). The profile list, System and Options keep it in none of
-  the owner (0x1000 bytes), the cursor's dialog or the dialogs above. So the walk stays, made as quick as the game
-  takes it.
+- A walk is the game's cursor stepping, row by row, with the game's tick each time.
 - A walk goes in rounds. A round presses down or up as many times as the rows differ, then the column buttons as
   many times as the columns differ, then waits until the cursor has stayed on one spot for 3 frames. Then it looks
   again. It ends on the spot (Cross, unless it is a tab or a stay menu), after 8 rounds, or when nothing moves the
@@ -204,6 +202,83 @@ does, so every screen keeps its own rules, sounds and help text.
   column buttons (up is the right one), walking to that row first if need be (notches during that walk add up).
   Over no spot it goes to the top menu that is not tabs (the inventory's list, not its categories).
 - Right click is Circle, and drops a walk under way.
+
+### 3.1 Selecting at once
+
+The game has no one "select item N": each menu class keeps its selection in its own place, and its input code
+moves it, plays the tick (`0x0072D970(0)`) and places the cursor itself. Many keep it in a table of menu
+variables, not in the dialog (`0x00720F20` reads one, `0x00720F50` writes one). So a memory diff of the dialogs
+found the pause menu's bar at +0x184, which is only the tab it placed last: writing it does nothing.
+
+A click in one of these menus selects the spot as that class's input code would, with one tick
+(`select_now`), but only while the menu's dialog takes input (bit 31 of its +0xA0, which the game's input query
+0x00F55A18 asks). The walk then waits for the cursor to show there and presses Cross. If it does not show within 10
+passes, the walk walks. Until it shows, the mouse's next events wait, so a click right after one reads the cursor
+where it is then.
+- **The pause menu's bar, while it has the pad** (DsMenuDlgStartTab, vtable 0x018692C0): its tab is menu variable
+  0x4B. Its step (0x0079B2C0) sets it, then runs its vt+0x80 (the help line), +0x90 and +0x88 (the cursor). The
+  bytes +0x180, +0x181 and +0x182 have its next update run the same three. The step goes round 0 to 4 and skips no
+  tab.
+- **The bar with a page open** (the same class, a stay menu): a click on another tab goes to that page at once.
+  - The pages are menu variables too. Inventory is 2, Equipment 3, Status 0x15, World Tendency 0x16 and System 0x2A
+    (Options 0x13). A page opens when its variable is set, and closes when it is set back.
+  - The game's page switch (`0x007234E0`, with the page's variable: 2, 3, 0x15, 0x16 or 0x13) sets the bar's tab,
+    plays the tick and opens the page. But it closes only that page's two neighbours, the only pages R2 and L2 come
+    from. So a jump also closes the page it leaves with that page's own close: `0x0081FA40(0)`, `0x00736BB0(0)`,
+    `0x0082A440`, `0x00841A90`, and for System `0x007C8260` then `0x008ABD18(0)`. Without it, from World Tendency to
+    the inventory, World Tendency's statues stayed drawn over the inventory.
+  - Only while the page left would take R2 and L2:
+    - its variable is at its idle value: 2 for the inventory, 1 for the others, 3 for System. The first is 1 while
+      the inventory opens, and 3 while Status or World Tendency open, for 0.16 to 0.24 game seconds.
+    - each menu shown besides the bar is a part of the page: the inventory's list (DsMenuDlgInventory, 0x0186C318)
+      and categories (0x01866570), the equipment's slots (0x01866068), System. Those of the page also have the pad.
+      So the command menu, a prompt, an equipment slot's item list, Options and Status's Stat Guide keep the walk.
+  - The switch refuses the inventory while its variable is not 0 (and Status likewise); then the walk walks.
+- **System** (DsMenuDlgSystem, vtable 0x0186EF60): its row is +0xFC (0 to 2), and its update places the cursor and
+  the help line from it every frame. Its input keeps to row 0 while +0xF5 is set, and steps over row 1 (Load
+  Profile) while +0xF7 is. A click on a row it would not go to walks instead.
+- **Lists** (DsMenuDlgListbox and the classes built on it: the inventory, an equipment slot's items, Create
+  Profile's rows, ...). A list is
+  told by its vt+0x8C, the list's own cursor placement (0x007814F0), so a class that keeps it counts, with no
+  table of screens.
+  - Its fields: +0x100 is the row in its window of +0xF4 rows, showing items from +0x108 of +0x104.
+  - Its step (0x00780E80) sets the row and the byte +0x111, then calls vt+0x84(this, up, moved), the class's "row
+    moved" (the inventory's sets its refresh flag, the cursor's move animation and the tick). The update then places
+    the cursor and takes the item at +0x108 plus the row (menu variable 0x72).
+  - A click on a row of the window that holds an item needs no scrolling, so it does the same. A row past the last
+    item walks (and stops, as before). A list shown as a grid of icons (spots with a column) walks.
+- **Button groups** (DsMenuDlgButtonGroup and the classes that keep its vt+0x88, the hook before a step, or its
+  input at vt+0x8C, 0x00777C90: the inventory's command menu, the equipment's slots (DsMenuDlgEquip), ...).
+  - Its fields: the row is +0xF4 and the column +0xF8, of +0xFC rows by +0x100 columns.
+  - Its step (0x00777A18) skips spots with no `cursor<r>_<c>` piece (a clicked spot always has one; a greyed
+    button such as Drop has one too, as with the pad), sets the row, and calls vt+0x84(this, moved). That is the
+    class's "moved": the command menu's and the equipment's play the cursor's move animation and the tick, the
+    plain group's does nothing.
+  - Its update places the cursor only after a step, so 0x00776F68 places it. The command menu's update also sets
+    its help line from the row every frame, and the equipment's shows the slot of the row and column (its grid is 2
+    by 9, with no slot at row 1, column 6).
+  - The equipment's own hook (0x007317C0) changes only a step from row 6, column 0, which its grid does not have.
+- **Options** (DsMenuDlgOption, vtable 0x0186A398).
+  - Its row is menu variable 0x51 (0 to 12; OK is 11, DEFAULT 12, drawn as row 11's column 1).
+  - Its step up (0x007CC598(this, _, from, wrap)) sets it to the row above `from`, with the help line for that row,
+    and redraws every row's arrows. Called from the row below the clicked one, it selects that one; 0x007CA320 then
+    places the cursor.
+  - DEFAULT is a step right of OK and is walked.
+- **The profile list** (DsMenuDlgSelectProfile, vtable 0x0186BE58: LOAD GAME's, and System's Load Profile): its row
+  is +0xF8 (0 to 3). Its step goes one row and skips none (empty slots too), and its update places the cursor from
+  it every frame.
+- **The prompts** (vtable 0x01869FB8: the yes/no of Auto Sort, Quit Game, Create Profile, ..., and the notices with
+  one OK). The button is +0x110, counted from 1 (button `c` is `c + 1`).
+  - Its steps (vt+0x8C right, +0x90 left) move it by one, with the tick. Its update places the cursor from it every
+    frame while the prompt is open (+0xF8 is 0).
+  - Its kind is menu variable 0x11 (`0x00720F20` reads it). Kinds 0 and 1 take no left or right, and with 6 and 9
+    the update places nothing, so those walk.
+  - Only when +0x110 matches the spot the cursor is on: any other numbering walks.
+- A click on an arrow or a value's half on another row (section 3) goes to that row the same way first, then
+  presses the arrow: an Options value changes in one click with no walk.
+
+Every other menu still walks. Among them: the title's NEW GAME / LOAD GAME (one step; the menu the port sees there
+is the cursor's dialog, not the title's), Options' DEFAULT, and lists shown as a grid of icons.
 
 ## 4. The UI's side (port/ui/src/game_menu.cpp)
 
@@ -235,16 +310,16 @@ On the pinned regression save, by `DES_UI_MOUSE` (the steps and the shots are in
 | PRESS START BUTTON | glow, click anywhere is Start |
 | Title menu (NEW GAME / LOAD GAME) | glow, click walks up and confirms |
 | "Cannot connect to the server" and "Start the game in Offline Mode" | glow on OK, click |
-| Profile list | glow, wheel down and up, click loads the profile |
-| Create Profile | click on Class ▶ walks to Class then steps it; wheel over Gender; the gender prompt's OK / CANCEL; a click on the profile under the prompt does nothing |
+| Profile list | glow, wheel down and up, click loads the profile; at LOAD GAME and in System's Load Profile, a click on an empty row selects it at once (Cross on it does nothing) |
+| Create Profile | a click on Class's label selects it at once (with its help line); a click on Gender's right half selects Gender at once and steps it, and the game asks its gender question (as it does after a walk); click on Class ▶ steps it; wheel over Gender; the gender prompt's OK / CANCEL; a click on the profile under the prompt does nothing |
 | Edit Appearance | glow on a slider; a click on Age's track from the Origin row walks down 3 and slides the thumb there; a drag moves it back; 3 wheel notches over Gender walk there and step it 3 times |
 | Pause menu bar | glow on a tab, click opens its page, ◀ ▶ click and hold, wheel; no glow in the gaps between tabs |
-| Pause menu pages | with a page open, a click on another tab turns to it (R2), right click closes the page; the same after Use Item, when the game has made the pause menu anew (in a level, from a copy of a player's save) |
+| Pause menu pages | with a page open, a click on another tab goes to its page at once, any distance (from World Tendency to the inventory with no statues left, from the equipment to System); from Options and with Status's Stat Guide open it walks (L2), and with the command menu open nothing turns, as with the pad; two clicks in one step: the second waits for the first page, then walks one page; right click closes the page; the same after Use Item, when the game has made the pause menu anew (in a level, from a copy of a player's save) |
 | Inventory | glow on a row (its whole width), wheel, click opens the command menu, right click closes it, click on a category; closed on the armor category and opened again (it opens there), glow and clicks on its rows and tabs |
-| Equipment | a click on a slot opens its item list; glow on a row, wheel, right click back |
-| System | a click on the pause bar's last tab walks 3 right to it; a click on Options opens it |
-| Yes/no prompts in play | Auto Sort's "Automatically resort all items?": glow on OK, OK sorts; Quit Game's: CANCEL, and OK goes to the title; Load Profile's "Load profile and exit current game?": CANCEL |
-| Options | glow on a value; a click on Camera Speed's right half walks there and steps it 5 to 6, its left half back to 5; 2 wheel notches over Music walk there and step it 10 to 8; a click on a label selects its row only; right click brings the game's "Cancel option changes and return?" |
+| Equipment | a click on a slot selects it at once and opens its item list (from the first slot: a bolt slot, then an item slot; the same lists as in a walk-only run); glow on a row, wheel, right click back |
+| System | a click on the pause bar's last tab selects it at once and opens System; a click on Options opens it; a click on Quit Game selects it at once |
+| Yes/no prompts in play | Auto Sort's "Automatically resort all items?": glow on OK, OK (from CANCEL) is selected at once and sorts; Quit Game's: CANCEL, and OK (selected at once) goes to the title; Load Profile's "Load profile and exit current game?": CANCEL |
+| Options | glow on a value; a click on Camera Speed's right half goes there at once and steps it 5 to 6, its left half back to 5; 2 wheel notches over Music walk there and step it 10 to 8; a click on a label selects its row at once, and only that; right click brings the game's "Cancel option changes and return?" |
 
 Drop's "Please select the number of items to drop." with its ▲ ▼ arrows was tried by hand in play: the
 arrows step the number. Not tried yet: the shops, the blacksmith, storage and the Maiden in Black's level up
