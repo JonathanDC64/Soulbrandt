@@ -19,3 +19,8 @@ tools/setup/des_setup/disc/*.txt.gz
 # library, a tiling noise and a box with cut corners; CI's Scripts job runs it with --check. No game pixels.
 port/ui/res/img/grain.png
 port/ui/res/img/valuebox.png
+
+# The project's own logo (Soulbrandt): white letters drawn for the port, the full-size files in assets/brand/ and the
+# start screen's smaller copy cut from them. Not taken from the game's files.
+assets/brand/soulbrandt-logo*.png
+port/ui/res/img/soulbrandt-logo.png
