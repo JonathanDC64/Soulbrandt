@@ -4,7 +4,8 @@
 // engine's first run: the system's own curl and tar (on Windows from System32, on Linux from PATH; run by full path
 // through the process runner, so Cancel ends them and they get no window), checked with the host's own SHA-256
 // (sha256.hpp). A Windows with no curl or tar that starts (Wine and CrossOver have neither) gets the host's own
-// instead: WinHTTP (setup_http.hpp) and its own unzip (setup_unzip.hpp). It lands where des_setup's fetch.py puts it,
+// instead: WinHTTP (setup_http.hpp) and its own unzip (setup_unzip.hpp). A Linux with no curl downloads with wget, else
+// with the system's own python3 (issue #521). It lands where des_setup's fetch.py puts it,
 // with the same stamp, so from then on the host's lookup (setup_engine.hpp python()) and the engine's fetch both see it
 // as unpacked.
 #pragma once
@@ -77,6 +78,7 @@ private:
 
     Result steps();
     Result download(const std::filesystem::path& part);
+    Result download_other(const std::filesystem::path& part);
     Result download_own(const std::filesystem::path& part);
     Result unpack();
     Ran run_tool(const char* name, const std::vector<std::string>& args, std::vector<std::string>* listing,

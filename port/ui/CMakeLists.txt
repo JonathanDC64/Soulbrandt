@@ -317,3 +317,15 @@ if(WIN32)
   endif()
   target_link_libraries(setup_fetch_check PRIVATE winhttp)
 endif()
+
+# The same on a Linux with no curl (tests/setup_fetch_linux_check.cpp, issue #521): wget, the system's own python3, a
+# resume with each, a wget that refuses its options, and none of them. PATH is a folder of links to the tools each
+# case may use. It downloads the pinned archive (35 MB) five times. Linux only. Built on demand:
+#   cmake --build <build> --target setup_fetch_linux_check, then setup_fetch_linux_check <a new folder>
+if(UNIX AND NOT APPLE)
+  add_executable(setup_fetch_linux_check EXCLUDE_FROM_ALL tests/setup_fetch_linux_check.cpp src/setup_python.cpp
+    src/setup_http.cpp src/setup_unzip.cpp src/child_process.cpp src/sha256.cpp src/stb_impl.cpp)
+  target_include_directories(setup_fetch_linux_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${stb_SOURCE_DIR})
+  find_package(Threads REQUIRED)
+  target_link_libraries(setup_fetch_linux_check PRIVATE Threads::Threads)
+endif()
