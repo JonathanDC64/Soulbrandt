@@ -268,7 +268,21 @@ where it is then.
   - Its step up (0x007CC598(this, _, from, wrap)) sets it to the row above `from`, with the help line for that row,
     and redraws every row's arrows. Called from the row below the clicked one, it selects that one; 0x007CA320 then
     places the cursor.
-  - DEFAULT is a step right of OK and is walked.
+  - DEFAULT is the step right from OK (0x007CA7E0(this, _, 11, _, _)): it sets row 12 with DEFAULT's help line,
+    places the cursor and plays the tick. A click on DEFAULT goes to OK first as above (unless the cursor is on OK),
+    then takes that step and redraws OK's row (0x007CAA70), as the input does after a step right.
+- **The inventory's categories** (DsMenuDlgEquipListTab, vtable 0x01866570).
+  - The category shown is the menu variable that tabs +0x108 names (the inventory's +0x144 names the same one), of
+    tabs +0xF4 to +0xF4 + +0xF8. +0x104 points to a word for each tab: a step passes over a tab whose word is not 0.
+  - The inventory's input takes left and right in its state 2 (+0x158), and none while 0x00778AB8 says so. Each
+    calls 0x00820DD0(this, right, wrap). That keeps the list's place (+0x108) in menu variable 0x12D plus the category
+    left, steps the tabs (their property 0xBCB), takes the new category's place, and builds its list.
+  - A step sets tabs +0xFC and is refused while it is set, and the tabs' update clears it: one step a frame. So
+    two presses showed the category between for a frame.
+  - A click on another category sets the tabs to the one beside it first. It also keeps the list's place for the
+    category left, and gives the inventory the place kept for the tab beside it, so that the step keeps it unchanged.
+    Then one category change goes to the clicked one, with the tick.
+  - The inventory is found among the dialogs drawn, not the menus: a category with no items gives its list no spots.
 - **The profile list** (DsMenuDlgSelectProfile, vtable 0x0186BE58: LOAD GAME's, and System's Load Profile): its row
   is +0xF8 (0 to 3). Its step goes one row and skips none (empty slots too), and its update places the cursor from
   it every frame.
@@ -283,7 +297,8 @@ where it is then.
   presses the arrow: an Options value changes in one click with no walk.
 
 Every other menu still walks. Among them: the title's NEW GAME / LOAD GAME (one step; the menu the port sees there
-is the cursor's dialog, not the title's), Options' DEFAULT, and lists shown as a grid of icons.
+is the cursor's dialog, not the title's), lists shown as a grid of icons, and the same category tabs in other
+dialogs (each calls the tabs' step from a category change of its own).
 
 ## 4. The UI's side (port/ui/src/game_menu.cpp)
 
