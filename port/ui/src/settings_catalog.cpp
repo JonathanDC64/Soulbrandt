@@ -554,7 +554,7 @@ std::vector<TabDesc> make_tabs() {
             .help = "The size of these menus. Auto follows the display's scale, and shrinks to fit a small window."}),
         // (shown once this build offers more than one look)
         only([] { return looks::offered_count() > 1; },
-            own_setting({.label = "Menu look", .key = "ui_look",
+            own_setting({.label = "Menu look", .key = "menu_look",
                 .kind = ChoiceRow{.choices = std::move(looks), .changed = hooks::apply_look},
                 .help = "How these menus look. Every look has the same menus and rows."})),
         // (shown in a look whose frame it sizes)

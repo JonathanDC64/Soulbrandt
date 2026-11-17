@@ -1067,8 +1067,8 @@ void reopen_settings(const std::string& tab, const std::string& row) {
 
 // The menus in that look (looks.hpp): the ui_look setting, applied as the Menu look row applies it.
 void use_look(std::string_view id) {
-    if (ui::settings::get("ui_look") == id) return;
-    ui::settings::set("ui_look", std::string(id));
+    if (ui::settings::get("menu_look") == id) return;
+    ui::settings::set("menu_look", std::string(id));
     ui::looks::apply();
 }
 
@@ -1625,11 +1625,11 @@ int main(int argc, char** argv) {
         open_menu(false);
         ui::with_zip_ack(nullptr);
     }, {}});
-    // DeS UI's pages, in a build that offers it (a developer build until it is released, looks.hpp). Every page
-    // opens in the default look; these switch to DeS UI first.
+    // DeS UI's pages, in a build that offers it (looks.hpp). Every page opens in Alpha UI; these switch to DeS UI
+    // first.
     use_look("des");
     const bool band = ui::looks::current().id == "des";
-    use_look(ui::looks::kDefault);
+    use_look("alpha");
     if (band) {
         const auto in_band = [](std::function<void()> open) {
             return [open = std::move(open)] {
@@ -1700,6 +1700,27 @@ int main(int argc, char** argv) {
         for (const char* which : {"host", "join", "player", "quit"})
             pages.push_back({std::string("des-ask-") + which, 1280, 720, false, 1.f, false,
                              in_band([which] { open_ask(which); }), {}});
+        // Setup keeps its own style in every look: with --bmp, these pictures are the setup-* pages', byte for byte.
+        pages.push_back({"des-setup-start", 1280, 720, false, 1.f, false, in_band([] {
+            ui::push_document(std::make_unique<ui::SetupStartWindow>(ui::SetupStartWindow::Props{}));
+        }), {}});
+        pages.push_back({"des-setup-source", 1280, 720, false, 1.f, false, in_band([] {
+            ui::push_document(
+                std::make_unique<ui::SetupSourceWindow>(ui::SetupSourceWindow::Props{{}, [](ui::setup::Request) {}}));
+        }), {}});
+        pages.push_back({"des-setup-files", 1280, 720, false, 1.f, false, in_band([] {
+            ui::SetupFilesWindow::Props p;
+            p.onStart = [](ui::setup::Request) {};
+            ui::push_document(std::make_unique<ui::SetupFilesWindow>(std::move(p)));
+        }), {}});
+        pages.push_back({"des-setup-help", 1280, 720, false, 1.f, false, in_band([] {
+            ui::push_document(std::make_unique<ui::SetupHelpWindow>(ui::SetupHelpWindow::Props{[] {}, [] {}}));
+        }), {}});
+        pages.push_back({"des-setup-before", 1280, 720, false, 1.f, false, in_band([] {
+            ui::SetupBeforeWindow::Props p;
+            p.onStart = [](ui::setup::Request) {};
+            ui::push_document(std::make_unique<ui::SetupBeforeWindow>(std::move(p)));
+        }), {}});
         // The settings worth comparing (Alpha UI's above): Xbox buttons, keys, UI scale 150%, a 2560 x 1440 window.
         pages.push_back({"des-glyphs-xbox", 1280, 720, false, 1.f, false, in_band(with("DES_GLYPHS", "xbox")), {}});
         pages.push_back({"des-glyphs-keys", 1280, 720, false, 1.f, false, in_band(with("DES_GLYPHS", "keyboard")), {}});
@@ -1810,7 +1831,7 @@ int main(int argc, char** argv) {
         unsigned long long before[URC_RENDERERS][URC_COUNT];
         std::memcpy(before, g_urc_count, sizeof before);
         const int mismatches = tee->mismatches;
-        use_look(ui::looks::kDefault);
+        use_look("alpha");
         p.open();
         tee->before_end = p.draws;
         uint64_t diff[kRenderers] = {}, drawn = 0, changed[kRenderers] = {};

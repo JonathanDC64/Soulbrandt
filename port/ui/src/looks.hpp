@@ -12,7 +12,7 @@ namespace ui::looks {
 
 // What a look does that its sheet can't say. A trait is only for that: whatever RCSS can do stays in the sheet.
 struct Look {
-    std::string_view id;     // the ui_look setting's value, the RmlUi theme's name, and res/rml/looks/<id>.rcss
+    std::string_view id;     // the menu_look setting's value, the RmlUi theme's name, and res/rml/looks/<id>.rcss
     std::string_view label;  // its choice in the Menu look row
     bool released;           // false: offered in developer builds only
     bool helpPane;           // Settings shows the help beside the rows; else a line under the band, and Help opens it
@@ -23,10 +23,10 @@ struct Look {
 
 inline constexpr Look kLooks[] = {
     {"alpha", "Alpha UI", true, true, false, true, false},
-    {"des", "DeS UI", false, false, true, false, true},
+    {"des", "DeS UI", true, false, true, false, true},
 };
 
-inline constexpr std::string_view kDefault = "alpha";
+inline constexpr std::string_view kDefault = "des";
 
 // A developer build offers every look; a release, the released ones.
 constexpr bool offered(const Look& look) {
@@ -51,7 +51,7 @@ constexpr int offered_count() {
     return n;
 }
 
-// The look the ui_look setting picks, when this build offers it; else the default.
+// The look the menu_look setting picks, when this build offers it; else the default.
 const Look& current();
 
 // Makes current() the look the menus draw: its theme on in the UI's context, the others off. At the UI's start, and
