@@ -2,7 +2,8 @@
 // System folder (Wine and CrossOver have none): setup_python.cpp. WinHTTP, which Windows and Wine both have, doing what
 // the curl line does: https only, TLS 1.2 or later, redirects followed but never from https to http, a try that gets
 // nothing for a minute ends, and a stopped try's .part file carried on with a Range request (a server that sends the
-// whole file instead starts the file over). Off Windows there is none: curl is on every Linux that setup runs on.
+// whole file instead starts the file over). Off Windows there is none: a Linux with no curl uses its wget or its own
+// python3 instead (setup_python.cpp download_other).
 #pragma once
 
 #include <filesystem>

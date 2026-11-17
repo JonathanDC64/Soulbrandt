@@ -12,7 +12,7 @@ is left.
   Setup's screens are the same as on Windows (docs/88, docs/89).
 - As on Windows, setup downloads a pinned Python and a pinned compiler (clang 22.1.8), lifts the game and builds
   the game part, `des_game.so`, on the player's PC. Nothing is installed: everything stays in the data folder.
-- The PC needs x86-64 Linux with glibc 2.35 or newer, a Vulkan driver, and `curl` and `tar`.
+- The PC needs x86-64 Linux with glibc 2.35 or newer, a Vulkan driver, `tar`, and `curl`, `wget` or `python3`.
 - In WSL: lift 35 s, compile about 3.5 min, then the game reached the Nexus.
 
 ## 1. What comes from where
@@ -22,7 +22,7 @@ is left.
 | **The player's system** | glibc 2.35 or newer | the floor of both the host and the compiler (section 3) |
 | | a Vulkan driver and `libvulkan.so.1` | vkd3d opens the loader at run time |
 | | X11 or Wayland, and PulseAudio, PipeWire or ALSA | SDL2 opens the desktop's own libraries when it starts |
-| | `curl` and `tar` on PATH | only for the first Python download (section 2) |
+| | `tar`, and `curl`, `wget` or `python3`, on PATH | only for the first Python download (section 2) |
 | | `systemd-inhibit` | optional: keeps the PC awake during the build |
 | **The download** (`-linux.tar.xz`) | `des_host`, executable, and `des_host.map` | built in CI (`host.yml`, `host-linux`) |
 | | `libSDL2-2.0.so.0` (SDL 2.32.10) | beside the host; `RUNPATH $ORIGIN` finds it |
@@ -41,7 +41,9 @@ FFmpeg packages, root, or Steam.
 The same steps as on Windows (docs/81). What is Linux's own:
 - **The data folder** is `$XDG_DATA_HOME/DemonsSoulsRecomp`, else `~/.local/share/DemonsSoulsRecomp`.
 - **The first Python**: the host fetches python-build-standalone's 3.13.17 with the system's `curl` and unpacks it
-  with its `tar`. Both are looked up on PATH, absolute folders only. The host checks the SHA-256 itself and writes
+  with its `tar`. Both are looked up on PATH, absolute folders only. With no `curl` (issue #521: a Linux Mint), the
+  system's `wget` downloads it, else its own `python3` (3.7 or later, with a short urllib program); with none of the
+  three, setup says to install one. The host checks the SHA-256 itself and writes
   the same stamp as on Windows. python.org has no embeddable Python for Linux.
 - **The compiler**: `fetch.py` unpacks the tar.xz with `tarfile`'s "data" filter, which keeps the execute bit. It
   refuses absolute paths, `..`, device files and links that leave the folder.
@@ -116,7 +118,6 @@ All jobs pin their actions by commit SHA.
   frame-rate check there (WSL sits at 60 Hz, docs/76).
 - **Updates on Linux** (docs/105): the update check names the tarball, and the restart starts the program's own
   path. Once both are on master, the tarball should carry `release-files.txt`, as the zip does.
-- **No `curl`**: a PC without it cannot fetch the first Python. A `wget` fallback would cover minimal installs.
 
 ## Sources
 
