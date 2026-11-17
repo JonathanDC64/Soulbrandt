@@ -56,6 +56,21 @@ void des_discord_map(int map);
  * the report test knob DES_HANG_AT_FRAME (port/ui/src/report.hpp). */
 void des_report_flip_hook(void);
 
+/* The on-screen keyboard the game's cellOskDialog shows, for a text the port
+ * asks for itself (the Nexus statue's Change Name, des_respec.cpp): the prompt
+ * and the text it starts with (UTF-16, zero-ended, either may be null) and the
+ * most characters. done runs once, on the render thread, with ok 1 for Done
+ * or 0 for Cancel (also when the keyboard closes for the game's own), and the
+ * text: n characters, not zero-ended. Returns 0, and done never runs, when
+ * there is no keyboard to show (des_ui_keyboard_ready is 0) or another
+ * request waits to show. Any thread. */
+int des_ui_keyboard(const unsigned short* prompt, const unsigned short* text, unsigned limit,
+                    void (*done)(int ok, const unsigned short* text, unsigned n));
+
+/* 1 when des_ui_keyboard can show the keyboard: the UI is installed (not
+ * DES_UI=0, not a build without it). Any thread. */
+int des_ui_keyboard_ready(void);
+
 /* The UI's sounds, by id (ui::Sound in port/ui/src/sound.hpp, in this order). */
 enum {
     DES_UI_SOUND_CLICK = 0,       /* a button pressed */

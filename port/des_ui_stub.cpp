@@ -32,4 +32,12 @@ int des_ui_start_screen_up(void) {
 
 void des_discord_map(int) {}  // (no UI: no Discord status)
 
+int des_ui_keyboard(const unsigned short*, const unsigned short*, unsigned, void (*)(int, const unsigned short*, unsigned)) {
+    return 0;  // (no UI: no keyboard, and the statue offers no Change Name)
+}
+
+int des_ui_keyboard_ready(void) {
+    return 0;
+}
+
 }  // extern "C"
