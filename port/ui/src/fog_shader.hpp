@@ -1,11 +1,11 @@
 // Written for Demon's Souls. Smoke drawn live behind the start screen (DeS UI): RmlUi's "shader" decorator with the
-// value "fog:<name>", drawn by the menu renderers (render_d3d12.cpp, render_gpu.cpp) as one pixel shader over the
-// element. The smoke is 3D gradient noise with time as its third axis, so its shapes churn and dissolve instead of
+// value "fog:<name>", drawn by render_gpu.cpp (the Windows menu renderer, D3D12 and Vulkan) as one pixel shader over
+// the element. The smoke is 3D gradient noise with time as its third axis, so its shapes churn and dissolve instead of
 // sliding, and its coordinates are bent by two more noises so it curls. The numbers in kLooks were tuned on a preview
 // page that ran the same maths in WebGL (layer by layer, the preview's sliders).
 //
-// With DES_UI_NO_ANIM (the tests' pictures) the smoke stands still at its first frame. The D3D11 renderer draws no
-// shader decorators: there the element shows only its background.
+// With DES_UI_NO_ANIM (the tests' pictures) the smoke stands still at its first frame. render_d3d12.cpp (frozen, the
+// Linux menu) and the D3D11 renderer draw no smoke: there the element shows only its black background.
 #pragma once
 
 #include <cmath>
