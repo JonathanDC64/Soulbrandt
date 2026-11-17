@@ -49,7 +49,21 @@
  * show after it. The editor writes straight into PGD. Back then asks whether
  * to keep the changes: YES reloads the Nexus, which rebuilds the character
  * with the new look; NO puts PGD back as it was. With nothing changed there is
- * no question. */
+ * no question.
+ *
+ * DES_IDENTITY=1 (Settings, Game; on by default, but it does nothing unless
+ * DES_APPEARANCE is on) adds two more rows (docs/47 section 1.11):
+ * - Change Name opens the on-screen keyboard that the game's own name entry
+ *   uses (cellOskDialog's, drawn by the UI: des_ui_keyboard), 16 characters as
+ *   in Create Profile. Done writes the name into PGD and asks the game to save.
+ *   The online name is not this one and does not change.
+ * - Change Body asks first, then gives the character the other body (the
+ *   choice made in Create Profile). Worn armour the new body may not wear
+ *   comes off, as the Equipment menu's Unequip takes it off: the pieces the
+ *   menu greys out for that body (Dark Silver, Dull Gold, Saint's, ...). They
+ *   stay in the inventory as they are, and the Storage Monument is not
+ *   touched. The hairstyle becomes the new body's of the same number. Edit
+ *   Appearance then opens on the new body, and the Nexus reloads after it. */
 
 #include "ps3emu/ppu_lift.h"
 #include "des_region.h"      /* DES_AT: the running disc's addresses */
@@ -62,6 +76,8 @@
 #include <cstdio>
 #include <cstring>
 #include <initializer_list>
+#include <string>
+#include <vector>
 
 #ifndef PS3_GAME_SPLIT   /* DES_SPLIT: the game DLL's (ps3emu/game_split.h) */
 extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
@@ -70,6 +86,9 @@ extern "C" void ds_malloc(ppu_context* ctx);              /* des_heap.cpp: the g
 extern "C" void ps3_indirect_call(ppu_context* ctx);      /* ppu_loader.cpp: a call to the guest address in CTR */
 extern "C" volatile unsigned g_pad0_buttons;              /* cellPad.c: the buttons the game last read */
 extern "C" int des_hud_menu_title_shown(void);            /* des_hud.cpp: the in-game menus' title bar is up */
+extern "C" int des_ui_keyboard(const unsigned short* prompt, const unsigned short* text, unsigned limit,
+                               void (*done)(int ok, const unsigned short* text, unsigned n));   /* ui/include/des_ui.h */
+extern "C" int des_ui_keyboard_ready(void);
 
 namespace {
 
@@ -79,6 +98,9 @@ constexpr uint32_t kPgdStats  = 0x38u;         /* eight stats, 8 bytes apart (tw
 constexpr uint32_t kPgdSouls  = 0x78u;
 constexpr uint32_t kPgdLevels = 0x88u;         /* levels bought */
 constexpr uint32_t kPgdClass  = 0xB6u;         /* halfword */
+constexpr uint32_t kPgdName   = 0x90u;         /* UTF-16 (big-endian): 16 characters and the end */
+constexpr uint32_t kNameMax   = 16;            /* what Create Profile's keyboard takes */
+constexpr uint32_t kPgdBody   = 0xB2u;         /* byte: 0 female, 1 male (as Create Profile sets it) */
 constexpr int64_t  kSoulsCap  = 999999999;     /* the constant at 0x016FF700 */
 constexpr uint32_t kChrMan    = 0x01B3D6E0u;   /* *this + 0x1BC: the player's character */
 
@@ -115,6 +137,8 @@ constexpr int kMaxEntries = 16;
 constexpr int32_t kMaidenSeekRow = 1, kMaidenRespecRow = 70;
 const char kRespecText[] = "Respecialization";
 const char kLookText[] = "Change Appearance";
+const char kNameText[] = "Change Name";
+const char kBodyText[] = "Change Body";
 
 /* The statue, in the Nexus (map m01): a save that quit there starts at (0, 479.46, -41.69), facing it (-z); the
  * player stops against it at z -41.8. Cross from in front of it, within kReach of (kStatueX, kStatueZ). */
@@ -230,6 +254,17 @@ bool look_on()
     return s_on != 0;
 }
 
+bool identity_on()
+{
+    static int s_on = 1;
+    PS3_KNOB(s_on, ps3_env_int("DES_IDENTITY", 1));
+    return s_on != 0;
+}
+
+/* The rows DES_IDENTITY adds, with Change Appearance only. Change Name needs the UI's keyboard. */
+bool body_on() { return look_on() && identity_on(); }
+bool name_on() { return body_on() && des_ui_keyboard_ready(); }
+
 bool logging()
 {
     static int s_log = 0;
@@ -298,6 +333,8 @@ int32_t own_text_id(ppu_context* ctx, int k, uint32_t text)
 
 void ask_respec(ppu_context* ctx);
 void open_editor(ppu_context* ctx);
+void ask_name(ppu_context* ctx);
+void ask_body(ppu_context* ctx);
 
 /* The statue's rows, in order (the talk list's row number is the position + 1). own: a text of ours (own_text_id),
  * else game: the game's text id. choose: what the row does, nullptr to close (Leave). shown: the row's knob, nullptr
@@ -306,6 +343,8 @@ struct Row { const char* own; int32_t game; void (*choose)(ppu_context*); bool (
 constexpr Row kRows[] = {
     {kRespecText, 0, ask_respec, on},
     {kLookText, 0, open_editor, look_on},
+    {kNameText, 0, ask_name, name_on},
+    {kBodyText, 0, ask_body, body_on},
     {nullptr, kTextLeave, nullptr, nullptr},
 };
 constexpr int kRowCount = (int)(sizeof kRows / sizeof kRows[0]);
@@ -313,9 +352,10 @@ constexpr int kRowCount = (int)(sizeof kRows / sizeof kRows[0]);
 /* An own text in the guest heap, one copy per text for good, so the statue and the Maiden share its id. */
 uint32_t own_text(ppu_context* ctx, const char* s)
 {
-    static const char* s_keys[4];
-    static uint32_t s_vals[4];
-    for (int i = 0; i < 4; i++) {
+    constexpr int kTexts = 12;
+    static const char* s_keys[kTexts];
+    static uint32_t s_vals[kTexts];
+    for (int i = 0; i < kTexts; i++) {
         if (s_keys[i] == s) return s_vals[i];
         if (!s_keys[i]) {
             if ((s_vals[i] = guest_text(ctx, s))) s_keys[i] = s;
@@ -354,15 +394,21 @@ const char kAsk[] = "Return to your class's starting stats?\nThe souls of every 
                     "and every spell must be remembered again.";
 const char kCapped[] = "Not now: with the souls back,\nyou would hold more than 999,999,999.";
 const char kKeep[] = "Keep this appearance?\nThe Nexus reloads to show it.";
+const char kKeepBody[] = "Keep these appearance changes?\nThe Nexus reloads with the new body either way.";
+const char kToMale[] = "Change to a male body?\nWorn armour made only for a female body\ncomes off and stays in the inventory.\n"
+                       "Edit Appearance opens next.";
+const char kToFemale[] = "Change to a female body?\nWorn armour made only for a male body\ncomes off and stays in the inventory.\n"
+                         "Edit Appearance opens next.";
 
 /* idle; menu, the statue's open; confirm, its question; notice, the cap's; maiden, her menu open with our row;
  * maiden_ask, our row answered, her menu closing; maiden_confirm and maiden_notice, the question and the cap's
  * notice while her script waits; maiden_again, the dialog closing before her menu comes back. look_title, the statue
  * menu's title bar going; look_load, the title's menus loading; look_edit, the editor open; look_close, the title's
- * menus ending; look_settle, their pages going; look_keep, the question. */
+ * menus ending; look_settle, their pages going; look_keep, the question. name, the keyboard up; name_end, its
+ * buttons being let go. body, the Change Body question. */
 enum class Phase {
     idle, menu, confirm, notice, maiden, maiden_ask, maiden_confirm, maiden_notice, maiden_again,
-    look_title, look_load, look_edit, look_close, look_settle, look_keep,
+    look_title, look_load, look_edit, look_close, look_settle, look_keep, name, name_end, body,
 };
 Phase s_phase = Phase::idle;
 bool s_here = false;              /* the player was at the statue last frame (for the log) */
@@ -481,14 +527,13 @@ void maiden_menu_again(ppu_context* ctx)
 
 void dialog(ppu_context* ctx, int32_t kind, const char* text, Phase next)
 {
-    static uint32_t s_ask = 0, s_capped = 0, s_keep = 0, s_ok = 0;
-    uint32_t& t = text == kAsk ? s_ask : text == kKeep ? s_keep : s_capped;
-    if (!t) t = guest_text(ctx, text);
+    static const char kOk[] = "OK";
+    const uint32_t t = own_text(ctx, text);
     const uint32_t fmg = call_game(ctx, func_005C2810, {kFmgTalk});
     if (!t || !guest_ok(fmg)) return;
     uint32_t yes = call_game(ctx, func_005C2848, {fmg, kTextYes});
     const uint32_t no = call_game(ctx, func_005C2848, {fmg, kTextNo});
-    if (kind == kDialogOk && (s_ok || (s_ok = guest_text(ctx, "OK")))) yes = s_ok;   /* the talk texts have no OK */
+    if (kind == kDialogOk && own_text(ctx, kOk)) yes = own_text(ctx, kOk);   /* the talk texts have no OK */
     call_game(ctx, func_007216D0, {-1, -1});
     call_game(ctx, func_00720F50, {(int64_t)kSlotDialog, kind});
     call_game(ctx, func_00720F50, {0x54, 0});
@@ -584,6 +629,14 @@ constexpr uint32_t kLookCounter = 0x2C8u;   /* a word the editor moves as well; 
 uint8_t s_look[kLookSize];
 uint32_t s_look_counter = 0;
 uint32_t s_menu_task = 0, s_menu_step = 0, s_face_task = 0;
+bool s_body_changed = false;   /* the editor opened after Change Body: the Nexus reloads after it, whatever the answer */
+
+/* The warp the scripts use, to this map again: the character is rebuilt from PGD. */
+void reload(ppu_context* ctx)
+{
+    s_body_changed = false;
+    call_game(ctx, func_00451430, {0, 1, 0, 0, 0, -1});
+}
 
 void look_read(uint32_t p, uint8_t* out)
 {
@@ -660,6 +713,7 @@ void start_menus(ppu_context* ctx)
         call_game(ctx, func_00720F50, {kSlotNoControl, 0});
         call_game(ctx, func_00443838, {0, kPlayerEntity, 1});
         fprintf(stderr, "[des] appearance: the title's menus did not start\n");
+        if (s_body_changed) reload(ctx);
     }
     if (logging()) fprintf(stderr, "[des] appearance: loading the menus\n");
 }
@@ -675,6 +729,200 @@ void look_end(ppu_context* ctx)
     call_game(ctx, func_00443838, {0, kPlayerEntity, 1});
     s_phase = Phase::look_settle;
     if (logging()) fprintf(stderr, "[des] appearance: the menus ended\n");
+}
+
+/* ---- Change Name ---- */
+
+/* The game's text id in FMG category cat (0x005C2810, 0x005C2848), copied out as UTF-16 with its end; empty if that
+ * category is not loaded or has no such text. */
+std::u16string game_text(ppu_context* ctx, int32_t cat, int32_t id)
+{
+    std::u16string s;
+    const uint32_t fmg = call_game(ctx, func_005C2810, {cat});
+    const uint32_t t = guest_ok(fmg) ? call_game(ctx, func_005C2848, {fmg, id}) : 0;
+    if (t < 0x00010000u || t >= 0xD0000000u || (t & 1u) || t == fmg) return s;
+    for (uint32_t i = 0; i < 64; i++) {
+        const uint16_t c = vm_read16(t + 2 * i);
+        if (!c) break;
+        s.push_back((char16_t)c);
+    }
+    return s;
+}
+
+constexpr int32_t kFmgMenuCommon = 77, kTextName = 32002;   /* "Name", Create Profile's row */
+
+/* The keyboard's answer (des_ui_keyboard's done, on the render thread): 0 waiting, 1 Done, 2 Cancel. */
+std::atomic<int> s_name_answer{0};
+uint16_t s_name_new[kNameMax];
+unsigned s_name_len = 0;
+
+void name_done(int ok, const unsigned short* text, unsigned n)
+{
+    s_name_len = 0;
+    for (unsigned i = 0; ok && text && i < n && i < kNameMax; i++) s_name_new[s_name_len++] = text[i];
+    s_name_answer.store(ok ? 1 : 2, std::memory_order_release);
+}
+
+/* The statue's row: the keyboard with the name in it. The character stays still meanwhile, as for the editor. */
+void ask_name(ppu_context* ctx)
+{
+    const uint32_t p = pgd();
+    if (!p) return;
+    std::u16string name, prompt = game_text(ctx, kFmgMenuCommon, kTextName);
+    for (uint32_t i = 0; i < kNameMax; i++) {
+        const uint16_t c = vm_read16(p + kPgdName + 2 * i);
+        if (!c) break;
+        name.push_back((char16_t)c);
+    }
+    if (prompt.empty()) prompt = u"Name";
+    s_name_answer.store(0, std::memory_order_relaxed);
+    if (!des_ui_keyboard(reinterpret_cast<const unsigned short*>(prompt.c_str()),
+                         reinterpret_cast<const unsigned short*>(name.c_str()), kNameMax, name_done)) {
+        fprintf(stderr, "[des] identity: the keyboard did not open\n");
+        return;
+    }
+    call_game(ctx, func_00720F50, {kSlotNoControl, 1});
+    call_game(ctx, func_00443838, {0, kPlayerEntity, 0});
+    s_phase = Phase::name;
+    if (logging()) fprintf(stderr, "[des] identity: the keyboard, %zu characters\n", name.size());
+}
+
+/* The keyboard has answered: Done with a name puts it in PGD (zeros after it, as the game leaves it) and asks the game
+ * to save (the SaveRequest script binding), so the save list's name follows. */
+void name_tick(ppu_context* ctx)
+{
+    const int answer = s_name_answer.load(std::memory_order_acquire);
+    if (!answer) return;
+    s_phase = Phase::name_end;
+    const uint32_t p = pgd();
+    if (answer != 1 || !s_name_len || !p) {
+        if (logging()) fprintf(stderr, "[des] identity: name unchanged\n");
+        return;
+    }
+    bool same = vm_read16(p + kPgdName + 2 * s_name_len) == 0;
+    for (unsigned i = 0; same && i < s_name_len; i++) same = vm_read16(p + kPgdName + 2 * i) == s_name_new[i];
+    if (same) return;
+    for (uint32_t i = 0; i <= kNameMax; i++) vm_write16(p + kPgdName + 2 * i, i < s_name_len ? s_name_new[i] : 0);
+    call_game(ctx, func_004418B8, {});
+    fprintf(stderr, "[des] identity: new name, %u characters; save requested\n", s_name_len);
+}
+
+/* ---- Change Body ---- */
+
+constexpr uint32_t kPgdInv = 0x128u;          /* the inventory (AddItem's r3) */
+constexpr uint32_t kPgdItems = 0x1F4u;        /* the item list: +0x0C its size, +0x10 its entries of 0x20 bytes */
+constexpr uint32_t kPgdWornEntry = 0x138u, kPgdWornId = 0x198u;   /* per slot: the list entry worn, and its id */
+constexpr uint32_t kSlotHead = 10, kSlotLegs = 13, kSlotHair = 14;
+constexpr uint32_t kCatProtector = 0x10000000u;
+/* An entry: +0x00 the category, +0x04 the id, +0x14 a byte that is 1 while it holds an item. */
+constexpr uint32_t kEntryCat = 0x00u, kEntryId = 0x04u, kEntryUsed = 0x14u, kEntrySize = 0x20u;
+
+/* EquipParamProtector's rows (hairstyles are rows too): the model's category at +0x00 (5 head, 2 body, 1 arms, 6 legs,
+ * 4 hair), the body it is made for at +0x01 and the model at +0x02. +0x01 is what the Equipment menu greys a piece
+ * out by (0x0082E8F0): 1 only a male body may wear it, 2 only a female one, anything else both. */
+struct Prot { int32_t id; uint8_t cat, made_for; uint16_t model; };
+constexpr uint8_t kMale = 1, kFemale = 2, kBoth = 3;
+
+const std::vector<Prot>& protectors(ppu_context* ctx)
+{
+    static std::vector<Prot> s_rows;
+    if (!s_rows.empty()) return s_rows;
+    static const char kType[] = "EQUIP_PARAM_PROTECTOR_ST";
+    for (int t = 0; t <= 0x1D; t++) {   /* the tables by number, as des_souls_use.cpp's speffect_row finds its own */
+        const uint32_t holder = call_game(ctx, func_005A5920, {t, 0});
+        const uint32_t file = guest_ok(holder) ? vm_read32(holder + 0x20) : 0;
+        if (!guest_ok(file)) continue;
+        bool named = true;
+        for (uint32_t i = 0; i < sizeof kType - 1 && named; i++) named = vm_read8(file + 0x0C + i) == (uint8_t)kType[i];
+        if (!named) continue;
+        const uint32_t n = vm_read16(file + 0x0A);
+        for (uint32_t k = 0; k < n; k++) {
+            const uint32_t row = file + vm_read32(file + 0x30 + 12 * k + 4);
+            s_rows.push_back({(int32_t)vm_read32(file + 0x30 + 12 * k), vm_read8(row), vm_read8(row + 1), vm_read16(row + 2)});
+        }
+        break;
+    }
+    return s_rows;
+}
+
+const Prot* prot_row(const std::vector<Prot>& rows, int32_t id)
+{
+    for (const Prot& r : rows) if (r.id == id) return &r;
+    return nullptr;
+}
+
+/* The body (kMale or kFemale) may wear row, by the menu's rule. */
+bool wearable(const Prot& row, uint8_t body)
+{
+    return (row.made_for != kMale && row.made_for != kFemale) || row.made_for == body;
+}
+
+/* The list entry that holds an item of id, or -1. */
+int32_t find_entry(uint32_t p, uint32_t id)
+{
+    const uint32_t list = p + kPgdItems, at = vm_read32(list + 0x10), n = vm_read32(list + 0x0C);
+    if (!guest_ok(at) || n > 0x1000u) return -1;
+    for (uint32_t i = 0; i < n; i++) {
+        const uint32_t e = at + kEntrySize * i;
+        if (vm_read8(e + kEntryUsed) && vm_read32(e + kEntryCat) == kCatProtector && vm_read32(e + kEntryId) == id)
+            return (int32_t)i;
+    }
+    return -1;
+}
+
+/* Takes off what slot s wears, as the Equipment menu's Unequip does: the slot then wears its category's "No Equipment"
+ * row (model 0, both bodies), from the item list, added to it if it is not there (the menu adds it the same way). The
+ * piece itself stays in the item list as it is. */
+bool take_off(ppu_context* ctx, const std::vector<Prot>& rows, uint32_t p, uint32_t s, const Prot& worn)
+{
+    const Prot* none = nullptr;
+    for (const Prot& r : rows)
+        if (r.cat == worn.cat && r.model == 0 && r.made_for == kBoth) { none = &r; break; }
+    if (!none) return false;
+    int32_t e = find_entry(p, (uint32_t)none->id);
+    if (e < 0) e = (int32_t)call_game(ctx, func_008FB4F0, {p + kPgdInv, kCatProtector, none->id, 1, 1, 1});
+    if (e < 0) return false;
+    vm_write32(p + kPgdWornEntry + 4 * s, (uint32_t)e);
+    vm_write32(p + kPgdWornId + 4 * s, (uint32_t)none->id);
+    return true;
+}
+
+/* The other body for the character in PGD. Worn armour the new body may not wear comes off; the hairstyle becomes the
+ * new body's of the same number (same category and model). Nothing else changes: the item list and the Storage
+ * Monument keep every piece as it is. false, with nothing changed, if the game's state is not there. */
+bool change_body(ppu_context* ctx)
+{
+    const uint32_t p = pgd();
+    const std::vector<Prot>& rows = protectors(ctx);
+    if (!p || rows.empty() || vm_read8(p + kPgdBody) > 1) return false;
+    const uint8_t was = vm_read8(p + kPgdBody), to = was ? 0 : 1;
+    const uint8_t body = to ? kMale : kFemale;
+    int off = 0;
+    for (uint32_t s = kSlotHead; s <= kSlotLegs; s++) {
+        const Prot* worn = prot_row(rows, (int32_t)vm_read32(p + kPgdWornId + 4 * s));
+        if (!worn || wearable(*worn, body)) continue;
+        if (take_off(ctx, rows, p, s, *worn)) off++;
+        else fprintf(stderr, "[des] identity: slot %u keeps %d, made for the other body\n", s, worn->id);
+    }
+    const int32_t hair = (int32_t)vm_read32(p + kPgdWornId + 4 * kSlotHair);
+    int32_t new_hair = hair;
+    if (const Prot* h = prot_row(rows, hair); h && !wearable(*h, body)) {
+        for (const Prot& r : rows)
+            if (r.made_for == body && r.cat == h->cat && r.model == h->model) { new_hair = r.id; break; }
+        vm_write32(p + kPgdWornId + 4 * kSlotHair, (uint32_t)new_hair);
+    }
+    vm_write8(p + kPgdBody, to);
+    fprintf(stderr, "[des] identity: body %s to %s; %d piece(s) taken off, hairstyle %d to %d\n",
+            was ? "male" : "female", to ? "male" : "female", off, hair, new_hair);
+    return true;
+}
+
+/* The statue's row: the question first. */
+void ask_body(ppu_context* ctx)
+{
+    const uint32_t p = pgd();
+    if (!p || vm_read8(p + kPgdBody) > 1) return;
+    dialog(ctx, kDialogYesNo, vm_read8(p + kPgdBody) ? kToFemale : kToMale, Phase::body);
 }
 
 } // namespace
@@ -695,9 +943,9 @@ extern "C" void des_respec_tick(ppu_context* ctx)
     if (!m) return;
     const unsigned cross = g_pad0_buttons & 0x4000u, pressed = cross & ~s_cross_prev;
     s_cross_prev = cross;
-    /* The title's menus clear the slot as they start, so it is set again until the editor has gone. */
+    /* The title's menus clear the slot as they start, so it is set again until the editor (or the keyboard) has gone. */
     const bool held = s_phase == Phase::look_title || s_phase == Phase::look_load || s_phase == Phase::look_edit ||
-                      s_phase == Phase::look_close;
+                      s_phase == Phase::look_close || s_phase == Phase::name || s_phase == Phase::name_end;
     if (held && slot(m, kSlotNoControl) != 1) call_game(ctx, func_00720F50, {kSlotNoControl, 1});
     switch (s_phase) {
     case Phase::idle: {
@@ -819,7 +1067,8 @@ extern "C" void des_respec_tick(ppu_context* ctx)
         const bool changed = p && look_changed(p);
         if (logging()) fprintf(stderr, "[des] appearance: closed, %s\n", changed ? "changed" : "no change");
         s_phase = Phase::idle;
-        if (changed) dialog(ctx, kDialogYesNo, kKeep, Phase::look_keep);
+        if (changed) dialog(ctx, kDialogYesNo, s_body_changed ? kKeepBody : kKeep, Phase::look_keep);
+        else if (s_body_changed) reload(ctx);
         break;
     }
     case Phase::look_keep: {
@@ -828,8 +1077,29 @@ extern "C" void des_respec_tick(ppu_context* ctx)
         const uint32_t p = pgd();
         const int32_t answer = (int32_t)vm_read32(m + kDialogAnswer);
         if (logging()) fprintf(stderr, "[des] appearance: answer %d\n", answer);
-        if (answer == 1) call_game(ctx, func_00451430, {0, 1, 0, 0, 0, -1});   /* the warp the scripts use: this map again */
-        else if (p) look_restore(p);
+        if (answer != 1 && p) look_restore(p);
+        if (answer == 1 || s_body_changed) reload(ctx);
+        break;
+    }
+    case Phase::name:
+        name_tick(ctx);
+        break;
+    case Phase::name_end:   /* the controls come back once the keyboard's buttons are up, so none acts in the game */
+        if (g_pad0_buttons & 0xFFFFu) break;
+        call_game(ctx, func_00720F50, {kSlotNoControl, 0});
+        call_game(ctx, func_00443838, {0, kPlayerEntity, 1});
+        s_cross_prev = 0x4000u;
+        s_phase = Phase::idle;
+        break;
+    case Phase::body: {
+        if (slot(m, kSlotDialog)) break;
+        s_phase = Phase::idle;
+        const int32_t answer = (int32_t)vm_read32(m + kDialogAnswer);
+        if (logging()) fprintf(stderr, "[des] identity: body answer %d\n", answer);
+        if (answer != 1 || !change_body(ctx)) break;
+        s_body_changed = true;
+        open_editor(ctx);
+        if (s_phase == Phase::idle) reload(ctx);   /* (no editor: the new body at once) */
         break;
     }
     }

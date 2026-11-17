@@ -135,10 +135,10 @@ void Prelaunch::build_menu_buttons() {
     });
     apply_intro_animation(mMenuButtons.back()->root(), "delay-4");
 
-    mMenuButtons.push_back(std::make_unique<Button>(menuList, "Co-op"));
+    mMenuButtons.push_back(std::make_unique<Button>(menuList, "Seamless co-op"));
     mMenuButtons.back()->on_pressed([this] {
         play_sound(kSoundWindowOpen);
-        push(menu::screen_alone("Co-op"));
+        push(menu::screen_alone("Seamless co-op"));
     });
     apply_intro_animation(mMenuButtons.back()->root(), "delay-5");
 

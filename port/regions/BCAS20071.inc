@@ -191,6 +191,7 @@ DES_REGION_ADDR(0x00446C68, 0x00444FD0)  /* call des_seamless_game (by address) 
 DES_REGION_ADDR(0x00447258, 0x004455C0)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00447EA0, 0x00446208)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x0044A368, 0x004486D0)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x0044A5E4, 0x0044894C)  /* hook des_coop_hook: SetClearBonus, the session's member count (everyone's full boss souls) */
 DES_REGION_ADDR(0x0044C6F0, 0x0044AA58)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x0044C780, 0x0044AAE8)  /* hook des_coop_hook: the end of WarpNextStageKick (a guest going home loads its own area) */
 DES_REGION_ADDR(0x00451430, 0x0044F798)  /* call */
@@ -234,6 +235,7 @@ DES_REGION_ADDR(0x00718D84, 0x00719EE4)  /* hook des_hud_canvas */
 DES_REGION_ADDR(0x0071A6B8, 0x0071B818)  /* call kDlgBaseUpdate */
 DES_REGION_ADDR(0x0071B5A0, 0x0071C700)  /* call kFontSpacing */
 DES_REGION_ADDR(0x0071B728, 0x0071C888)  /* call kFontBegin */
+DES_REGION_ADDR(0x00720F20, 0x00722080)  /* code kGetMenuVarFn */
 DES_REGION_ADDR(0x00720F50, 0x007220B0)  /* call */
 DES_REGION_ADDR(0x00720F80, 0x007220E0)  /* call */
 DES_REGION_ADDR(0x007212A8, 0x00722408)  /* call */
@@ -242,10 +244,17 @@ DES_REGION_ADDR(0x007216D0, 0x00722830)  /* call */
 DES_REGION_ADDR(0x007216F0, 0x00722850)  /* call */
 DES_REGION_ADDR(0x00723450, 0x007245B0)  /* call */
 DES_REGION_ADDR(0x00723498, 0x007245F8)  /* call */
+DES_REGION_ADDR(0x007234E0, 0x00724640)  /* code kPageSwitchFn */
 DES_REGION_ADDR(0x00724AD0, 0x00725C30)  /* call */
 DES_REGION_ADDR(0x00724E40, 0x00725FA0)  /* hook des_menu_tick */
 DES_REGION_ADDR(0x0072D970, 0x0072EAD0)  /* call */
+DES_REGION_ADDR(0x00736BB0, 0x00737D10)  /* code kEquipCloseFn */
 DES_REGION_ADDR(0x007731F0, 0x00774350)  /* call */
+DES_REGION_ADDR(0x00776C98, 0x00777E20)  /* code kGroupNoHookFn */
+DES_REGION_ADDR(0x00776F68, 0x007780F0)  /* code kGroupPlaceFn */
+DES_REGION_ADDR(0x00777C90, 0x00778E18)  /* code kGroupInputFn */
+DES_REGION_ADDR(0x00778AB8, 0x00779C40)  /* code kMenuBusyFn */
+DES_REGION_ADDR(0x007814F0, 0x00782678)  /* code kListPlaceFn */
 DES_REGION_ADDR(0x00789BC0, 0x0078AD48)  /* call kGaugeUpdate */
 DES_REGION_ADDR(0x0078E2E8, 0x0078F470)  /* call kSmoothGaugeUpdate */
 DES_REGION_ADDR(0x0078EB60, 0x0078FCE8)  /* call kGaugeDraw */
@@ -255,12 +264,27 @@ DES_REGION_ADDR(0x00798CD8, 0x00799E60)  /* call kScrollMsgUpdate */
 DES_REGION_ADDR(0x0079EF7C, 0x007A0104)  /* hook des_hud_w2s */
 DES_REGION_ADDR(0x007A6264, 0x007A73EC)  /* hook des_hud_onscreen */
 DES_REGION_ADDR(0x007A8C60, 0x007A9DE8)  /* call kGetSoulUpdate */
+DES_REGION_ADDR(0x007ADB80, 0x007AED08)  /* call kShortcutUpdate */
 DES_REGION_ADDR(0x007B5AE8, 0x007B6C70)  /* hook des_hud_onscreen */
 DES_REGION_ADDR(0x007B61D4, 0x007B735C)  /* hook des_hud_onscreen */
+DES_REGION_ADDR(0x007C8260, 0x007C93E8)  /* code kOptionCloseFn */
+DES_REGION_ADDR(0x007CA320, 0x007CB4A8)  /* code kOptionPlaceFn */
+DES_REGION_ADDR(0x007CA7E0, 0x007CB968)  /* code kOptionRightFn */
+DES_REGION_ADDR(0x007CAA70, 0x007CBBF8)  /* code kOptionRowFn */
+DES_REGION_ADDR(0x007CC598, 0x007CD720)  /* code kOptionUpFn */
 DES_REGION_ADDR(0x007DC7A0, 0x007DD928)  /* call */
 DES_REGION_ADDR(0x007E4248, 0x007E53D0)  /* call */
 DES_REGION_ADDR(0x0081E110, 0x0081F298)  /* call kCmdChoice */
+DES_REGION_ADDR(0x0081FA40, 0x00820BC8)  /* code kInvCloseFn */
+DES_REGION_ADDR(0x00820DD0, 0x00821F58)  /* code kInvCategoryFn */
 DES_REGION_ADDR(0x008219E0, 0x00822B68)  /* call kInvMessage */
+DES_REGION_ADDR(0x0082A440, 0x0082B5C8)  /* code kStatusCloseFn */
+DES_REGION_ADDR(0x00835E10, 0x00836F98)  /* code kDepositCategoryFn */
+DES_REGION_ADDR(0x00839748, 0x0083A8D0)  /* code kTakeCategoryFn */
+DES_REGION_ADDR(0x00841A90, 0x00842C18)  /* code kWorldCloseFn */
+DES_REGION_ADDR(0x008725F8, 0x00873780)  /* code kShopCategoryFn */
+DES_REGION_ADDR(0x00877980, 0x00878B08)  /* code kRepairCategoryFn */
+DES_REGION_ADDR(0x008ABD18, 0x008ACEA0)  /* code kSystemCloseFn */
 DES_REGION_ADDR(0x008AEB68, 0x008AFCF0)  /* hook des_hud_onscreen */
 DES_REGION_ADDR(0x008CD078, 0x008CE200)  /* call kNowLoadingUpdate */
 DES_REGION_ADDR(0x008DA0E0, 0x008DB268)  /* hook des_viewer_rate */
@@ -329,10 +353,23 @@ DES_REGION_ADDR(0x0167AC88, 0x0167C0C0)  /* hook ds_malloc */
 DES_REGION_ADDR(0x016EBB98, 0x016ED0A0)  /* data kNoName */
 DES_REGION_ADDR(0x0185A8B8, 0x0185A8B8)  /* data kEquipVt */
 DES_REGION_ADDR(0x0185AF98, 0x0185AF98)  /* vtable */
+DES_REGION_ADDR(0x01866068, 0x01866068)  /* data kEquipSlotsVt */
+DES_REGION_ADDR(0x01866570, 0x01866570)  /* data kInvTabsVt */
 DES_REGION_ADDR(0x01867F50, 0x01867F50)  /* data kCursorVt */
+DES_REGION_ADDR(0x018692C0, 0x018692C0)  /* data kStartTabVt */
+DES_REGION_ADDR(0x018697B0, 0x018697B0)  /* data kShortcutVt */
 DES_REGION_ADDR(0x018698A0, 0x018698A0)  /* data kHudDialogVt */
+DES_REGION_ADDR(0x01869FB8, 0x01869FB8)  /* data kPromptVt */
+DES_REGION_ADDR(0x0186A398, 0x0186A398)  /* data kOptionVt */
 DES_REGION_ADDR(0x0186A968, 0x0186A968)  /* data kTitleVt */
+DES_REGION_ADDR(0x0186BE58, 0x0186BE58)  /* data kProfileVt */
+DES_REGION_ADDR(0x0186C318, 0x0186C318)  /* data kInventoryVt */
+DES_REGION_ADDR(0x0186C8A0, 0x0186C8A0)  /* data kDepositVt */
+DES_REGION_ADDR(0x0186C9F8, 0x0186C9F8)  /* data kTakeVt */
+DES_REGION_ADDR(0x0186DC08, 0x0186DC08)  /* data kShopVt */
+DES_REGION_ADDR(0x0186DD88, 0x0186DD88)  /* data kRepairVt */
 DES_REGION_ADDR(0x0186E1E0, 0x0186E1E0)  /* data kFadePlateVt */
+DES_REGION_ADDR(0x0186EF60, 0x0186EF60)  /* data kSystemVt */
 DES_REGION_ADDR(0x0186FBC0, 0x0186FBC0)  /* data kLoadingVt */
 DES_REGION_ADDR(0x01870830, 0x01870830)  /* data kMenuTitleVt */
 DES_REGION_ADDR(0x01870C30, 0x01870C18)  /* data kBackPlateVt */

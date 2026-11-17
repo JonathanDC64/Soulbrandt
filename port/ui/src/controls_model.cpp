@@ -11,6 +11,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 
 namespace ui::controls {
 
@@ -44,6 +45,12 @@ const Target kTargets[] = {
     {"triangle", "Two-hand (Triangle)", nullptr, nullptr},
     {"up", "Switch spell (Up)", "Equipment", nullptr},
     {"down", "Switch item (Down)", nullptr, nullptr},
+    // the port's too (keys_for_pad; des_item_hotkeys.cpp)
+    {"item1", "Item slot 1", nullptr, "Switches straight to the item in slot 1, without using it."},
+    {"item2", "Item slot 2", nullptr, "Switches straight to the item in slot 2, without using it."},
+    {"item3", "Item slot 3", nullptr, "Switches straight to the item in slot 3, without using it."},
+    {"item4", "Item slot 4", nullptr, "Switches straight to the item in slot 4, without using it."},
+    {"item5", "Item slot 5", nullptr, "Switches straight to the item in slot 5, without using it."},
     {"left", "Switch left hand (Left)", nullptr, nullptr},
     {"right", "Switch right hand (Right)", nullptr, nullptr},
     {"start", "Menu (Start)", "Menus", nullptr},
@@ -241,6 +248,35 @@ int target_index(const std::string& name) {
     return -1;
 }
 
+namespace {
+
+bool item_row(int t) {
+    return std::strncmp(kTargets[t].name, "item", 4) == 0;
+}
+
+// An item slot's input that a cellPad row has too stays with that row, as settings.cpp's keys_for_pad gives it (a
+// layout saved before the item rows may give 1 to 5 to other actions).
+void drop_taken_item_keys(KeyMap& m) {
+    for (int t = 0; t < kTargetCount; t++) {
+        if (!item_row(t)) continue;
+        Bindings& own = m[t];
+        for (int j = 0; j < int(own.size());) {
+            bool taken = false;
+            for (int u = 0; u < kTargetCount && !taken; u++) {
+                if (item_row(u) || std::strcmp(kTargets[u].name, "kick") == 0) continue;
+                for (const Binding& b : m[u]) taken |= !b.menu && b.in == own[j].in && b.mod == own[j].mod;
+            }
+            if (taken) {
+                own.erase(own.begin() + j);
+            } else {
+                j++;
+            }
+        }
+    }
+}
+
+}  // namespace
+
 const KeyMap& layout_map() {
     static const KeyMap m = [] {
         KeyMap k;
@@ -259,6 +295,7 @@ const KeyMap& key_map() {
         sValue = value;
         sMap = layout_map();
         apply_pairs(sMap, value);
+        drop_taken_item_keys(sMap);
     }
     return sMap;
 }

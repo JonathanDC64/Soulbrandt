@@ -117,7 +117,7 @@ If RPCS3 is set to run as administrator, setup cannot start it: untick that in `
 
 ### Linux
 
-CI builds the Linux program on every change, and each release includes a Linux download. It needs x86-64 Linux with glibc 2.35 or newer, a Vulkan driver, and `curl` and `tar`. Nothing else needs installing. The game renders on Vulkan, and setup prepares its shaders. If Vulkan can't start, the game falls back to its older renderer on vkd3d (DirectX 12 on Vulkan), which compiles shaders as it goes, with long pauses when a new area loads.
+CI builds the Linux program on every change, and each release includes a Linux download. It needs x86-64 Linux with glibc 2.35 or newer, a Vulkan driver, `tar`, and `curl` or `wget` (or `python3`). Nothing else needs installing. The game renders on Vulkan, and setup prepares its shaders. If Vulkan can't start, the game falls back to its older renderer on vkd3d (DirectX 12 on Vulkan), which compiles shaders as it goes, with long pauses when a new area loads.
 
 Linux is newer and less tested than Windows. Players run it on desktop Linux and on the Steam Deck, on Vulkan ([docs/106](docs/106-setup-on-linux.md)).
 

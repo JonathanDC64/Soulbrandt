@@ -90,9 +90,9 @@ const std::vector<Entry>& entries() {
                 if (looks::current().pages) menu.open_page("Mods", make_mods_page);
                 else menu.open(std::make_unique<ModsWindow>());
             }},
-        {"Co-op", "Play through the game with up to three friends.",
+        {"Seamless co-op", "Play through the game with up to three friends.",
             [](MenuShell& menu) {
-                if (looks::current().pages) menu.open_page("Co-op", make_coop_page);
+                if (looks::current().pages) menu.open_page("Seamless co-op", make_coop_page);
                 else menu.open(make_coop_window());
             }},
         {"Report an issue", "Make a report of a problem, with what the game was doing.",
@@ -119,11 +119,11 @@ const std::vector<Entry>& entries() {
 
 std::unique_ptr<Document> screen_alone(const std::string& entry) {
     if (entry == "Settings") return std::make_unique<MenuShell>(MenuShell::Standalone{});
-    if (looks::current().pages && (entry == "Trophies" || entry == "Mods" || entry == "Co-op"))
+    if (looks::current().pages && (entry == "Trophies" || entry == "Mods" || entry == "Seamless co-op"))
         return std::make_unique<MenuShell>(MenuShell::Standalone{entry});
     if (entry == "Trophies") return std::make_unique<TrophiesWindow>();
     if (entry == "Mods") return std::make_unique<ModsWindow>();
-    if (entry == "Co-op") return make_coop_window();
+    if (entry == "Seamless co-op") return make_coop_window();
     return nullptr;
 }
 

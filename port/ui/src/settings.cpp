@@ -68,6 +68,7 @@ constexpr Def kDefs[] = {
     {"DES_SOULS_AT_ONCE", "1", Apply::Live},   // des_souls_use.cpp, at each Use: 1 = Use on soul items asks how many
     {"DES_APPEARANCE", "0", Apply::Live},      // des_respec.cpp, each frame: 1 = the Nexus statue offers Edit Appearance
     {"DES_STORAGE", "0", Apply::Live},        // des_storage.cpp, each command menu: 1 = Send to Storage under Drop
+    {"DES_IDENTITY", "1", Apply::Live},        // des_respec.cpp, each frame: 1 = with DES_APPEARANCE, also Change Name and Change Body
     {"DES_RESPEC", "0", Apply::Live},          // des_respec.cpp, each frame: 1 = the Nexus statue and the Maiden in Black offer a stat respec
     {"DES_DOF", "1", Apply::Live},             // des_dof, read each frame
     {"RSX_AA", "0", Apply::Live},              // 0 = none, as on the PS3; 1 = FXAA, 2 = SMAA, before the HUD; per batch
@@ -247,17 +248,23 @@ void make_dirs(const std::string& file) {
     std::filesystem::create_directories(std::filesystem::path(report::widen(file)).parent_path(), ec);
 }
 
-// The keyboard and mouse bindings as cellPad gets them: the layout with the changes after it, less the Kick key's
-// ("kick=", the Keyboard page's Kick row: the port's own, des_kick in des_options.cpp). With DES_KICK=1 its inputs
-// press R1 too, added to R1's last bindings, and DES_KICK_KEYS names them, for des_kick to read at each attack. A
-// wheel notch is left out: it is never held, so it could never be told from the attack.
+// The Keyboard page's Item slot rows ("item1=" to "item5=", the port's own: des_item_hotkeys.cpp).
+constexpr int kItemSlots = 5;
+
+// The keyboard and mouse bindings as cellPad gets them: the layout with the changes after it, less the port's own
+// rows. The Kick key's ("kick=", the Keyboard page's Kick row: des_kick in des_options.cpp): with DES_KICK=1 its
+// inputs press R1 too, added to R1's last bindings, and DES_KICK_KEYS names them, for des_kick to read at each attack.
+// The item slots' go to DES_ITEM_KEYS, the five slots' bindings separated by commas, less any a cellPad row has too
+// (a layout saved before these rows may give 1 to 5 to other actions; those keep them). A wheel notch is left out of
+// both: it is never held, so it could never be told from the attack, or read as a press.
 std::string keys_for_pad(const std::string& keys) {
     const auto lower = [](std::string s) {
         for (char& c : s) c = char(std::tolower(static_cast<unsigned char>(c)));
         return s;
     };
     const std::string mode = pinned("DES_KICK") ? pinned_value("DES_KICK") : get("DES_KICK");
-    std::string out, r1, kick;
+    std::string out, r1, kick, items[kItemSlots];
+    std::map<std::string, std::string> pad;   // each cellPad row's last value
     bool have_r1 = false;
     size_t at = 0;
     while (at < keys.size()) {
@@ -273,13 +280,44 @@ std::string keys_for_pad(const std::string& keys) {
             kick = value;
             continue;
         }
+        if (target.size() == 5 && target.compare(0, 4, "item") == 0 && target[4] >= '1' &&
+            target[4] < '1' + kItemSlots) {
+            items[target[4] - '1'] = value;
+            continue;
+        }
         if (target == "r1") {
             r1 = value;
             have_r1 = true;
         }
+        pad[target] = value;
         if (!out.empty()) out += ',';
         out += pair;
     }
+    // A row's inputs, each as written ("shift+1"), without a wheel notch or "none".
+    const auto each_held = [&](const std::string& v, auto&& f) {
+        for (size_t a = 0; a < v.size();) {
+            size_t end = v.find('|', a);
+            if (end == std::string::npos) end = v.size();
+            const std::string item = v.substr(a, end - a), in = lower(item.substr(item.find('+') + 1));
+            a = end + 1;
+            if (item.empty() || in == "none" || in == "wheelup" || in == "wheeldown") continue;
+            f(item);
+        }
+    };
+    std::set<std::string> taken;   // the cellPad rows' inputs ("menu:" ones count only in the game's menus)
+    for (const auto& [target, value] : pad)
+        each_held(value, [&](const std::string& item) {
+            if (lower(item).rfind("menu:", 0) != 0) taken.insert(lower(item));
+        });
+    std::string item_keys;
+    for (int i = 0; i < kItemSlots; i++) {
+        std::string slot;
+        each_held(items[i], [&](const std::string& item) {
+            if (!taken.count(lower(item))) slot += (slot.empty() ? "" : "|") + item;
+        });
+        item_keys += (i ? "," : "") + slot;
+    }
+    ps3_setenv("DES_ITEM_KEYS", item_keys.c_str());
     // (cellPad keeps 4 bindings a target, PAD_BIND_MAX: the Kick keys fill what R1's own leave)
     int room = 4;
     for (size_t a = 0; a < r1.size();) {
@@ -332,7 +370,8 @@ const char* const kKeysLayout =
     "circle=space,l3=c,r1=mouse1,r2=shift+mouse1,l1=mouse2,l2=lctrl|shift+mouse2,r3=q|mouse3,"
     "cross=e,square=r,triangle=f,"
     "up=up|wheelup,down=down|wheeldown,right=right|shift+wheelup,left=left|shift+wheeldown,"
-    "start=esc,select=g|tab";
+    "start=esc,select=g|tab,"
+    "item1=1,item2=2,item3=3,item4=4,item5=5";
 
 std::string keys_with_layout(const std::string& changes) {
     return changes.empty() ? std::string(kKeysLayout) : std::string(kKeysLayout) + "," + changes;

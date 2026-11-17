@@ -148,6 +148,7 @@
 #include "ui/include/des_ui.h"  /* the wrapper UI: settings.ini and the overlay (docs/32) */
 #include "des_rsx_route.h"      /* the renderer calls below: through rsx_out in a PS3RECOMP_RSX_HAL build */
 #include "des_seamless.h"       /* seamless co-op's mode: its world tendency is always the player's own */
+#include "des_keybinds.h"       /* the Kick key's bindings (DES_KICK_KEYS) */
 #include <algorithm>
 #include <atomic>
 #include <cctype>
@@ -182,7 +183,6 @@ extern "C" void des_route_on_open(const char* path);   /* des_route.cpp: a level
 extern "C" unsigned des_route_buttons(void);   /* des_route.cpp: the buttons a press step holds */
 extern "C" volatile unsigned g_pad0_reads, g_pad0_empty_reads, g_pad0_buttons, g_pad0_lstick;   /* cellPad.c */
 extern "C" void cellPad_host_stick(int stick, unsigned char x, unsigned char y, unsigned reads);   /* cellPad.c */
-extern "C" int cellPad_host_key_down(int vk);   /* cellPad.c: a key or mouse button held now */
 #ifdef _WIN32
 extern "C" __declspec(dllimport) short __stdcall GetAsyncKeyState(int vkey);   /* user32 */
 constexpr int VK_F8 = 0x77;
@@ -2630,89 +2630,21 @@ extern "C" void des_roll_tie(ppu_context* ctx, uint32_t)
  * with PS3_NO_USER_INPUT (a scripted run) DES_KICK_TEST=1 stands for a held
  * Kick key. */
 namespace {
-struct KickBind {
-    int in, mod;
-};
-struct KickKeys {
-    KickBind b[4];
-    int n;
-};
-
-/* One input as the Keyboard page writes it (controls_window.cpp, PAD_KEYS's
- * names): its virtual-key code for cellPad_host_key_down, the mouse buttons as
- * VK_LBUTTON to VK_XBUTTON2. 0: not an input, or a wheel notch (never held). */
-int kick_vk(const char* s, size_t n)
-{
-    static const struct { const char* name; int vk; } kNames[] = {
-        {"space", 0x20},   {"enter", 0x0D},    {"return", 0x0D},   {"tab", 0x09},      {"esc", 0x1B},
-        {"escape", 0x1B},  {"backspace", 0x08}, {"shift", 0x10},   {"lshift", 0xA0},   {"rshift", 0xA1},
-        {"ctrl", 0x11},    {"lctrl", 0xA2},    {"rctrl", 0xA3},    {"alt", 0x12},      {"lalt", 0xA4},
-        {"ralt", 0xA5},    {"up", 0x26},       {"down", 0x28},     {"left", 0x25},     {"right", 0x27},
-        {"insert", 0x2D},  {"delete", 0x2E},   {"home", 0x24},     {"end", 0x23},      {"pageup", 0x21},
-        {"pagedown", 0x22}, {"capslock", 0x14}, {"mouse1", 0x01},  {"mouse2", 0x02},   {"mouse3", 0x04},
-        {"mouse4", 0x05},  {"mouse5", 0x06},
-    };
-    if (n == 1 && std::isalnum((unsigned char)s[0])) return std::toupper((unsigned char)s[0]);
-    const auto same = [&](const char* name) {
-        if (std::strlen(name) != n) return false;
-        for (size_t i = 0; i < n; i++)
-            if (std::tolower((unsigned char)s[i]) != name[i]) return false;
-        return true;
-    };
-    for (const auto& k : kNames)
-        if (same(k.name)) return k.vk;
-    if ((n == 2 || n == 3) && (s[0] | 0x20) == 'f' && s[1] >= '1' && s[1] <= '9') {
-        const int f = n == 2 ? s[1] - '0' : (s[2] >= '0' && s[2] <= '9' ? (s[1] - '0') * 10 + s[2] - '0' : 0);
-        return f >= 1 && f <= 24 ? 0x70 + f - 1 : 0;
-    }
-    if (n > 2 && n < 8 && s[0] == '0' && (s[1] | 0x20) == 'x') {
-        char buf[8];
-        std::memcpy(buf, s, n);
-        buf[n] = 0;
-        return int(std::strtol(buf, nullptr, 16) & 0xFF);
-    }
-    return 0;
-}
-
-/* DES_KICK_KEYS: bindings separated by '|', each an input or a modifier and
- * an input ("mouse4|shift+v"). */
-KickKeys kick_keys(const char* e)
-{
-    KickKeys k{};
-    while (e && *e && k.n < 4) {
-        const char* end = std::strchr(e, '|');
-        if (!end) end = e + std::strlen(e);
-        const char* plus = static_cast<const char*>(std::memchr(e, '+', size_t(end - e)));
-        KickBind b{};
-        if (plus) {
-            b.mod = kick_vk(e, size_t(plus - e));
-            b.in = kick_vk(plus + 1, size_t(end - plus - 1));
-        } else {
-            b.in = kick_vk(e, size_t(end - e));
-        }
-        if (b.in && (!plus || b.mod)) k.b[k.n++] = b;
-        e = *end ? end + 1 : end;
-    }
-    return k;
-}
-
-bool kick_held(const KickKeys& k)
+bool kick_held(const DesKeys& k)
 {
     if (ps3_env_int("PS3_NO_USER_INPUT", 0)) return ps3_env_int("DES_KICK_TEST", 0) != 0;
-    for (int i = 0; i < k.n; i++)
-        if (cellPad_host_key_down(k.b[i].in) && (!k.b[i].mod || cellPad_host_key_down(k.b[i].mod))) return true;
-    return false;
+    return des_keys_held(k);
 }
 }  // namespace
 
 extern "C" void des_kick(ppu_context* ctx, uint32_t addr)
 {
     static int mode = 0, log = 0;
-    static KickKeys keys{};
+    static DesKeys keys{};
     static bool kick = false;   /* the player's last R1 press was the Kick key's */
     PS3_KNOB(mode, ps3_env_int("DES_KICK", 0));
     PS3_KNOB(log, env_on("DES_KICKLOG"));
-    PS3_KNOB(keys, kick_keys(std::getenv("DES_KICK_KEYS")));
+    PS3_KNOB(keys, des_keys_parse(std::getenv("DES_KICK_KEYS"), nullptr));
     if (mode != 1) kick = false;
     if (mode != 1 && !log) return;
     const uint32_t ctrl = player_controller();
@@ -3379,6 +3311,7 @@ extern "C" void des_menu_sfx_init(void);   /* des_menu_sfx.cpp */
 extern "C" void des_chrins_init(void);     /* des_chrins.cpp */
 extern "C" void des_guest_exit_init(void); /* des_guest_exit.cpp */
 extern "C" void des_souls_use_init(void);  /* des_souls_use.cpp */
+extern "C" void des_item_keys_init(void);  /* des_item_hotkeys.cpp */
 extern "C" void des_pantheon_init(void);   /* des_pantheon.cpp */
 
 /* The run defaults every start needs, from setup's Play, Explorer or a
@@ -3525,6 +3458,7 @@ extern "C" void ps3_title_options_init(void)
     des_chrins_init();     /* the character step's handshake without its lost-kick race */
     des_guest_exit_init();  /* the game ending itself with an error: a crash to report */
     des_souls_use_init();  /* DES_SOULS_AT_ONCE: Use several soul items at once */
+    des_item_keys_init();  /* the Keyboard page's Item slot keys */
     des_luaheap_init();    /* DES_LUAHEAP: Lua takes room elsewhere when its heap is full */
     des_memstat_init();    /* DES_MEMSTAT: how full the game's heaps get (off by default) */
     des_pantheon_init();  /* the checks on Pantheon records */

@@ -1,8 +1,9 @@
 // The first Python (see setup_python.hpp). One fact differs by platform, in one small function: where the system's
 // curl and tar are. The steps, the checks and the stamp are the same code everywhere; which archive it is (a zip on
 // Windows, a .tar.gz on Linux) is in the pins (setup_engine.hpp). When curl or tar does not start (Wine and CrossOver
-// have neither), the host's own: its download (setup_http.hpp, WinHTTP on Windows, none elsewhere) and, for a zip, its
-// own unzip (setup_unzip.hpp). DES_SETUP_NO_SYSTEM_TOOLS=1 hides the system's two, for tests.
+// have neither), the host's own: its download (setup_http.hpp, WinHTTP on Windows) and, for a zip, its own unzip
+// (setup_unzip.hpp). A Linux with no curl (issue #521) downloads with wget, else with its own python3.
+// DES_SETUP_NO_SYSTEM_TOOLS=1 hides the system's tools, for tests.
 //
 // The tools run in the data folder and are given names relative to it (downloads\python-embed-3.13.9.zip.part and so
 // on, all ASCII), so a data folder whose path has characters outside the system's code page still reaches them intact
@@ -37,6 +38,12 @@ constexpr double kGB = double(1ull << 30);
 constexpr const char* kDownloadFailed = "A download did not finish.";
 constexpr const char* kDiskFull = "The disk is full.";
 constexpr const char* kStartFailed = "Setup could not start its first download.";
+#ifndef _WIN32
+// A Linux with none of the three downloaders: what the player can do about it.
+constexpr const char* kNoDownloader =
+    "Setup could not start its first download: it needs curl, wget or python3, and this PC has none. Install one of "
+    "them (curl is the usual), then try again.";
+#endif
 constexpr const char* kUnpackFailed = "Setup could not unpack Python.";
 
 std::string utf8(const std::filesystem::path& p) {
@@ -77,6 +84,41 @@ std::filesystem::path system_tool(const char* name) {
     return {};
 }
 constexpr const char* kToolFrom = "on PATH";
+
+// The download as the system's own python3 (3.7 or later) does it, for a Linux with no curl or wget:
+// python3 -I -c <this> <url> <file>. What the curl line does: https only (a redirect elsewhere is refused), TLS 1.2 or
+// later, a minute with no data ends the try, and the file carried on from its size with a Range request (a server that
+// sends the whole file instead starts the file over). Each piece is flushed, so the bar follows the file's size. Exit 0
+// done, 3 the file could not be written, 1 anything else, with one line on stderr saying what.
+constexpr const char* kPythonGet = R"PY(
+import os, ssl, sys, urllib.error, urllib.request as rq
+url, out = sys.argv[1], sys.argv[2]
+class HttpsOnly(rq.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not newurl.lower().startswith("https://"):
+            raise urllib.error.URLError("a redirect away from https: " + newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+ctx = ssl.create_default_context()
+ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+have = os.path.getsize(out) if os.path.isfile(out) else 0
+req = rq.Request(url, headers={"Range": "bytes=%d-" % have} if have else {})
+try:
+    with rq.build_opener(HttpsOnly(), rq.HTTPSHandler(context=ctx)).open(req, timeout=60) as r:
+        with open(out, "ab" if have and r.status == 206 else "wb") as f:
+            while True:
+                piece = r.read(1 << 16)
+                if not piece:
+                    break
+                try:
+                    f.write(piece)
+                    f.flush()
+                except OSError as e:
+                    print("could not write the file: %s" % e, file=sys.stderr)
+                    sys.exit(3)
+except Exception as e:
+    print("%s: %s" % (type(e).__name__, e), file=sys.stderr)
+    sys.exit(1)
+)PY";
 
 #endif
 
@@ -256,7 +298,7 @@ PythonFetch::Result PythonFetch::steps() {
 }
 
 // curl into the .part file, carrying on from what a stopped try left there (-C -); the bar from the file's size. A curl
-// that does not start hands over to the host's own download.
+// that does not start hands over to the next downloader (download_other).
 //
 // curl's exit 35 (the secure connection did not start) gets one more try with --ssl-revoke-best-effort, as in fetch.py
 // (REVOKE_RETRY). Windows' TLS ends a connection so when it could not check whether the server's certificate was
@@ -291,7 +333,7 @@ PythonFetch::Result PythonFetch::download(const std::filesystem::path& part) {
         const Ran ran = run_tool("curl", args, nullptr, [&] { progress(size_of(part)); });
         if (stopping()) return Result::Stopped;
         progress(size_of(part));
-        if (!ran.started) return download_own(part);
+        if (!ran.started) return download_other(part);
         if (ran.status == 0) return Result::Ok;
         if (ran.status == 33 && !restarted) {  // (curl's "cannot resume": the server ignored the range; start over once)
             restarted = true;
@@ -316,6 +358,64 @@ PythonFetch::Result PythonFetch::download(const std::filesystem::path& part) {
             return fail("disk", kDiskFull);
         return fail("download", kDownloadFailed);
     }
+}
+
+// The downloaders after a curl that did not start (mToolWhy says why). Windows: the host's own (download_own). Elsewhere
+// (issue #521: a Linux Mint with no curl): wget, else the system's own python3 (kPythonGet), into the same .part file,
+// carrying on from it, with the same bar; steps() checks what they got by its size and SHA-256, as it checks curl's.
+// wget follows a redirect to http (its --https-only is for recursive downloads only); the pinned SHA-256 is what keeps
+// such a download out. A downloader that refuses its options (exit 2: a wget too old for --no-config, say) hands over
+// to the next one, as one that does not start does. With none: a sentence that says what to install.
+PythonFetch::Result PythonFetch::download_other(const std::filesystem::path& part) {
+#ifdef _WIN32
+    return download_own(part);
+#else
+    std::filesystem::path relative = relative_archive();
+    relative += ".part";
+    const std::string file = utf8(relative);
+    struct Downloader {
+        const char* name;
+        std::vector<std::string> args;
+    };
+    const Downloader downloaders[] = {
+        // --no-config first: no wgetrc of the player's changes what it does. --quiet: its exit says what went wrong
+        // (4 the network, 5 the certificate, 8 the server's answer); its one line otherwise would put the redirect's
+        // long signed address in the log. --timeout ends a stalled try after a minute, as curl's two limits do.
+        {"wget",
+         {"--no-config", "--quiet", "--continue", "--tries=1", "--timeout=60", "--secure-protocol=TLSv1_2", "-O", file,
+          kPythonUrl}},
+        {"python3", {"-I", "-c", kPythonGet, kPythonUrl, file}},
+    };
+    std::string why = mToolWhy;  // (curl's)
+    for (const Downloader& d : downloaders) {
+        if (no_system_tools() || system_tool(d.name).empty()) {
+            why += std::string(", no ") + d.name + " " + kToolFrom;
+            continue;
+        }
+        progress(size_of(part));  // (download() has checked it against the pin)
+        std::fprintf(stderr, "[setup] %s: downloading %s with %s instead\n", why.c_str(), archive_name().c_str(), d.name);
+        say(why + ": downloading with " + d.name + " instead");
+        const Ran ran = run_tool(d.name, d.args, nullptr, [&] { progress(size_of(part)); });
+        if (stopping()) return Result::Stopped;
+        progress(size_of(part));
+        if (!ran.started || ran.status == 2) {
+            why += ", " + (ran.started ? std::string(d.name) + " refused its options (exit 2)" : mToolWhy);
+            continue;
+        }
+        if (ran.status == 0) return Result::Ok;
+        say(std::string("FIX  ") + kPythonName + ": the download stopped (" + d.name + " exit " +
+            std::to_string(ran.status) + "); it resumes next time");
+        // (3: wget's and kPythonGet's "could not write the file"; with less room left than the download needs, the
+        // disk is full)
+        const unsigned long long left = kPythonSize - std::min(kPythonSize, size_of(part));
+        if (const Space space = data_space(); ran.status == 3 && space.known && space.free < left)
+            return fail("disk", kDiskFull);
+        return fail("download", kDownloadFailed);
+    }
+    mToolWhy = why;
+    say("FIX  " + why);
+    return fail("internal", kNoDownloader);
+#endif
 }
 
 // The host's own download (setup_http.hpp), for a curl that did not start (mToolWhy says why): into the same .part file,

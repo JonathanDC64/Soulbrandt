@@ -13,31 +13,41 @@ This page covers three parts:
 
 ## For players
 
+**Seamless co-op is still being tested.** The first time a player chooses **Host** or **Join** on a PC, a
+notice says so: expect some problems, report them with **Report an issue** (friends too), and share invite codes
+only privately, because they contain the host's IP address. The player ticks "I understand" and chooses
+**Continue**; **Cancel** leaves things as they were. The answer is kept in the data folder (`coop_notice_ack.txt`,
+as Report's own first question keeps `report_zip_ack.txt`), so the notice shows once per PC.
+
+**The name in the menus** is **Seamless co-op** (the start screen's button, the F1 menu's entry and its window's
+title), so it isn't taken for the game's own co-op with summon signs.
+
 **To host:**
 
-1. Open **Co-op** (on the start screen, or F1 > Co-op) and choose **Host**. The game starts again on your co-op
-   characters.
+1. Open **Seamless co-op** (on the start screen, or F1 > Seamless co-op) and choose **Host**. The game starts
+   again on your co-op characters.
 2. Windows may ask whether the game may use the network. Choose **Allow**, or your friends can't connect.
-3. Open **Co-op** again. It shows your **invite code**, like `7KQ2-M9XD-0RTB-4HWE`. **Copy code** puts it on the
-   clipboard. Send it to your friends.
+3. Open **Seamless co-op** again. It shows your **invite code**, like `7KQ2-M9XD-0RTB-4HWE`. **Copy code** puts
+   it on the clipboard. Send it to your friends.
 
 **Don't post the code in public.** It holds your internet address. Send it only to the friends you play with.
 If a code went further than you meant, choose **New code**: the old one stops working, and players already in your
-game stay. The game makes a new code by itself only when someone has tried many wrong ones; Co-op then says so.
+game stay. The game makes a new code by itself only when someone has tried many wrong ones; Seamless co-op then says
+so.
 
 **To join:**
 
 1. Copy your friend's invite code.
-2. Open **Co-op**, choose **Join**, then **Paste and join**, or **Type code** to type it (with a keyboard or
+2. Open **Seamless co-op**, choose **Join**, then **Paste and join**, or **Type code** to type it (with a keyboard or
    the controller). The game starts again on your co-op characters.
 
-**To leave:** **Co-op** > **Leave co-op**. A friend's game first takes them back to their own world, where it saves
-what the group did; the host's leave sends its friends back to theirs. Then the game starts again on your normal
-characters.
+**To leave:** **Seamless co-op** > **Leave co-op**. A friend's game first takes them back to their own world, where
+it saves what the group did; the host's leave sends its friends back to theirs. Then the game starts again on your
+normal characters.
 
 **If the host's game closes,** a friend sees the game's own "The session has ended." about 13 s later and goes back
-to their own world. **Co-op** then says the connection was lost. The friend's game keeps trying to reach the host's:
-after a network drop, with the host still hosting, it connects again, goes home as the game ends the session, and
+to their own world. **Seamless co-op** then says the connection was lost. The friend's game keeps trying to reach the
+host's: after a network drop, with the host still hosting, it connects again, goes home as the game ends the session, and
 joins again by itself from there. If the host starts hosting again, its invite code is a new one. The friend's
 game then says "The host's game did not accept this invite code. Ask the host for it again." and stops trying:
 **Leave co-op**, then join with the new code.
@@ -88,6 +98,7 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
 - **A friend who joins during a boss fight** fights the boss too. Before, in 1-1, Phalanx wasn't in its game: it
   saw only the host fighting, and its blows did nothing.
 - **A friend who dies** comes back where the host last arrived (the start of the area) and stays in the session.
+  After a death in a boss fight, it comes back at its own bloodstain instead (below).
   Once it is back, the others see it again, with its rolls, attacks and other moves.
 - **Bloodstains.** A player who dies drops its souls in a bloodstain where it died, a friend too. Only that player
   sees and touches its own stain. A friend can take its souls back in the host's world, or, if it goes home first,
@@ -101,7 +112,8 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
   do you. Each player picks its own, so in a party of four each friend can have its own. Soul form stays the game's.
   Cutscenes that show you (the tutorial's opening, for one) show your glow and its colour as you chose them too.
 - **In a boss fight,** a friend who dies first watches until the fight ends. Once the boss is dead, it comes back at
-  the area's start. If the host dies too, it goes back with everyone. If the connection to the host is lost while it
+  its own bloodstain in the boss's room, where it can take its souls back at once. Before, it came back at the area's
+  start. If the host dies too, it goes back with everyone. If the connection to the host is lost while it
   watches, it goes home (with the game's own message for a lost session) and joins again from there.
 - **Bosses get more health with friends,** as in the original game: half as much again with one friend, double with
   two. Three friends get double too (the original has nothing for three, so a boss had its solo health).
@@ -112,6 +124,9 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
   Vanguard outside its hall: it fell, and "The Demon Was Destroyed" showed before anyone saw it.
 - **Souls from enemies.** Every player gets an enemy's full souls when it dies, whoever killed it. (The original game
   gives a summoned phantom half.)
+- **Souls from bosses.** Every player gets a boss's full souls (Phalanx's 1,270), a few seconds after the kill and
+  after a soul's revival, as a player alone does. (The original game gives the host three quarters and a summoned
+  phantom a quarter.) Before, they came only at each player's next load.
 - **Progress is everyone's.** A boss killed, or a door, lever, elevator, shortcut, bridge or fog wall opened while
   friends are in the host's world counts in each friend's own world too.
 - **A boss's Demon's Soul is everyone's.** When one player takes it at the boss's Archstone, every other player in
@@ -247,7 +262,7 @@ made from it, within 10 s; without it, nothing else is answered. So:
 - A scan of the internet can find that something answers on the port, but can't join, list rooms or send anything
   to the players without the key.
 - Guessing the key: one address is ignored for a minute after 5 wrong keys. After 100 wrong keys from any
-  addresses, the key is spent: no one else gets in, players already in stay, and the Co-op window asks the host for
+  addresses, the key is spent: no one else gets in, players already in stay, and the Seamless co-op window asks the host for
   a new code. A guess gets 100 tries a code, 1 in 2.7 million of finding a 28-bit key.
 - One address may have only 2 connections that haven't said `HELLO` yet, and each gets 10 s, so connections that
   never send a key can't take the players' places.
@@ -563,6 +578,24 @@ alive.
   souls, but what dies with it pays the same way (Phalanx's 38 blobs, 35 each, killed by `PhalanxDead`). A killing
   blow of at least 1.5 times the enemy's most HP (`0x00280DC8` sets a bit at `+0x318`) adds a fifth on the game that
   dealt it; the result is rounded up.
+- **Souls from bosses.** A boss clear's `SetClearBonus` (US 0x0044A4B8) puts the boss's souls in the player's game
+  data (`+0xD4` of `*(*0x01B4EF9C + 8)`). With anyone in the session (`0x0052A5B0` counts the members) it cuts them
+  to 75% for the host (types 0 and 8) and 25% for a blue phantom (type 1). The hook after that call (0x0044A5E4) gives
+  0 members in seamless co-op, so every player gets the full souls; online co-op without seamless mode keeps the cut.
+  - **When they are paid:** `GetSoloClearBonus` pays the waiting souls and clears them, and so do the next load
+    (`g_Initialize`'s `AddBlockClearBonus`) and a death (`UpDateBloodMark`).
+  - A player alone is paid by `SoloBlockClear`, 3 s after `BlockClear2_1` (6 s in soul form, after its revival there).
+    A party's way went through the rating screen, which seamless co-op leaves out, so its players were paid only at
+    their next load. `BlockClear2_2` (0.5 s after `BlockClear2_1`, so after a soul's revival) now pays them.
+  - **Once per boss.** On a friend the boss clear starts twice, and a second `SetClearBonus` after the payment would
+    have the souls paid again at the next load. Two script values (`SeamlessBonusBoss`, `SeamlessBonusPaid`) let
+    each step run once; each load clears them.
+  - **The final boss.** The final area's clear (the Nexus's `OnEvent_450_1`) paid nothing in a party: its party
+    branch only logs an error. It now takes the solo way for every player (`Clear_450`, 3 s later), and revives a
+    host in soul form, as for a player alone. A player dead in the fight got nothing at all: its clear returns while
+    it is dead (4047), and once it is back the area's start sees the King dead (70) and sets 450 itself, so neither
+    450 nor 70 runs there again. The King's death (`OnEvent_70`, once per game) now sets the souls for a player dead
+    then, and the load that brings it back pays them.
 - **World tendency.** The game's QWC object (`*(*0x01B4EF9C + 0x24)`) holds the tendency in play at `+0x10`, two
   floats (white/black, left/right) for each of worlds 1-7, and the player's own at `+0x48`, which the save keeps
   (docs/69). In online co-op the host's game sends a phantom its values in play (P2P message 0x17, read at US
@@ -658,6 +691,14 @@ their first instruction):
     `ClearBoss` isn't. Two timer slots take turns, so a handler never sets up its own slot. Once the host has died
     (`HostDead` sets `SeamlessHostDown`), it asks for full health and leaves the load to the host's respawn, which
     takes everyone back.
+  - A death in a boss fight comes back at the bloodstain. `PartyGhostDeath_1` notes whether `SeamlessBossFight` was
+    set at the death (`SeamlessFightDeath`). If so, `PartyGhostDeath_2` sets flag 19993 just before its reload (past
+    the game's last flag, as 19999 for the ending). The flag hook then reads the stain's record, which the death's
+    `UpDateBloodMark` (US `0x00447590` -> `0x00419670(manager, player, 1)`) has just filled. The record is the game
+    data's `+0x1C`: its place at `+0x0` (x, y, z), the player's rotation at `+0xC` (`+0x10` the yaw) and its map
+    at `+0x20`, copied from the character's `+0x640` (`+0x24`, `+0x30`, `+0x3C`). The reload's load step puts the
+    player right there, facing the way it died, instead of 1 m beside where the host arrived. A stain in another
+    map than the host's falls back to that.
   - Out of the session (`proxy:IsSession() == false`: the host's game gone or out of reach), `PartyGhostDeath_2`
     starts the trip home as `OnRoomDisappeared` does: its message (20001000), then `OnLeave_Limit` 5 s later. The
     game's own handlers for a lost session (`OnRoomDisappeared`, `OnIrregularLeaveSession_1`) skip it while flag 4047
@@ -693,7 +734,12 @@ their first instruction):
   A boss fight is
   marked from its health bar: every `proxy:SetBossGauge(` (a statement of its own in every area) sets
   `SeamlessBossFight`, and `proxy:ClearBossGauge(` clears it. All of a map's scripts share one set of globals, as
-  the area scripts' calls to `global_event.lua`'s functions show.
+  the area scripts' calls to `global_event.lua`'s functions show. The Nexus's script (`m01_00`) gets this too, after
+  its own edits: it holds the final area and its boss's health bar (`OnEvent_422`). Before, a friend who died in that
+  fight didn't watch: it came back at once where the host had arrived, in the Nexus above. The King's fight ends at
+  its death (`OnEvent_70`, in every game). At the other bosses the kill's `ClearBoss` ends a dead friend's watch, but
+  this bar's clearing (`OnEvent_450`) comes only after the King's last words and skips a game whose player is dead
+  (flag 4047), so a dead friend would have watched forever.
 - The wandering ghosts' sightings (a scripted phantom that walks by and fades, over and over: `OnWanderFade`) are
   each player's own. The tutorial's two (`m08_00`'s 14400, `m08_01`'s 14411) loop through timers registered between
   `RepeatMessage_begin` and `_end` with no `NotNetMessage`, as the tutorial has no co-op. In a session each pass is
@@ -771,7 +817,7 @@ side by their times.
 
 | Variable | What it does |
 |---|---|
-| `DES_SEAMLESS=host` / `join` | Co-op mode for this start (the Co-op window sets it when it starts the game again). |
+| `DES_SEAMLESS=host` / `join` | Co-op mode for this start (the Seamless co-op window sets it when it starts the game again). |
 | `DES_SEAMLESS_CODE=<code>` | The code to join. |
 | `DES_SEAMLESS_PORT=n` | The host's port. Default 36100. |
 | `DES_SEAMLESS_UPNP=0` | The host leaves the router alone (the port forwarded by hand). |
@@ -793,7 +839,7 @@ resolves) and `PS3_SAVEDATA_ROOT` (the co-op save). A value set in the environme
 2. once out of the session: back to where the player stood before the join (`SetSummonedPos`,
    `SetDefaultMapUid(-1)`), in the form it had before the join (`SetChrTypeDataGreyNext`), with a load
    (`WarpNextStageKick`);
-3. at home, the game saves by itself. The Co-op window waits for a file written in the co-op save after the arrival
+3. at home, the game saves by itself. The Seamless co-op window waits for a file written in the co-op save after the arrival
    and for the game's save to finish: no save asked for (GameMan `+0xA97`, `+0xA98`) and its save task idle
    (`+0xAA4` back at 0). A save writes PARAM.SFO first and the data after, so a new file alone is too early. Then
    (or after 2 minutes, or on **Leave now**) it starts the game again. Back or Esc doesn't close that window.

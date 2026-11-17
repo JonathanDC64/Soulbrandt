@@ -286,6 +286,10 @@ std::vector<TabDesc> make_tabs() {
             toggle("Change appearance in the Nexus", "DES_APPEARANCE",
                 "Press Cross facing the statue in front of where you wake in the Nexus (no prompt shows there) and "
                 "pick Change Appearance for the character creation screen. Keeping the changes reloads the Nexus."),
+            toggle("Change name and body in the Nexus", "DES_IDENTITY",
+                "Needs Change appearance in the Nexus. The statue also offers Change Name and Change Body. A new "
+                "body takes off worn armour made only for the other body (it stays in the inventory), then opens "
+                "Edit Appearance."),
         }},
         {"HUD", {
             action("Edit HUD", Opens::HudEditor, "Move, resize, hide or show each part of the HUD on the game screen."),
@@ -480,7 +484,7 @@ std::vector<TabDesc> make_tabs() {
                     .choices = {{"2", "2: you and a friend"}, {"3", "3: you and two friends"},
                         {"4", "4: you and three friends"}},
                     .changed = hooks::party_size_changed},
-                .help = "The most players in a co-op game you host (Co-op, in the menu), you included. One more "
+                .help = "The most players in a co-op game you host (Seamless co-op, in the menu), you included. One more "
                         "waits, and joins as soon as a place frees up. A change counts at once; players already here "
                         "stay.<br/><br/>The original game plays three at most in co-op."},
             toggle("Your glow", "DES_SEAMLESS_GLOW",
