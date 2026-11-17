@@ -20,7 +20,7 @@ tools/setup/des_setup/disc/*.txt.gz
 port/ui/res/img/grain.png
 port/ui/res/img/valuebox.png
 
-# The project's own logo (Soulbrandt): white letters drawn for the port, the full-size files in assets/brand/ and the
+# The project's own logo: white letters of its name, drawn for the port, the full-size files in assets/brand/ and the
 # start screen's smaller copy cut from them. Not taken from the game's files.
 assets/brand/soulbrandt-logo*.png
 port/ui/res/img/soulbrandt-logo.png
