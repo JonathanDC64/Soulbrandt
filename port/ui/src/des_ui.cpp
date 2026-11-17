@@ -983,9 +983,9 @@ void watch_thread() {
             ps3_setenv("DES_UI_SHOT_NOW", "");
         }
         // DES_UI_MOUSE=x,y[,down|up][;x,y[,down|up]...] (a test, likewise): the mouse moves to each point (back
-        // buffer pixels) in turn, the left button going down or up there; one setenv is one drag. Over a menu of the
-        // game (no document up) it is that menu's, as the window's messages would be, with rdown and rup for the
-        // right button and wheelup and wheeldown for a notch.
+        // buffer pixels) in turn, the left button going down or up there (rdown and rup: the right button); one setenv
+        // is one drag. Over a menu of the game (no document up) it is that menu's, as the window's messages would be,
+        // with wheelup and wheeldown for a notch.
         if (const char* v = std::getenv("DES_UI_MOUSE"); v && *v) {
             const std::string steps = v;
             ps3_setenv("DES_UI_MOUSE", "");
@@ -1006,6 +1006,8 @@ void watch_thread() {
                 push_event({InputEvent::MouseMove, x, y});
                 if (a == "down") push_event({InputEvent::MouseDown, 0});
                 if (a == "up") push_event({InputEvent::MouseUp, 0});
+                if (a == "rdown") push_event({InputEvent::MouseDown, 1});
+                if (a == "rup") push_event({InputEvent::MouseUp, 1});
             }
         }
         if (const unsigned long long at = sWakeAt.load()) {
