@@ -106,8 +106,12 @@ constexpr uint32_t kListRows = 0xF4u, kListRow = 0x100u, kListItems = 0x104u, kL
  * column +0xF8, of +0xFC by +0x100; its placement of the cursor from them. */
 constexpr uint32_t kGroupNoHookFn = 0x00776C98u, kGroupInputFn = 0x00777C90u, kGroupPlaceFn = 0x00776F68u;
 constexpr uint32_t kGroupRow = 0xF4u, kGroupCol = 0xF8u, kGroupRows = 0xFCu, kGroupCols = 0x100u;
-/* DsMenuDlgOption: its step up (this, _, from, wrap) and its placement of the cursor from menu variable 0x51. */
+/* DsMenuDlgOption: its step up (this, _, from, wrap) and its placement of the cursor from menu variable 0x51; its
+ * step right (this, _, row, value, wrap: from OK it goes to DEFAULT, row 12, with the help line, the cursor and the
+ * tick) and a row's redraw (this, row), which its input runs after a step right. */
 constexpr uint32_t kOptionVt = 0x0186A398u, kOptionUpFn = 0x007CC598u, kOptionPlaceFn = 0x007CA320u;
+constexpr uint32_t kOptionRightFn = 0x007CA7E0u, kOptionRowFn = 0x007CAA70u;
+constexpr int kOptionRowVar = 0x51;
 constexpr int kOptionOk = 11;                  /* the row of OK (and DEFAULT, its column 1) */
 constexpr uint32_t kProfileVt = 0x0186BE58u;   /* DsMenuDlgSelectProfile, the profile list: its row is +0xF8 */
 constexpr uint32_t kPromptVt = 0x01869FB8u;    /* the system layer's prompts (yes/no, Drop's count): button +0x110 */
@@ -125,6 +129,16 @@ constexpr uint32_t kInvCloseFn = 0x0081FA40u, kEquipCloseFn = 0x00736BB0u, kStat
 constexpr uint32_t kWorldCloseFn = 0x00841A90u, kSystemCloseFn = 0x008ABD18u, kOptionCloseFn = 0x007C8260u;
 /* The pages' own dialogs (the inventory's list and its categories, the equipment's slots); System's is kSystemVt. */
 constexpr uint32_t kInventoryVt = 0x0186C318u, kInvTabsVt = 0x01866570u, kEquipSlotsVt = 0x01866068u;
+/* The inventory's categories (DsMenuDlgEquipListTab): the menu variable +0x108 holds the category shown, of tabs
+ * +0xF4 to +0xF4 + +0xF8; +0x104 points to a word for each, not 0 where a step passes it over; a step sets +0xFC and
+ * refuses while it is set, and the tabs' update clears it (one step a frame). The inventory (+0x144 names the same
+ * variable) changes category with 0x00820DD0(this, right, wrap): it keeps the list's place (+0x108) in menu
+ * variable 0x12D + the category left, steps the tabs, takes the new category's place and builds the list. Its
+ * input takes left and right in its state 2 (+0x158), and none while 0x00778AB8 says so. */
+constexpr uint32_t kTabVar = 0x108u, kTabFirst = 0xF4u, kTabCount = 0xF8u, kTabStepped = 0xFCu, kTabSkip = 0x104u;
+constexpr uint32_t kInvCatVar = 0x144u, kInvPlace = 0x108u, kInvState = 0x158u;
+constexpr uint32_t kInvCategoryFn = 0x00820DD0u, kMenuBusyFn = 0x00778AB8u;
+constexpr int kInvPlaceVars = 0x12D;
 constexpr uint32_t kPromptButton = 0x110u, kPromptState = 0xF8u;
 constexpr int kPromptKindVar = 0x11;           /* its kind: 0 and 1 take no left or right, 6 and 9 place no cursor */
 
@@ -1376,6 +1390,37 @@ bool turn_page_now(ppu_context* ctx, const Spot& s)
     return true;
 }
 
+/* A click on another of the inventory's categories (m its tabs): the category change one press makes, from the tab
+ * beside the one clicked. The tabs take one step a frame, so two presses showed the category between for a frame;
+ * here the tabs are first set to that neighbour, with the list's place kept for the category left as the step keeps
+ * it, and the neighbour's own left as it was. Only while the inventory would take left and right. */
+bool inv_tab_now(ppu_context* ctx, const Menu& m, const Spot& s)
+{
+    uint32_t inv = 0;
+    for (const Drawn& d : s_draws)   /* (drawn: a category with no items gives its list no spots, so no menu) */
+        if (d.vt == DES_AT(kInventoryVt) && d.vis) inv = d.dlg;
+    const uint32_t tabs = m.owner;
+    if (!inv || s.r != 0) return false;
+    const int var = (int)vm_read32(tabs + kTabVar);
+    if ((int)vm_read32(inv + kInvCatVar) != var) return false;   /* (another dialog's tabs) */
+    if (!(vm_read32(inv + kDlgInput) & 0x80000000u) || vm_read32(inv + kInvState) != 2) return false;
+    if (vm_read32(tabs + kTabStepped) != 0 || call_addr(ctx, DES_AT(kMenuBusyFn), {}) != 0) return false;
+    const int first = (int)vm_read32(tabs + kTabFirst), count = (int)vm_read32(tabs + kTabCount);
+    const int from = menu_var(ctx, var), to = s.c, last = first + count - 1;
+    if (count < 2 || from < first || from > last || to < first || to > last || to == from) return false;
+    const uint32_t skip = vm_read32(tabs + kTabSkip) + 4u * (uint32_t)to;   /* (by the tab's own number) */
+    if (!guest_ok(skip, 4) || vm_read32(skip) != 0) return false;   /* (a step passes it over) */
+    const int right = to > from ? 1 : 0;
+    const int beside = right ? (to == first ? last : to - 1) : (to == last ? first : to + 1);
+    call_game(ctx, func_00720F50, {kInvPlaceVars + from, (int32_t)vm_read32(inv + kInvPlace)});
+    call_game(ctx, func_00720F50, {var, beside});
+    vm_write32(inv + kInvPlace, (uint32_t)menu_var(ctx, kInvPlaceVars + beside));
+    call_addr(ctx, DES_AT(kInvCategoryFn), {inv, right, 1});
+    const int now = menu_var(ctx, var);
+    if (s_log) fprintf(stderr, "[mm] category %d to %d at once (%d)\n", from, to, now);
+    return now == to;
+}
+
 /* Selects spot s of menu m at once, as the menu's own input code does it, with one tick; false where this menu
  * can't be (the walk does it then). Only while the menu's dialog takes input. Read from the game's code (docs/114
  * section 3.1):
@@ -1395,7 +1440,9 @@ bool turn_page_now(ppu_context* ctx, const Spot& s)
  *   a step from row 6, column 0, and its grid is 2 by 9; its update shows the slot of the row and column every
  *   frame.)
  * - Options: its row is menu variable 0x51. Its step up (0x007CC598, from the row below) sets it, the help line
- *   for it and every row's arrows; 0x007CA320 then places the cursor. DEFAULT (OK's column 1) is walked.
+ *   for it and every row's arrows; 0x007CA320 then places the cursor. DEFAULT (OK's column 1, row 12) is the step
+ *   right from OK (0x007CA7E0), then OK's row redrawn (0x007CAA70), as its input does it.
+ * - The inventory's categories: inv_tab_now.
  * - The profile list (LOAD GAME's, and System's Load Profile): its row is +0xF8, 0 to 3. Its step goes one row with
  *   no row skipped, and its update places the cursor from it every frame.
  * - The system layer's prompts (yes/no, Drop's count): the button is +0x110, from 1. Its steps (vt+0x8C, +0x90)
@@ -1407,9 +1454,12 @@ bool select_now(ppu_context* ctx, const Menu& m, const Spot& s)
     if (m.cur < 0 || !grid_spot(s)) return false;
     const uint32_t vt = vm_read32(m.owner);
     if (vt == DES_AT(kStartTabVt) && m.stay) return turn_page_now(ctx, s);   /* (the page has the pad, not the bar) */
-    if (!(vm_read32(m.owner + kDlgInput) & 0x80000000u)) return false;   /* its input is off: a dialog over it has it */
+    const bool cats = vt == DES_AT(kInvTabsVt);   /* (the inventory has the pad, not its categories) */
+    if (!cats && !(vm_read32(m.owner + kDlgInput) & 0x80000000u)) return false;   /* a dialog over it has the pad */
     bool tick = true;
-    if (vt == DES_AT(kStartTabVt) && !m.stay) {
+    if (cats) {
+        if (!inv_tab_now(ctx, m, s)) return false;
+    } else if (vt == DES_AT(kStartTabVt) && !m.stay) {
         if (s.r != 0 || s.c < 0 || s.c >= kTabs) return false;
         call_game(ctx, func_00720F50, {kBarTabVar, s.c});
         for (uint32_t k = 0x180; k <= 0x182; k++) vm_write8(m.owner + k, 1);
@@ -1436,9 +1486,17 @@ bool select_now(ppu_context* ctx, const Menu& m, const Spot& s)
         call_virtual(ctx, m.owner, 0x84, {m.owner, 1});
         tick = false;
     } else if (vt == DES_AT(kOptionVt)) {
-        if (s.c != 0 || s.r < 0 || s.r > kOptionOk) return false;
-        call_addr(ctx, DES_AT(kOptionUpFn), {m.owner, 0, s.r + 1, 0});
-        call_addr(ctx, DES_AT(kOptionPlaceFn), {m.owner});
+        const bool dflt = s.r == kOptionOk && s.c == 1;
+        if ((s.c != 0 && !dflt) || s.r < 0 || s.r > kOptionOk) return false;
+        if (!dflt || menu_var(ctx, kOptionRowVar) != kOptionOk) {
+            call_addr(ctx, DES_AT(kOptionUpFn), {m.owner, 0, s.r + 1, 0});
+            call_addr(ctx, DES_AT(kOptionPlaceFn), {m.owner});
+        }
+        if (dflt) {   /* (the step right plays the tick) */
+            call_addr(ctx, DES_AT(kOptionRightFn), {m.owner, 0, kOptionOk, 0, 0});
+            call_addr(ctx, DES_AT(kOptionRowFn), {m.owner, kOptionOk});
+            tick = false;
+        }
     } else if (vt == DES_AT(kProfileVt)) {
         if (s.c != 0 || s.r < 0 || s.r > 3) return false;
         vm_write32(m.owner + 0xF8, (uint32_t)s.r);
