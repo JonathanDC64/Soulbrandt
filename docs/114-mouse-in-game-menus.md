@@ -30,7 +30,7 @@ Date: 2026-10-27. Status: experimental, off by default (Settings > Controls > Mo
 | `DES_MENU_MOUSE` | `0` | `1`: the mouse in the game's menus (experimental). `0`: the game's menus take no mouse, and the buttons and wheel are the keyboard layout's. Its row is Mouse in game menus (experimental). Live. |
 | `DES_MENU_MOUSE_PRESS` | `1` | Frames (and pad packets) each of the clicks' presses is held, and let go after (section 3). |
 | `DES_MENU_MOUSE_WALK` | `0` | `1`: every click walks, also in the menus a click selects at once (section 3.1). For a test against the walk. |
-| `DES_MENU_MOUSE_LOG` | `0` | `1`: the menus found, each time they change and once their spots come to rest after a slide, and each walk. It also lists the menus left out, with why (`under` a higher menu's spots, `beneath` a menu over it) and the menu they went for, and the pass's draws. When the mouse stops in a menu, that tells a menu over it from one not found. `2`: also the arrow pieces on screen. `3`: also every visible dialog with its pieces, each time the set changes (the census used to learn a screen). |
+| `DES_MENU_MOUSE_LOG` | `0` | `1`: the menus found, each time they change and once their spots come to rest after a slide, and each walk. It also lists the menus left out, with why (`under` a higher menu's spots, `beneath` a menu over it) and the menu they went for, and the pass's draws, and the dialogs left out as faded out (section 2). When the mouse stops in a menu, that tells a menu over it from one not found. `2`: also the arrow pieces on screen. `3`: also every visible dialog with its pieces, each time the set changes (the census used to learn a screen). |
 
 Tests click with the UI's `DES_UI_MOUSE` (des_ui.cpp): over a menu of the game, `x,y` moves the pointer there (back
 buffer pixels), `down`/`up` are the left button, `rdown`/`rup` the right one, `wheelup`/`wheeldown` a notch. They go
@@ -54,6 +54,14 @@ Found in the census runs (`DES_MENU_MOUSE_LOG=3`, section 1); nothing here is a 
   map. (Before, it was composed from the hosts up the chain, and a wrong host put a whole menu somewhere else.)
   Nothing else in the dialog holds its place: `+0x04` is a set of eight animation channels, empty in the menus
   seen.
+- **Faded out.** A dialog can be drawn on after it has faded out, unseen, with no byte of it changed: the Select
+  menu in play (Write Message and the rest) closes with a fade and stays drawn, so its glow and the sword stayed
+  over the field (issue #426). What shows the fade is the colour. The renderer's colour (`+0x28`; vtable `+8` sets
+  it, `+0xC` gets it) as a dialog's draw begins is its host's, and the low byte is the alpha: as the system's
+  prompt fades, it goes from `FFFFFF79` down to `FFFFFF00`, and as the Select menu closes (online, on a local test
+  server) from `FFFFFFF1` down to `FFFFFF00`. A dialog with a cursor piece drawn at an alpha of 0 is left out of
+  the menus. The dialog's own colour (`0x00F5E3E0`: its alpha byte `+0x95` times its animation channels) stayed
+  opaque through every fade seen, so it is not asked.
 - **Pieces.** A piece's name (UTF-16, at `*(*(piece+0x1C))`) is the layout file's, bit `0x40000000` of `+0x18` is
   set while it is drawn, and `+0x48` points at the dialog it hosts (or at an object whose first word points just
   past that dialog). Its rect in its dialog's layout comes from the game's own `0x00F62E68` (des_hud.cpp,
