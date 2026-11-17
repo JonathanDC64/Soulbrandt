@@ -191,6 +191,7 @@ DES_REGION_ADDR(0x00446C68, 0x00447A50)  /* call des_seamless_game (by address) 
 DES_REGION_ADDR(0x00447258, 0x00448040)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00447EA0, 0x00448C88)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x0044A368, 0x0044B150)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x0044A5E4, 0x0044B3CC)  /* hook des_coop_hook: SetClearBonus, the session's member count (everyone's full boss souls) */
 DES_REGION_ADDR(0x0044C6F0, 0x0044D4D8)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x0044C780, 0x0044D568)  /* hook des_coop_hook: the end of WarpNextStageKick (a guest going home loads its own area) */
 DES_REGION_ADDR(0x00451430, 0x00452218)  /* call */
