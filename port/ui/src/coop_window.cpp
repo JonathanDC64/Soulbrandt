@@ -3,6 +3,7 @@
 // router answers a few seconds after the start, and players come and go).
 #include "coop_window.hpp"
 
+#include "ack.hpp"
 #include "app.hpp"
 #include "crash_report.hpp"
 #include "osk_window.hpp"
@@ -94,7 +95,29 @@ void start_coop(const std::vector<std::string>& set) {
     }));
 }
 
-void open_host() {
+// Before a player's first Host or Join on this PC (ack.hpp): co-op is still a test, how to report what goes wrong, and
+// that an invite code holds the host's internet address. Asked once; Cancel leaves co-op as it was.
+void with_notice(void (*then)()) {
+    with_ack(
+        {
+            .file = L"coop_notice_ack.txt",
+            .kept = "The player has read co-op's notice: still a test, and invite codes kept private "
+                    "(coop_window.cpp).\n",
+            .title = "Co-op is still a test",
+            .bodyRml =
+                "Seamless co-op is new. Expect problems: a friend dropping out, your games getting out of step, now "
+                "and then a crash. Your normal characters are safe: co-op plays on a save of its own.<br/><br/>"
+                "When something goes wrong, choose Report an issue in the menu soon after, and say what happened. "
+                "Ask your friends to report it too: each game keeps its own co-op log.<br/><br/>"
+                "An invite code holds the host's internet (IP) address. Send it only to friends, in a private "
+                "message. Never post it in public: not in a server channel, on a stream or in a screenshot.",
+            .tick = "I understand, and I'll keep codes private",
+            .icon = "warning",
+        },
+        then);
+}
+
+void open_host_now() {
     push_document(std::make_unique<Modal>(Modal::Props{
         .title = "Host co-op?",
         .bodyRml = "The game starts again on your co-op characters. Then send your friends the invite code from "
@@ -119,7 +142,7 @@ void join_with(const std::string& text, const char* if_empty) {
     start_coop({"DES_SEAMLESS=join", "DES_SEAMLESS_CODE=" + code});
 }
 
-void open_join() {
+void open_join_now() {
     push_document(std::make_unique<Modal>(Modal::Props{
         .title = "Join co-op?",
         .bodyRml = "Copy your friend's invite code, then paste it or type it. The game starts again in their world.",
@@ -143,6 +166,14 @@ void open_join() {
                                     join_with(text, "Nothing to paste: copy the code first.");
                                 }}},
     }));
+}
+
+void open_host() {
+    with_notice(open_host_now);
+}
+
+void open_join() {
+    with_notice(open_join_now);
 }
 
 // The host's public address, for a router that can't say it: kept in settings.ini for the next time.

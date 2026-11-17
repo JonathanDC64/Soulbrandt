@@ -152,12 +152,12 @@ button.modal-btn {
     text-align: center;
 }
 
-/* A tick's state in words (report_ack.cpp), for a look that draws the tick as a row with its value. */
+/* A tick's state in words (ack.cpp), for a look that draws the tick as a row with its value. */
 tick-value {
     display: none;
 }
 
-button.report-ack-tick icon {
+button.ack-tick icon {
     margin-right: 6dp;
 }
 

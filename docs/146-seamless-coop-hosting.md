@@ -13,6 +13,13 @@ This page covers three parts:
 
 ## For players
 
+**Co-op is still a test.** The first time a player chooses **Host** or **Join** on a PC, a notice says so: expect
+problems (a friend dropping out, games out of step, a crash now and then), report them with **Report an issue**,
+and never post an invite code in public, because it holds the host's internet (IP) address. The player ticks "I
+understand, and I'll keep codes private" and chooses **Continue**; **Cancel** leaves co-op as it was. The answer is
+kept in the data folder (`coop_notice_ack.txt`, beside the reports folder, as Report's own first question keeps
+`report_zip_ack.txt`), so the notice shows once per PC.
+
 **To host:**
 
 1. Open **Co-op** (on the start screen, or F1 > Co-op) and choose **Host**. The game starts again on your co-op
