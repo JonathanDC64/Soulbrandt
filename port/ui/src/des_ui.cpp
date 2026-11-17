@@ -682,7 +682,7 @@ void push_documents() {
         else if (!std::strcmp(open, "trophies")) ui::push_document(ui::menu::screen_alone("Trophies"));
         else if (!std::strcmp(open, "mods")) ui::push_document(ui::menu::screen_alone("Mods"));
         else if (!std::strcmp(open, "players")) ui::push_document(std::make_unique<ui::PlayersWindow>());
-        else if (!std::strcmp(open, "coop")) ui::push_document(ui::menu::screen_alone("Co-op"));
+        else if (!std::strcmp(open, "coop")) ui::push_document(ui::menu::screen_alone("Seamless co-op"));
         else if (!std::strcmp(open, "privacy"))
             ui::push_document(std::make_unique<ui::PrivacyWindow>(ui::PrivacyWindow::Mode::Read));
         else if (!std::strcmp(open, "osk")) open_test_osk();

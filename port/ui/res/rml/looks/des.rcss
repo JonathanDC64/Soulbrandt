@@ -998,6 +998,12 @@ window.modal modal-body {
     color: var(--des-tan);
 }
 
+/* A question's line that must stand out: the title's lighter tan, in the body's own weight. */
+window.modal modal-body modal-warning {
+    font-weight: normal;
+    color: var(--des-tan-light);
+}
+
 window.modal modal-actions {
     justify-content: center;
     gap: 18dp;
@@ -1080,8 +1086,8 @@ window.modal button.modal-btn:disabled {
     opacity: 1;
 }
 
-/* A tick (report_ack.cpp) as a settings row: its line on a stone bar, its state (No, Yes) in a box beside it. */
-window.modal button.report-ack-tick {
+/* A tick (ack.cpp) as a settings row: its line on a stone bar, its state (No, Yes) in a box beside it. */
+window.modal button.ack-tick {
     display: flex;
     flex-direction: row;
     align-items: center;
@@ -1099,11 +1105,11 @@ window.modal button.report-ack-tick {
     color: var(--des-tan);
 }
 
-window.modal button.report-ack-tick icon {
+window.modal button.ack-tick icon {
     display: none;
 }
 
-window.modal button.report-ack-tick tick-label {
+window.modal button.ack-tick tick-label {
     display: block;
     flex: 1 1 auto;
     height: 34dp;
@@ -1116,19 +1122,19 @@ window.modal button.report-ack-tick tick-label {
     decorator: image(/res/img/grain.png repeat left top), linear-gradient(#333331, #262626);
 }
 
-window.modal button.report-ack-tick:hover tick-label {
+window.modal button.ack-tick:hover tick-label {
     border-top-color: var(--des-hover-edge);
     decorator: image(/res/img/grain.png repeat left top), linear-gradient(#4c4a45, #393835);
     color: var(--des-tan-light);
 }
 
-window.modal button.report-ack-tick:focus-visible tick-label {
+window.modal button.ack-tick:focus-visible tick-label {
     border-top-color: var(--des-blood-edge);
     decorator: image(/res/img/grain.png repeat left top), linear-gradient(#853432, #6a2524);
     color: var(--des-tan-light);
 }
 
-window.modal button.report-ack-tick tick-value {
+window.modal button.ack-tick tick-value {
     display: block;
     flex: 0 0 170dp;
     height: 32dp;

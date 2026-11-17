@@ -3,6 +3,7 @@
 // router answers a few seconds after the start, and players come and go).
 #include "coop_window.hpp"
 
+#include "ack.hpp"
 #include "app.hpp"
 #include "crash_report.hpp"
 #include "osk_window.hpp"
@@ -26,7 +27,7 @@ namespace co = des::seamless;
 void toast(const char* type, const std::string& text) {
     push_toast({
         .type = type,
-        .title = "Co-op",
+        .title = "Seamless co-op",
         .content = "<toast-message-text>" + escape(text) + "</toast-message-text>",
         .duration = std::chrono::seconds(6),
     });
@@ -86,7 +87,7 @@ void start_coop(const std::vector<std::string>& set) {
                        }});
     actions.push_back({.label = "Cancel", .onPressed = close_action});
     push_document(std::make_unique<Modal>(Modal::Props{
-        .title = "Bring a character to co-op?",
+        .title = "Bring a character to seamless co-op?",
         .bodyRml = "Co-op gets a copy, and your character here stays as it is. Or start with none, and make one "
                    "there.",
         .actions = std::move(actions),
@@ -94,11 +95,32 @@ void start_coop(const std::vector<std::string>& set) {
     }));
 }
 
-void open_host() {
+// Before a player's first Host or Join on this PC (ack.hpp): co-op is still a test, how to report what goes wrong, and
+// that an invite code holds the host's internet address. Asked once; Cancel leaves co-op as it was.
+void with_notice(void (*then)()) {
+    with_ack(
+        {
+            .file = L"coop_notice_ack.txt",
+            .kept = "The player has read co-op's notice: still a test, and invite codes kept private "
+                    "(coop_window.cpp).\n",
+            .title = "Seamless co-op is still being tested",
+            .bodyRml = "Expect some problems, like a friend dropping out or a crash. Your normal characters aren't "
+                       "affected.<br/><br/>"
+                       "If something goes wrong, choose Report an issue in the menu, and ask your friends to report it "
+                       "too.<br/><br/>"
+                       "<modal-warning>Invite codes contain the host's IP address. Only share them privately with "
+                       "friends.</modal-warning>",
+            .tick = "I understand",
+            .icon = "warning",
+        },
+        then);
+}
+
+void open_host_now() {
     push_document(std::make_unique<Modal>(Modal::Props{
-        .title = "Host co-op?",
+        .title = "Host seamless co-op?",
         .bodyRml = "The game starts again on your co-op characters. Then send your friends the invite code from "
-                   "Co-op.<br/><br/>"
+                   "Seamless co-op.<br/><br/>"
                    "If Windows asks about the network, allow it. Keep the code private: it holds your internet "
                    "address.",
         .actions = {ModalAction{.label = "Cancel", .onPressed = close_action},
@@ -119,9 +141,9 @@ void join_with(const std::string& text, const char* if_empty) {
     start_coop({"DES_SEAMLESS=join", "DES_SEAMLESS_CODE=" + code});
 }
 
-void open_join() {
+void open_join_now() {
     push_document(std::make_unique<Modal>(Modal::Props{
-        .title = "Join co-op?",
+        .title = "Join seamless co-op?",
         .bodyRml = "Copy your friend's invite code, then paste it or type it. The game starts again in their world.",
         .actions = {ModalAction{.label = "Cancel", .onPressed = close_action},
                     ModalAction{.label = "Type code",
@@ -143,6 +165,14 @@ void open_join() {
                                     join_with(text, "Nothing to paste: copy the code first.");
                                 }}},
     }));
+}
+
+void open_host() {
+    with_notice(open_host_now);
+}
+
+void open_join() {
+    with_notice(open_join_now);
 }
 
 // The host's public address, for a router that can't say it: kept in settings.ini for the next time.
@@ -269,7 +299,7 @@ private:
 void open_leaving() {
     co::leave();
     push_document(std::make_unique<LeavingWindow>(Modal::Props{
-        .title = "Leaving co-op",
+        .title = "Leaving seamless co-op",
         .bodyRml = "Going back to your own world, then to your normal characters.",
         .actions = {ModalAction{.label = "Leave now",
                                 .onPressed = [](Modal&) { leave_now(); }}},
@@ -282,7 +312,7 @@ void open_leaving() {
 void open_leave() {
     const bool guest = co::status().mode == co::Mode::Join;
     push_document(std::make_unique<Modal>(Modal::Props{
-        .title = "Leave co-op?",
+        .title = "Leave seamless co-op?",
         .bodyRml = guest ? "Your game saves in your own world, then starts again on your normal characters."
                          : "The game starts again on your normal characters. Your friends go back to their own "
                            "worlds.",
@@ -400,7 +430,7 @@ std::unique_ptr<Modal> make_coop_window() {
         actions.push_back({.label = "Leave co-op", .onPressed = [](Modal&) { open_leave(); }});
     }
     return std::make_unique<CoopWindow>(Modal::Props{
-        .title = "Co-op",
+        .title = "Seamless co-op",
         .bodyRml = body(s),
         .actions = std::move(actions),
     });

@@ -13,31 +13,41 @@ This page covers three parts:
 
 ## For players
 
+**Seamless co-op is still being tested.** The first time a player chooses **Host** or **Join** on a PC, a
+notice says so: expect some problems, report them with **Report an issue** (friends too), and share invite codes
+only privately, because they contain the host's IP address. The player ticks "I understand" and chooses
+**Continue**; **Cancel** leaves things as they were. The answer is kept in the data folder (`coop_notice_ack.txt`,
+as Report's own first question keeps `report_zip_ack.txt`), so the notice shows once per PC.
+
+**The name in the menus** is **Seamless co-op** (the start screen's button, the F1 menu's entry and its window's
+title), so it isn't taken for the game's own co-op with summon signs.
+
 **To host:**
 
-1. Open **Co-op** (on the start screen, or F1 > Co-op) and choose **Host**. The game starts again on your co-op
-   characters.
+1. Open **Seamless co-op** (on the start screen, or F1 > Seamless co-op) and choose **Host**. The game starts
+   again on your co-op characters.
 2. Windows may ask whether the game may use the network. Choose **Allow**, or your friends can't connect.
-3. Open **Co-op** again. It shows your **invite code**, like `7KQ2-M9XD-0RTB-4HWE`. **Copy code** puts it on the
-   clipboard. Send it to your friends.
+3. Open **Seamless co-op** again. It shows your **invite code**, like `7KQ2-M9XD-0RTB-4HWE`. **Copy code** puts
+   it on the clipboard. Send it to your friends.
 
 **Don't post the code in public.** It holds your internet address. Send it only to the friends you play with.
 If a code went further than you meant, choose **New code**: the old one stops working, and players already in your
-game stay. The game makes a new code by itself only when someone has tried many wrong ones; Co-op then says so.
+game stay. The game makes a new code by itself only when someone has tried many wrong ones; Seamless co-op then says
+so.
 
 **To join:**
 
 1. Copy your friend's invite code.
-2. Open **Co-op**, choose **Join**, then **Paste and join**, or **Type code** to type it (with a keyboard or
+2. Open **Seamless co-op**, choose **Join**, then **Paste and join**, or **Type code** to type it (with a keyboard or
    the controller). The game starts again on your co-op characters.
 
-**To leave:** **Co-op** > **Leave co-op**. A friend's game first takes them back to their own world, where it saves
-what the group did; the host's leave sends its friends back to theirs. Then the game starts again on your normal
-characters.
+**To leave:** **Seamless co-op** > **Leave co-op**. A friend's game first takes them back to their own world, where
+it saves what the group did; the host's leave sends its friends back to theirs. Then the game starts again on your
+normal characters.
 
 **If the host's game closes,** a friend sees the game's own "The session has ended." about 13 s later and goes back
-to their own world. **Co-op** then says the connection was lost. The friend's game keeps trying to reach the host's:
-after a network drop, with the host still hosting, it connects again, goes home as the game ends the session, and
+to their own world. **Seamless co-op** then says the connection was lost. The friend's game keeps trying to reach the
+host's: after a network drop, with the host still hosting, it connects again, goes home as the game ends the session, and
 joins again by itself from there. If the host starts hosting again, its invite code is a new one. The friend's
 game then says "The host's game did not accept this invite code. Ask the host for it again." and stops trying:
 **Leave co-op**, then join with the new code.
@@ -252,7 +262,7 @@ made from it, within 10 s; without it, nothing else is answered. So:
 - A scan of the internet can find that something answers on the port, but can't join, list rooms or send anything
   to the players without the key.
 - Guessing the key: one address is ignored for a minute after 5 wrong keys. After 100 wrong keys from any
-  addresses, the key is spent: no one else gets in, players already in stay, and the Co-op window asks the host for
+  addresses, the key is spent: no one else gets in, players already in stay, and the Seamless co-op window asks the host for
   a new code. A guess gets 100 tries a code, 1 in 2.7 million of finding a 28-bit key.
 - One address may have only 2 connections that haven't said `HELLO` yet, and each gets 10 s, so connections that
   never send a key can't take the players' places.
@@ -807,7 +817,7 @@ side by their times.
 
 | Variable | What it does |
 |---|---|
-| `DES_SEAMLESS=host` / `join` | Co-op mode for this start (the Co-op window sets it when it starts the game again). |
+| `DES_SEAMLESS=host` / `join` | Co-op mode for this start (the Seamless co-op window sets it when it starts the game again). |
 | `DES_SEAMLESS_CODE=<code>` | The code to join. |
 | `DES_SEAMLESS_PORT=n` | The host's port. Default 36100. |
 | `DES_SEAMLESS_UPNP=0` | The host leaves the router alone (the port forwarded by hand). |
@@ -829,7 +839,7 @@ resolves) and `PS3_SAVEDATA_ROOT` (the co-op save). A value set in the environme
 2. once out of the session: back to where the player stood before the join (`SetSummonedPos`,
    `SetDefaultMapUid(-1)`), in the form it had before the join (`SetChrTypeDataGreyNext`), with a load
    (`WarpNextStageKick`);
-3. at home, the game saves by itself. The Co-op window waits for a file written in the co-op save after the arrival
+3. at home, the game saves by itself. The Seamless co-op window waits for a file written in the co-op save after the arrival
    and for the game's save to finish: no save asked for (GameMan `+0xA97`, `+0xA98`) and its save task idle
    (`+0xAA4` back at 0). A save writes PARAM.SFO first and the data after, so a new file alone is too early. Then
    (or after 2 minutes, or on **Leave now**) it starts the game again. Back or Esc doesn't close that window.

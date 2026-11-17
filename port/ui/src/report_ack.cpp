@@ -1,109 +1,29 @@
 // Written for Demon's Souls. See report_ack.hpp.
 #include "report_ack.hpp"
 
-#include "modal.hpp"
-#include "pane.hpp"
+#include "ack.hpp"
 #include "report.hpp"
-#include "sound.hpp"
-#include "ui.hpp"
 
-#include <cstdio>
-#include <filesystem>
-#include <memory>
+#include <string>
 #include <utility>
 
 namespace ui {
-namespace {
-
-// The answer, kept beside the reports folder. None when there is no data folder (a test run keeps nothing).
-std::filesystem::path marker() {
-    const auto& dir = report::data_dir();
-    return dir.empty() ? dir : dir / L"report_zip_ack.txt";
-}
-
-bool answered() {
-    std::error_code ec;
-    const auto path = marker();
-    return !path.empty() && std::filesystem::exists(path, ec);
-}
-
-void keep_answer() {
-    const auto path = marker();
-    if (path.empty()) return;
-    std::error_code ec;
-    std::filesystem::create_directories(path.parent_path(), ec);
-    if (FILE* f = report::open_file(path, "wb")) {
-        std::fputs("The player has been told to attach the report's zip to the issue (report_ack.cpp).\n", f);
-        std::fclose(f);
-    }
-}
-
-}  // namespace
 
 void with_zip_ack(std::function<void()> then) {
-    if (answered()) {
-        if (then) then();
-        return;
-    }
-    const auto ticked = std::make_shared<bool>(false);
-    const Rml::String where =
+    const std::string where =
         report::no_desktop()
             ? "The report is saved with a link to the issue page. On a PC, drag the .zip into the issue's \"Report "
               "file\" box."
             : "Drag the .zip from the folder that opens into the issue's \"Report file\" box.";
-    auto owned = std::make_unique<Modal>(Modal::Props{
-        .title = "Attach the report file?",
-        .bodyText = where + " Without it, a report can rarely be solved.",
-        .actions =
-            {
-                ModalAction{
-                    .label = "Continue",
-                    .onPressed =
-                        [ticked, then = std::move(then)](Modal& m) {
-                            if (!*ticked) return;
-                            play_sound(kSoundClick);
-                            keep_answer();
-                            const auto go = then;  // (the modal and this lambda go with pop)
-                            m.pop();
-                            if (go) go();
-                        },
-                    .isDisabled = [ticked] { return !*ticked; },
-                },
-                ModalAction{
-                    .label = "Cancel",
-                    .onPressed =
-                        [](Modal& m) {
-                            play_sound(kSoundWindowClose);
-                            m.pop();
-                        },
-                },
-            },
-        .onDismiss = [](Modal& m) { m.pop(); },
-        .icon = "question-mark",
-    });
-    // The tick: a button whose box fills when pressed (Material Symbols' check_box and check_box_outline_blank), with
-    // its state in words too for a look that draws it as a row and its value (No, Yes). Made before the question
-    // shows, so the focus starts on it.
-    auto& tick = owned->content_pane().add_button(ControlledButton::Props{
-        .isSelected = [ticked] { return *ticked; },
-    });
-    tick.root()->SetClass("report-ack-tick", true);
-    Rml::Element* box = append(tick.root(), "icon");
-    box->SetClass("check-box-blank", true);
-    append_text_element(tick.root(), "tick-label", "I'll attach the report file to my issue");
-    Rml::Element* says = append_text_element(tick.root(), "tick-value", "No");
-    tick.on_pressed([ticked, box, says] {
-        *ticked = !*ticked;
-        box->SetClass("check-box", *ticked);
-        box->SetClass("check-box-blank", !*ticked);
-        set_text_content(says, *ticked ? "Yes" : "No");
-        play_sound(*ticked ? kSoundItemEnable : kSoundItemDisable);
-    });
-    // Over what is showing, covering it as a window's own push does (the crash dialog's text would show through).
-    if (Document* top = top_document())
-        top->push(std::move(owned));
-    else
-        push_document(std::move(owned));
+    with_ack(
+        {
+            .file = L"report_zip_ack.txt",
+            .kept = "The player has been told to attach the report's zip to the issue (report_ack.cpp).\n",
+            .title = "Attach the report file?",
+            .bodyText = where + " Without it, a report can rarely be solved.",
+            .tick = "I'll attach the report file to my issue",
+        },
+        std::move(then));
 }
 
 }  // namespace ui
