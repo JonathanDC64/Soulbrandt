@@ -1148,9 +1148,11 @@ window.modal button.ack-tick tick-value {
 /* ---- The start screen (prelaunch.cpp), as the game's title menu: the name where the game's logo stands, the choices
    as centred lines with a blood smear behind the chosen one, the hint and the version as the title's small lines, and
    the prompts at the foot. The game booting behind is dimmed far down, so its own notices don't read through. ---- */
+/* Opaque: behind the start screen the game shows only its own notice about saving, which read through the choices. */
 body.prelaunch prelaunch-gradient {
-    decorator: none;
-    background-color: rgba(0, 0, 0, 84%);
+    decorator: image(/res/img/grain.png repeat left top),
+        radial-gradient(farthest-corner at 50% 45%, #1d1d1c 0%, #0a0a0a 100%);
+    background-color: #0a0a0a;
 }
 
 body.prelaunch prelaunch-vignette {
