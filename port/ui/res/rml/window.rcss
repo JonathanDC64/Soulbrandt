@@ -261,6 +261,11 @@ modal-body modal-tip {
     color: var(--color-border);
 }
 
+/* The one line of a question that must stand out (coop_window.cpp's notice: invite codes hold an IP address). */
+modal-body modal-warning {
+    font-weight: bold;
+}
+
 modal-content {
     display: none;
     width: 100%;

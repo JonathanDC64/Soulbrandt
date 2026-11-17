@@ -482,7 +482,7 @@ std::vector<TabDesc> make_tabs() {
                     .choices = {{"2", "2: you and a friend"}, {"3", "3: you and two friends"},
                         {"4", "4: you and three friends"}},
                     .changed = hooks::party_size_changed},
-                .help = "The most players in a co-op game you host (Co-op, in the menu), you included. One more "
+                .help = "The most players in a co-op game you host (Seamless co-op, in the menu), you included. One more "
                         "waits, and joins as soon as a place frees up. A change counts at once; players already here "
                         "stay.<br/><br/>The original game plays three at most in co-op."},
             toggle("Your glow", "DES_SEAMLESS_GLOW",

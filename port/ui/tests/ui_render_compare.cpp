@@ -1025,7 +1025,7 @@ void open_note(const std::string& kind) {
         t.content = "Texture pack 2 holds two versions: keep one, then refresh the list.";
     } else if (kind == "info") {
         t.type = "info";
-        t.title = "Co-op";
+        t.title = "Seamless co-op";
         t.content = "Copied. Send it to your friends, not in public.";
     } else if (kind == "done") {
         t.title = "Players";
@@ -1179,7 +1179,7 @@ void open_coop(const des::seamless::Status& s, int focus) {
     des::seamless::set_test_status(s);
     open_menu(false);
     for (size_t i = 0; i < ui::menu::entries().size(); i++)
-        if (ui::menu::entries()[i].title == "Co-op") ui::menu::entries()[i].choose(menu_shell());
+        if (ui::menu::entries()[i].title == "Seamless co-op") ui::menu::entries()[i].choose(menu_shell());
     if (auto* page = dynamic_cast<ui::CoopPage*>(menu_shell().page())) page->focus_action(focus);
 }
 

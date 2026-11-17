@@ -30,7 +30,7 @@ public:
     CoopPage(Rml::Element* host, menu::PageHost& shell);
     ~CoopPage() override;
 
-    std::string title() const override { return "Co-op"; }
+    std::string title() const override { return "Seamless co-op"; }
     void update() override;
     bool command(menu::Command command, bool down) override;
     bool back() override { return false; }

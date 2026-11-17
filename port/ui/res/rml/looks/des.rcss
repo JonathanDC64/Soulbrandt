@@ -998,6 +998,12 @@ window.modal modal-body {
     color: var(--des-tan);
 }
 
+/* A question's line that must stand out: the title's lighter tan, in the body's own weight. */
+window.modal modal-body modal-warning {
+    font-weight: normal;
+    color: var(--des-tan-light);
+}
+
 window.modal modal-actions {
     justify-content: center;
     gap: 18dp;

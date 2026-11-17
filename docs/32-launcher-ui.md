@@ -9,17 +9,17 @@ licences in `port/ui/NOTICE.md`.
 
 - **Start screen** over the game as it boots: the port's name over *Demon's
   Souls on PC*, then **Play**, **Settings**, **Trophies**, **Mods**,
-  **Co-op** and **Quit**. The game's logos and notices run behind it,
-  darkened from the left; it gets no input until Play. Esc or Circle on the
+  **Seamless co-op** and **Quit**. The game's logos and notices run behind
+  it, darkened from the left; it gets no input until Play. Esc or Circle on the
   start screen asks to quit. When the update check finds a newer version,
   an **Update to X** choice shows in the accent colour, and a note at the
   top right says "Version X is out" (a click on it opens the same window),
   so a new version isn't missed.
 - **In-game menu**: F1 or Esc on the keyboard, or **L3 + R3** on a gamepad
   (Settings > Interface can switch this to Select + Start). It is a bar at
-  the top with **Settings**, **Trophies**, **Mods**, **Co-op**, **Report an
-  issue** and **Quit** (`menu_pages.cpp`'s entries). Settings opens in a
-  frame, and the bar goes: the tabs along the frame's top with a close
+  the top with **Settings**, **Trophies**, **Mods**, **Seamless co-op**,
+  **Report an issue** and **Quit** (`menu_pages.cpp`'s entries). Settings
+  opens in a frame, and the bar goes: the tabs along the frame's top with a close
   button at their right, the page, and a row of prompts for what the keys
   do now, drawn for the device last used (the keyboard, or the pad's own
   buttons). Back (Esc, Circle) closes one thing at a time: a list or the
