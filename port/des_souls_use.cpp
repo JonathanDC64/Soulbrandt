@@ -19,6 +19,11 @@
  *   0x008FDB00 takes one off the stack at PGD+0x2CC and sets it to -1. The
  *   souls come from the SpEffect (+0xE8), through AddSoul and the HUD's counter.
  *
+ * These registered wrappers hand off to storage first: cmd_choice lets
+ * des_storage_command claim the added command, and inv_message lets
+ * des_storage_inventory_message claim its owned quantity picker. Unclaimed
+ * commands and messages continue through the native Use/Drop and souls paths.
+ *
  * Here: Use on such a stack takes Drop's steps instead, with Use's question.
  * The picker's OK is never 2000's Drop: it leaves the game's own Use for the
  * menus' next update (des_souls_menu_tick), sent as the command menu sends it.

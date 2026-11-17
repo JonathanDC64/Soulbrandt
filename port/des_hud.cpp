@@ -780,6 +780,7 @@ void dialog_draw(ppu_context* ctx)   /* for 0x00F60BD0; the menus' mouse sees ea
     des_storage_on_draw(ctx, (uint32_t)ctx->gpr[3]);
     des_mm_draw_enter(ctx, (uint32_t)ctx->gpr[3]);
     dialog_draw_inner(ctx);
+    // Finish a lifted continuation from this draw before storage rolls back its temporary layout writes.
     while (g_trampoline_fn) {
         void (*tf)(void*) = g_trampoline_fn;
         g_trampoline_fn = nullptr;

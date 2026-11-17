@@ -20,16 +20,20 @@
  * name that deposit function does not get the line; other disc addresses are
  * not yet resolved here.
  *
- * DES_STORAGE_LOG=1 also prints the command menu's pieces the first time it
- * opens. DES_STORAGE_NAV_TRACE=1 records native selection transitions and
- * confirmation, with menu ticks and draws, for timing diagnostics. */
+ * All entry points and state below run on the game's main thread. DES_STORAGE_LOG=1
+ * prints layout and transfer details; DES_STORAGE_LOG=2 adds navigation traces.
+ * The dialog, inventory and PGD offsets and lift names are currently verified
+ * only against the US program. Other-region call and layout mappings remain
+ * unresolved, so these translations do not claim those builds are supported. */
 
 #include "ps3emu/ppu_lift.h"
 #include "des_region.h"
 #include "des_game_calls.h"
+#include "des_storage.h"
 #include "des_storage_navigation.h"
 #include "ps3emu/ps3_knob.h"
 #include <cmath>
+#include <cstdarg>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -46,21 +50,72 @@ extern "C" volatile unsigned g_pad0_buttons, g_pad0_reads, g_pad0_empty_reads;
 #ifdef PS3_GAME_SPLIT
 extern "C" void (*des_lift_find(const char* name))(ppu_context*);
 #endif
-extern "C" int des_storage_command(ppu_context* ctx);
 
 namespace {
 
 constexpr uint32_t kPgdRoot = 0x01B4EF9Cu;
+constexpr uint32_t kInventoryMenuSlot = 0x019ADF0Cu; /* TOC slot holding the inventory menu object */
 constexpr uint32_t kPgdInv = 0x128u;     /* the inventory object the deposit takes */
 constexpr uint32_t kPgdItems = 0x1F4u;   /* the list: +0x0C slots, +0x10 entries of 0x20 */
+constexpr uint32_t kPgdItemCount = 0x0Cu;
+constexpr uint32_t kPgdItemRecords = 0x10u;
+constexpr uint32_t kPgdItemStride = 0x20u;
+constexpr uint32_t kEntryCategory = 0x00u, kEntryId = 0x04u, kEntryCount = 0x08u;
 constexpr uint32_t kPgdBox = 0x478u;     /* the storage box */
+constexpr uint32_t kBoxRecords = 0x0Cu;   /* 2048 records follow the 12-byte header */
+constexpr uint32_t kBoxRecordSize = 0x14u;
+constexpr uint32_t kBoxRecordCount = 2048u;
+constexpr uint32_t kBoxRecordFlags = 0x08u;
+constexpr uint32_t kBoxRecordOccupied = 0x00010000u;
+constexpr uint32_t kBoxHighWater = 0xA00Cu;
 constexpr uint32_t kCmdRow = 0xF4u;
 constexpr uint32_t kDlgRow = 0x134u, kDlgItems = 0x138u, kDlgOrder = 0x13Cu;
+constexpr uint32_t kDialogActive = 0x94u;
 constexpr uint32_t kKids = 0x0Cu, kKidCount = 0x10u;
 constexpr uint32_t kObjFlags = 0x18u, kObjRecord = 0x1Cu;
 constexpr uint32_t kObjDrawn = 0x40000000u;
+constexpr uint32_t kButtonTextPointer = 0x60u;
 constexpr uint32_t kRect = 0x74u, kLayout = 0x84u;
 constexpr uint32_t kToc = 0x019B5040u;
+constexpr uint32_t kMenuLanguage = 0x019D8C88u;
+constexpr uint32_t kMenuRoot = 0x019ADD50u;
+constexpr uint32_t kMenuOwnerDelta = 0x8000u;
+constexpr uint32_t kPickerMenuState = 0x14u;
+constexpr uint32_t kPickerSlot = 2u;
+constexpr uint32_t kPickerMode = 9u;
+constexpr uint32_t kPickerText = 0x820u;
+constexpr uint32_t kPickerAmount = 0x830u;
+constexpr uint32_t kPickerPromptId = 11000u;
+constexpr uint32_t kPickerRangeId = 0xEAC4u;
+constexpr uint32_t kPickerSetupDefault = 0x95u, kPickerSetupAlternate = 0x85u;
+constexpr uint32_t kPickerSetupSignal = 0x89u, kPickerUpdateSignal = 0x68u;
+constexpr uint32_t kInventoryDirtyA = 0x140u;
+constexpr uint32_t kInventoryDirtyB = 0x141u;
+constexpr uint32_t kMenuHolderDelta = 0x7FFCu;
+constexpr uint32_t kInventoryOkMessage = 2000u;
+constexpr uint32_t kInventoryCancelMessage = 2002u;
+constexpr uint32_t kMenuCancelSlot = 0x4Eu;
+constexpr uint32_t kMenuCloseSlot = 0x4Fu;
+constexpr uint32_t kMenuReturnState = 11001u;
+constexpr uint32_t kDialogInput = 0xA0u;
+constexpr uint32_t kDialogInputEnabled = 0x80000000u;
+
+struct StorageText {
+    const char16_t* send_label;
+    const char16_t* quantity_question;
+};
+constexpr StorageText kStorageTexts[] = {
+    {u"Send to Storage", u"How many items to send to Storage?"},
+    {u"Envoyer au stockage", u"Combien d'objets envoyer au stockage ?"},
+    {u"Ins Lager senden", u"Wie viele Gegenst\u00E4nde ins Lager senden?"},
+    {u"Enviar al almac\u00E9n", u"\u00BFCu\u00E1ntos objetos enviar al almac\u00E9n?"},
+    {u"Invia al deposito", u"Quanti oggetti inviare al deposito?"},
+    {u"\u5009\u5EAB\u306B\u9001\u308B", u"\u4F55\u500B\u306E\u30A2\u30A4\u30C6\u30E0\u3092\u5009\u5EAB\u306B\u9001\u308A\u307E\u3059\u304B\uFF1F"},
+    {u"\u9001\u81F3\u5009\u5EAB", u"\u8981\u9001\u591A\u5C11\u500B\u7269\u54C1\u81F3\u5009\u5EAB\uFF1F"},
+    {u"\uCC3D\uACE0\uB85C \uBCF4\uB0B4\uAE30", u"\uC544\uC774\uD15C\uC744 \uBA87 \uAC1C \uCC3D\uACE0\uB85C \uBCF4\uB0BC\uAE4C\uC694?"},
+};
+uint32_t s_label_ptr = 0, s_quantity_question = 0, s_cursor4_name = 0;
+bool s_send_disabled = false;
 
 bool guest_ok(uint32_t a, uint32_t align)
 {
@@ -68,11 +123,17 @@ bool guest_ok(uint32_t a, uint32_t align)
 }
 
 // Custom pieces exist only during drawing, outside native update and teardown.
-struct DrawWrite { uint32_t at, before, after; unsigned size; };
-thread_local std::vector<DrawWrite> s_draw_writes;
+struct DrawWrite { uint32_t at, before, after, mask; unsigned size; };
+std::vector<DrawWrite> s_draw_writes;
 std::vector<DrawWrite> s_layout_writes;
-thread_local bool s_drawing = false;
-thread_local bool s_layout_initializing = false;
+bool s_drawing = false;
+bool s_layout_initializing = false;
+bool s_layout_cache_active = false;
+struct LayoutBlock { uint32_t at, size; uint64_t used_generation; };
+std::vector<LayoutBlock> s_layout_blocks;
+uint64_t s_layout_generation = 0;
+constexpr size_t kMaxLayoutBlocks = 64;
+constexpr size_t kDrawNoop = static_cast<size_t>(-1);
 struct OwnedAllocation { uint32_t at, size; };
 std::vector<OwnedAllocation> s_owned_allocations;
 bool owned_address(uint32_t at, unsigned size)
@@ -81,33 +142,62 @@ bool owned_address(uint32_t at, unsigned size)
         if (at >= allocation.at && (uint64_t)at + size <= (uint64_t)allocation.at + allocation.size) return true;
     return false;
 }
-thread_local std::vector<size_t> s_draw_starts;
+std::vector<size_t> s_draw_starts;
 void draw_write(uint32_t at, uint32_t value, unsigned size)
 {
     uint32_t old = size == 4 ? vm_read32(at) : size == 2 ? vm_read16(at) : vm_read8(at);
     // New layout data must remain valid after the native renderer queues it.
     // Roll back native bindings and later per-frame edits, never initialization
     // of the storage-owned clone/shape/child arrays to uninitialized bytes.
+    const uint32_t mask = size == 4 ? 0xFFFFFFFFu : size == 2 ? 0xFFFFu : 0xFFu;
     if (s_drawing && !(s_layout_initializing && owned_address(at, size)))
-        s_draw_writes.push_back({at, old, value, size});
+        s_draw_writes.push_back({at, old, value, mask, size});
     if (size == 4) vm_write32(at, value);
     else if (size == 2) vm_write16(at, (uint16_t)value);
     else vm_write8(at, (uint8_t)value);
 }
+void draw_write_flags(uint32_t at, uint32_t value, uint32_t mask)
+{
+    const uint32_t old = vm_read32(at);
+    const uint32_t next = (old & ~mask) | (value & mask);
+    if (s_drawing && !(s_layout_initializing && owned_address(at, 4)))
+        s_draw_writes.push_back({at, old & mask, next & mask, mask, 4});
+    vm_write32(at, next);
+}
 void storage_write32(uint32_t at, uint32_t value) { draw_write(at, value, 4); }
 void storage_write16(uint32_t at, uint16_t value) { draw_write(at, value, 2); }
 void storage_write8(uint32_t at, uint8_t value) { draw_write(at, value, 1); }
-void restore_draw()
+void storage_write_flags(uint32_t at, uint32_t value, uint32_t mask) { draw_write_flags(at, value, mask); }
+void replay_draw_write(const DrawWrite& write)
 {
-    const size_t start = s_draw_starts.back();
-    s_draw_starts.pop_back();
-    for (auto i = s_draw_writes.rbegin(); i != s_draw_writes.rend() - start; ++i) {
-        if (i->size == 4) vm_write32(i->at, i->before);
-        else if (i->size == 2) vm_write16(i->at, (uint16_t)i->before);
-        else vm_write8(i->at, (uint8_t)i->before);
+    const uint32_t full_mask = write.size == 4 ? 0xFFFFFFFFu : write.size == 2 ? 0xFFFFu : 0xFFu;
+    if (write.mask != full_mask) draw_write_flags(write.at, write.after, write.mask);
+    else draw_write(write.at, write.after, write.size);
+}
+void undo_draw_writes_to(size_t start)
+{
+    for (size_t i = s_draw_writes.size(); i > start; --i) {
+        const DrawWrite& write = s_draw_writes[i - 1];
+        const uint32_t full_mask = write.size == 4 ? 0xFFFFFFFFu : write.size == 2 ? 0xFFFFu : 0xFFu;
+        if (write.mask != full_mask) {
+            const uint32_t current = vm_read32(write.at);
+            vm_write32(write.at, (current & ~write.mask) | (write.before & write.mask));
+        } else if (write.size == 4) vm_write32(write.at, write.before);
+        else if (write.size == 2) vm_write16(write.at, (uint16_t)write.before);
+        else vm_write8(write.at, (uint8_t)write.before);
     }
     s_draw_writes.resize(start);
-    s_drawing = !s_draw_starts.empty();
+}
+void restore_draw()
+{
+    if (s_draw_starts.empty()) return;
+    const size_t start = s_draw_starts.back();
+    s_draw_starts.pop_back();
+    if (start == kDrawNoop) return;
+    undo_draw_writes_to(start);
+    s_drawing = false;
+    for (const size_t frame : s_draw_starts)
+        if (frame != kDrawNoop) { s_drawing = true; break; }
 }
 
 float vm_readf(uint32_t ea)
@@ -132,18 +222,30 @@ bool on()
     return s_on != 0;
 }
 
-bool logging()
+int storage_log_level()
 {
     static int s_log = 0;
     PS3_KNOB(s_log, ps3_env_int("DES_STORAGE_LOG", 0));
-    return s_log != 0;
+    return s_log < 0 ? 0 : s_log > 2 ? 2 : s_log;
 }
 
 bool navigation_trace()
 {
-    static int enabled = 0;
-    PS3_KNOB(enabled, ps3_env_int("DES_STORAGE_NAV_TRACE", 0));
-    return enabled != 0;
+    return storage_log_level() >= 2;
+}
+
+bool logging()
+{
+    return storage_log_level() >= 1;
+}
+
+void log_detail(const char* format, ...)
+{
+    if (!logging()) return;
+    va_list args;
+    va_start(args, format);
+    vfprintf(stderr, format, args);
+    va_end(args);
 }
 
 void drain(ppu_context* ctx)
@@ -184,24 +286,80 @@ uint32_t call_game(ppu_context* ctx, void (*fn)(ppu_context*), std::initializer_
     return r3;
 }
 
-uint32_t guest_alloc(ppu_context* ctx, uint32_t size)
+uint32_t allocate_guest_block(ppu_context* ctx, uint32_t size)
 {
-    uint64_t g3 = ctx->gpr[3];
+    const uint64_t g3 = ctx->gpr[3];
     ctx->gpr[3] = size;
     ds_malloc(ctx);
-    const uint32_t a = (uint32_t)ctx->gpr[3];
+    const uint32_t address = (uint32_t)ctx->gpr[3];
     ctx->gpr[3] = g3;
-    if (!guest_ok(a, 4)) return 0;
-    s_owned_allocations.push_back({a, size});
-    return a;
+    if (!guest_ok(address, 4)) return 0;
+    s_owned_allocations.push_back({address, size});
+    return address;
+}
+
+uint32_t guest_alloc(ppu_context* ctx, uint32_t size)
+{
+    if (s_layout_cache_active) {
+        for (auto& block : s_layout_blocks) {
+            if (block.size == size && block.used_generation != s_layout_generation) {
+                block.used_generation = s_layout_generation;
+                return block.at;
+            }
+        }
+        if (s_layout_blocks.size() >= kMaxLayoutBlocks) return 0;
+    }
+    const uint32_t address = allocate_guest_block(ctx, size);
+    if (address && s_layout_cache_active) s_layout_blocks.push_back({address, size, s_layout_generation});
+    return address;
 }
 
 uint32_t guest_text(ppu_context* ctx, const char* text)
 {
     const uint32_t n = (uint32_t)strlen(text) + 1;
     const uint32_t t = guest_alloc(ctx, 2 * n);
-    for (uint32_t i = 0; t && i < n; i++) storage_write16(t + 2 * i, (uint16_t)(uint8_t)text[i]);
+    for (uint32_t i = 0; t && i < n; i++) vm_write16(t + 2 * i, (uint16_t)(uint8_t)text[i]);
     return t;
+}
+
+uint32_t guest_text(ppu_context* ctx, const char16_t* text)
+{
+    uint32_t n = 0;
+    while (text[n]) ++n;
+    const uint32_t t = guest_alloc(ctx, 2u * (n + 1u));
+    for (uint32_t i = 0; t && i <= n; ++i) vm_write16(t + 2u * i, (uint16_t)text[i]);
+    return t;
+}
+
+const StorageText& storage_text()
+{
+    const uint32_t language = vm_read32(DES_AT(kMenuLanguage));
+    switch (des_region()) {
+    case DesRegion::US:
+        return language == 0 ? kStorageTexts[5] : kStorageTexts[0];
+    case DesRegion::EU:
+        switch (language) {
+        case 6: return kStorageTexts[2];
+        case 7: return kStorageTexts[1];
+        case 8: return kStorageTexts[3];
+        case 9: return kStorageTexts[4];
+        default: return kStorageTexts[0];
+        }
+    case DesRegion::JP:
+        return kStorageTexts[5];
+    case DesRegion::ASIA:
+        return language == 2 ? kStorageTexts[7] : language == 3 ? kStorageTexts[6] : kStorageTexts[0];
+    }
+    return kStorageTexts[0];
+}
+
+bool ensure_storage_texts(ppu_context* ctx)
+{
+    const StorageText& text = storage_text();
+    if (!s_label_ptr) s_label_ptr = guest_text(ctx, text.send_label);
+    if (!s_quantity_question) s_quantity_question = guest_text(ctx, text.quantity_question);
+    if (!s_cursor4_name) s_cursor4_name = guest_text(ctx, u"cursor4_0");
+    return s_label_ptr && s_quantity_question && s_cursor4_name;
 }
 
 void (*deposit_fn())(ppu_context*)
@@ -226,8 +384,8 @@ uint32_t pgd()
 
 uint32_t inventory()
 {
-    const uint32_t menus = vm_read32(DES_AT(0x019ADF0Cu));
-    const uint32_t holder = guest_ok(menus, 4) ? vm_read32(menus - 0x8000u) : 0;
+    const uint32_t menus = vm_read32(DES_AT(kInventoryMenuSlot));
+    const uint32_t holder = guest_ok(menus, 4) ? vm_read32(menus - kMenuOwnerDelta) : 0;
     const uint32_t inv = guest_ok(holder, 4) ? vm_read32(holder) : 0;
     return guest_ok(inv, 4) ? inv : 0;
 }
@@ -249,21 +407,55 @@ struct Entry { uint32_t cat = 0, id = 0; int32_t count = 0; };
 // The native deposit reports success even when its box update clamps a stack,
 // then removes the entire requested quantity. Ask the game's count and limit
 // helpers first; a successful return alone cannot authorize removing items.
-int storage_room(ppu_context* ctx, uint32_t box, const Entry& item)
+bool storage_record_matches(uint32_t box, const Entry& item)
+{
+    if (!guest_ok(box + kBoxHighWater, 4) || vm_read32(box + kBoxHighWater) > kBoxRecordCount) return false;
+    for (uint32_t i = 0; i < kBoxRecordCount; ++i) {
+        const uint32_t record = box + kBoxRecords + i * kBoxRecordSize;
+        if (!(vm_read32(record + kBoxRecordFlags) & kBoxRecordOccupied)) continue;
+        if (vm_read32(record) == item.cat && vm_read32(record + 4) == item.id) return true;
+    }
+    return false;
+}
+
+bool storage_has_free_record(uint32_t box)
+{
+    if (!guest_ok(box + kBoxHighWater, 4) || vm_read32(box + kBoxHighWater) > kBoxRecordCount) return false;
+    for (uint32_t i = 0; i < kBoxRecordCount; ++i) {
+        const uint32_t record = box + kBoxRecords + i * kBoxRecordSize;
+        if (!(vm_read32(record + kBoxRecordFlags) & kBoxRecordOccupied)) return true;
+    }
+    return false;
+}
+
+int storage_count(ppu_context* ctx, uint32_t box, const Entry& item)
 {
 #ifdef PS3_GAME_SPLIT
     static auto count = des_lift_find("func_00924D58");
+    if (!count || !guest_ok(box, 4)) return -1;
+    return (int32_t)call_game(ctx, count, {box, item.cat, item.id});
+#else
+    (void)ctx; (void)box; (void)item;
+    return -1;
+#endif
+}
+
+int storage_room(ppu_context* ctx, uint32_t box, const Entry& item)
+{
+#ifdef PS3_GAME_SPLIT
     static auto limit = des_lift_find("func_00923FD8");
     static uint32_t probe = 0;
-    if (!count || !limit || !guest_ok(box, 4)) return 0;
+    if (s_send_disabled || !limit || !guest_ok(box, 4)) return 0;
+    const int held = storage_count(ctx, box, item);
+    if (held < 0) return 0;
+    if (held == 0 && !storage_record_matches(box, item) && !storage_has_free_record(box)) return 0;
     // The limit helper reads only the selected record's item key. Give it a
     // private one-record view rather than changing any live box entry.
     if (!probe) probe = guest_alloc(ctx, 32);
     if (!probe) return 0;
-    for (uint32_t i = 0; i < 32; i += 4) storage_write32(probe + i, 0);
-    storage_write32(probe + 12, item.cat | item.id);
+    for (uint32_t i = 0; i < 32; i += 4) vm_write32(probe + i, 0);
+    vm_write32(probe + 12, item.cat | item.id);
     const int maximum = (int32_t)call_game(ctx, limit, {probe, 0});
-    const int held = (int32_t)call_game(ctx, count, {box, item.cat, item.id});
     if (maximum <= 0 || held < 0 || held >= maximum) return 0;
     return maximum - held;
 #else
@@ -274,12 +466,12 @@ int storage_room(ppu_context* ctx, uint32_t box, const Entry& item)
 Entry entry_at(uint32_t p, int32_t idx)
 {
     Entry e;
-    const uint32_t list = p + kPgdItems, at = vm_read32(list + 0x10);
-    if (idx < 0 || idx >= (int32_t)vm_read32(list + 0x0C) || !guest_ok(at, 4)) return e;
-    const uint32_t q = at + 0x20u * (uint32_t)idx;
-    e.cat = vm_read32(q);
-    e.id = vm_read32(q + 4);
-    e.count = (int32_t)vm_read32(q + 8);
+    const uint32_t list = p + kPgdItems, at = vm_read32(list + kPgdItemRecords);
+    if (idx < 0 || idx >= (int32_t)vm_read32(list + kPgdItemCount) || !guest_ok(at, 4)) return e;
+    const uint32_t q = at + kPgdItemStride * (uint32_t)idx;
+    e.cat = vm_read32(q + kEntryCategory);
+    e.id = vm_read32(q + kEntryId);
+    e.count = (int32_t)vm_read32(q + kEntryCount);
     return e;
 }
 
@@ -309,14 +501,6 @@ uint32_t kid_count(uint32_t dlg)
 {
     const uint32_t n = vm_read32(dlg + kKidCount);
     return n > 64u ? 64u : n;
-}
-
-bool text_is(uint32_t p, const char* s)
-{
-    if (!guest_ok(p, 2)) return false;
-    for (; *s; s++, p += 2)
-        if (vm_read16(p) != (uint8_t)*s) return false;
-    return vm_read16(p) == 0;
 }
 
 bool read_text(uint32_t p, char* out, int cap)
@@ -373,29 +557,6 @@ bool is_command(uint32_t dlg)
     return a && b;
 }
 
-/* A pointer to the exact word, in the object or in one block it points at. */
-struct Hit { uint32_t obj = 0, base = 0, off = 0; };
-
-Hit find_word(uint32_t obj, const char* word)
-{
-    Hit h;
-    if (!obj) return h;
-    const uint32_t rec = vm_read32(obj + kObjRecord);
-        const uint32_t blocks[2] = {obj, guest_ok(rec, 4) ? rec : 0};
-        const uint32_t sizes[2] = {0x180u, 0x80u};
-        for (int b = 0; b < 2; b++) {
-            if (!blocks[b]) continue;
-            for (uint32_t off = 0; off + 4 <= sizes[b]; off += 4) {
-                const uint32_t p = vm_read32(blocks[b] + off);
-                if (text_is(p, word)) return Hit{obj, blocks[b], off};
-                if (!guest_ok(p, 4) || p == blocks[0] || p == blocks[1]) continue;
-                for (uint32_t k = 0; k + 4 <= 0x40u; k += 4)
-                    if (text_is(vm_read32(p + k), word)) return Hit{obj, p, k};
-            }
-        }
-    return h;
-}
-
 void copy_bytes(uint32_t dst, uint32_t src, uint32_t n);
 
 /* The piece's box is two packed pairs at shape+8 and shape+12: x,y then right,bottom.
@@ -444,6 +605,15 @@ bool shift_box(ppu_context* ctx, uint32_t obj, float add, bool bottom_only)
 
 struct ShapeBinding { uint32_t obj, before, after; };
 std::vector<ShapeBinding> s_shape_bindings;
+void restore_shape_bindings_to(size_t count)
+{
+    while (s_shape_bindings.size() > count) {
+        const ShapeBinding binding = s_shape_bindings.back();
+        s_shape_bindings.pop_back();
+        if (guest_ok(binding.obj, 4) && vm_read32(binding.obj + 0x14) == binding.after)
+            vm_write32(binding.obj + 0x14, binding.before);
+    }
+}
 
 uint32_t copy_shape(ppu_context* ctx, uint32_t obj)
 {
@@ -459,23 +629,31 @@ uint32_t copy_shape(ppu_context* ctx, uint32_t obj)
     return copy;
 }
 
-/* The menu file shares shape blocks between screens. Move a copy, or the item list moves too. */
-void own_shape(ppu_context* ctx, uint32_t obj)
+bool shape_has_matching_rect(ppu_context* ctx, uint32_t obj, uint32_t shape)
 {
-    if (!copy_shape(ctx, obj)) return;
-    const uint32_t shape = vm_read32(obj + 0x14);
     const uint32_t child = guest_ok(shape, 4) ? vm_read32(shape + 0x10) : 0;
-    if (!guest_ok(child, 4)) return;
+    if (!guest_ok(child, 4)) return false;
     float bounds[4];
-    if (!box_of(ctx, obj, bounds)) return;
+    if (!box_of(ctx, obj, bounds)) return false;
     for (unsigned i = 0; i < 4; ++i) {
         const float value = vm_readf(child + kRect + i * 4);
-        if (!std::isfinite(value) || std::fabs(value - bounds[i]) > 2.0f) return;
+        if (!std::isfinite(value) || std::fabs(value - bounds[i]) > 2.0f) return false;
     }
+    return true;
+}
+
+/* The menu file shares shape blocks between screens. Move a copy, or the item list moves too. */
+bool own_shape(ppu_context* ctx, uint32_t obj)
+{
+    if (!copy_shape(ctx, obj)) return false;
+    const uint32_t shape = vm_read32(obj + 0x14);
+    if (!shape_has_matching_rect(ctx, obj, shape)) return true;
+    const uint32_t child = vm_read32(shape + 0x10);
     const uint32_t child2 = guest_alloc(ctx, 0x100);
-    if (!child2) return;
+    if (!child2) return false;
     copy_bytes(child2, child, 0x100);
     storage_write32(shape + 0x10, child2);
+    return true;
 }
 
 bool insert_kid(ppu_context* ctx, uint32_t dlg, uint32_t obj, uint32_t index)
@@ -559,10 +737,9 @@ uint32_t s_mark = 0;   /* the highlight on the new row, shown only while it is c
 uint32_t s_plate = 0;  /* the plate under Auto Sort */
 uint32_t s_grayout = 0; /* Drop's disabled overlay, shifted onto Send */
 uint32_t s_text_at = 0; /* the word that holds the line's text pointer */
-uint32_t s_label_ptr = 0;
 float s_top = 0, s_bot = 0, s_drop_y = 0, s_gap = 0;
 DesStorageNavigation s_navigation;
-int& s_vis = s_navigation.row;
+int s_visible_row() { return s_navigation.visible(); }
 int s_forced = 0;
 uint64_t s_nav_tick = 0, s_nav_draw = 0;
 
@@ -580,23 +757,22 @@ struct InventoryTransfer {
     Entry item;
     int32_t amount = 0;
     uint32_t picker_text = 0;
-    int closed_ticks = 0;
-    bool cancel_requested = false;
+    bool cancel_when_closed = false;
 };
 InventoryTransfer s_inventory_transfer;
 void sync_send_help_blank()
 {
-    const bool active = on() && s_dlg && vm_read8(s_dlg + 0x94);
+    const bool active = on() && s_dlg && vm_read8(s_dlg + kDialogActive);
     const bool picker = s_inventory_transfer.state != InventoryAsk::Idle;
     const bool blank = (active && s_forced) || picker;
     for (unsigned i = 0; i < 2; ++i) {
         if (!s_help_slots[i]) continue;
         const uint32_t offset = blank ? s_help_blank_text - s_help_bank :
-            active && s_vis >= 3 ? s_help_offsets[s_vis == 3 ? 0 : 1] : s_help_offsets[i];
+            active && s_visible_row() >= 3 ? s_help_offsets[s_visible_row() == 3 ? 0 : 1] : s_help_offsets[i];
         vm_write32(s_help_slots[i], offset);
     }
     static int logged_row = -2;
-    const int row = picker && !active ? -3 : active ? s_vis : -1;
+    const int row = picker && !active ? -3 : active ? s_visible_row() : -1;
     if (logging() && row != logged_row && row != -1) {
         fprintf(stderr, "[des] storage: footer visual row %d -> %s\n",
                 row == -3 ? 2 : row,
@@ -625,8 +801,8 @@ void ensure_help_bank(ppu_context* ctx)
         }
     }
     s_help_bank = bank;
-    fprintf(stderr, "[des] storage: one-line help FMG category 80, sort entries %d/%d\n",
-            s_help_slots[0] != 0, s_help_slots[1] != 0);
+    log_detail("[des] storage: one-line help FMG category 80, sort entries %d/%d\n",
+               s_help_slots[0] != 0, s_help_slots[1] != 0);
 }
 
 void log_pieces(ppu_context* ctx, uint32_t dlg)
@@ -690,267 +866,326 @@ bool row_gap(ppu_context* ctx, uint32_t dlg, float* dy, float* top, float* bot)
     return true;
 }
 
-bool line_kept(uint32_t dlg)
+struct StorageLayoutPlan {
+    uint32_t button = 0, last_plate = 0, drop_grey = 0, autos = 0, cursor = 0;
+    float gap = 0, top = 0, bottom = 0;
+    std::vector<uint32_t> allocations;
+};
+
+bool add_shape_allocations(ppu_context* ctx, StorageLayoutPlan& plan, uint32_t obj)
 {
-    if (!s_line) return false;
-    const uint32_t n = kid_count(dlg);
-    for (uint32_t i = 0; i < n; i++)
-        if (kid(dlg, i) == s_line) return true;
-    return false;
+    if (!obj) return true;
+    const uint32_t shape = vm_read32(obj + 0x14);
+    if (!guest_ok(shape, 4)) return false;
+    plan.allocations.push_back(0x40);
+    if (shape_has_matching_rect(ctx, obj, shape)) plan.allocations.push_back(0x100);
+    return true;
+}
+
+bool prepare_storage_layout(ppu_context* ctx, uint32_t dlg, StorageLayoutPlan* plan)
+{
+    if (!row_gap(ctx, dlg, &plan->gap, &plan->top, &plan->bottom)) return false;
+    plan->button = find_named(dlg, "button1_0");
+    plan->last_plate = find_named(dlg, "plate0_3");
+    plan->drop_grey = find_named(dlg, "grayout_drop01");
+    plan->autos = find_named(dlg, "button3_0");
+    plan->cursor = find_named(dlg, "cursor3_0");
+    const uint32_t record = plan->button ? vm_read32(plan->button + kObjRecord) : 0;
+    const uint32_t cursor_record = plan->cursor ? vm_read32(plan->cursor + kObjRecord) : 0;
+    const uint32_t text = plan->button ? vm_read32(plan->button + kButtonTextPointer) : 0;
+    if (!plan->button || !guest_ok(record, 4) || !guest_ok(text, 2) ||
+        !plan->autos || !plan->cursor || !guest_ok(cursor_record, 4)) return false;
+
+    for (const char* name : {"cursor", "cursor3_0", "edge_gradation03", "button2_0", "button3_0", "BG", "R03_frame"})
+        if (!add_shape_allocations(ctx, *plan, find_named(dlg, name))) return false;
+    plan->allocations.push_back(0x120); // cloned Drop button
+    plan->allocations.push_back(0x80);  // cloned Drop record
+    if (!add_shape_allocations(ctx, *plan, plan->button)) return false;
+    if (plan->last_plate) {
+        plan->allocations.push_back(0x120);
+        if (!add_shape_allocations(ctx, *plan, plan->last_plate)) return false;
+    }
+    if (plan->drop_grey) {
+        plan->allocations.push_back(0x120);
+        if (!add_shape_allocations(ctx, *plan, plan->drop_grey)) return false;
+    }
+    plan->allocations.push_back(0x120); // Auto Sort label clone
+    if (!add_shape_allocations(ctx, *plan, plan->autos)) return false;
+    plan->allocations.push_back(0x120); // fifth cursor spot
+    plan->allocations.push_back(0x80);  // its cloned record
+    if (!add_shape_allocations(ctx, *plan, plan->cursor)) return false;
+
+    const uint32_t appends = 3u + (plan->last_plate ? 1u : 0u) + (plan->drop_grey ? 1u : 0u);
+    const uint32_t children = vm_read32(dlg + kKidCount);
+    if (children + appends > 64u) return false;
+    for (uint32_t i = 0; i < appends; ++i) plan->allocations.push_back((children + 2u + i) * 4u);
+    return true;
+}
+
+bool reserve_layout_allocations(ppu_context* ctx, const std::vector<uint32_t>& sizes)
+{
+    for (size_t i = 0; i < sizes.size(); ++i) {
+        bool seen = false;
+        size_t needed = 0, available = 0;
+        for (size_t j = 0; j < sizes.size(); ++j) {
+            if (sizes[j] == sizes[i]) {
+                if (j < i) seen = true;
+                ++needed;
+            }
+        }
+        if (seen) continue;
+        for (const auto& block : s_layout_blocks)
+            if (block.size == sizes[i] && block.used_generation != s_layout_generation) ++available;
+        while (available < needed) {
+            if (s_layout_blocks.size() >= kMaxLayoutBlocks) return false;
+            const uint32_t address = allocate_guest_block(ctx, sizes[i]);
+            if (!address) return false;
+            s_layout_blocks.push_back({address, sizes[i], s_layout_generation - 1});
+            ++available;
+        }
+    }
+    return true;
+}
+
+bool prepare_native_layout(ppu_context* ctx, uint32_t dlg, const StorageLayoutPlan& plan, int* shifted)
+{
+    for (const char* name : {"cursor", "cursor3_0", "edge_gradation03"}) {
+        const uint32_t obj = find_named(dlg, name);
+        if (obj && !own_shape(ctx, obj)) return false;
+    }
+    for (const char* name : {"button2_0", "button3_0"}) {
+        const uint32_t obj = find_named(dlg, name);
+        if (!obj) continue;
+        if (!own_shape(ctx, obj)) return false;
+        if (move_shape(obj, (int)plan.gap, false)) ++*shifted;
+    }
+    // The panel rect is four floats, unlike the buttons' packed halves.
+    for (const char* name : {"BG", "R03_frame"}) {
+        const uint32_t obj = find_named(dlg, name);
+        if (!obj) continue;
+        if (!own_shape(ctx, obj)) return false;
+        if (shift_box(ctx, obj, plan.gap, true)) ++*shifted;
+    }
+    return true;
+}
+
+bool build_send_line(ppu_context* ctx, const StorageLayoutPlan& plan, uint32_t* line, int* moved)
+{
+    const uint32_t button = plan.button;
+    const uint32_t rec = vm_read32(button + kObjRecord);
+    const uint32_t clone = guest_alloc(ctx, 0x120);
+    const uint32_t rec2 = guest_ok(rec, 4) ? guest_alloc(ctx, 0x80) : 0;
+    if (!clone || (guest_ok(rec, 4) && !rec2)) return false;
+    copy_bytes(clone, button, 0x120);
+    if (rec2) {
+        copy_bytes(rec2, rec, 0x80);
+        storage_write32(clone + kObjRecord, rec2);
+    }
+    float from[4];
+    if (!box_of(ctx, button, from)) {
+        from[1] = plan.top - plan.gap;
+        from[3] = plan.bottom - plan.gap;
+    }
+    if (!own_shape(ctx, clone)) return false;
+    *moved = move_shape(clone, (int)plan.gap, false) ? 2 : 0;
+
+    // The structural pointer is at button+0x60. Rebind it in the copied shape
+    // too when that field resides inside the button's embedded shape block.
+    const uint32_t source_shape = vm_read32(button + 0x14);
+    const uint32_t source_text_at = button + kButtonTextPointer;
+    s_text_at = source_text_at >= source_shape && source_text_at + 4 <= source_shape + 0x40u
+        ? vm_read32(clone + 0x14) + source_text_at - source_shape : clone + kButtonTextPointer;
+    storage_write32(clone + kButtonTextPointer, s_label_ptr);
+    storage_write32(s_text_at, s_label_ptr);
+    storage_write_flags(clone + kObjFlags, kObjDrawn, kObjDrawn);
+
+    float placed[4] = {};
+    const bool placed_ok = box_of(ctx, clone, placed);
+    log_detail("[des] storage: clone box %d %.0f,%.0f,%.0f,%.0f (drop %.0f)\n", placed_ok ? 1 : 0,
+               placed[0], placed[1], placed[2], placed[3], from[1]);
+    if (placed_ok) { s_top = placed[1]; s_bot = placed[3]; }
+    if (!placed_ok || std::fabs(placed[1] - from[1]) < 2.0f) {
+        const uint32_t shape = vm_read32(button + 0x14);
+        log_detail("[des] storage: the new line did not move, shape %08x\n", shape);
+        if (guest_ok(shape, 4)) {
+            log_detail("[des] storage: shape");
+            for (uint32_t off = 0; off < 0x30u; off += 4) {
+                const float value = vm_readf(shape + off);
+                const uint32_t word = vm_read32(shape + off);
+                if (std::isfinite(value) && std::fabs(value) > 1.0f && std::fabs(value) < 2000.0f)
+                    log_detail(" %u:f%.1f", off, value);
+                else log_detail(" %u:%08x", off, word);
+            }
+            log_detail("\n");
+        }
+        return false;
+    }
+    *line = clone;
+    return true;
+}
+
+bool append_extra_plate(ppu_context* ctx, uint32_t dlg, const StorageLayoutPlan& plan, uint32_t* plate)
+{
+    if (!plan.last_plate) return true;
+    const uint32_t clone = guest_alloc(ctx, 0x120);
+    if (!clone) return false;
+    copy_bytes(clone, plan.last_plate, 0x120);
+    if (!own_shape(ctx, clone) || !shift_box(ctx, clone, plan.gap, false) || !append_kid(ctx, dlg, clone))
+        return false;
+    *plate = clone;
+    return true;
+}
+
+bool append_send_grayout(ppu_context* ctx, uint32_t dlg, const StorageLayoutPlan& plan, uint32_t* grayout)
+{
+    if (!plan.drop_grey) return true;
+    const uint32_t clone = guest_alloc(ctx, 0x120);
+    float from[4] = {};
+    if (!clone || !box_of(ctx, plan.drop_grey, from)) return false;
+    copy_bytes(clone, plan.drop_grey, 0x120);
+    if (!own_shape(ctx, clone)) return false;
+    const uint32_t shape = vm_read32(clone + 0x14);
+    const bool moved = move_shape(clone, (int)plan.gap, false) || shift_box(ctx, clone, plan.gap, false) ||
+                       nudge_rect(shape, 0x40, from, plan.gap, false) ||
+                       nudge_packed(shape, 0x40, from, plan.gap, false);
+    if (!moved || !append_kid(ctx, dlg, clone)) return false;
+    *grayout = clone;
+    return true;
+}
+
+bool append_auto_label(ppu_context* ctx, uint32_t dlg, const StorageLayoutPlan& plan)
+{
+    const uint32_t clone = guest_alloc(ctx, 0x120);
+    if (!clone) return false;
+    copy_bytes(clone, plan.autos, 0x120);
+    if (!own_shape(ctx, clone)) return false;
+    storage_write_flags(clone + kObjFlags, kObjDrawn, kObjDrawn);
+    return append_kid(ctx, dlg, clone);
+}
+
+bool append_auto_cursor(ppu_context* ctx, uint32_t dlg, const StorageLayoutPlan& plan, uint32_t* mark)
+{
+    const uint32_t clone = guest_alloc(ctx, 0x120);
+    const uint32_t record = guest_alloc(ctx, 0x80);
+    const uint32_t source_record = vm_read32(plan.cursor + kObjRecord);
+    if (!clone || !record || !s_cursor4_name || !guest_ok(source_record, 4)) return false;
+    float bounds[4];
+    if (!box_of(ctx, plan.cursor, bounds)) return false;
+    copy_bytes(clone, plan.cursor, 0x120);
+    copy_bytes(record, source_record, 0x80);
+    storage_write32(clone + kObjRecord, record);
+    storage_write32(record, s_cursor4_name);
+    if (!own_shape(ctx, clone)) return false;
+    const uint32_t shape = vm_read32(clone + 0x14);
+    const bool moved = nudge_rect(clone, 0x120, bounds, plan.gap, false) ||
+                       nudge_rect(shape, 0x40, bounds, plan.gap, false) ||
+                       nudge_packed(shape, 0x40, bounds, plan.gap, false) ||
+                       shift_box(ctx, clone, plan.gap, false);
+    if (!moved || !append_kid(ctx, dlg, clone)) return false;
+    *mark = clone;
+    return true;
 }
 
 bool ensure_line(ppu_context* ctx, uint32_t dlg)
 {
     static uint32_t native_kids = 0, native_count = 0;
     if (s_dlg != dlg || native_kids != vm_read32(dlg + kKids) || native_count != vm_read32(dlg + kKidCount)) {
+        restore_shape_bindings_to(0);
         native_kids = vm_read32(dlg + kKids);
         native_count = vm_read32(dlg + kKidCount);
         s_layout_writes.clear();
         s_navigation.reset();
         s_forced = 0;
         s_dlg = dlg;
-        s_line = 0;
-        s_mark = 0;
-        s_plate = 0;
-        s_grayout = 0;
-        s_text_at = 0;
+        s_line = s_mark = s_plate = s_grayout = s_text_at = 0;
         /* keep s_label_ptr: the UTF-16 lives outside draw_writes and is reused */
         s_line_state = 0;
         s_have_target = 0;
     }
     if (s_line_state == 1) {
-        for (const auto& w : s_layout_writes) draw_write(w.at, w.after, w.size);
+        for (const auto& write : s_layout_writes) replay_draw_write(write);
         return true;
     }
     if (s_line_state < 0) return false;
+    if (!ensure_storage_texts(ctx)) {
+        s_line_state = -1;
+        log_detail("[des] storage: no guest memory for localized text\n");
+        return false;
+    }
+
     const size_t layout_start = s_draw_writes.size();
+    const size_t binding_start = s_shape_bindings.size();
+    ++s_layout_generation;
+    struct LayoutCacheScope {
+        bool before = s_layout_cache_active;
+        LayoutCacheScope() { s_layout_cache_active = true; }
+        ~LayoutCacheScope() { s_layout_cache_active = before; }
+    } cache_scope;
+    struct LayoutTransaction {
+        size_t draw_start, binding_start;
+        bool committed = false;
+        ~LayoutTransaction() {
+            if (committed) return;
+            undo_draw_writes_to(draw_start);
+            restore_shape_bindings_to(binding_start);
+            s_layout_writes.clear();
+            s_line = s_mark = s_plate = s_grayout = s_text_at = 0;
+            s_have_target = 0;
+            s_line_state = -1;
+        }
+    } transaction{layout_start, binding_start};
     struct InitializingLayout {
         bool before = s_layout_initializing;
         InitializingLayout() { s_layout_initializing = true; }
         ~InitializingLayout() { s_layout_initializing = before; }
     } initializing;
+    const auto fail = []() { s_line_state = -1; return false; };
+
     log_pieces(ctx, dlg);
-    float dy = 0, top = 0, bot = 0;
-    if (!row_gap(ctx, dlg, &dy, &top, &bot)) {
-        s_line_state = -1;
-        fprintf(stderr, "[des] storage: the two command rows have no boxes\n");
-        return false;
+    StorageLayoutPlan plan;
+    if (!prepare_storage_layout(ctx, dlg, &plan)) {
+        log_detail("[des] storage: command menu does not match the supported layout\n");
+        return fail();
     }
-    s_top = top;
-    s_bot = bot;
-    s_drop_y = top - dy;
-    s_gap = dy;
-    s_have_target = 1;
-    for (const char* name : {"cursor", "cursor3_0", "edge_gradation03"})
-        own_shape(ctx, find_named(dlg, name));
-    const uint32_t button = find_named(dlg, "button1_0");
-    Hit hit = find_word(button, "Drop");
-    if (!hit.obj) {
-        s_line_state = -1;
-        fprintf(stderr, "[des] storage: the Drop line has no text pointer, so no line was added\n");
-        return false;
-    }
-    /* Allocate the label outside draw_writes when possible. guest_text during
-     * s_drawing records every UTF-16 store; a missed layout replay then leaves
-     * the highlighted row blank after restore_draw. */
-    if (!s_label_ptr) {
-        const bool drawing = s_drawing;
-        s_drawing = false;
-        if (!s_label_ptr) s_label_ptr = guest_text(ctx, "Send to Storage");
-        s_drawing = drawing;
+    if (!reserve_layout_allocations(ctx, plan.allocations)) {
+        log_detail("[des] storage: could not reserve menu layout memory\n");
+        return fail();
     }
     ensure_help_bank(ctx);
-    const uint32_t label = s_label_ptr;
-    if (!label) {
-        s_line_state = -1;
-        fprintf(stderr, "[des] storage: no guest memory for the line\n");
-        return false;
-    }
-    int shifted = 0;
-    for (const char* below : {"button2_0", "button3_0"}) {
-        const uint32_t obj = find_named(dlg, below);
-        if (!obj) continue;
-        own_shape(ctx, obj);
-        if (move_shape(obj, (int)dy, false)) shifted++;
-    }
-    /* One new row. The panel's rect is four floats, not the button's packed halves. */
-    for (const char* frame : {"BG", "R03_frame"}) {
-        const uint32_t obj = find_named(dlg, frame);
-        if (!obj) continue;
-        own_shape(ctx, obj);
-        if (shift_box(ctx, obj, dy, true)) shifted++;
-    }
-    const uint32_t clone = guest_alloc(ctx, 0x120);
-    const uint32_t rec = vm_read32(hit.obj + kObjRecord);
-    const uint32_t rec2 = guest_ok(rec, 4) ? guest_alloc(ctx, 0x80) : 0;
-    if (!clone || (guest_ok(rec, 4) && !rec2)) {
-        s_line_state = -1;
-        fprintf(stderr, "[des] storage: no guest memory for the line\n");
-        return false;
-    }
-    copy_bytes(clone, hit.obj, 0x120);
-    if (rec2) {
-        copy_bytes(rec2, rec, 0x80);
-        storage_write32(clone + kObjRecord, rec2);
-    }
-    uint32_t text_base = hit.base == hit.obj ? clone : rec2;
-    if (hit.base != hit.obj && hit.base != rec) {
-        // find_word may return a shape field at +0x30. Keep the full searched
-        // block: a 0x20 copy truncated the font state and wrote past its end.
-        const uint32_t nb = guest_alloc(ctx, 0x40);
-        if (!nb) {
-            s_line_state = -1;
-            return false;
-        }
-        copy_bytes(nb, hit.base, 0x40);
-        for (uint32_t off = 0; off + 4 <= 0x120u; off += 4)
-            if (vm_read32(clone + off) == hit.base) storage_write32(clone + off, nb);
-        if (rec2) {
-            for (uint32_t off = 0; off + 4 <= 0x80u; off += 4)
-                if (vm_read32(rec2 + off) == hit.base) storage_write32(rec2 + off, nb);
-        }
-        text_base = nb;
-    }
-    float from[4];
-    if (!box_of(ctx, hit.obj, from)) {
-        from[1] = top - dy;
-        from[3] = bot - dy;
-    }
-    own_shape(ctx, clone);
-    const int moved = move_shape(clone, (int)dy, false) ? 2 : 0;
-    if (text_base) {
-        // The native Drop shape is embedded at object+0x30. After copying
-        // its shape, the renderer reads the copy, not that old embedded word.
-        const uint32_t source_shape = vm_read32(hit.obj + 0x14);
-        const uint32_t original_at = hit.base + hit.off;
-        s_text_at = original_at >= source_shape && original_at < source_shape + 0x40
-            ? vm_read32(clone + 0x14) + original_at - source_shape : text_base + hit.off;
-        storage_write32(s_text_at, label);
-        storage_write32(text_base + hit.off, label);
-    }
-    storage_write32(clone + kObjFlags, vm_read32(clone + kObjFlags) | kObjDrawn);
-    float placed[4] = {};
-    const bool placed_ok = box_of(ctx, clone, placed);
-    fprintf(stderr, "[des] storage: clone box %d %.0f,%.0f,%.0f,%.0f (drop %.0f) text %d\n", placed_ok ? 1 : 0,
-            placed[0], placed[1], placed[2], placed[3], from[1],
-            text_base && text_is(vm_read32(text_base + hit.off), "Send to Storage") ? 1 : 0);
-    fprintf(stderr, "[des] storage: button words");
-    for (uint32_t off = 0; off < 0x80u; off += 4) {
-        const uint32_t w = vm_read32(hit.obj + off);
-        if (w > 0 && w < 30000u) fprintf(stderr, " %u:%u", off, w);
-    }
-    fprintf(stderr, "\n");
-    if (placed_ok) {
-        s_top = placed[1];
-        s_bot = placed[3];
-    }
-    if (!placed_ok || std::fabs(placed[1] - from[1]) < 2.0f) {
-        s_line_state = -1;
-        const uint32_t shape = vm_read32(hit.obj + 0x14);
-        fprintf(stderr, "[des] storage: the new line did not move, shape %08x\n", shape);
-        if (guest_ok(shape, 4)) {
-            fprintf(stderr, "[des] storage: shape");
-            for (uint32_t off = 0; off < 0x30u; off += 4) {
-                const float f = vm_readf(shape + off);
-                const uint32_t w = vm_read32(shape + off);
-                if (std::isfinite(f) && std::fabs(f) > 1.0f && std::fabs(f) < 2000.0f) fprintf(stderr, " %u:f%.1f", off, f);
-                else fprintf(stderr, " %u:%08x", off, w);
-            }
-            fprintf(stderr, "\n");
-        }
-        return false;
-    }
-    // Append additions so native child indices remain stable. Draw the extra
-    // plate before the appended labels; repeat Auto Sort over its fifth plate.
-    const uint32_t last_plate = find_named(dlg, "plate0_3");
-    const uint32_t extra_plate = last_plate ? guest_alloc(ctx, 0x120) : 0;
-    if (extra_plate) {
-        copy_bytes(extra_plate, last_plate, 0x120);
-        copy_shape(ctx, extra_plate);
-        if (shift_box(ctx, extra_plate, dy, false) && append_kid(ctx, dlg, extra_plate)) s_plate = extra_plate;
-    }
-    if (!append_kid(ctx, dlg, clone)) {
-        s_line_state = -1;
-        return false;
-    }
-    /* Same overlay Drop uses when the item cannot be discarded, one row down. */
-    const uint32_t drop_grey = find_named(dlg, "grayout_drop01");
-    if (drop_grey) {
-        const uint32_t grey = guest_alloc(ctx, 0x120);
-        if (grey) {
-            float from[4] = {};
-            box_of(ctx, drop_grey, from);
-            copy_bytes(grey, drop_grey, 0x120);
-            own_shape(ctx, grey);
-            const uint32_t shape = vm_read32(grey + 0x14);
-            if (move_shape(grey, (int)dy, false) || shift_box(ctx, grey, dy, false) ||
-                nudge_rect(shape, 0x40, from, dy, false) || nudge_packed(shape, 0x40, from, dy, false)) {
-                if (append_kid(ctx, dlg, grey)) s_grayout = grey;
-            }
-        }
-    }
-    const uint32_t autos = find_named(dlg, "button3_0");
-    const uint32_t auto_label = autos ? guest_alloc(ctx, 0x120) : 0;
-    if (auto_label) {
-        copy_bytes(auto_label, autos, 0x120);
-        copy_shape(ctx, auto_label);
-        storage_write32(auto_label + kObjFlags, vm_read32(auto_label + kObjFlags) | kObjDrawn);
-        if (!append_kid(ctx, dlg, auto_label)) return false;
-    }
-    s_line = clone;
-    /* A fifth draw-only cursor spot also exposes the row to the mouse adapter. */
-    const uint32_t cursor_src = find_named(dlg, "cursor3_0");
-    if (cursor_src) {
-        const uint32_t extra = guest_alloc(ctx, 0x120);
-        const uint32_t record = guest_alloc(ctx, 0x80);
-        const uint32_t name = guest_text(ctx, "cursor4_0");
-        if (extra && record && name) {
-            float bounds[4];
-            box_of(ctx, cursor_src, bounds);
-            copy_bytes(extra, cursor_src, 0x120);
-            copy_bytes(record, vm_read32(cursor_src + kObjRecord), 0x80);
-            storage_write32(extra + kObjRecord, record);
-            storage_write32(record, name);
-            own_shape(ctx, extra);
-            const uint32_t shape = vm_read32(extra + 0x14);
-            if (nudge_rect(extra, 0x120, bounds, dy, false) ||
-                nudge_rect(shape, 0x40, bounds, dy, false) ||
-                nudge_packed(shape, 0x40, bounds, dy, false) ||
-                shift_box(ctx, extra, dy, false)) {
-                if (append_kid(ctx, dlg, extra)) s_mark = extra;
-            }
-        }
-    }
+    s_drop_y = plan.top - plan.gap;
+    s_gap = plan.gap;
+    s_top = plan.top;
+    s_bot = plan.bottom;
+    s_have_target = 1;
+
+    int shifted = 0, moved = 0;
+    uint32_t line = 0;
+    if (!prepare_native_layout(ctx, dlg, plan, &shifted) ||
+        !build_send_line(ctx, plan, &line, &moved)) return fail();
+    if (!append_extra_plate(ctx, dlg, plan, &s_plate) || !append_kid(ctx, dlg, line) ||
+        !append_send_grayout(ctx, dlg, plan, &s_grayout) || !append_auto_label(ctx, dlg, plan)) return fail();
+    s_line = line;
+    if (!append_auto_cursor(ctx, dlg, plan, &s_mark)) return fail();
+
     float panel[4] = {};
     const uint32_t bg = find_named(dlg, "BG");
     if (bg && box_of(ctx, bg, panel))
-        fprintf(stderr, "[des] storage: panel %.0f,%.0f,%.0f,%.0f\n", panel[0], panel[1], panel[2], panel[3]);
+        log_detail("[des] storage: panel %.0f,%.0f,%.0f,%.0f\n", panel[0], panel[1], panel[2], panel[3]);
     s_layout_writes.assign(s_draw_writes.begin() + layout_start, s_draw_writes.end());
     s_line_state = 1;
-    float cb[4] = {};
-    const bool got = box_of(ctx, clone, cb);
-    const uint32_t shown = text_base ? vm_read32(text_base + hit.off) : 0;
-    fprintf(stderr, "[des] storage: line added under Drop (moved %d, rows %d, dy %.0f, box %d %.0f,%.0f,%.0f,%.0f, text %d)\n",
-            moved, shifted, dy, got ? 1 : 0, cb[0], cb[1], cb[2], cb[3], text_is(shown, "Send to Storage") ? 1 : 0);
+    transaction.committed = true;
+
+    float line_box[4] = {};
+    const bool got_line_box = box_of(ctx, line, line_box);
+    log_detail("[des] storage: line added under Drop (moved %d, rows %d, dy %.0f, box %d %.0f,%.0f,%.0f,%.0f)\n",
+               moved, shifted, plan.gap, got_line_box ? 1 : 0, line_box[0], line_box[1], line_box[2], line_box[3]);
     if (s_grayout) {
-        float gb[4] = {};
-        const bool grey_ok = box_of(ctx, s_grayout, gb);
-        fprintf(stderr, "[des] storage: send grayout %d %.0f,%.0f,%.0f,%.0f\n", grey_ok ? 1 : 0, gb[0], gb[1], gb[2],
-                gb[3]);
+        float grey_box[4] = {};
+        const bool got_grey_box = box_of(ctx, s_grayout, grey_box);
+        log_detail("[des] storage: send grayout %d %.0f,%.0f,%.0f,%.0f\n", got_grey_box ? 1 : 0, grey_box[0],
+                   grey_box[1], grey_box[2], grey_box[3]);
     }
     return true;
-}
-
-float cursor_top(ppu_context* ctx, uint32_t dlg)
-{
-    const uint32_t n = kid_count(dlg);
-    for (uint32_t i = 0; i < n; i++) {
-        const uint32_t obj = kid(dlg, i);
-        if (!obj || !name_is(obj, "cursor")) continue;
-        float r[4];
-        if (box_of(ctx, obj, r)) return r[1];
-    }
-    return -1.0f;
 }
 
 void place_cursor(ppu_context* ctx, uint32_t dlg, float top, float bot)
@@ -974,7 +1209,7 @@ void place_cursor(ppu_context* ctx, uint32_t dlg, float top, float bot)
             nudge_rect(vm_read32(shape + 0x10) + kRect, 16, r, add, false)) return;
         if (!s_miss) {
             s_miss = 1;
-            fprintf(stderr, "[des] storage: the cursor has no position to move\n");
+            log_detail("[des] storage: the cursor has no position to move\n");
         }
         return;
     }
@@ -983,7 +1218,7 @@ void place_cursor(ppu_context* ctx, uint32_t dlg, float top, float bot)
 void hide_obj(uint32_t obj)
 {
     if (!obj || !guest_ok(obj, 4)) return;
-    storage_write32(obj + kObjFlags, vm_read32(obj + kObjFlags) & ~kObjDrawn);
+    storage_write_flags(obj + kObjFlags, 0, kObjDrawn);
 }
 
 void hide_line()
@@ -997,7 +1232,7 @@ void hide_line()
 void show_line()
 {
     if (!s_line || !guest_ok(s_line, 4)) return;
-    storage_write32(s_line + kObjFlags, vm_read32(s_line + kObjFlags) | kObjDrawn);
+    storage_write_flags(s_line + kObjFlags, kObjDrawn, kObjDrawn);
 }
 
 bool send_blocked(ppu_context* ctx, uint32_t dlg);
@@ -1005,7 +1240,8 @@ void sync_send_grayout(ppu_context* ctx, uint32_t dlg);
 
 bool command_open()
 {
-    return s_dlg && guest_ok(s_dlg, 4) && is_command(s_dlg) && vm_read8(s_dlg + 0x94) != 0;
+    return s_dlg && guest_ok(s_dlg, 4) && is_command(s_dlg) && vm_read8(s_dlg + kDialogActive) != 0 &&
+           (vm_read32(s_dlg + kDialogInput) & kDialogInputEnabled) != 0;
 }
 
 int sync_navigation(const char* phase, bool confirming = false)
@@ -1021,7 +1257,7 @@ int sync_navigation(const char* phase, bool confirming = false)
     }
     const int native = (int32_t)vm_read32(s_dlg + kCmdRow);
     if (native < 0 || native > 3) return 0;
-    const int previous = s_vis, expected = s_navigation.expected;
+    const int previous = s_visible_row(), expected = s_navigation.expected;
     const int step = s_navigation.observe(native);
     s_forced = s_navigation.send();
     // Publish the projection immediately: another draw or a confirm cannot
@@ -1032,7 +1268,7 @@ int sync_navigation(const char* phase, bool confirming = false)
         fprintf(stderr, "[storage-nav] phase=%s tick=%llu draw=%llu dlg=%08x reads=%u empty=%u pad=%04x native=%d expected=%d from=%d to=%d step=%d\n",
                 phase, (unsigned long long)s_nav_tick, (unsigned long long)s_nav_draw, s_dlg,
                 (unsigned)g_pad0_reads, (unsigned)g_pad0_empty_reads, (unsigned)g_pad0_buttons,
-                native, expected, previous, s_vis, step);
+                native, expected, previous, s_visible_row(), step);
     return step;
 }
 
@@ -1053,43 +1289,27 @@ void on_draw(ppu_context* ctx, uint32_t dlg)
     static int s_alive = 0;
     if (!s_alive) {
         s_alive = 1;
-        fprintf(stderr, "[des] storage: draw hook\n");
+        log_detail("[des] storage: draw hook\n");
     }
-    if (!is_command(dlg) || vm_read8(dlg + 0x94) == 0) return;
+    if (!is_command(dlg) || vm_read8(dlg + kDialogActive) == 0) return;
     if (!ensure_line(ctx, dlg)) return;
     const int step = sync_navigation("draw");
     show_line();
     sync_send_grayout(ctx, dlg);
     // The fifth plate owns its shape. Tint its textured fill for Auto Sort;
     // the native animated cursor only has four stops.
-    if (s_plate && s_vis == 4) {
+    if (s_plate && s_visible_row() == 4) {
         const uint32_t shape = vm_read32(s_plate + 0x14);
         storage_write8(shape + 0x10, 255);
         storage_write8(shape + 0x11, 96);
         storage_write8(shape + 0x12, 96);
         storage_write8(shape + 0x13, 255);
     }
-    const int game_row = (int)(int32_t)vm_read32(dlg + kCmdRow);
-    const float cy = cursor_top(ctx, dlg);
     sync_send_help_blank();
 
     if (s_text_at && s_label_ptr) storage_write32(s_text_at, s_label_ptr);
-    if (step != 0) {
-        fprintf(stderr, "[des] storage: row %d (cursor %.0f, game %d)\n", s_vis, cy, game_row);
-        if (s_vis == 2 && step > 0) {
-            const uint32_t p = pgd();
-            const int32_t idx = selected(inventory());
-            const Entry e = p ? entry_at(p, idx) : Entry{};
-            fprintf(stderr, "[des] storage: Send to Storage, slot %d category %08x id %u x%d\n", idx, e.cat, e.id,
-                    e.count);
-            const uint32_t live = s_text_at ? vm_read32(s_text_at) : 0;
-            char got[24] = {};
-            read_text(live, got, (int)sizeof got);
-            fprintf(stderr, "[des] storage: label ptr %08x text_at %08x live %08x \"%s\" drawn %d\n", s_label_ptr,
-                    s_text_at, live, got,
-                    s_line && guest_ok(s_line, 4) ? (int)((vm_read32(s_line + kObjFlags) & kObjDrawn) != 0) : -1);
-        }
-    }
+    if (step != 0)
+        log_detail("[des] storage: selected visual row %d after native step %d\n", s_visible_row(), step);
     /* The red bar follows the game's row onto a fixed slot. Send is the third slot
      * and Reorganize the fourth. Auto Sort is past those four, so the bar stays on
      * the fourth slot until its own highlight is shown, and the confirm puts the
@@ -1100,14 +1320,14 @@ void on_draw(ppu_context* ctx, uint32_t dlg)
         if (!obj) continue;
         const uint32_t flags = vm_read32(obj + kObjFlags);
         const int slot = i - 1; /* "cursor" is the moving bar, not one of the four slots */
-        const bool show = i == 0 || slot == s_vis || (s_vis == 4 && slot == 3);
-        storage_write32(obj + kObjFlags, show ? (flags | kObjDrawn) : (flags & ~kObjDrawn));
+        const bool show = i == 0 || slot == s_visible_row() || (s_visible_row() == 4 && slot == 3);
+        storage_write_flags(obj + kObjFlags, show ? (flags | kObjDrawn) : (flags & ~kObjDrawn), kObjDrawn);
     }
     if (s_mark && guest_ok(s_mark, 4)) {
         const uint32_t flags = vm_read32(s_mark + kObjFlags);
-        storage_write32(s_mark + kObjFlags, flags & ~kObjDrawn);
+        storage_write_flags(s_mark + kObjFlags, flags & ~kObjDrawn, kObjDrawn);
     }
-    if (s_vis == 4) {
+    if (s_visible_row() == 4) {
         for (const char* name : {"cursor3_0", "edge_gradation03"}) {
             const uint32_t obj = find_named(dlg, name);
             float r[4];
@@ -1120,7 +1340,7 @@ void on_draw(ppu_context* ctx, uint32_t dlg)
         }
     }
     if (s_have_target && s_gap > 0.0f) {
-        const float y = s_drop_y + (s_vis - 1) * s_gap;
+        const float y = s_drop_y + (s_visible_row() - 1) * s_gap;
         const float h = s_bot > s_top ? s_bot - s_top : 36.0f;
         place_cursor(ctx, dlg, y, y + h);
     }
@@ -1129,6 +1349,13 @@ void on_draw(ppu_context* ctx, uint32_t dlg)
 
 extern "C" void des_storage_on_draw(ppu_context* ctx, uint32_t dlg)
 {
+    // The HUD drains draw_end even when this feature does no work. Record a
+    // no-op frame so that an early return stays paired with that drain, also
+    // when another storage draw is already nested on the main thread.
+    if (!on() && s_line_state != 1) {
+        s_draw_starts.push_back(kDrawNoop);
+        return;
+    }
     uint64_t g[32];
     double f[32];
     uint8_t v[32][16];
@@ -1181,13 +1408,14 @@ bool send_blocked(ppu_context* ctx, uint32_t dlg)
 void sync_send_grayout(ppu_context* ctx, uint32_t dlg)
 {
     if (!s_grayout || !guest_ok(s_grayout, 4)) return;
-    const bool grey = send_blocked(ctx, dlg);
+    const bool grey = s_send_disabled || send_blocked(ctx, dlg);
     const uint32_t flags = vm_read32(s_grayout + kObjFlags);
-    storage_write32(s_grayout + kObjFlags, grey ? (flags | kObjDrawn) : (flags & ~kObjDrawn));
+    storage_write_flags(s_grayout + kObjFlags, grey ? (flags | kObjDrawn) : (flags & ~kObjDrawn), kObjDrawn);
     static int last_grey = -1;
     if ((int)grey != last_grey) {
         last_grey = (int)grey;
-        fprintf(stderr, "[des] storage: send overlay %s (drop grey %d)\n", grey ? "on" : "off", drop_greyed(dlg) ? 1 : 0);
+        log_detail("[des] storage: send overlay %s (drop grey %d)\n", grey ? "on" : "off",
+                   drop_greyed(dlg) ? 1 : 0);
     }
 }
 
@@ -1196,6 +1424,24 @@ bool transferable(ppu_context* ctx, uint32_t player, int32_t slot)
     if (slot_movable(ctx, player, slot)) return true;
     fprintf(stderr, "[des] storage: equipped or protected item stays in inventory (slot %d)\n", slot);
     return false;
+}
+
+int inventory_count_delta(const Entry& before, const Entry& after)
+{
+    const int after_count = after.cat == before.cat && after.id == before.id ? after.count : 0;
+    if (after_count < 0) return -1; // invalid state must fail verification without signed overflow
+    return before.count - after_count;
+}
+
+enum class DepositDelta { Success, Refused, Mismatch };
+
+DepositDelta verify_deposit_deltas(int native_result, int inventory_delta, int box_delta, int amount)
+{
+    if (native_result == 1 && inventory_delta == amount && box_delta == amount)
+        return DepositDelta::Success;
+    if (native_result == 0 && inventory_delta == 0 && box_delta == 0)
+        return DepositDelta::Refused;
+    return DepositDelta::Mismatch;
 }
 
 int deposit_inventory(ppu_context* ctx, const InventoryTransfer& pending)
@@ -1222,21 +1468,36 @@ int deposit_inventory(ppu_context* ctx, const InventoryTransfer& pending)
         fprintf(stderr, "[des] storage: box has no room for id %u x%d; inventory unchanged\n", e.id, pending.amount);
         return 1;
     }
-    const uint32_t ok = call_game(ctx, fn, {box, p + kPgdInv, idx, pending.amount});
-    const Entry after = entry_at(p, idx);
-    if (ok == 1 && (after.id != e.id || after.count != e.count)) {
-        storage_write8(inv + 0x140, 1);
-        storage_write8(inv + 0x141, 1);
-        s_forced = 0;
-        s_navigation.reset();
-        call_game(ctx, func_0072D970, {100});
-        // The native picker already owns its return transition. Re-entering
-        // inventory mode here can leave its old quantity dialog alive.
-        fprintf(stderr, "[des] storage: deposited category %08x id %u x%d\n", e.cat, e.id, pending.amount);
-    } else {
-        fprintf(stderr, "[des] storage: box refused category %08x id %u x%d (return %u, now id %u x%d)\n", e.cat,
-                e.id, e.count, ok, after.id, after.count);
+    const int box_before = storage_count(ctx, box, e);
+    if (box_before < 0) {
+        s_send_disabled = true;
+        fprintf(stderr, "[des] storage: cannot verify box count; Send disabled for this session\n");
+        return 1;
     }
+    const uint32_t result = call_game(ctx, fn, {box, p + kPgdInv, idx, pending.amount});
+    const Entry after = entry_at(p, idx);
+    const int box_after = storage_count(ctx, box, e);
+    const int inv_delta = inventory_count_delta(e, after);
+    const int box_delta = box_after < 0 ? -1 : box_after - box_before;
+    const DepositDelta outcome = verify_deposit_deltas((int)result, inv_delta, box_delta, pending.amount);
+    if (outcome == DepositDelta::Mismatch) {
+        s_send_disabled = true;
+        fprintf(stderr,
+                "[des] storage: deposit mismatch category %08x id %u requested %d result %u inventory_delta %d box_delta %d; Send disabled for this session\n",
+                e.cat, e.id, pending.amount, result, inv_delta, box_delta);
+        return 1;
+    }
+    if (outcome == DepositDelta::Refused) {
+        fprintf(stderr, "[des] storage: box refused category %08x id %u x%d; inventory unchanged\n", e.cat, e.id,
+                pending.amount);
+        return 1;
+    }
+    vm_write8(inv + kInventoryDirtyA, 1);
+    vm_write8(inv + kInventoryDirtyB, 1);
+    s_forced = 0;
+    s_navigation.reset();
+    call_game(ctx, func_0072D970, {100});
+    fprintf(stderr, "[des] storage: deposited category %08x id %u x%d\n", e.cat, e.id, pending.amount);
     return 1;
 }
 
@@ -1245,29 +1506,64 @@ bool send_row_active()
     return s_navigation.send();
 }
 
+uint32_t menus_obj();
+
+uint32_t menu_slot_value(uint32_t menus, uint32_t slot)
+{
+    return guest_ok(menus, 4) ? vm_read32(menus + kPickerMenuState + 4u * slot) : 0;
+}
+
+bool quantity_picker_open(uint32_t menus)
+{
+    return menu_slot_value(menus, kPickerSlot) == kPickerMode;
+}
+
+bool inventory_input_returned(uint32_t menus, uint32_t command_dialog)
+{
+    return command_dialog && command_dialog == s_dlg && command_open() &&
+           menu_slot_value(menus, kPickerSlot) == 2u &&
+           menu_slot_value(menus, kMenuCancelSlot) == kMenuReturnState &&
+           menu_slot_value(menus, kMenuCloseSlot) == kMenuReturnState;
+}
+
 extern "C" int des_storage_command(ppu_context* ctx)
 {
     if (navigation_trace())
         fprintf(stderr, "[storage-nav] confirm tick=%llu draw=%llu dlg=%08x visual=%d native=%d pad=%04x\n",
-                (unsigned long long)s_nav_tick, (unsigned long long)s_nav_draw, (uint32_t)ctx->gpr[3], s_vis,
+                (unsigned long long)s_nav_tick, (unsigned long long)s_nav_draw, (uint32_t)ctx->gpr[3], s_visible_row(),
                 s_dlg ? (int32_t)vm_read32(s_dlg + kCmdRow) : -1, (unsigned)g_pad0_buttons);
     // A new command choice revokes an Armed request so Use/Drop can open
-    // their own picker. Asking/Ready still own message 2000; clearing them
-    // here would let that 2000 fall through to native Drop.
+    // their own picker. The native command callback proves that input has
+    // returned; retire the old owner only after the picker is no longer open.
     if ((uint32_t)ctx->gpr[3] == s_dlg && s_inventory_transfer.state == InventoryAsk::Armed)
         s_inventory_transfer = {};
+    if (s_inventory_transfer.state == InventoryAsk::Asking) {
+        const uint32_t menus = menus_obj();
+        if (!quantity_picker_open(menus) && inventory_input_returned(menus, (uint32_t)ctx->gpr[3])) {
+            s_inventory_transfer = {};
+        } else return 1;
+    }
+    if (s_inventory_transfer.state == InventoryAsk::Ready) {
+        if (!on()) s_inventory_transfer = {};
+        else return 1;
+    }
     if (!on() || (uint32_t)ctx->gpr[3] != s_dlg || !is_command(s_dlg)) return 0;
-    if (s_inventory_transfer.state == InventoryAsk::Asking ||
-        s_inventory_transfer.state == InventoryAsk::Ready) return 1;
     sync_navigation("confirm", true);
     const bool send = send_row_active();
-    if (s_vis > 2 && !send) {
+    if (s_visible_row() > 2 && !send) {
+        const int visual = s_visible_row();
         const uint32_t command = (uint32_t)s_navigation.dispatch();
-        fprintf(stderr, "[des] storage: confirm visual row %d -> native row %u\n", s_vis, command);
-        storage_write32(s_dlg + kCmdRow, command);
+        if (navigation_trace())
+            fprintf(stderr, "[storage-nav] confirm visual row %d -> native row %u\n", visual, command);
+        vm_write32(s_dlg + kCmdRow, command);
         return 0;
     }
     if (!send) return 0;
+    if (s_send_disabled) {
+        fprintf(stderr, "[des] storage: Send disabled after a deposit mismatch\n");
+        call_game(ctx, func_0072D970, {200});
+        return 1;
+    }
     const uint32_t p = pgd(), dlg = inventory();
     const int32_t slot = dlg ? selected(dlg) : -1;
     const Entry item = p ? entry_at(p, slot) : Entry{};
@@ -1287,12 +1583,10 @@ extern "C" int des_storage_command(ppu_context* ctx)
     return 1;
 }
 
-constexpr uint32_t kMenusRoot = 0x019ADD50u;
-
 uint32_t menus_obj()
 {
-    const uint32_t t = vm_read32(DES_AT(kMenusRoot));
-    const uint32_t h = guest_ok(t, 4) ? vm_read32(t - 0x8000u) : 0;
+    const uint32_t t = vm_read32(DES_AT(kMenuRoot));
+    const uint32_t h = guest_ok(t, 4) ? vm_read32(t - kMenuOwnerDelta) : 0;
     const uint32_t m = guest_ok(h, 4) ? vm_read32(h) : 0;
     return guest_ok(m, 4) ? m : 0;
 }
@@ -1301,6 +1595,15 @@ void inventory_confirmation_tick(ppu_context* ctx)
 {
     auto& pending = s_inventory_transfer;
     if (pending.state == InventoryAsk::Idle) return;
+    if (pending.state == InventoryAsk::Asking) {
+        if (!on() || pending.player != pgd() || pending.dialog != inventory())
+            pending.cancel_when_closed = true;
+        const uint32_t menus = menus_obj();
+        if (quantity_picker_open(menus) && on() && pending.picker_text &&
+            vm_read32(menus + kPickerText) != pending.picker_text)
+            vm_write32(menus + kPickerText, pending.picker_text);
+        return; // Keep ownership until native OK/CANCEL or a new command input.
+    }
     if (pending.player != pgd() || pending.dialog != inventory() || !on()) {
         pending = {};
         return;
@@ -1312,50 +1615,31 @@ void inventory_confirmation_tick(ppu_context* ctx)
         const int room = storage_room(ctx, vm_read32(pending.player + kPgdBox), pending.item);
         const int maximum = room < pending.item.count ? room : pending.item.count;
         if (maximum < 1) { pending = {}; return; }
-        const uint32_t text = guest_text(ctx, "How many items to send to Storage?");
-        if (!text) { pending = {}; return; }
-        const uint32_t root = vm_read32(DES_AT(0x019ADF0Cu));
-        const uint32_t holder = guest_ok(root, 4) ? vm_read32(root - 0x7FFCu) : 0;
-        const uint32_t mode = guest_ok(holder, 4) ? vm_read32(holder) : 0;
-        call_game(ctx, func_00720F50, {mode == 1 ? 0x85 : 0x95, 1});
-        call_game(ctx, func_00720F50, {0x89, 1});
-        call_game(ctx, func_00720F50, {0x68, 1});
-        call_game(ctx, func_007731F0, {11000, 1, 2, maximum, 1, maximum, 0xEAC4});
+        if (!ensure_storage_texts(ctx)) { pending = {}; return; }
+        const uint32_t root = vm_read32(DES_AT(kInventoryMenuSlot));
+        const uint32_t holder = guest_ok(root, 4) ? vm_read32(root - kMenuHolderDelta) : 0;
+        const uint32_t mode = guest_ok(root, 4) && guest_ok(holder, 4) ? vm_read32(holder) : 2;
+        call_game(ctx, func_00720F50,
+                  {mode == 0 ? kPickerSetupDefault : mode == 1 ? kPickerSetupAlternate : 0, 1});
+        call_game(ctx, func_00720F50, {kPickerSetupSignal, 1});
+        call_game(ctx, func_00720F50, {kPickerUpdateSignal, 1});
+        call_game(ctx, func_00720F50, {kPickerSetupSignal, 1});
+        call_game(ctx, func_007731F0, {kPickerPromptId, 1, 2, maximum, 1, maximum, kPickerRangeId});
         call_game(ctx, func_00720F50, {2, 9});
-        call_game(ctx, func_00720F50, {0x68, 1});
-        storage_write32(m + 0x820, text);
-        pending.picker_text = text;
-        pending.closed_ticks = 0;
+        call_game(ctx, func_00720F50, {kPickerUpdateSignal, 1});
+        vm_write32(m + kPickerText, s_quantity_question);
+        pending.picker_text = s_quantity_question;
+        pending.cancel_when_closed = false;
         call_game(ctx, func_0072D970, {100});
         pending.state = InventoryAsk::Asking;
-        fprintf(stderr, "[des] storage: inventory quantity picker for id %u x%d (box room %d, picker max %d)\n",
-                pending.item.id, pending.item.count, room, maximum);
+        log_detail("[des] storage: inventory quantity picker for id %u x%d (box room %d, picker max %d)\n",
+                   pending.item.id, pending.item.count, room, maximum);
         return;
     }
     if (pending.state == InventoryAsk::Ready) {
         const InventoryTransfer transfer = pending;
         pending = {}; // consume authorization before the native operation
         deposit_inventory(ctx, transfer);
-        return;
-    }
-    if (pending.state != InventoryAsk::Asking) return;
-    // OK closes the picker (slot 2 leaves 9, prompt text reverts) before
-    // inventory message 2000. Clearing Asking on those signals lets native
-    // 2000 drop the stack. Only an explicit cancellation releases ownership.
-    // Circle can be released before the close transition reaches this tick.
-    if (g_pad0_buttons & 0x2000u) pending.cancel_requested = true;
-    if ((int32_t)vm_read32(m + 0x14 + 4 * 2) == 9) {
-        pending.closed_ticks = 0;
-        if (pending.picker_text && vm_read32(m + 0x820) != pending.picker_text)
-            storage_write32(m + 0x820, pending.picker_text);
-        return;
-    }
-    pending.closed_ticks++;
-    if (pending.closed_ticks == 1)
-        fprintf(stderr, "[des] storage: quantity picker left mode 9, waiting for 2000\n");
-    if (pending.cancel_requested) {
-        pending = {};
-        fprintf(stderr, "[des] storage: inventory quantity picker cancelled\n");
         return;
     }
 }
@@ -1367,27 +1651,33 @@ extern "C" int des_storage_inventory_message(ppu_context* ctx)
     auto& pending = s_inventory_transfer;
     if (pending.state != InventoryAsk::Asking || (uint32_t)ctx->gpr[3] != pending.dialog) return 0;
     const int message = (int32_t)ctx->gpr[4];
-    if (message != 2000) {
-        if (message == 2001 || message == 2004) {
-            pending = {};
-            fprintf(stderr, "[des] storage: inventory quantity picker cancelled\n");
-        }
+    if (message == (int)kInventoryCancelMessage) {
+        pending = {};
+        log_detail("[des] storage: inventory quantity picker cancelled by native state\n");
         return 0;
     }
-    const uint32_t m = menus_obj();
-    const int amount = m ? (int32_t)vm_read32(m + 0x830) : 0;
-    if (m && pending.picker_text && vm_read32(m + 0x820) != pending.picker_text)
-        fprintf(stderr, "[des] storage: quantity OK with rewritten prompt, still ours (amount %d)\n", amount);
-    if (amount < 1 || amount > pending.item.count) {
+    if (message != (int)kInventoryOkMessage) return 0;
+    if (pending.cancel_when_closed || !on() || pending.player != pgd() || pending.dialog != inventory()) {
         pending = {};
-        fprintf(stderr, "[des] storage: inventory quantity confirmed %d, ignored\n", amount);
+        log_detail("[des] storage: inventory quantity picker OK consumed; transfer cancelled\n");
+        return 1;
+    }
+    const uint32_t m = menus_obj();
+    const int amount = m ? (int32_t)vm_read32(m + kPickerAmount) : 0;
+    if (m && pending.picker_text && vm_read32(m + kPickerText) != pending.picker_text)
+        log_detail("[des] storage: quantity OK with rewritten prompt, still ours (amount %d)\n", amount);
+    const uint32_t box = pending.player ? vm_read32(pending.player + kPgdBox) : 0;
+    const int room = storage_room(ctx, box, pending.item);
+    if (amount < 1 || amount > pending.item.count || amount > room) {
+        pending = {};
+        log_detail("[des] storage: inventory quantity confirmed %d, ignored\n", amount);
         return 1;
     }
     pending.amount = amount;
     pending.state = InventoryAsk::Ready;
-    storage_write8(pending.dialog + 0x140, 1);
-    storage_write8(pending.dialog + 0x141, 1);
-    fprintf(stderr, "[des] storage: inventory quantity confirmed %d\n", amount);
+    vm_write8(pending.dialog + kInventoryDirtyA, 1);
+    vm_write8(pending.dialog + kInventoryDirtyB, 1);
+    log_detail("[des] storage: inventory quantity confirmed %d\n", amount);
     return 1;
 }
 
@@ -1419,3 +1709,32 @@ void storage_tick(ppu_context* ctx)
 } // namespace
 
 extern "C" void des_storage_tick(ppu_context* ctx) { storage_tick(ctx); }
+
+extern "C" int des_storage_mouse_row(uint32_t dialog)
+{
+    if (!on() || dialog != s_dlg || s_line_state != 1 || !guest_ok(dialog, 4) ||
+        !is_command(dialog) || vm_read8(dialog + kDialogActive) == 0) return -1;
+    return s_navigation.active() ? s_visible_row() : (int32_t)vm_read32(dialog + kCmdRow);
+}
+
+extern "C" uint32_t des_storage_mouse_spot(uint32_t dialog, int row, int column)
+{
+    if (!on() || dialog != s_dlg || s_line_state != 1 || !guest_ok(dialog, 4) ||
+        !is_command(dialog) || column != 0 || row < 0 || row > 4) return 0;
+    // Cursor visuals can move when Auto Sort is selected. Row pieces keep
+    // stable geometry and remain available even when native drawing hides them.
+    if (row == 2) return guest_ok(s_line, 4) ? s_line : 0;
+    const char* names[] = {"button0_0", "button1_0", nullptr, "button2_0", "button3_0"};
+    return names[row] ? find_named(dialog, names[row]) : 0;
+}
+
+extern "C" int des_storage_mouse_select(ppu_context*, uint32_t dialog, int row, int column)
+{
+    if (!des_storage_mouse_spot(dialog, row, column) || !s_navigation.select_visible(row)) return 0;
+    s_forced = s_navigation.send();
+    vm_write32(dialog + kCmdRow, (uint32_t)s_navigation.projected());
+    if (navigation_trace())
+        fprintf(stderr, "[storage-nav] mouse dlg=%08x visual=%d projected=%d\n", dialog, row,
+                s_navigation.projected());
+    return 1;
+}

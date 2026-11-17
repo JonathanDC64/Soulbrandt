@@ -135,6 +135,8 @@ jobs:
     needs: ffmpeg-windows
     runs-on: windows-latest
     timeout-minutes: 60
+    env:
+      LLVM_DIR: ${{ github.workspace }}/.ci-cache/llvm-win
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -187,19 +189,215 @@ jobs:
       - name: Install Ninja
         run: choco install ninja --version=1.13.2 --allow-downgrade -y --no-progress
 
-      # docs/54 section 5.4 wants CI on the LLVM that players get (22.1.8), failing on any other. Not yet:
-      # the runner's clang-cl is used, as in ci.yml, and another version is a warning (docs/85, open questions).
-      - name: Show toolchain
-        shell: bash
+      # Read the Windows archive's pinned version, URL, size and digest from the repository manifest.
+      - name: Read pinned Windows LLVM
+        id: llvm_manifest
+        shell: python
         run: |
-          clang-cl --version
-          lld-link --version || echo "(no lld-link on the path: CMake links with link.exe)"
+          import os, re, sys
+          from pathlib import Path
+          from urllib.parse import unquote, urlparse
+
+          text = Path(".github/workflows/llvm-archive.yml").read_text(encoding="utf-8")
+          env_block = re.search(r"(?ms)^env:\n(.*?)(?=^jobs:\n)", text)
+          if not env_block:
+              print("::error::the LLVM archive workflow has no top-level env manifest")
+              sys.exit(1)
+          values = {}
+          for line in env_block.group(1).splitlines():
+              match = re.fullmatch(r"  ([A-Z][A-Z0-9_]*):\s*(.*?)\s*", line)
+              if not match:
+                  continue
+              value = match.group(2)
+              if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                  value = value[1:-1]
+              values[match.group(1)] = value
+
+          version = values.get("LLVM_VERSION", "")
+          archive = values.get("WINDOWS_ARCHIVE", "")
+          url = values.get("WINDOWS_URL", "")
+          size = values.get("WINDOWS_SIZE", "")
+          digest = values.get("WINDOWS_SHA256", "")
+          parsed = urlparse(url)
+          if (not re.fullmatch(r"22\.1\.8", version) or
+                  archive != f"clang+llvm-{version}-x86_64-pc-windows-msvc.tar.xz" or
+                  parsed.scheme != "https" or parsed.netloc != "github.com" or
+                  unquote(parsed.path).split("/")[-1] != archive or
+                  f"/llvmorg-{version}/" not in parsed.path or
+                  not size.isdecimal() or int(size) <= 0 or
+                  not re.fullmatch(r"[0-9a-f]{64}", digest)):
+              print("::error::the Windows LLVM manifest values are missing or malformed")
+              sys.exit(1)
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              for key, value in (("version", version), ("archive", archive), ("url", url),
+                                 ("size", size), ("sha256", digest)):
+                  output.write(f"{key}={value}\n")
+          print(f"LLVM {version}: {archive}, {size} bytes, SHA-256 {digest}")
+
+      # Restore only a toolcache under the workspace; the cache key is the source archive's pinned digest.
+      - name: Restore pinned Windows LLVM
+        id: llvm_cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ env.LLVM_DIR }}
+          key: host-windows-llvm-${{ steps.llvm_manifest.outputs.sha256 }}-v1
+
+      # Stream, verify and extract only the compiler, linker and versioned resource headers from LLVM's archive.
+      - name: Download and verify pinned Windows LLVM
+        if: steps.llvm_cache.outputs.cache-hit != 'true'
+        shell: python
+        env:
+          LLVM_ARCHIVE: ${{ steps.llvm_manifest.outputs.archive }}
+          LLVM_URL: ${{ steps.llvm_manifest.outputs.url }}
+          LLVM_SIZE: ${{ steps.llvm_manifest.outputs.size }}
+          LLVM_SHA256: ${{ steps.llvm_manifest.outputs.sha256 }}
+          LLVM_VERSION: ${{ steps.llvm_manifest.outputs.version }}
+        run: |
+          import hashlib, os, shutil, tarfile, urllib.request
+          from pathlib import Path, PurePosixPath
+
+          archive_name = os.environ["LLVM_ARCHIVE"]
+          archive_path = Path(os.environ["RUNNER_TEMP"]) / archive_name
+          expected_size = int(os.environ["LLVM_SIZE"])
+          expected_sha = os.environ["LLVM_SHA256"]
+          digest = hashlib.sha256()
+          downloaded = 0
+          request = urllib.request.Request(os.environ["LLVM_URL"], headers={"User-Agent": "Soulbrandt-CI"})
+          with urllib.request.urlopen(request, timeout=120) as response, archive_path.open("wb") as target:
+              while True:
+                  chunk = response.read(1 << 20)
+                  if not chunk:
+                      break
+                  downloaded += len(chunk)
+                  if downloaded > expected_size:
+                      raise RuntimeError(f"LLVM archive exceeds its pinned size of {expected_size} bytes")
+                  digest.update(chunk)
+                  target.write(chunk)
+          got_sha = digest.hexdigest()
+          if downloaded != expected_size:
+              raise RuntimeError(f"LLVM archive is {downloaded} bytes, expected {expected_size}")
+          if got_sha != expected_sha:
+              raise RuntimeError(f"LLVM archive SHA-256 is {got_sha}, expected {expected_sha}")
+
+          workspace = Path(os.environ["GITHUB_WORKSPACE"]).resolve()
+          root = Path(os.environ["LLVM_DIR"]).resolve()
+          staging = root.with_name(root.name + ".staging").resolve()
+          if (root.relative_to(workspace).parts != (".ci-cache", "llvm-win") or
+                  staging.relative_to(workspace).parts != (".ci-cache", "llvm-win.staging")):
+              raise RuntimeError("LLVM extraction paths must stay in the workspace toolcache")
+          if staging.exists():
+              shutil.rmtree(staging)
+          staging.mkdir(parents=True)
+          top = archive_name.removesuffix(".tar.xz")
+          major = os.environ["LLVM_VERSION"].split(".")[0]
+          resource = f"lib/clang/{major}/"
+          seen_tops = set()
+          seen_files = set()
+          with tarfile.open(archive_path, "r|xz") as tar:
+              for member in tar:
+                  name = member.name.replace("\\", "/")
+                  while name.startswith("./"):
+                      name = name[2:]
+                  parts = PurePosixPath(name).parts
+                  if not parts:
+                      continue
+                  if name.startswith("/") or ":" in parts[0] or ".." in parts:
+                      raise RuntimeError(f"unsafe LLVM archive path: {member.name!r}")
+                  seen_tops.add(parts[0])
+                  if parts[0] != top or len(parts) < 2:
+                      continue
+                  rel = PurePosixPath(*parts[1:]).as_posix()
+                  keep = (rel in ("bin/clang.exe", "bin/lld-link.exe") or
+                          rel.startswith(resource + "include/"))
+                  if not keep or member.isdir():
+                      continue
+                  if not member.isreg():
+                      raise RuntimeError(f"expected a regular LLVM archive file: {member.name!r}")
+                  if rel in seen_files:
+                      raise RuntimeError(f"duplicate LLVM archive path: {rel}")
+                  seen_files.add(rel)
+                  # CMake selects MSVC frontend mode by this name; the source bytes are LLVM's clang.exe.
+                  local_rel = "bin/clang-cl.exe" if rel == "bin/clang.exe" else rel
+                  destination = staging.joinpath(*PurePosixPath(local_rel).parts)
+                  destination.parent.mkdir(parents=True, exist_ok=True)
+                  source = tar.extractfile(member)
+                  if source is None:
+                      raise RuntimeError(f"could not read LLVM archive member: {member.name!r}")
+                  with source, destination.open("wb") as output:
+                      shutil.copyfileobj(source, output, 1 << 20)
+
+          if seen_tops != {top}:
+              raise RuntimeError(f"LLVM archive has unexpected top folders: {sorted(seen_tops)}")
+          required = ["bin/clang-cl.exe", "bin/lld-link.exe"] + [
+              resource + "include/" + name for name in
+              ("stddef.h", "stdint.h", "stdatomic.h", "intrin.h", "smmintrin.h")]
+          missing = [name for name in required if not staging.joinpath(*PurePosixPath(name).parts).is_file()]
+          if missing:
+              raise RuntimeError("LLVM archive lacks required files: " + ", ".join(missing))
+
+          (staging / "source.sha256").write_text(expected_sha + "\n", encoding="ascii")
+          root.parent.mkdir(parents=True, exist_ok=True)
+          if root.exists():
+              raise RuntimeError(f"toolcache path unexpectedly exists on a cache miss: {root}")
+          staging.replace(root)
+          archive_path.unlink()
+          print(f"Extracted verified LLVM {os.environ['LLVM_VERSION']} into {root}")
+
+      # Fail on any cached or freshly extracted compiler whose exact version is not the pinned one.
+      - name: Check pinned Windows LLVM
+        shell: python
+        env:
+          LLVM_SHA256: ${{ steps.llvm_manifest.outputs.sha256 }}
+          LLVM_VERSION: ${{ steps.llvm_manifest.outputs.version }}
+        run: |
+          import os, re, subprocess, sys
+          from pathlib import Path
+
+          root = Path(os.environ["LLVM_DIR"])
+          stamp = root / "source.sha256"
+          if not stamp.is_file() or stamp.read_text(encoding="ascii").strip() != os.environ["LLVM_SHA256"]:
+              print("::error::the cached Windows LLVM toolcache does not match the pinned archive digest")
+              sys.exit(1)
+          clang = root / "bin" / "clang-cl.exe"
+          lld = root / "bin" / "lld-link.exe"
+          for path in (clang, lld):
+              if not path.is_file():
+                  print(f"::error::missing pinned LLVM tool: {path}")
+                  sys.exit(1)
+          clang_text = subprocess.run([str(clang), "--version"], check=True, capture_output=True,
+                                      text=True).stdout
+          lld_text = subprocess.run([str(lld), "--version"], check=True, capture_output=True,
+                                    text=True).stdout
+          want = os.environ["LLVM_VERSION"]
+          clang_match = re.search(r"clang version\s+([0-9.]+)", clang_text)
+          lld_match = re.search(r"\bLLD\s+([0-9.]+)", lld_text)
+          if not clang_match or clang_match.group(1) != want:
+              print(f"::error::clang-cl is not LLVM {want}: {clang_text.strip()}")
+              sys.exit(1)
+          if not lld_match or lld_match.group(1) != want:
+              print(f"::error::lld-link is not LLVM {want}: {lld_text.strip()}")
+              sys.exit(1)
+          print(clang_text.strip())
+          print(lld_text.strip())
+
+      # Save only a verified, content-addressed toolcache under the workspace.
+      - name: Save pinned Windows LLVM
+        if: steps.llvm_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ env.LLVM_DIR }}
+          key: host-windows-llvm-${{ steps.llvm_manifest.outputs.sha256 }}-v1
+
+      # This job uses the archive-manifest compiler; MSVC supplies its headers, libraries and link.exe.
+      - name: Show toolchain
+        shell: pwsh
+        run: |
+          $clang = Join-Path $env:LLVM_DIR 'bin/clang-cl.exe'
+          $lld = Join-Path $env:LLVM_DIR 'bin/lld-link.exe'
+          & $clang --version
+          & $lld --version
           cmake --version
           ninja --version
-          v=$(clang-cl --version | sed -n 's/.*clang version \([0-9][0-9.]*\).*/\1/p' | head -n 1)
-          if [ "$v" != "22.1.8" ]; then
-            echo "::warning::clang-cl $v, not the 22.1.8 of the player builds (docs/54 5.4, docs/85)"
-          fi
 
       # The ffmpeg-windows job's DLLs, headers and licence files.
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -267,6 +465,7 @@ jobs:
       - name: Configure the runtime library
         id: rt_cfg
         run: |
+          $clang = Join-Path $env:LLVM_DIR 'bin/clang-cl.exe'
           $src = @()
           if ('${{ steps.gpu-src.outputs.cache-hit }}' -eq 'true') {
             foreach ($n in 'vulkan_headers', 'spirv_headers', 'spirv_tools', 'glslang') {
@@ -275,7 +474,7 @@ jobs:
               $src += "-DFETCHCONTENT_SOURCE_DIR_$($n.ToUpper())=$d"
             }
           }
-          cmake -S ps3recomp -B ps3recomp/build_split -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl `
+          cmake -S ps3recomp -B ps3recomp/build_split -G Ninja "-DCMAKE_C_COMPILER=$clang" "-DCMAKE_CXX_COMPILER=$clang" `
             -DCMAKE_BUILD_TYPE=Release -DPS3RECOMP_GAME_SPLIT=ON -DPS3RECOMP_STATIC_CRT=ON -DPS3RECOMP_RSX_HAL=ON -DPS3RECOMP_NO_DECRYPT=ON `
             -DPS3RECOMP_FFMPEG_RUNTIME=ON "-DPS3RECOMP_FFMPEG_INCLUDE_DIR=${{ runner.temp }}/ffmpeg/include" @src
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -326,8 +525,9 @@ jobs:
       - name: Configure des_host
         id: host_cfg
         run: |
+          $clang = Join-Path $env:LLVM_DIR 'bin/clang-cl.exe'
           $src = @(python tools/ci/fetch_src.py args .ci-cache/ui-src freetype rmlui stb)
-          cmake -S port -B build/host -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl `
+          cmake -S port -B build/host -G Ninja "-DCMAKE_C_COMPILER=$clang" "-DCMAKE_CXX_COMPILER=$clang" `
             -DCMAKE_BUILD_TYPE= -DCMAKE_CXX_FLAGS_DEBUG= -DCMAKE_C_FLAGS_DEBUG= "-DRECOMP_DIR=${{ env.HOST_LIFT }}" `
             -DDES_SPLIT=ON -DDES_HOST_ONLY=ON -DDES_HOST_STATIC_CRT=ON -DDES_REQUIRE_PIN=ON -DDES_DEV=OFF @src
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -418,6 +618,18 @@ jobs:
         run: |
           cmake --build build/host --target pantheon_check
           build/host/pantheon_check.exe
+
+      # Storage's full production source over synthetic memory: capacity, picker ownership and layout failures.
+      - name: Storage
+        shell: bash
+        run: |
+          cmake --build build/host --target storage_check storage_navigation_check
+          build/host/storage_check.exe
+          build/host/storage_check.exe --allocation-failure
+          build/host/storage_navigation_check.exe
+          for n in $(seq 0 64); do
+            build/host/storage_check.exe --layout-failure "$n" || exit 1
+          done
 
       # Both routes: the runtime has the Vulkan backend, and des_host links the route switch, the core on D3D12
       # and on Vulkan, and the Vulkan start's fallback (the port finds PS3RECOMP_RSX_HAL itself, DES_RSX_HAL=AUTO).
@@ -947,6 +1159,17 @@ jobs:
         run: |
           cmake --build build/host --target pantheon_check
           build/host/pantheon_check
+
+      # Storage, as on Windows above, built with the host's configured compiler.
+      - name: Storage
+        run: |
+          cmake --build build/host --target storage_check storage_navigation_check
+          build/host/storage_check
+          build/host/storage_check --allocation-failure
+          build/host/storage_navigation_check
+          for n in $(seq 0 64); do
+            build/host/storage_check --layout-failure "$n" || exit 1
+          done
 
       # The player's program has no decryptor and no keys: it opens the decrypted copies setup made.
       - name: No decryptor in des_host

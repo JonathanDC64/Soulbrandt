@@ -47,6 +47,7 @@
 #include "ps3emu/ppu_lift.h"
 #include "des_region.h"      /* DES_AT: the running disc's addresses */
 #include "des_game_calls.h"
+#include "des_storage.h"     /* the inventory's five visual command rows */
 #include "ps3emu/ps3_knob.h"
 #include <algorithm>
 #include <array>
@@ -700,19 +701,35 @@ void build_menus(ppu_context* ctx)
             m.host = host;
             m.tabs = host.find("tab") != std::string::npos;
             m.z = o;
-            for (const Piece& p : pcs[o]) {
-                if (!p.drawn) continue;
-                const std::string& nm = name_of(p.obj);
-                std::string prefix;
-                int r, c;
-                if (!grid_name(nm, prefix, r, c)) continue;
-                if (prefix != host && !starts_with(prefix, host + "_")) continue;   /* (cursor_button, not cursorX) */
-                float lay[4];
-                if (!rect_of(p.obj, lay)) continue;
-                Spot s{r, c, {}};
-                apply(xf[o].data(), lay, s.box);
-                if (same_box(lay, ds[i].cur)) m.cur = (int)m.spots.size();
-                m.spots.push_back(s);
+            const int storage_row = des_storage_mouse_row(m.owner);
+            if (storage_row >= 0) {
+                /* These cursor pieces are normally hidden unless selected. Use
+                 * the storage API's row objects so all five rows stay clickable,
+                 * including Auto Sort, without changing generic menu discovery. */
+                for (int r = 0; r < 5; ++r) {
+                    const uint32_t obj = des_storage_mouse_spot(m.owner, r, 0);
+                    float lay[4];
+                    if (!obj || !rect_of(obj, lay)) continue;
+                    Spot s{r, 0, {}};
+                    apply(xf[o].data(), lay, s.box);
+                    if (r == storage_row) m.cur = (int)m.spots.size();
+                    m.spots.push_back(s);
+                }
+            } else {
+                for (const Piece& p : pcs[o]) {
+                    if (!p.drawn) continue;
+                    const std::string& nm = name_of(p.obj);
+                    std::string prefix;
+                    int r, c;
+                    if (!grid_name(nm, prefix, r, c)) continue;
+                    if (prefix != host && !starts_with(prefix, host + "_")) continue;   /* (cursor_button, not cursorX) */
+                    float lay[4];
+                    if (!rect_of(p.obj, lay)) continue;
+                    Spot s{r, c, {}};
+                    apply(xf[o].data(), lay, s.box);
+                    if (same_box(lay, ds[i].cur)) m.cur = (int)m.spots.size();
+                    m.spots.push_back(s);
+                }
             }
             /* Two layouts in one dialog: the online server message (DsMenuDlgTos) has OK in the middle (cursor0_2)
              * and two buttons beside it (cursor0_0, cursor0_1), all drawn, though only one layout shows. The
@@ -1528,8 +1545,15 @@ bool select_now(ppu_context* ctx, const Menu& m, const Spot& s)
     if (vt == DES_AT(kStartTabVt) && m.stay) return turn_page_now(ctx, s);   /* (the page has the pad, not the bar) */
     const bool cats = vt == DES_AT(kInvTabsVt);   /* (their owner has the pad, not the tabs) */
     if (!cats && !(vm_read32(m.owner + kDlgInput) & 0x80000000u)) return false;   /* a dialog over it has the pad */
+    const int storage_row = des_storage_mouse_row(m.owner);
+    if (storage_row >= 0) {
+        if (s.r < 0 || s.r > 4 || s.c != 0 || !des_storage_mouse_spot(m.owner, s.r, s.c) ||
+            !des_storage_mouse_select(ctx, m.owner, s.r, s.c)) return false;
+    }
     bool tick = true;
-    if (cats) {
+    if (storage_row >= 0) {
+        // The storage API has set the native row projection directly.
+    } else if (cats) {
         const int done = tab_now(ctx, m, s);
         if (!done) return false;
         tick = done == 1;

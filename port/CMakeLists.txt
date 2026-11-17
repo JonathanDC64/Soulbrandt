@@ -907,6 +907,18 @@ if(MSVC)
     target_compile_definitions(pantheon_check PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
 
+# Storage's production layout, capacity and picker over a synthetic guest memory;
+# no game files. Use the host's configured compiler on Windows and Linux.
+add_executable(storage_check EXCLUDE_FROM_ALL tests/storage_check.cpp)
+add_executable(storage_navigation_check EXCLUDE_FROM_ALL tests/storage_navigation_check.cpp)
+target_include_directories(storage_check BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/tests/storage_stub")
+target_compile_definitions(storage_check PRIVATE PS3_GAME_SPLIT)
+if(MSVC)
+    target_compile_options(storage_check PRIVATE /EHsc /Zc:__cplusplus)
+    target_compile_definitions(storage_check PRIVATE _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(storage_navigation_check PRIVATE /EHsc /Zc:__cplusplus)
+endif()
+
 message(STATUS "des_boot: renderer calls through the route switch (DES_RSX_HAL=${DES_RSX_HAL}): ${_des_hal}")
 
 # ui_render_compare (port/ui/tests): render_gpu.cpp's proof, the menus drawn by it and by render_d3d12.cpp on one
