@@ -757,7 +757,9 @@ void process_queue() {
             }
             break;
         case InputEvent::MouseMove:
+            ui::input::begin_pointer_move(e.a, e.b);  // (a page's hover selects only on a real move: input.hpp)
             ctx->ProcessMouseMove(e.a, e.b, e.mods);
+            ui::input::end_pointer_move();
             ui::host::set_pointer(e.a, e.b, true);  // (the sword cursor's place)
             break;
         case InputEvent::MouseDown:

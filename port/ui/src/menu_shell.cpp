@@ -111,6 +111,13 @@ MenuShell::MenuShell(bool standalone, DocumentScope scope)
         listen(e, Rml::EventId::Click, [this, i](Rml::Event&) {
             if (mModel.level() == menu::Model::Level::Entries) choose_entry(static_cast<int>(i));
         });
+        // The pointer over an entry picks it, as Left and Right do (its line shows under the band); only a real move
+        // of the pointer (input.hpp's hover_moved), so a key press is never undone by a pointer resting there.
+        listen(e, Rml::EventId::Mousemove, [this, i](Rml::Event&) {
+            if (mModel.level() != menu::Model::Level::Entries || !input::hover_moved() || static_cast<int>(i) == mEntry) return;
+            mEntry = static_cast<int>(i);
+            play_sound(kSoundItemFocus);
+        });
         Rml::Element* s = append_text_element(mSlot, "menu-slot-entry", entries[i].title);
         mSlotElems.push_back(s);
         listen(s, Rml::EventId::Click, [this, i](Rml::Event&) { switch_entry(static_cast<int>(i)); });

@@ -39,13 +39,18 @@ PlayersPage::PlayersPage(Rml::Element* host, menu::PageHost& shell) : mHost(host
         mListeners.push_back(std::make_unique<ScopedEventListener>(item, Rml::EventId::Click, [this, i](Rml::Event&) {
             const int index = mTop + i;
             if (index >= count()) return;
-            if (index != mFocus) {
+            if (index != mFocus) {  // (a click picks the row and does what Enter does, in one)
                 mFocus = index;
-                play_sound(kSoundItemFocus);
                 draw();
-            } else {
-                press();
             }
+            press();
+        }));
+        mListeners.push_back(std::make_unique<ScopedEventListener>(item, Rml::EventId::Mousemove, [this, i](Rml::Event&) {
+            const int index = mTop + i;
+            if (!input::hover_moved() || index >= count() || index == mFocus) return;  // (a real move: input.hpp)
+            mFocus = index;
+            play_sound(kSoundItemFocus);
+            draw();
         }));
     }
     for (int w = 0; w < 2; w++) {

@@ -3,6 +3,7 @@
 #include "mods_page.hpp"
 
 #include "event.hpp"
+#include "input.hpp"
 #include "menu_pages.hpp"
 #include "report.hpp"
 #include "sound.hpp"
@@ -115,12 +116,15 @@ void ModsPage::build() {
                 } else if (within(e.GetTargetElement(), row, "move-down")) {
                     mFocus = index;
                     move_mod(1);
-                } else if (index != mFocus) {
-                    mFocus = index;
-                    play_sound(kSoundItemFocus);
                 } else {
+                    mFocus = index;  // (a click picks the row and does what Enter does, in one)
                     confirm();
                 }
+            }));
+            mListeners.push_back(std::make_unique<ScopedEventListener>(row, Rml::EventId::Mousemove, [this, index](Rml::Event&) {
+                if (mHelping || !input::hover_moved() || index == mFocus) return;  // (a real move of the pointer: input.hpp)
+                mFocus = index;
+                play_sound(kSoundItemFocus);
             }));
         }
     }

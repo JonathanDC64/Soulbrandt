@@ -293,14 +293,27 @@ void SettingsPage::build_tab() {
             if (bracket < mBrackets.size()) mBrackets[bracket].last = v.row;
             if (const auto* info = std::get_if<catalog::InfoRow>(&r.kind); info && !info->everyFrame) v.info = info->value();
             const int index = static_cast<int>(mViews.size());
+            // A click picks the row and does what Enter (or its arrow) does, in one; a real move of the pointer over
+            // it picks it (input.hpp's hover_moved), so the help line follows the mouse. An open list, or a field
+            // being typed in, keeps its row: only a click takes the focus from them.
+            mRowListeners.push_back(std::make_unique<ScopedEventListener>(v.row, Rml::EventId::Mousemove, [this, index](Rml::Event&) {
+                const SettingsModel::Mode mode = mModel.mode();
+                if (!input::hover_moved() || index == mModel.focus()) return;
+                if (mode != SettingsModel::Mode::Rows && mode != SettingsModel::Mode::Preview) return;
+                if (mModel.set_focus(index, mFacts)) {
+                    play_sound(kSoundItemFocus);
+                    moved();
+                }
+            }));
             mRowListeners.push_back(std::make_unique<ScopedEventListener>(v.row, Rml::EventId::Click, [this, index](Rml::Event& e) {
                 if (index != mModel.focus()) {
-                    if (mModel.set_focus(index, mFacts)) {
-                        play_sound(kSoundItemFocus);
-                        moved();
-                    }
-                    return;
+                    if (!mModel.set_focus(index, mFacts)) return;
+                    play_sound(kSoundItemFocus);
+                    moved();
                 }
+                // What Enter lists is read for the row with the focus (refresh_facts): a row that just took it, by
+                // this click or by a hover earlier in the same frame, has no count yet, and its list wouldn't open.
+                refresh_facts();
                 const RowView& view = mViews[index];
                 Rml::Element* t = e.GetTargetElement();
                 if (mFacts[index].steps && (t == view.left || t == view.right)) step(t == view.left ? -1 : 1);
@@ -523,6 +536,9 @@ void SettingsPage::update_list() {
                 ev.StopPropagation();
                 mModel.set_cursor(static_cast<int>(k), mFacts);
                 pick();
+            }));
+            mRowListeners.push_back(std::make_unique<ScopedEventListener>(e, Rml::EventId::Mousemove, [this, k](Rml::Event&) {
+                if (input::hover_moved() && mModel.set_cursor(static_cast<int>(k), mFacts)) play_sound(kSoundItemFocus);
             }));
             mItemElems.push_back(e);
         }

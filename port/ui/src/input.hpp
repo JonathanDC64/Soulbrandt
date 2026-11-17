@@ -35,6 +35,15 @@ const char* chord_label(int chord) noexcept;
 // Whether the UI is taking the input (a document is showing): the game then gets none.
 bool input_blocked() noexcept;
 
+// The pointer's moves, as des_ui.cpp hands them to RmlUi: begin_pointer_move before, end_pointer_move after. While
+// one is handed over, hover_moved() says whether the pointer really moved since the last: not for the first move after
+// reset_input_state (the menus waking, a window opening), nor for a move Windows sends with no motion (after a key
+// press or with a click). A page's hover selects a row only then, so a key press, or a list scrolling under a still
+// pointer, never has its focus taken by the mouse.
+void begin_pointer_move(int x, int y) noexcept;
+void end_pointer_move() noexcept;
+bool hover_moved() noexcept;
+
 // A button or key is being chosen for a binding (controls_window.cpp): the pads, keys and mouse buttons then work
 // nothing in the menus. The pads' buttons as last read (CELL_PAD_CTRL_*, the pads' own: PAD_MAP does not apply), the
 // last key pressed during a capture (a virtual-key code, 0 = none) and the wheel's notches since the last read
