@@ -17,10 +17,12 @@
 // made with no recorder of the core's wait for the next one (the deferred uploads). On Vulkan the shaders go through
 // the compile service's spv target, with the vertex inputs at the locations of their order (vk_inputs).
 //
-// Also the start screen's smoke (fog_shader.hpp): RmlUi's "shader" decorator with the value "fog:<name>", one pixel
-// shader over the element, its clock this renderer's.
+// Also the start screen's smoke (fog_shader.hpp) and its logo's flame (flame_shader.hpp): RmlUi's "shader" decorator
+// with the value "fog:<name>" or "flame:<name>", one pixel shader over the element, its clock this renderer's. The
+// flame's shader reads the logo's map, loaded with the shader and released with it.
 #if defined(PS3RECOMP_RSX_HAL)
 
+#include "flame_shader.hpp"
 #include "fog_shader.hpp"
 #include "renderer.hpp"
 #include "souls_model.hpp"
@@ -201,8 +203,9 @@ float4 main(PS_IN i) : SV_Target {
 }
 )";
 
-// The start screen's smoke (fog_shader.hpp).
-const char kPsFog[] = DES_UI_HLSL_COMMON DES_UI_HLSL_FOG;
+// The start screen's smoke (fog_shader.hpp) and its logo's flame (flame_shader.hpp).
+const char kPsFog[] = DES_UI_HLSL_COMMON DES_UI_HLSL_NOISE DES_UI_HLSL_FOG;
+const char kPsFlame[] = DES_UI_HLSL_COMMON DES_UI_HLSL_NOISE DES_UI_HLSL_FLAME;
 
 // The game's models (docs/112), shaded as the previews were: the diffuse texture under a light from the upper left
 // (ambient plus Lambert, both sides of a face lit as the side toward the viewer), the specular texture's colour as a
@@ -278,15 +281,15 @@ float4 main(MODEL_PS i) : SV_Target {
 )";
 
 enum Program {
-    kColor, kTexture, kGradient, kFog,  // (RmlUi's geometry, through its transform)
+    kColor, kTexture, kGradient, kFog, kFlame,  // (RmlUi's geometry, through its transform)
     kPassthrough, kColorMatrix, kBlendMask, kBlur, kDropShadow, kHdrOut,
     kModel, kModelBlend,  // (the model shaders: their own vertices, and the depth buffer)
     kProgramCount
 };
-const char* const kProgramPs[kProgramCount] = {kPsColor,       kPsTexture,   kPsGradient, kPsFog,
+const char* const kProgramPs[kProgramCount] = {kPsColor,       kPsTexture,     kPsGradient,  kPsFog,  kPsFlame,
                                                kPsPassthrough, kPsColorMatrix, kPsBlendMask, kPsBlur,
-                                               kPsDropShadow,  kPsHdrOut,    kPsModel,    kPsModel};
-const char* const kProgramName[kProgramCount] = {"color",       "texture",      "gradient",   "fog",
+                                               kPsDropShadow,  kPsHdrOut,      kPsModel,     kPsModel};
+const char* const kProgramName[kProgramCount] = {"color",       "texture",      "gradient",   "fog",  "flame",
                                                  "passthrough", "color matrix", "blend mask", "blur",
                                                  "drop shadow", "hdr out",      "model",      "model blend"};
 
@@ -364,6 +367,8 @@ struct CompiledShader {
     std::string model;  // decorator: shader("model:<name>"): one of the game's models, fitted into the element
     const ui::fog::Look* fog = nullptr;  // decorator: shader("fog:<name>"): the start screen's smoke
     float aspect = 1.f;                  // (the element's width over its height)
+    const ui::flame::Look* flame = nullptr;  // decorator: shader("flame:<name>"): the logo's flame
+    Rml::TextureHandle map = {};             // (its map, this shader's own)
 };
 
 // SigmaToParameters and SetBlurWeights, RmlUi's.
@@ -2025,8 +2030,19 @@ void RendererImpl::render_blur(float sigma, Target& source_destination, Target& 
 Rml::CompiledShaderHandle RendererImpl::CompileShader(const Rml::String& name, const Rml::Dictionary& parameters) {
     CompiledShader shader;
     const bool repeating = Rml::Get(parameters, "repeating", false);
-    if (name == "shader") {  // decorator: shader("model:lizard"), one of the game's models (docs/112), or "fog:start"
+    if (name == "shader") {  // decorator: shader("model:lizard"), one of the game's models (docs/112), "fog:start" or
+                             // "flame:logo"
         const Rml::String value = Rml::Get(parameters, "value", Rml::String());
+        if (value.rfind("flame:", 0) == 0) {
+            shader.flame = ui::flame::find(value.c_str());
+            Rml::Vector2i size;
+            if (shader.flame) shader.map = LoadTexture(size, ui::flame::kMap);
+            if (!shader.flame || !shader.map) {
+                Rml::Log::Message(Rml::Log::LT_WARNING, "Unsupported shader '%s'.", value.c_str());
+                return {};
+            }
+            return reinterpret_cast<Rml::CompiledShaderHandle>(new CompiledShader(std::move(shader)));
+        }
         if (value.rfind("fog:", 0) == 0) {
             shader.fog = ui::fog::find(value.c_str());
             const Rml::Vector2f size = Rml::Get(parameters, "dimensions", Rml::Vector2f(1.f));
@@ -2093,6 +2109,24 @@ void RendererImpl::RenderShader(Rml::CompiledShaderHandle shader, Rml::CompiledG
         }
         return;
     }
+    if (s && g && s->flame) {
+        const auto* map = reinterpret_cast<const Texture*>(s->map);
+        if (!g->count || !map || !mOpen) return;
+        gpu_cmd_bind_table(mCmd, 2, map->table);
+        if (!prepare(kFlame)) return;
+        static const bool still = std::getenv("DES_UI_NO_ANIM") != nullptr;
+        ui::flame::Constants c{};
+        store(mTransform, c.transform);
+        c.translate[0] = translation.x;
+        c.translate[1] = translation.y;
+        ui::flame::fill(*s->flame,
+                        still ? 0.0 : std::chrono::duration<double>(std::chrono::steady_clock::now() - mStart).count(), c);
+        if (const auto gpu = constants(&c, sizeof c)) {
+            gpu_cmd_bind_cb(mCmd, 0, gpu);
+            draw(*g);
+        }
+        return;
+    }
     if (s && g && !s->model.empty()) {
         // The element's box on the target, through the transform, and the model fitted into it.
         Rml::Vector2f lo(1e9f), hi(-1e9f);
@@ -2140,7 +2174,9 @@ void RendererImpl::RenderShader(Rml::CompiledShaderHandle shader, Rml::CompiledG
 }
 
 void RendererImpl::ReleaseShader(Rml::CompiledShaderHandle shader) {
-    delete reinterpret_cast<CompiledShader*>(shader);
+    auto* s = reinterpret_cast<CompiledShader*>(shader);
+    if (s && s->map) ReleaseTexture(s->map);
+    delete s;
 }
 
 // ---- The game's models (docs/112) ----

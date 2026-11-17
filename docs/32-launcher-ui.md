@@ -694,6 +694,25 @@ it, drawn live:
 - **Still.** With `DES_UI_NO_ANIM` (the tests' pictures) the smoke stands at
   its first frame.
 
+A cold, pale blue flame rises off the logo's letters, drawn live the same way:
+
+- **How.** A second shader decorator on the logo, `flame:logo`
+  (`flame_shader.hpp`), drawn over the logo's padding box: 60 dp round the
+  letters, and 100 dp more above them for the flame to rise into. Negative
+  margins take that padding back out of the layout. The letters are an image
+  decorator on the content box, drawn over the flame. The logo sets
+  `box-sizing: content-box`, so its width and height stay the letters' own.
+- **The map.** The shader reads one picture, `soulbrandt-logo-map.png`: the
+  letters softened (red) and a wide halo round them (blue), which the flame
+  rises from. `tools/ui/make_logo_map.py` makes it from the logo; run it again
+  when the logo changes. It shares the smoke's noise (`DES_UI_HLSL_NOISE` in
+  `fog_shader.hpp`).
+- **Its numbers** (colour, strength, how tall it rises, how much it wavers,
+  speed, flicker) are in `kLooks`, picked on a preview page that ran the same
+  maths in WebGL 2.
+- **Where it draws, and still pictures:** as for the smoke. Off Windows'
+  GPU-layer renderer the logo shows plain.
+
 How it works:
 
 - **The list.** `looks.hpp` lists the looks. Each look's `id` is three
