@@ -16,8 +16,12 @@
 // frame; a read back runs the recording through the core's flush. Fences are gpu_signal's, taken a frame later. Images
 // made with no recorder of the core's wait for the next one (the deferred uploads). On Vulkan the shaders go through
 // the compile service's spv target, with the vertex inputs at the locations of their order (vk_inputs).
+//
+// Also the start screen's smoke (fog_shader.hpp): RmlUi's "shader" decorator with the value "fog:<name>", one pixel
+// shader over the element, its clock this renderer's.
 #if defined(PS3RECOMP_RSX_HAL)
 
+#include "fog_shader.hpp"
 #include "renderer.hpp"
 #include "souls_model.hpp"
 
@@ -38,6 +42,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <map>
@@ -196,6 +201,9 @@ float4 main(PS_IN i) : SV_Target {
 }
 )";
 
+// The start screen's smoke (fog_shader.hpp).
+const char kPsFog[] = DES_UI_HLSL_COMMON DES_UI_HLSL_FOG;
+
 // The game's models (docs/112), shaded as the previews were: the diffuse texture under a light from the upper left
 // (ambient plus Lambert, both sides of a face lit as the side toward the viewer), the specular texture's colour as a
 // highlight. View space: x right, y down, z toward the viewer. An opaque mesh drops its texels under the alpha test;
@@ -270,16 +278,17 @@ float4 main(MODEL_PS i) : SV_Target {
 )";
 
 enum Program {
-    kColor, kTexture, kGradient, kPassthrough, kColorMatrix, kBlendMask, kBlur, kDropShadow, kHdrOut,
+    kColor, kTexture, kGradient, kFog,  // (RmlUi's geometry, through its transform)
+    kPassthrough, kColorMatrix, kBlendMask, kBlur, kDropShadow, kHdrOut,
     kModel, kModelBlend,  // (the model shaders: their own vertices, and the depth buffer)
     kProgramCount
 };
-const char* const kProgramPs[kProgramCount] = {kPsColor,       kPsTexture,   kPsGradient, kPsPassthrough,
-                                               kPsColorMatrix, kPsBlendMask, kPsBlur,     kPsDropShadow,
-                                               kPsHdrOut,      kPsModel,     kPsModel};
-const char* const kProgramName[kProgramCount] = {"color",        "texture",    "gradient", "passthrough",
-                                                 "color matrix", "blend mask", "blur",     "drop shadow",
-                                                 "hdr out",      "model",      "model blend"};
+const char* const kProgramPs[kProgramCount] = {kPsColor,       kPsTexture,   kPsGradient, kPsFog,
+                                               kPsPassthrough, kPsColorMatrix, kPsBlendMask, kPsBlur,
+                                               kPsDropShadow,  kPsHdrOut,    kPsModel,    kPsModel};
+const char* const kProgramName[kProgramCount] = {"color",       "texture",      "gradient",   "fog",
+                                                 "passthrough", "color matrix", "blend mask", "blur",
+                                                 "drop shadow", "hdr out",      "model",      "model blend"};
 
 enum Blend { kPremultiplied, kReplace, kFactor, kNoColor };
 enum Stencil { kStencilOff, kStencilTest, kStencilSet, kStencilIntersect, kStencilAuto };
@@ -353,6 +362,8 @@ struct CompiledShader {
     std::vector<float> stop_positions;
     std::vector<Rml::Colourf> stop_colors;
     std::string model;  // decorator: shader("model:<name>"): one of the game's models, fitted into the element
+    const ui::fog::Look* fog = nullptr;  // decorator: shader("fog:<name>"): the start screen's smoke
+    float aspect = 1.f;                  // (the element's width over its height)
 };
 
 // SigmaToParameters and SetBlurWeights, RmlUi's.
@@ -2014,8 +2025,18 @@ void RendererImpl::render_blur(float sigma, Target& source_destination, Target& 
 Rml::CompiledShaderHandle RendererImpl::CompileShader(const Rml::String& name, const Rml::Dictionary& parameters) {
     CompiledShader shader;
     const bool repeating = Rml::Get(parameters, "repeating", false);
-    if (name == "shader") {  // decorator: shader("model:lizard"), one of the game's models (docs/112)
+    if (name == "shader") {  // decorator: shader("model:lizard"), one of the game's models (docs/112), or "fog:start"
         const Rml::String value = Rml::Get(parameters, "value", Rml::String());
+        if (value.rfind("fog:", 0) == 0) {
+            shader.fog = ui::fog::find(value.c_str());
+            const Rml::Vector2f size = Rml::Get(parameters, "dimensions", Rml::Vector2f(1.f));
+            if (!shader.fog || size.x <= 0.f || size.y <= 0.f) {
+                Rml::Log::Message(Rml::Log::LT_WARNING, "Unsupported shader '%s'.", value.c_str());
+                return {};
+            }
+            shader.aspect = size.x / size.y;
+            return reinterpret_cast<Rml::CompiledShaderHandle>(new CompiledShader(std::move(shader)));
+        }
         if (value.rfind("model:", 0) != 0 || value.size() <= 6) {
             Rml::Log::Message(Rml::Log::LT_WARNING, "Unsupported shader '%s'.", value.c_str());
             return {};
@@ -2056,6 +2077,22 @@ void RendererImpl::RenderShader(Rml::CompiledShaderHandle shader, Rml::CompiledG
                                 Rml::Vector2f translation, Rml::TextureHandle) {
     const auto* s = reinterpret_cast<const CompiledShader*>(shader);
     const auto* g = reinterpret_cast<const Geometry*>(geometry);
+    if (s && g && s->fog) {
+        if (!g->count || !prepare(kFog)) return;
+        // Still at its first frame with the animations off (DES_UI_NO_ANIM: the tests' pictures).
+        static const bool still = std::getenv("DES_UI_NO_ANIM") != nullptr;
+        ui::fog::Constants c{};
+        store(mTransform, c.transform);
+        c.translate[0] = translation.x;
+        c.translate[1] = translation.y;
+        ui::fog::fill(*s->fog, still ? 0.0 : std::chrono::duration<double>(std::chrono::steady_clock::now() - mStart).count(),
+                      s->aspect, c);
+        if (const auto gpu = constants(&c, sizeof c)) {
+            gpu_cmd_bind_cb(mCmd, 0, gpu);
+            draw(*g);
+        }
+        return;
+    }
     if (s && g && !s->model.empty()) {
         // The element's box on the target, through the transform, and the model fitted into it.
         Rml::Vector2f lo(1e9f), hi(-1e9f);
