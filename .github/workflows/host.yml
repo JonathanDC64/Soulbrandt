@@ -262,7 +262,7 @@ jobs:
           expected_sha = os.environ["LLVM_SHA256"]
           digest = hashlib.sha256()
           downloaded = 0
-          request = urllib.request.Request(os.environ["LLVM_URL"], headers={"User-Agent": "Soulbrandt-CI"})
+          request = urllib.request.Request(os.environ["LLVM_URL"])
           with urllib.request.urlopen(request, timeout=120) as response, archive_path.open("wb") as target:
               while True:
                   chunk = response.read(1 << 20)
