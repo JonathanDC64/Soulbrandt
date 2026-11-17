@@ -204,6 +204,17 @@ SettingsPage::SettingsPage(Rml::Element* host, menu::PageHost& shell)
         const float mid = peekValue->GetAbsoluteLeft() + peekValue->GetClientWidth() / 2;
         step(x < mid ? -1 : 1);
     });
+    // A click outside an open list closes it, as Esc does, and does nothing else: a click that misses the list never
+    // opens another row or changes a value. The bottom bar's prompts still act as their keys.
+    if (Rml::Element* document = mHost->GetOwnerDocument()) {
+        mTabListeners.push_back(std::make_unique<ScopedEventListener>(document, Rml::EventId::Click, [this](Rml::Event& e) {
+            if (!mList || mModel.mode() != SettingsModel::Mode::List) return;
+            for (Rml::Element* t = e.GetTargetElement(); t; t = t->GetParentNode())
+                if (t == mList || t->GetTagName() == "menu-prompt") return;
+            back();
+            e.StopPropagation();
+        }, true));
+    }
     const Place& place = last_place();
     mPlaceRows = place.rows;
     mPlaceRows.resize(catalog::tabs().size());
@@ -293,14 +304,27 @@ void SettingsPage::build_tab() {
             if (bracket < mBrackets.size()) mBrackets[bracket].last = v.row;
             if (const auto* info = std::get_if<catalog::InfoRow>(&r.kind); info && !info->everyFrame) v.info = info->value();
             const int index = static_cast<int>(mViews.size());
+            // A click picks the row and does what Enter (or its arrow) does, in one; a real move of the pointer over
+            // it picks it (input.hpp's hover_moved), so the help line follows the mouse. An open list, or a field
+            // being typed in, keeps its row: only a click takes the focus from them.
+            mRowListeners.push_back(std::make_unique<ScopedEventListener>(v.row, Rml::EventId::Mousemove, [this, index](Rml::Event&) {
+                const SettingsModel::Mode mode = mModel.mode();
+                if (!input::hover_moved() || index == mModel.focus()) return;
+                if (mode != SettingsModel::Mode::Rows && mode != SettingsModel::Mode::Preview) return;
+                if (mModel.set_focus(index, mFacts)) {
+                    play_sound(kSoundItemFocus);
+                    moved();
+                }
+            }));
             mRowListeners.push_back(std::make_unique<ScopedEventListener>(v.row, Rml::EventId::Click, [this, index](Rml::Event& e) {
                 if (index != mModel.focus()) {
-                    if (mModel.set_focus(index, mFacts)) {
-                        play_sound(kSoundItemFocus);
-                        moved();
-                    }
-                    return;
+                    if (!mModel.set_focus(index, mFacts)) return;
+                    play_sound(kSoundItemFocus);
+                    moved();
                 }
+                // What Enter lists is read for the row with the focus (refresh_facts): a row that just took it, by
+                // this click or by a hover earlier in the same frame, has no count yet, and its list wouldn't open.
+                refresh_facts();
                 const RowView& view = mViews[index];
                 Rml::Element* t = e.GetTargetElement();
                 if (mFacts[index].steps && (t == view.left || t == view.right)) step(t == view.left ? -1 : 1);
@@ -513,6 +537,7 @@ void SettingsPage::update_list() {
         mItems = std::move(items);
         mListRow = focus;
         mList = append(mViews[focus].row, "menu-list");
+        mListShift = 0.f;
         for (size_t k = 0; k < mItems.size(); k++) {
             Rml::Element* e = append(mList, "menu-item");
             append_text_element(e, "menu-text", mItems[k].label);
@@ -523,6 +548,9 @@ void SettingsPage::update_list() {
                 ev.StopPropagation();
                 mModel.set_cursor(static_cast<int>(k), mFacts);
                 pick();
+            }));
+            mRowListeners.push_back(std::make_unique<ScopedEventListener>(e, Rml::EventId::Mousemove, [this, k](Rml::Event&) {
+                if (input::hover_moved() && mModel.set_cursor(static_cast<int>(k), mFacts)) play_sound(kSoundItemFocus);
             }));
             mItemElems.push_back(e);
         }
@@ -669,6 +697,19 @@ void SettingsPage::place_list() {
         set_px(mList, Rml::PropertyId::MaxHeight, view - 4.f);
         mList->SetProperty(Rml::PropertyId::OverflowY, Rml::Property(Rml::Style::Overflow::Auto));
     }
+    // The list is as wide as its longest value, a tag with it (the looks' sheets). Beside its value, one that would run
+    // past the window's right edge moves left, over the value's box, and back as far as it can when the window widens.
+    const Rml::Property* left = beside ? mList->GetProperty(Rml::PropertyId::Left) : nullptr;
+    Rml::Context* context = mList->GetContext();
+    if (!left || !context) return;
+    const float edge = context->GetDimensions().x - 8.f * context->GetDensityIndependentPixelRatio();
+    const float over = mList->GetAbsoluteLeft() + mList->GetOffsetWidth() - edge;
+    const float shift = std::max(0.f, mListShift + over);
+    if (std::fabs(shift - mListShift) < 0.5f) return;
+    const float now = mList->ResolveNumericValue(left->GetNumericValue(), mList->GetContainingBlock().x);
+    if (shift > 0.f) set_px(mList, Rml::PropertyId::Left, now + mListShift - shift);
+    else mList->RemoveProperty(Rml::PropertyId::Left);
+    mListShift = shift;
 }
 
 void SettingsPage::moved() {

@@ -130,6 +130,7 @@ private:
     // The list open beside a value.
     Rml::Element* mList = nullptr;
     int mListRow = -1;
+    float mListShift = 0.f;  // how far left of its place the list moved, to stay in the window (place_list)
     std::vector<rows::Item> mItems;
     std::vector<Rml::Element*> mItemElems;
 

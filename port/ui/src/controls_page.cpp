@@ -130,32 +130,40 @@ void ControlsPage::build() {
         }
         if (!sBrackets.empty()) sBrackets.back().last = v.row;
         const int index = r;
-        const auto click = [this, index](Rml::Event& e) {
-            if (mCapture.active()) return;
+        // The row and key box under the pointer take the focus (on a real move of the pointer: input.hpp's
+        // hover_moved); a click also does what Enter does, in one.
+        const auto take_focus = [this, index](Rml::Event& e) {
             int slot = mSlot;
             for (int s = 0; s < kSlots; s++)
                 for (Rml::Element* t = e.GetTargetElement(); t && t != mViews[index].row; t = t->GetParentNode())
                     if (t == mViews[index].values[s]) slot = s;
-            if (index != mFocus || (mKeys && slot != mSlot)) {
-                mFocus = index;
-                mSlot = mKeys ? slot : 0;
-                play_sound(kSoundItemFocus);
-                return;
-            }
+            if (index == mFocus && (!mKeys || slot == mSlot)) return;
+            mFocus = index;
+            mSlot = mKeys ? slot : 0;
+            play_sound(kSoundItemFocus);
+        };
+        const auto click = [this, take_focus](Rml::Event& e) {
+            if (mCapture.active()) return;
+            take_focus(e);
             press();
         };
+        const auto hover = [this, take_focus](Rml::Event& e) {
+            if (!mCapture.active() && input::hover_moved()) take_focus(e);
+        };
         mRowListeners.push_back(std::make_unique<ScopedEventListener>(v.row, Rml::EventId::Click, click));
+        mRowListeners.push_back(std::make_unique<ScopedEventListener>(v.row, Rml::EventId::Mousemove, hover));
         mViews.push_back(std::move(v));
     }
     mRestore = append_text_element(mRows, "controls-restore", "Restore default buttons");
     mRowListeners.push_back(std::make_unique<ScopedEventListener>(mRestore, Rml::EventId::Click, [this](Rml::Event&) {
         if (mCapture.active()) return;
-        if (mFocus != row_count()) {
-            mFocus = row_count();
-            play_sound(kSoundItemFocus);
-            return;
-        }
-        press();
+        mFocus = row_count();
+        press();  // (it asks first)
+    }));
+    mRowListeners.push_back(std::make_unique<ScopedEventListener>(mRestore, Rml::EventId::Mousemove, [this](Rml::Event&) {
+        if (mCapture.active() || !input::hover_moved() || mFocus == row_count()) return;
+        mFocus = row_count();
+        play_sound(kSoundItemFocus);
     }));
     mFocus = std::clamp(mFocus, 0, row_count());
     mHelpShown.clear();

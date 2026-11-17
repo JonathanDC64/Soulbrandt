@@ -608,7 +608,8 @@ menu-row menu-list {
     left: 764dp;
     right: auto;
     clip: none;
-    width: 240dp;
+    width: auto;  /* (as wide as its longest value, a tag with it; the page keeps it in the window) */
+    min-width: 240dp;
     padding: 5dp 3dp;
     border-width: 0;
     border-radius: 0;

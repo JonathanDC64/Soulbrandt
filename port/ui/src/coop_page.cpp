@@ -4,6 +4,7 @@
 
 #include "coop_window.hpp"
 #include "event.hpp"
+#include "input.hpp"
 #include "sound.hpp"
 #include "ui.hpp"
 
@@ -117,12 +118,13 @@ void CoopPage::build() {
         mActions.push_back(a);
         const int index = static_cast<int>(i);
         mListeners.push_back(std::make_unique<ScopedEventListener>(a, Rml::EventId::Click, [this, index](Rml::Event&) {
-            if (index != mFocus) {
-                mFocus = index;
-                play_sound(kSoundItemFocus);
-            } else {
-                press();
-            }
+            mFocus = index;  // (a click picks the action and does it, in one)
+            press();
+        }));
+        mListeners.push_back(std::make_unique<ScopedEventListener>(a, Rml::EventId::Mousemove, [this, index](Rml::Event&) {
+            if (!input::hover_moved() || index == mFocus) return;  // (a real move of the pointer: input.hpp)
+            mFocus = index;
+            play_sound(kSoundItemFocus);
         }));
     }
     mInfo = append(page, "coop-info");
