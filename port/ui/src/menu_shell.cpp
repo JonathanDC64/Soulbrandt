@@ -133,6 +133,12 @@ MenuShell::MenuShell(bool standalone, DocumentScope scope)
 
     listen(Rml::EventId::Keydown, [this](Rml::Event& e) { on_key(e, true); });
     listen(Rml::EventId::Keyup, [this](Rml::Event& e) { on_key(e, false); });
+    // A right click goes back, as Esc does (and as in the game's own menus): an open list closes, a page goes back.
+    listen(Rml::EventId::Mousedown, [this](Rml::Event& e) {
+        if (e.GetParameter<int>("button", 0) != 1 || !visible() || mModel.level() == menu::Model::Level::Closed) return;
+        command(menu::Command::Back, true);
+        e.StopPropagation();
+    });
     listen(mPrompts, Rml::EventId::Click, [this](Rml::Event& e) {
         for (Rml::Element* t = e.GetTargetElement(); t && t != mPrompts; t = t->GetParentNode())
             if (t->GetTagName() == "menu-prompt") {

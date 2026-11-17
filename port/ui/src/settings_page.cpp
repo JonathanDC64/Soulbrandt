@@ -204,6 +204,17 @@ SettingsPage::SettingsPage(Rml::Element* host, menu::PageHost& shell)
         const float mid = peekValue->GetAbsoluteLeft() + peekValue->GetClientWidth() / 2;
         step(x < mid ? -1 : 1);
     });
+    // A click outside an open list closes it, as Esc does, and does nothing else: a click that misses the list never
+    // opens another row or changes a value. The bottom bar's prompts still act as their keys.
+    if (Rml::Element* document = mHost->GetOwnerDocument()) {
+        mTabListeners.push_back(std::make_unique<ScopedEventListener>(document, Rml::EventId::Click, [this](Rml::Event& e) {
+            if (!mList || mModel.mode() != SettingsModel::Mode::List) return;
+            for (Rml::Element* t = e.GetTargetElement(); t; t = t->GetParentNode())
+                if (t == mList || t->GetTagName() == "menu-prompt") return;
+            back();
+            e.StopPropagation();
+        }, true));
+    }
     const Place& place = last_place();
     mPlaceRows = place.rows;
     mPlaceRows.resize(catalog::tabs().size());
@@ -526,6 +537,7 @@ void SettingsPage::update_list() {
         mItems = std::move(items);
         mListRow = focus;
         mList = append(mViews[focus].row, "menu-list");
+        mListShift = 0.f;
         for (size_t k = 0; k < mItems.size(); k++) {
             Rml::Element* e = append(mList, "menu-item");
             append_text_element(e, "menu-text", mItems[k].label);
@@ -685,6 +697,19 @@ void SettingsPage::place_list() {
         set_px(mList, Rml::PropertyId::MaxHeight, view - 4.f);
         mList->SetProperty(Rml::PropertyId::OverflowY, Rml::Property(Rml::Style::Overflow::Auto));
     }
+    // The list is as wide as its longest value, a tag with it (the looks' sheets). Beside its value, one that would run
+    // past the window's right edge moves left, over the value's box, and back as far as it can when the window widens.
+    const Rml::Property* left = beside ? mList->GetProperty(Rml::PropertyId::Left) : nullptr;
+    Rml::Context* context = mList->GetContext();
+    if (!left || !context) return;
+    const float edge = context->GetDimensions().x - 8.f * context->GetDensityIndependentPixelRatio();
+    const float over = mList->GetAbsoluteLeft() + mList->GetOffsetWidth() - edge;
+    const float shift = std::max(0.f, mListShift + over);
+    if (std::fabs(shift - mListShift) < 0.5f) return;
+    const float now = mList->ResolveNumericValue(left->GetNumericValue(), mList->GetContainingBlock().x);
+    if (shift > 0.f) set_px(mList, Rml::PropertyId::Left, now + mListShift - shift);
+    else mList->RemoveProperty(Rml::PropertyId::Left);
+    mListShift = shift;
 }
 
 void SettingsPage::moved() {
