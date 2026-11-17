@@ -132,16 +132,25 @@ constexpr uint32_t kInvCloseFn = 0x0081FA40u, kEquipCloseFn = 0x00736BB0u, kStat
 constexpr uint32_t kWorldCloseFn = 0x00841A90u, kSystemCloseFn = 0x008ABD18u, kOptionCloseFn = 0x007C8260u;
 /* The pages' own dialogs (the inventory's list and its categories, the equipment's slots); System's is kSystemVt. */
 constexpr uint32_t kInventoryVt = 0x0186C318u, kInvTabsVt = 0x01866570u, kEquipSlotsVt = 0x01866068u;
-/* The inventory's categories (DsMenuDlgEquipListTab): the menu variable +0x108 holds the category shown, of tabs
- * +0xF4 to +0xF4 + +0xF8; +0x104 points to a word for each, not 0 where a step passes it over; a step sets +0xFC and
- * refuses while it is set, and the tabs' update clears it (one step a frame). The inventory (+0x144 names the same
- * variable) changes category with 0x00820DD0(this, right, wrap): it keeps the list's place (+0x108) in menu
- * variable 0x12D + the category left, steps the tabs, takes the new category's place and builds the list. Its
- * input takes left and right in its state 2 (+0x158), and none while 0x00778AB8 says so. */
+/* The category tabs (DsMenuDlgEquipListTab) of the inventory, the storage and the shops: the menu variable +0x108
+ * holds the category shown, of tabs +0xF4 to +0xF4 + +0xF8; +0x104 points to a word for each, not 0 where a step
+ * passes it over; a step sets +0xFC and refuses while it is set, and the tabs' update clears it (one step a frame).
+ * The dialog that owns them (+0x144 names the same variable) changes category with a call of its own (this, right,
+ * wrap). Each begins with their shared step (0x007413E8): it keeps the list's place (+0x108) in menu variable 0x12D
+ * + the category left, steps the tabs and takes the new category's place; then the class builds its list. */
 constexpr uint32_t kTabVar = 0x108u, kTabFirst = 0xF4u, kTabCount = 0xF8u, kTabStepped = 0xFCu, kTabSkip = 0x104u;
-constexpr uint32_t kInvCatVar = 0x144u, kInvPlace = 0x108u, kInvState = 0x158u;
-constexpr uint32_t kInvCategoryFn = 0x00820DD0u, kMenuBusyFn = 0x00778AB8u;
-constexpr int kInvPlaceVars = 0x12D;
+constexpr uint32_t kCatVar = 0x144u, kCatPlace = 0x108u;
+constexpr int kCatPlaceVars = 0x12D;
+/* The owners and their category change: the inventory (DsMenuDlgInventory: its input takes left and right in its
+ * state 2, +0x158, and none while 0x00778AB8 says so), Thomas's Deposit Item (DsMenuDlgDepository) and Take Item
+ * (DsMenuDlgRepository, in its state 2, +0x16C), a merchant (DsMenuDlgBasicShop) and the blacksmith's Repair
+ * (DsMenuDlgFixShop). After the call the shops' inputs set the list's +0x111 (its update places the cursor), and
+ * Repair's own call plays the tick. */
+constexpr uint32_t kInvCategoryFn = 0x00820DD0u, kMenuBusyFn = 0x00778AB8u, kInvState = 0x158u;
+constexpr uint32_t kDepositVt = 0x0186C8A0u, kDepositCategoryFn = 0x00835E10u;
+constexpr uint32_t kTakeVt = 0x0186C9F8u, kTakeCategoryFn = 0x00839748u, kTakeState = 0x16Cu;
+constexpr uint32_t kShopVt = 0x0186DC08u, kShopCategoryFn = 0x008725F8u;
+constexpr uint32_t kRepairVt = 0x0186DD88u, kRepairCategoryFn = 0x00877980u;
 constexpr uint32_t kPromptButton = 0x110u, kPromptState = 0xF8u;
 constexpr int kPromptKindVar = 0x11;           /* its kind: 0 and 1 take no left or right, 6 and 9 place no cursor */
 
@@ -1393,35 +1402,70 @@ bool turn_page_now(ppu_context* ctx, const Spot& s)
     return true;
 }
 
-/* A click on another of the inventory's categories (m its tabs): the category change one press makes, from the tab
- * beside the one clicked. The tabs take one step a frame, so two presses showed the category between for a frame;
- * here the tabs are first set to that neighbour, with the list's place kept for the category left as the step keeps
- * it, and the neighbour's own left as it was. Only while the inventory would take left and right. */
-bool inv_tab_now(ppu_context* ctx, const Menu& m, const Spot& s)
+/* Spot s of menu m is a category tab the tabs' step passes over (greyed: a shop's category with nothing in it).
+ * The pad never reaches it, and a walk to it went round the others and stopped on one of them. */
+bool tab_passed_over(const Menu& m, const Spot& s)
 {
-    uint32_t inv = 0;
-    for (const Drawn& d : s_draws)   /* (drawn: a category with no items gives its list no spots, so no menu) */
-        if (d.vt == DES_AT(kInventoryVt) && d.vis) inv = d.dlg;
+    if (vm_read32(m.owner) != DES_AT(kInvTabsVt) || s.r != 0) return false;
+    const int first = (int)vm_read32(m.owner + kTabFirst), count = (int)vm_read32(m.owner + kTabCount);
+    if (s.c < first || s.c >= first + count) return false;
+    const uint32_t skip = vm_read32(m.owner + kTabSkip) + 4u * (uint32_t)s.c;
+    return guest_ok(skip, 4) && vm_read32(skip) != 0;
+}
+
+/* How a dialog that owns category tabs changes category (its input's left and right), or false if it is none. */
+struct CatOwner {
+    uint32_t change;   /* its call (this, right, wrap) */
+    uint32_t state;    /* where its input needs 2, or 0 */
+    bool busy;         /* its input takes nothing while 0x00778AB8 says so */
+    bool place;        /* its input sets the list's +0x111 after the call */
+    bool ticks;        /* the call plays the tick */
+};
+
+bool cat_owner(uint32_t vt, CatOwner& o)
+{
+    if (vt == DES_AT(kInventoryVt)) o = {DES_AT(kInvCategoryFn), kInvState, true, false, false};
+    else if (vt == DES_AT(kDepositVt)) o = {DES_AT(kDepositCategoryFn), 0, false, false, false};
+    else if (vt == DES_AT(kTakeVt)) o = {DES_AT(kTakeCategoryFn), kTakeState, false, false, false};
+    else if (vt == DES_AT(kShopVt)) o = {DES_AT(kShopCategoryFn), 0, false, true, false};
+    else if (vt == DES_AT(kRepairVt)) o = {DES_AT(kRepairCategoryFn), 0, false, true, true};
+    else return false;
+    return true;
+}
+
+/* A click on another category (m the tabs): the category change one press makes, from the tab beside the one
+ * clicked. The tabs take one step a frame, so two presses showed the category between for a frame; here the tabs
+ * are first set to that neighbour, with the list's place kept for the category left as the step keeps it, and the
+ * neighbour's own left as it was. Only while the owner would take left and right. 0: not done; 1: done, the tick
+ * still to play; 2: done with the tick. */
+int tab_now(ppu_context* ctx, const Menu& m, const Spot& s)
+{
     const uint32_t tabs = m.owner;
-    if (!inv || s.r != 0) return false;
     const int var = (int)vm_read32(tabs + kTabVar);
-    if ((int)vm_read32(inv + kInvCatVar) != var) return false;   /* (another dialog's tabs) */
-    if (!(vm_read32(inv + kDlgInput) & 0x80000000u) || vm_read32(inv + kInvState) != 2) return false;
-    if (vm_read32(tabs + kTabStepped) != 0 || call_addr(ctx, DES_AT(kMenuBusyFn), {}) != 0) return false;
+    uint32_t dlg = 0;
+    CatOwner o{};
+    for (const Drawn& d : s_draws) {   /* (drawn: a category with no items gives its list no spots, so no menu) */
+        CatOwner c;
+        if (d.vis && cat_owner(d.vt, c) && (int)vm_read32(d.dlg + kCatVar) == var) dlg = d.dlg, o = c;
+    }
+    if (!dlg || s.r != 0) return 0;
+    if (!(vm_read32(dlg + kDlgInput) & 0x80000000u) || (o.state && vm_read32(dlg + o.state) != 2)) return 0;
+    if (vm_read32(tabs + kTabStepped) != 0 || (o.busy && call_addr(ctx, DES_AT(kMenuBusyFn), {}) != 0)) return 0;
     const int first = (int)vm_read32(tabs + kTabFirst), count = (int)vm_read32(tabs + kTabCount);
     const int from = menu_var(ctx, var), to = s.c, last = first + count - 1;
-    if (count < 2 || from < first || from > last || to < first || to > last || to == from) return false;
+    if (count < 2 || from < first || from > last || to < first || to > last || to == from) return 0;
     const uint32_t skip = vm_read32(tabs + kTabSkip) + 4u * (uint32_t)to;   /* (by the tab's own number) */
-    if (!guest_ok(skip, 4) || vm_read32(skip) != 0) return false;   /* (a step passes it over) */
+    if (!guest_ok(skip, 4) || vm_read32(skip) != 0) return 0;   /* (a step passes it over) */
     const int right = to > from ? 1 : 0;
     const int beside = right ? (to == first ? last : to - 1) : (to == last ? first : to + 1);
-    call_game(ctx, func_00720F50, {kInvPlaceVars + from, (int32_t)vm_read32(inv + kInvPlace)});
+    call_game(ctx, func_00720F50, {kCatPlaceVars + from, (int32_t)vm_read32(dlg + kCatPlace)});
     call_game(ctx, func_00720F50, {var, beside});
-    vm_write32(inv + kInvPlace, (uint32_t)menu_var(ctx, kInvPlaceVars + beside));
-    call_addr(ctx, DES_AT(kInvCategoryFn), {inv, right, 1});
+    vm_write32(dlg + kCatPlace, (uint32_t)menu_var(ctx, kCatPlaceVars + beside));
+    call_addr(ctx, o.change, {dlg, right, 1});
+    if (o.place) vm_write8(dlg + kListPlace, 1);
     const int now = menu_var(ctx, var);
-    if (s_log) fprintf(stderr, "[mm] category %d to %d at once (%d)\n", from, to, now);
-    return now == to;
+    if (s_log) fprintf(stderr, "[mm] category %d to %d of 0x%08X at once (%d)\n", from, to, dlg, now);
+    return now != to ? 0 : o.ticks ? 2 : 1;
 }
 
 /* Selects spot s of menu m at once, as the menu's own input code does it, with one tick; false where this menu
@@ -1434,8 +1478,10 @@ bool inv_tab_now(ppu_context* ctx, const Menu& m, const Spot& s)
  *   input keeps to row 0 while +0xF5 is set, and steps over row 1 (Load Profile) while +0xF7 is.
  * - A list (DsMenuDlgListbox's: the inventory, ...; any class that keeps its cursor placement at vt+0x8C): the row
  *   in its window is +0x100, of +0xF4 rows, from item +0x108 of +0x104. Its step (0x00780E80) sets the row and the
- *   byte +0x111 (its update places the cursor and takes the item), then calls vt+0x84(this, up, moved): the class's
- *   "row moved", the tick with it. A row in the window with an item needs no scrolling, so the same does it.
+ *   byte +0x111 (the inventory's update then places the cursor), then calls vt+0x84(this, up, moved): the class's
+ *   "row moved", the tick with it. A row in the window with an item needs no scrolling, so the same does it, and
+ *   then places the cursor (vt+0x8C, which clears +0x111), as an NPC's talk menu (DsMenuDlgTalkMsgbox) does after
+ *   a step: its update places nothing.
  * - A button group (DsMenuDlgButtonGroup and the classes that keep its vt+0x88 or its input at vt+0x8C: the
  *   inventory's command menu, the equipment's slots): its step (0x00777A18) sets the row +0xF4 (the column +0xF8)
  *   and calls vt+0x84(this, moved), the class's "moved" (the command menu's and the equipment's play the tick); its
@@ -1445,7 +1491,7 @@ bool inv_tab_now(ppu_context* ctx, const Menu& m, const Spot& s)
  * - Options: its row is menu variable 0x51. Its step up (0x007CC598, from the row below) sets it, the help line
  *   for it and every row's arrows; 0x007CA320 then places the cursor. DEFAULT (OK's column 1, row 12) is the step
  *   right from OK (0x007CA7E0), then OK's row redrawn (0x007CAA70), as its input does it.
- * - The inventory's categories: inv_tab_now.
+ * - The category tabs (the inventory's, the storage's, the shops'): tab_now.
  * - The profile list (LOAD GAME's, and System's Load Profile): its row is +0xF8, 0 to 3. Its step goes one row with
  *   no row skipped, and its update places the cursor from it every frame.
  * - The system layer's prompts (yes/no, Drop's count): the button is +0x110, from 1. Its steps (vt+0x8C, +0x90)
@@ -1457,11 +1503,13 @@ bool select_now(ppu_context* ctx, const Menu& m, const Spot& s)
     if (m.cur < 0 || !grid_spot(s)) return false;
     const uint32_t vt = vm_read32(m.owner);
     if (vt == DES_AT(kStartTabVt) && m.stay) return turn_page_now(ctx, s);   /* (the page has the pad, not the bar) */
-    const bool cats = vt == DES_AT(kInvTabsVt);   /* (the inventory has the pad, not its categories) */
+    const bool cats = vt == DES_AT(kInvTabsVt);   /* (their owner has the pad, not the tabs) */
     if (!cats && !(vm_read32(m.owner + kDlgInput) & 0x80000000u)) return false;   /* a dialog over it has the pad */
     bool tick = true;
     if (cats) {
-        if (!inv_tab_now(ctx, m, s)) return false;
+        const int done = tab_now(ctx, m, s);
+        if (!done) return false;
+        tick = done == 1;
     } else if (vt == DES_AT(kStartTabVt) && !m.stay) {
         if (s.r != 0 || s.c < 0 || s.c >= kTabs) return false;
         call_game(ctx, func_00720F50, {kBarTabVar, s.c});
@@ -1479,6 +1527,7 @@ bool select_now(ppu_context* ctx, const Menu& m, const Spot& s)
         vm_write32(m.owner + kListRow, (uint32_t)s.r);
         vm_write8(m.owner + kListPlace, 1);
         call_virtual(ctx, m.owner, 0x84, {m.owner, s.r < from ? 1 : 0, 1});
+        call_virtual(ctx, m.owner, 0x8C, {m.owner});   /* the cursor placed now (it clears +0x111) */
         tick = false;
     } else if (virtual_code(vt, 0x88) == DES_AT(kGroupNoHookFn) || virtual_code(vt, 0x8C) == DES_AT(kGroupInputFn)) {
         const int rows = (int)vm_read32(m.owner + kGroupRows), cols = (int)vm_read32(m.owner + kGroupCols);
@@ -1573,6 +1622,10 @@ void handle_events(ppu_context* ctx)
                     break;
                 }
                 start_slide(m, m.spots[si], e.x);
+                break;
+            }
+            if (tab_passed_over(m, m.spots[si])) {   /* a greyed category, as a shop's: no press reaches it */
+                if (s_log) fprintf(stderr, "[mm] click on greyed tab %d of 0x%08X: nothing\n", m.spots[si].c, m.owner);
                 break;
             }
             /* Where the menu can be, the spot is selected at once; the walk then only confirms (or walks, if the
