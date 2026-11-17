@@ -16,14 +16,14 @@ Two labels are used below:
 
 > **Built (2026-11-09): Change Appearance at the Nexus statue**, `DES_APPEARANCE`, off by default (section 1.10). The statue's menu gets a row that opens the game's own Edit Appearance from character creation.
 
-> **Built (2026-11-17): Change Name and Change Gender at the Nexus statue**, `DES_IDENTITY`, on by default but only with `DES_APPEARANCE` on (section 1.11). Change Gender swaps armour made for one body for the other body's version.
+> **Built (2026-11-17): Change Name and Change Body at the Nexus statue**, `DES_IDENTITY`, on by default but only with `DES_APPEARANCE` on (section 1.11). On a body change, worn armour made only for the other body comes off and stays in the inventory.
 
 ## Summary
 
 | Feature | Verdict | Effort |
 |---|---|---|
 | Change Appearance | **Built** (section 1.10): `DES_APPEARANCE` adds a row to the statue's menu that opens Edit Appearance. Keeping the changes reloads the Nexus. | Done. |
-| Change Name and Change Gender | **Built** (section 1.11): `DES_IDENTITY`, with `DES_APPEARANCE`, adds both rows. The name goes through the on-screen keyboard. A new gender swaps paired armour and opens Edit Appearance, then the Nexus reloads. | Done. |
+| Change Name and Change Body | **Built** (section 1.11): `DES_IDENTITY`, with `DES_APPEARANCE`, adds both rows. The name goes through the on-screen keyboard. A new body takes off worn armour made only for the other body, opens Edit Appearance, then the Nexus reloads. | Done. |
 | Stat respec | **Built** (section 1.9): `DES_RESPEC` makes the statue in front of the Nexus spawn open a menu whose Respecialization resets to the class, refunds the levels and opens the level-up screen. The Maiden in Black's menu has the same row after Seek Soul Power. | Done. No on-screen prompt at the statue yet. |
 | Use several souls at once | **Built** (section 2.5): `DES_SOULS_AT_ONCE` makes Use on a soul stack ask how many, in Drop's count picker. | Done. |
 | 8-direction rolls while locked on | **Built** (section 3.7): `DES_ROLLDIR` plays the roll the game picks and turns the character toward the stick, so a roll goes where the stick points. | Done. True diagonal roll animations: not feasible (new animation content). |
@@ -276,67 +276,55 @@ Issue #463. With the knob on, the statue's menu (section 1.9) gets Change Appear
 
 Addresses for the Japanese and Asian discs come from `tools/region` and the two objects' sizes were checked at their allocation sites on all four programs, but neither disc was run with this. The title bar's vtable, which `tools/region` can't place, was matched by hand: on each of the three programs, the 18 of its first 24 entries checked against mapped code all agree, at one place only. Not tested either: the mouse in these pages, other classes and the male body, and a real pad by hand.
 
-### 1.11 Built: `DES_IDENTITY`, Change Name and Change Gender (2026-11-17)
+### 1.11 Built: `DES_IDENTITY`, Change Name and Change Body (2026-11-17)
 
-Issue #487. With `DES_APPEARANCE` on, `DES_IDENTITY` (Settings, Game; on by default) adds two rows to the statue's menu, after Change Appearance: Change Name and Change Gender. With `DES_APPEARANCE` off it does nothing, so the default game is unchanged.
+Issue #487. With `DES_APPEARANCE` on, `DES_IDENTITY` (Settings, Game; on by default) adds two rows to the statue's menu, after Change Appearance: Change Name and Change Body. With `DES_APPEARANCE` off it does nothing, so the default game is unchanged.
 
 **What the player sees.**
-- **Change Name** opens the on-screen keyboard with the character's name in it. Its title is the game's own "Name" text (Create Profile's row, FMG category 77, id 32002), and it takes 16 characters, as Create Profile does. Done writes the name. Cancel, or Done with nothing typed or with the same name, changes nothing. The Status page and Edit Appearance show the new name at once. The Profile List (Load Profile) shows it at once in game, and its file has it from the next load or Quit Game.
-- **Change Gender** asks first ("Change to a male body?", with what happens to the armour). YES gives the character the other body, then opens Edit Appearance on the new body. After Back the Nexus reloads, about 15 seconds. If something was edited, the question is "Keep these appearance changes?": YES keeps them, NO puts the face and hair back as they were just after the body changed. Either way the new body stays.
+- **Change Name** opens the on-screen keyboard with the character's name in it. Its title is the game's own "Name" text (Create Profile's row, FMG category 77, id 32002), and it takes 16 characters, as Create Profile does. Done writes the name. Cancel, or Done with nothing typed or with the same name, changes nothing. The Status page and Edit Appearance show the new name at once. The Profile List (Load Profile) shows it at once in game, and its file has it from the next load or Quit Game. There is no reload.
+- **Change Body** asks first ("Change to a male body?", and that worn armour made only for the other body comes off). YES gives the character the other body, then opens Edit Appearance on the new body. After Back the Nexus reloads, about 15 seconds. If something was edited, the question is "Keep these appearance changes?": YES keeps them, NO puts the face and hair back as they were just after the body changed. Either way the new body stays.
 
 **The name** (read). UTF-16, big-endian, at PGD+0x90: 16 characters and the end, through +0xB1. The online name is a different one and does not change. The keyboard is the one the UI shows for the game's cellOskDialog (`port/ui`). The port opens it with `des_ui_keyboard` (`port/ui/include/des_ui.h`) and a callback. Without the UI (`DES_UI=0`, or a build without it) the Change Name row does not show. After the name is written, the SaveRequest script binding (0x004418B8) saves the character's file. That does not write the save list (`04USER.DAT`); the game writes the list at the next load and at Quit Game.
 
 **The body** (read). Byte PGD+0xB2: 0 female, 1 male, as Create Profile sets it. A reload (the scripts' WarpNextStage, as in section 1.10) rebuilds the character with the other body, its hair models and its armour models.
 
-**Armour for one body.** EquipParamProtector's `equipModelGender` (+0x01) says which bodies an item has a model for: 1 male, 2 female, 0 or 3 both.
-- **In the game's lists.** An item for the other body shows greyed out, so that body can't put it on.
-- **Worn anyway** (written into PGD). It counts in full, and the game draws the body's own model of the same number: the male Dark Silver Helmet on a female body is drawn as the gold Dull Gold one.
-- **Pairs.** Some items come as one for each body, with the same model number and category (`equipModelId` +0x02, `equipModelCategory` +0x00) but their own names and stats:
-
-| Model | Male | Female |
-|---|---|---|
-| 8100 | Dark Silver Helmet, Armor, Gauntlets, Leggings | Dull Gold Helmet, Armor, Gauntlets, Leggings |
-| 8120 | Ancient King's Mask, Breastplate, Gauntlets, Leggings | Binded Hood, Cross, Gloves, Boots |
-| 7100 | Venerable Sage's Hood, Robe, Gloves, Boots | Three-Cornered Hat, Old Ragged Robes, Gloves, Boots |
-| 5000 | Shaman's Clothes, Armbands, Tabi | Rogue's Clothes, Gloves, Boots |
-
-- **No pair:** Gold Mask (female, model 5000 head); Saint's Robe, Gloves and Boots (male, 8130); Silver Bracelets (female, 9020).
+**Armour made for one body** (read). EquipParamProtector's `equipModelGender` (+0x01) is what the Equipment menu goes by.
+- **The rule.** The menu (0x0082E8F0) gets each piece's row with the protector getter 0x005A13E8, then compares +0x01 with the body byte: 1 means only a male body may wear it, 2 only a female body, anything else both. A piece the body may not wear is listed greyed out, so that body can't put it on.
+- **Worn anyway** (written into PGD). It counts in full, and the game draws the body's own model of the same number: the male Dark Silver Helmet on a female body is drawn as the gold Dull Gold one. That is why Change Body takes such pieces off.
 - **Hairstyles** are rows too (category 4): 500000-500900 male and 501000-501900 female, numbered 0-9.
 
-**What Change Gender does** (`change_body` in `port/des_respec.cpp`):
-1. **The item list.** PGD+0x1F4: +0x0C size, +0x10 entries of 0x20 bytes. Each entry has the category at +0x00 (0x10000000 for armour), the id at +0x04, and +0x14 set while the entry is in use. Each piece made only for the old body that has a pair becomes its pair, in place.
-2. **Durability.** There is one 8-byte record per item-list entry, from *(PGD+0x234); +0x00 is the durability now. The new item gets the same share of its own maximum (`durabilityMax`, +0x1A). For example, Binded Cross at 150 of 300 becomes Ancient King's Breastplate at 400 of 800.
-3. **What is worn.** Two arrays of 24 words: PGD+0x138 holds each slot's item-list entry, PGD+0x198 the item's id. Slots 10-13 are head, body, arms and legs; slot 14 is the hairstyle (no entry).
-   - A worn pair follows its entry.
-   - A worn piece with no pair comes off, as the Equipment menu's Unequip takes it off. The slot then wears its category's "No Equipment" row from the item list (101700 head, 201700 body, 301500 arms, 401500 legs: model 0, both bodies). If the row is not in the list, AddItem (0x008FB4F0) adds it, as Unequip does. The piece stays in the inventory, greyed out for the new body.
-   - The hairstyle becomes the new body's style of the same number. The game already draws that one.
-4. **The Storage Monument's box**, *(PGD+0x478): 2048 records of 20 bytes from +0x0C. Each record has category | id at +0x00 (0xFFFFFFFF when free) and the durability at +0x0C. Pairs are swapped as in the item list.
+**What Change Body does** (`change_body` in `port/des_respec.cpp`):
+1. **What is worn.** Two arrays of 24 words: PGD+0x138 holds each slot's item-list entry, PGD+0x198 the item's id. Slots 10-13 are head, body, arms and legs; slot 14 is the hairstyle (no entry).
+2. **Armour the new body may not wear comes off**, by the menu's rule above, as the Equipment menu's Unequip takes it off. The slot then wears its category's "No Equipment" row from the item list (101700 head, 201700 body, 301500 arms, 401500 legs: model 0, both bodies). The item list is at PGD+0x1F4 (+0x0C size, +0x10 entries of 0x20 bytes; +0x00 category, 0x10000000 for armour; +0x04 id; +0x14 set while in use). If the row is not in the list, AddItem (0x008FB4F0) adds it, as Unequip does. Armour both bodies may wear stays on.
+3. **Nothing else changes.** The pieces taken off stay in the inventory as they are (same item, same entry, same durability), and the Storage Monument is not touched. The game's own Equip does not mark the list either: equipping a piece from the menu left the item list, the durability records and the box byte for byte the same.
+4. **The hairstyle** becomes the new body's style of the same number (same category and model). The game already draws that one.
 5. **The body byte** is written last.
 
-The armour rows come from the game's own param table, found by its type name `EQUIP_PARAM_PROTECTOR_ST` (0x005A5920, as section 2.5 finds the SpEffect table). So the pairs come from the game's data, not from a list in the code. No new addresses were needed: every function used already had its line for the other discs.
+The armour rows come from the game's own param table, found by its type name `EQUIP_PARAM_PROTECTOR_ST` (0x005A5920, as section 2.5 finds the SpEffect table). No new addresses were needed: every function used already had its line for the other discs.
 
-**The log.** One line per change, for example `[des] identity: body female to male; 1 item(s) swapped, 1 in storage, 1 taken off` and `[des] identity: new name, 7 characters; save requested`. `DES_RESPEC_LOG=1` adds the steps.
+**The log.** One line per change, for example `[des] identity: body female to male; 2 piece(s) taken off, hairstyle 501800 to 500800` and `[des] identity: new name, 7 characters; save requested`. `DES_RESPEC_LOG=1` adds the steps.
 
-**Tests.** US disc, a copy of a female Soldier's save in the Nexus, hidden window, unlocked fps. For some checks, PGD was written first and the Nexus reloaded to set up the equipment.
+**Tests.** US disc, a copy of a female Soldier's save in the Nexus, hidden window, unlocked fps. For some checks, PGD was written first and the Nexus reloaded to set up the equipment. Before and after each body change, these were read and compared: every item-list entry up to the highest in use (66), their durability records, and the box's records up to its high-water mark (20).
 
 | Check | Result |
 |---|---|
-| Rows, all three knobs on | Respecialization, Change Appearance, Change Name, Change Gender, Leave |
+| Rows, all three knobs on | Respecialization, Change Appearance, Change Name, Change Body, Leave |
 | `DES_IDENTITY=0` / `DES_APPEARANCE=0` with `DES_RESPEC=1` / all off | Change Appearance, Leave / Respecialization, Leave / the statue doesn't answer |
 | Change Name, type "73", Done | PGD and Status show Aldia73; the character's file is saved at once |
 | Change Name again, then Load Profile, then Quit Game | the in-game list shows the new name; `04USER.DAT` has it after Quit Game; the title's Profile List shows it |
 | Change Name, type, Cancel | name unchanged |
-| Change Gender, female to male. Worn: the male Dark Silver Helmet, Binded Cross (150/300), Silver Bracelets. In storage: Three-Cornered Hat (100/300) | helmet kept; Ancient King's Breastplate 400/800; arms take No Equipment, added to the list (the bracelets stay in it); Venerable Sage's Hood 167/500 in storage; hair 501800 to 500800 |
-| Then the editor: Origin changed, Back, NO | the question shows; the face bytes are as right after the body change; reload; male body, Status says Male, the new armour drawn |
-| Male to female, editor changed, YES | 4 pieces swapped (the helmet, the breastplate, and the Dark Silver Gauntlets and Leggings in the list); the hat back at 100/300; hair 501800; the edit kept; female body drawn with the gold helmet |
-| The question answered NO | nothing changes |
+| Change Body, the question | "Change to a male body?", the armour line, "Edit Appearance opens next." |
+| Change Body, female to male. Worn: Assassin's Mask (both bodies), Binded Cross (female, has a male pair, 150/300), Silver Bracelets (female, no pair, 50/100), legs 400200 (both bodies). In storage: Three-Cornered Hat (100/300) | mask and legs stay on; body and arms wear No Equipment (the arms row was added to the list, as Unequip adds it); Binded Cross and Silver Bracelets stay in the list, same entries, same durability; nothing else in the list changed; storage the same byte for byte; hair 501800 to 500800 |
+| Then Back from Edit Appearance with nothing edited | no question; the Nexus reloads; male body, bare chest and arms, mask and legs on; Equipment lists Binded Cross (150) and Silver Bracelets (50) greyed out, the Dark Silver Gauntlets wearable |
+| The Equipment menu puts the male Dark Silver Gauntlets (550/550) on; Change Body, male to female | the gauntlets come off onto the No Equipment row already in the list (nothing added); mask, legs and the empty body stay; list, durability and storage the same byte for byte; hair 500800 to 501800; after the reload: female body, the gauntlets greyed out (550), Silver Bracelets wearable again |
+| Edit Appearance after a body change: Origin changed, Back, NO / changed, YES (first version of this change; this code has not changed since) | NO: the face is as right after the body change, the new body stays; YES: the edit is kept; the Nexus reloads either way |
+| Change Body, the question answered NO | nothing changes |
 
 Not tested:
 - other discs (no new addresses);
 - a real pad and keyboard by hand, and the mouse on the keyboard;
 - letters typed (the test types digits);
-- a full Storage box;
-- a character with a Shaman's or Rogue's set;
+- a full item list with a No Equipment row missing (AddItem would have no room; the slot then keeps its piece and the log says so);
 - seamless co-op after a rename (its setup reads the name from `04USER.DAT`, which follows at the next load).
 
 ## 2. Use several souls at once
