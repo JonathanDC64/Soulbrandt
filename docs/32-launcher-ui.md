@@ -676,6 +676,24 @@ elements. Settings opened from setup does follow the look, as does the start
 screen (`body.prelaunch`). `ui_render_compare`'s `des-setup-*` pages draw
 setup in DeS UI, to compare with its `setup-*` pages.
 
+In DeS UI the start screen sits on black, and smoke rises and churns behind
+it, drawn live:
+
+- **How.** RmlUi's `shader` decorator with the value `fog:start`
+  (`fog_shader.hpp`), one pixel shader over the element. The smoke is 3D
+  gradient noise with time as its third axis, so its shapes change instead of
+  sliding, bent by two more noises so it curls. Its numbers were tuned on a
+  preview page that ran the same maths in WebGL 2.
+- **The hash.** The noise's lattice is hashed in integers (PCG3D). A float
+  hash drew straight seams along the cells' edges, because the compiler may
+  reorder its maths.
+- **Where it draws.** Only on the menus' GPU-layer renderer (`render_gpu.cpp`:
+  Windows, D3D12 and Vulkan). The older renderer (`render_d3d12.cpp`, Linux)
+  and the D3D11 fallback draw no fog, so there the start screen is plain
+  black with the same gradients.
+- **Still.** With `DES_UI_NO_ANIM` (the tests' pictures) the smoke stands at
+  its first frame.
+
 How it works:
 
 - **The list.** `looks.hpp` lists the looks. Each look's `id` is three
