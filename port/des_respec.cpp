@@ -57,15 +57,13 @@
  *   uses (cellOskDialog's, drawn by the UI: des_ui_keyboard), 16 characters as
  *   in Create Profile. Done writes the name into PGD and asks the game to save.
  *   The online name is not this one and does not change.
- * - Change Gender asks first, then gives the character the other body (the
- *   Create Profile choice). Armour made for one body is swapped for the other
- *   body's item of the same model (Dull Gold for Dark Silver, Binded for
- *   Ancient King's, ...) in the item list, the worn slots and the Storage
- *   Monument's box, with the same share of durability; worn armour with no
- *   such item comes off (Saint's, Silver Bracelets, Gold Mask), since the
- *   game's lists grey it out for the other body, which can't put it on. The
- *   hairstyle becomes the new body's of the same number. Edit Appearance then
- *   opens on the new body, and the Nexus reloads after it. */
+ * - Change Body asks first, then gives the character the other body (the
+ *   choice made in Create Profile). Worn armour the new body may not wear
+ *   comes off, as the Equipment menu's Unequip takes it off: the pieces the
+ *   menu greys out for that body (Dark Silver, Dull Gold, Saint's, ...). They
+ *   stay in the inventory as they are, and the Storage Monument is not
+ *   touched. The hairstyle becomes the new body's of the same number. Edit
+ *   Appearance then opens on the new body, and the Nexus reloads after it. */
 
 #include "ps3emu/ppu_lift.h"
 #include "des_region.h"      /* DES_AT: the running disc's addresses */
@@ -102,7 +100,7 @@ constexpr uint32_t kPgdLevels = 0x88u;         /* levels bought */
 constexpr uint32_t kPgdClass  = 0xB6u;         /* halfword */
 constexpr uint32_t kPgdName   = 0x90u;         /* UTF-16 (big-endian): 16 characters and the end */
 constexpr uint32_t kNameMax   = 16;            /* what Create Profile's keyboard takes */
-constexpr uint32_t kPgdBody   = 0xB2u;         /* byte: 0 female, 1 male (Create Profile's Gender) */
+constexpr uint32_t kPgdBody   = 0xB2u;         /* byte: 0 female, 1 male (as Create Profile sets it) */
 constexpr int64_t  kSoulsCap  = 999999999;     /* the constant at 0x016FF700 */
 constexpr uint32_t kChrMan    = 0x01B3D6E0u;   /* *this + 0x1BC: the player's character */
 
@@ -140,7 +138,7 @@ constexpr int32_t kMaidenSeekRow = 1, kMaidenRespecRow = 70;
 const char kRespecText[] = "Respecialization";
 const char kLookText[] = "Change Appearance";
 const char kNameText[] = "Change Name";
-const char kBodyText[] = "Change Gender";
+const char kBodyText[] = "Change Body";
 
 /* The statue, in the Nexus (map m01): a save that quit there starts at (0, 479.46, -41.69), facing it (-z); the
  * player stops against it at z -41.8. Cross from in front of it, within kReach of (kStatueX, kStatueZ). */
@@ -397,17 +395,17 @@ const char kAsk[] = "Return to your class's starting stats?\nThe souls of every 
 const char kCapped[] = "Not now: with the souls back,\nyou would hold more than 999,999,999.";
 const char kKeep[] = "Keep this appearance?\nThe Nexus reloads to show it.";
 const char kKeepBody[] = "Keep these appearance changes?\nThe Nexus reloads with the new body either way.";
-const char kToMale[] = "Change to a male body?\nArmour made for one body becomes the male\nversion, or comes off if it has none.\n"
+const char kToMale[] = "Change to a male body?\nWorn armour made only for a female body\ncomes off and stays in the inventory.\n"
                        "Edit Appearance opens next.";
-const char kToFemale[] = "Change to a female body?\nArmour made for one body becomes the female\nversion, or comes off if it "
-                         "has none.\nEdit Appearance opens next.";
+const char kToFemale[] = "Change to a female body?\nWorn armour made only for a male body\ncomes off and stays in the inventory.\n"
+                         "Edit Appearance opens next.";
 
 /* idle; menu, the statue's open; confirm, its question; notice, the cap's; maiden, her menu open with our row;
  * maiden_ask, our row answered, her menu closing; maiden_confirm and maiden_notice, the question and the cap's
  * notice while her script waits; maiden_again, the dialog closing before her menu comes back. look_title, the statue
  * menu's title bar going; look_load, the title's menus loading; look_edit, the editor open; look_close, the title's
  * menus ending; look_settle, their pages going; look_keep, the question. name, the keyboard up; name_end, its
- * buttons being let go. body, the gender question. */
+ * buttons being let go. body, the Change Body question. */
 enum class Phase {
     idle, menu, confirm, notice, maiden, maiden_ask, maiden_confirm, maiden_notice, maiden_again,
     look_title, look_load, look_edit, look_close, look_settle, look_keep, name, name_end, body,
@@ -631,7 +629,7 @@ constexpr uint32_t kLookCounter = 0x2C8u;   /* a word the editor moves as well; 
 uint8_t s_look[kLookSize];
 uint32_t s_look_counter = 0;
 uint32_t s_menu_task = 0, s_menu_step = 0, s_face_task = 0;
-bool s_body_changed = false;   /* the editor opened after Change Gender: the Nexus reloads after it, whatever the answer */
+bool s_body_changed = false;   /* the editor opened after Change Body: the Nexus reloads after it, whatever the answer */
 
 /* The warp the scripts use, to this map again: the character is rebuilt from PGD. */
 void reload(ppu_context* ctx)
@@ -809,23 +807,20 @@ void name_tick(ppu_context* ctx)
     fprintf(stderr, "[des] identity: new name, %u characters; save requested\n", s_name_len);
 }
 
-/* ---- Change Gender ---- */
+/* ---- Change Body ---- */
 
 constexpr uint32_t kPgdInv = 0x128u;          /* the inventory (AddItem's r3) */
 constexpr uint32_t kPgdItems = 0x1F4u;        /* the item list: +0x0C its size, +0x10 its entries of 0x20 bytes */
-constexpr uint32_t kPgdDurability = 0x224u;   /* one record of 8 bytes per list entry: +0x0C its size, +0x10 them */
 constexpr uint32_t kPgdWornEntry = 0x138u, kPgdWornId = 0x198u;   /* per slot: the list entry worn, and its id */
 constexpr uint32_t kSlotHead = 10, kSlotLegs = 13, kSlotHair = 14;
-constexpr uint32_t kPgdBox = 0x478u;          /* *this: the Storage Monument's box */
-constexpr uint32_t kBoxRecords = 2048, kBoxFirst = 0x0Cu, kBoxRecord = 20, kBoxDurability = 0x0Cu;
 constexpr uint32_t kCatProtector = 0x10000000u;
 /* An entry: +0x00 the category, +0x04 the id, +0x14 a byte that is 1 while it holds an item. */
 constexpr uint32_t kEntryCat = 0x00u, kEntryId = 0x04u, kEntryUsed = 0x14u, kEntrySize = 0x20u;
 
 /* EquipParamProtector's rows (hairstyles are rows too): the model's category at +0x00 (5 head, 2 body, 1 arms, 6 legs,
- * 4 hair), the bodies it has a model for at +0x01 (1 male, 2 female, 0 or 3 both), the model at +0x02 and the
- * durability's maximum at +0x1A. */
-struct Prot { int32_t id; uint8_t cat, gender; uint16_t model, durability; };
+ * 4 hair), the body it is made for at +0x01 and the model at +0x02. +0x01 is what the Equipment menu greys a piece
+ * out by (0x0082E8F0): 1 only a male body may wear it, 2 only a female one, anything else both. */
+struct Prot { int32_t id; uint8_t cat, made_for; uint16_t model; };
 constexpr uint8_t kMale = 1, kFemale = 2, kBoth = 3;
 
 const std::vector<Prot>& protectors(ppu_context* ctx)
@@ -843,8 +838,7 @@ const std::vector<Prot>& protectors(ppu_context* ctx)
         const uint32_t n = vm_read16(file + 0x0A);
         for (uint32_t k = 0; k < n; k++) {
             const uint32_t row = file + vm_read32(file + 0x30 + 12 * k + 4);
-            s_rows.push_back({(int32_t)vm_read32(file + 0x30 + 12 * k), vm_read8(row), vm_read8(row + 1),
-                              vm_read16(row + 2), vm_read16(row + 0x1A)});
+            s_rows.push_back({(int32_t)vm_read32(file + 0x30 + 12 * k), vm_read8(row), vm_read8(row + 1), vm_read16(row + 2)});
         }
         break;
     }
@@ -857,24 +851,10 @@ const Prot* prot_row(const std::vector<Prot>& rows, int32_t id)
     return nullptr;
 }
 
-/* What the body (kMale or kFemale) wears in place of row: row itself when that body has a model for it (or it is not
- * a protector row: nullptr in, nullptr out is not asked); else the first row of the same category and model made for
- * that body (Dark Silver for Dull Gold, a hairstyle for the same-numbered one); nullptr if there is none. */
-const Prot* for_body(const std::vector<Prot>& rows, const Prot& row, uint8_t body)
+/* The body (kMale or kFemale) may wear row, by the menu's rule. */
+bool wearable(const Prot& row, uint8_t body)
 {
-    if (row.gender != kMale && row.gender != kFemale) return &row;
-    if (row.gender == body) return &row;
-    for (const Prot& r : rows)
-        if (r.gender == body && r.cat == row.cat && r.model == row.model) return &r;
-    return nullptr;
-}
-
-/* The same share of the durability for the other item. */
-uint32_t durability_for(uint32_t now, const Prot& from, const Prot& to)
-{
-    if ((int32_t)now < 0 || !from.durability) return now;
-    if (now >= from.durability) return to.durability;
-    return (uint32_t)(((uint64_t)now * to.durability + from.durability / 2) / from.durability);
+    return (row.made_for != kMale && row.made_for != kFemale) || row.made_for == body;
 }
 
 /* The list entry that holds an item of id, or -1. */
@@ -891,12 +871,13 @@ int32_t find_entry(uint32_t p, uint32_t id)
 }
 
 /* Takes off what slot s wears, as the Equipment menu's Unequip does: the slot then wears its category's "No Equipment"
- * row (model 0, both bodies), from the item list, added to it if it is not there (the menu adds it the same way). */
+ * row (model 0, both bodies), from the item list, added to it if it is not there (the menu adds it the same way). The
+ * piece itself stays in the item list as it is. */
 bool take_off(ppu_context* ctx, const std::vector<Prot>& rows, uint32_t p, uint32_t s, const Prot& worn)
 {
     const Prot* none = nullptr;
     for (const Prot& r : rows)
-        if (r.cat == worn.cat && r.model == 0 && r.gender == kBoth) { none = &r; break; }
+        if (r.cat == worn.cat && r.model == 0 && r.made_for == kBoth) { none = &r; break; }
     if (!none) return false;
     int32_t e = find_entry(p, (uint32_t)none->id);
     if (e < 0) e = (int32_t)call_game(ctx, func_008FB4F0, {p + kPgdInv, kCatProtector, none->id, 1, 1, 1});
@@ -906,51 +887,33 @@ bool take_off(ppu_context* ctx, const std::vector<Prot>& rows, uint32_t p, uint3
     return true;
 }
 
-/* The other body for the character in PGD: its armour (item list, worn, Storage box) and hairstyle follow. false, with
- * nothing changed, if the game's state is not there. */
+/* The other body for the character in PGD. Worn armour the new body may not wear comes off; the hairstyle becomes the
+ * new body's of the same number (same category and model). Nothing else changes: the item list and the Storage
+ * Monument keep every piece as it is. false, with nothing changed, if the game's state is not there. */
 bool change_body(ppu_context* ctx)
 {
     const uint32_t p = pgd();
     const std::vector<Prot>& rows = protectors(ctx);
     if (!p || rows.empty() || vm_read8(p + kPgdBody) > 1) return false;
-    const uint32_t list = p + kPgdItems, at = vm_read32(list + 0x10), n = vm_read32(list + 0x0C);
-    const uint32_t dur = vm_read32(p + kPgdDurability + 0x10), dur_n = vm_read32(p + kPgdDurability + 0x0C);
-    if (!guest_ok(at) || n > 0x1000u || (dur_n && !guest_ok(dur))) return false;
     const uint8_t was = vm_read8(p + kPgdBody), to = was ? 0 : 1;
     const uint8_t body = to ? kMale : kFemale;
-    int swapped = 0, boxed = 0, off = 0;
-    for (uint32_t i = 0; i < n; i++) {
-        const uint32_t e = at + kEntrySize * i;
-        if (!vm_read8(e + kEntryUsed) || vm_read32(e + kEntryCat) != kCatProtector) continue;
-        const Prot* from = prot_row(rows, (int32_t)vm_read32(e + kEntryId));
-        const Prot* other = from ? for_body(rows, *from, body) : nullptr;
-        if (!other || other == from) continue;
-        vm_write32(e + kEntryId, (uint32_t)other->id);
-        if (i < dur_n) vm_write32(dur + 8 * i, durability_for(vm_read32(dur + 8 * i), *from, *other));
-        swapped++;
-    }
-    for (uint32_t s = kSlotHead; s <= kSlotHair; s++) {
+    int off = 0;
+    for (uint32_t s = kSlotHead; s <= kSlotLegs; s++) {
         const Prot* worn = prot_row(rows, (int32_t)vm_read32(p + kPgdWornId + 4 * s));
-        const Prot* other = worn ? for_body(rows, *worn, body) : nullptr;
-        if (!worn || other == worn) continue;
-        if (other) vm_write32(p + kPgdWornId + 4 * s, (uint32_t)other->id);   /* (its entry was swapped above) */
-        else if (s <= kSlotLegs && take_off(ctx, rows, p, s, *worn)) off++;
+        if (!worn || wearable(*worn, body)) continue;
+        if (take_off(ctx, rows, p, s, *worn)) off++;
         else fprintf(stderr, "[des] identity: slot %u keeps %d, made for the other body\n", s, worn->id);
     }
-    const uint32_t box = vm_read32(p + kPgdBox);
-    for (uint32_t k = 0; guest_ok(box) && k < kBoxRecords; k++) {
-        const uint32_t r = box + kBoxFirst + kBoxRecord * k, key = vm_read32(r);
-        if ((key & 0xF0000000u) != kCatProtector) continue;
-        const Prot* from = prot_row(rows, (int32_t)(key & 0x0FFFFFFFu));
-        const Prot* other = from ? for_body(rows, *from, body) : nullptr;
-        if (!other || other == from) continue;
-        vm_write32(r, kCatProtector | (uint32_t)other->id);
-        vm_write32(r + kBoxDurability, durability_for(vm_read32(r + kBoxDurability), *from, *other));
-        boxed++;
+    const int32_t hair = (int32_t)vm_read32(p + kPgdWornId + 4 * kSlotHair);
+    int32_t new_hair = hair;
+    if (const Prot* h = prot_row(rows, hair); h && !wearable(*h, body)) {
+        for (const Prot& r : rows)
+            if (r.made_for == body && r.cat == h->cat && r.model == h->model) { new_hair = r.id; break; }
+        vm_write32(p + kPgdWornId + 4 * kSlotHair, (uint32_t)new_hair);
     }
     vm_write8(p + kPgdBody, to);
-    fprintf(stderr, "[des] identity: body %s to %s; %d item(s) swapped, %d in storage, %d taken off\n",
-            was ? "male" : "female", to ? "male" : "female", swapped, boxed, off);
+    fprintf(stderr, "[des] identity: body %s to %s; %d piece(s) taken off, hairstyle %d to %d\n",
+            was ? "male" : "female", to ? "male" : "female", off, hair, new_hair);
     return true;
 }
 
@@ -1132,7 +1095,7 @@ extern "C" void des_respec_tick(ppu_context* ctx)
         if (slot(m, kSlotDialog)) break;
         s_phase = Phase::idle;
         const int32_t answer = (int32_t)vm_read32(m + kDialogAnswer);
-        if (logging()) fprintf(stderr, "[des] identity: gender answer %d\n", answer);
+        if (logging()) fprintf(stderr, "[des] identity: body answer %d\n", answer);
         if (answer != 1 || !change_body(ctx)) break;
         s_body_changed = true;
         open_editor(ctx);
