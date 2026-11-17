@@ -297,6 +297,7 @@ void SettingsPage::build_tab() {
             v.left = append(v.value, "menu-arrow");
             v.left->SetClass("left", true);
             append(v.value, "icon")->SetClass("lock", true);
+            if (r.swatch) v.swatch = append(v.value, "menu-swatch");
             v.text = append(v.value, "menu-text");
             v.tag = append(v.value, "menu-tag");
             v.right = append(v.value, "menu-arrow");
@@ -512,6 +513,11 @@ void SettingsPage::update_rows() {
             v.fillShown = value.fill;
             v.fill->SetProperty(Rml::PropertyId::Width, Rml::Property(value.fill * 100.f, Rml::Unit::PERCENT));
         }
+        if (v.swatch && value.swatch != v.swatchShown) {
+            v.swatchShown = value.swatch;
+            set_class(v.swatch, "none", value.swatch.empty());
+            if (!value.swatch.empty()) v.swatch->SetProperty("background-color", "#" + value.swatch);
+        }
     }
 }
 
@@ -530,7 +536,7 @@ void SettingsPage::update_list() {
     bool same = mList && items.size() == mItems.size();
     for (size_t k = 0; same && k < items.size(); k++)
         same = items[k].label == mItems[k].label && items[k].current == mItems[k].current &&
-               items[k].disabled == mItems[k].disabled;
+               items[k].disabled == mItems[k].disabled && items[k].swatch == mItems[k].swatch;
     if (!same) {
         if (mList) mList->GetParentNode()->RemoveChild(mList);
         mItemElems.clear();
@@ -540,6 +546,8 @@ void SettingsPage::update_list() {
         mListShift = 0.f;
         for (size_t k = 0; k < mItems.size(); k++) {
             Rml::Element* e = append(mList, "menu-item");
+            if (!mItems[k].swatch.empty())
+                append(e, "menu-swatch")->SetProperty("background-color", "#" + mItems[k].swatch);
             append_text_element(e, "menu-text", mItems[k].label);
             set_text_content(append(e, "menu-tag"), mItems[k].original ? "(original)" : mItems[k].current ? "now" : "");
             set_class(e, "now", mItems[k].current);

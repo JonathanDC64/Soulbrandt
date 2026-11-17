@@ -722,6 +722,9 @@ How it works:
   - `menu-strip`, a line about the entry or the row with the focus;
   - `menu-gauge > menu-fill`, how far a number is along its range (its width
     is a percent, from `rows::Value::fill`);
+  - `menu-swatch`, a colour setting's colour, before its value and before
+    each choice of its list (`RowDesc::swatch`, the glow colour rows; both
+    looks draw it);
   - `menu-heading > menu-bracket`, a line down a section's side, as long as
     its rows (`SettingsPage::update_brackets` sets its height after layout);
   - `menu-aside`, beside the focused row: its notes and a stick's picture

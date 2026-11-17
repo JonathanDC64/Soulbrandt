@@ -509,6 +509,18 @@ menu-value icon {
     position: relative;
 }
 
+/* A colour's swatch and its value, together in the middle of the box. */
+menu-value menu-swatch {
+    margin-left: auto;
+    border-color: var(--des-tan-muted);
+    border-radius: 0;
+}
+
+menu-value menu-swatch + menu-text {
+    flex: 0 1 auto;
+    margin-right: auto;
+}
+
 menu-row.modified menu-value menu-text {
     font-weight: normal;
     color: var(--des-tan-light);
@@ -628,6 +640,11 @@ menu-item {
 menu-item menu-tag {
     font-size: 14dp;
     color: var(--des-tan-muted);
+}
+
+menu-item menu-swatch {
+    border-color: var(--des-tan-muted);
+    border-radius: 0;
 }
 
 menu-item:hover {
