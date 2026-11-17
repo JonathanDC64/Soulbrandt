@@ -284,6 +284,10 @@ std::vector<TabDesc> make_tabs() {
             toggle("Change appearance in the Nexus", "DES_APPEARANCE",
                 "Press Cross facing the statue in front of where you wake in the Nexus (no prompt shows there) and "
                 "pick Change Appearance for the character creation screen. Keeping the changes reloads the Nexus."),
+            toggle("Change name and gender in the Nexus", "DES_IDENTITY",
+                "Needs Change appearance in the Nexus. The statue also offers Change Name and Change Gender. A new "
+                "gender swaps armour made for one body for the other body's version, or takes it off if there is "
+                "none, then opens Edit Appearance."),
         }},
         {"HUD", {
             action("Edit HUD", Opens::HudEditor, "Move, resize, hide or show each part of the HUD on the game screen."),

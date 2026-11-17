@@ -224,16 +224,21 @@ int vk_from_name(const std::string& name);
 std::vector<std::string> split(const std::string& s, char sep);
 
 // The game's on-screen keyboard (cellOskDialog_set_host). The game opens and closes it on its own threads; frame
-// shows and closes the window.
+// shows and closes the window. The port opens the same keyboard for texts of its own (des_ui_keyboard): those have
+// done, which gets the answer in place of the game.
+using KeyboardDone = void (*)(int ok, const unsigned short* text, unsigned n);
 struct OskRequest {
     bool open = false;   // show it with these
     bool close = false;  // the game stopped it first
     std::u16string prompt, text;
     unsigned limit = 0;
+    KeyboardDone done = nullptr;  // the port's own keyboard: its answer
 };
 std::mutex sOskLock;
 OskRequest sOsk;
 std::atomic<bool> sOskPending{false};
+std::atomic<bool> sOskHost{false};  // the keyboard can show (des_ui_early_init installed it)
+KeyboardDone sPortOskDone = nullptr;  // the port's keyboard that is up, owed an answer (render thread only)
 
 std::u16string osk_string(const unsigned short* s) {
     std::u16string out;
@@ -242,9 +247,14 @@ std::u16string osk_string(const unsigned short* s) {
 }
 
 void osk_open(const unsigned short* prompt, const unsigned short* text, unsigned limit) {
-    std::lock_guard<std::mutex> lock(sOskLock);
-    sOsk = {true, false, osk_string(prompt), osk_string(text), limit ? limit : 1};
-    sOskPending.store(true, std::memory_order_release);
+    KeyboardDone replaced = nullptr;  // a port's request not shown yet: the game's comes first
+    {
+        std::lock_guard<std::mutex> lock(sOskLock);
+        if (sOsk.open) replaced = sOsk.done;
+        sOsk = {true, false, osk_string(prompt), osk_string(text), limit ? limit : 1};
+        sOskPending.store(true, std::memory_order_release);
+    }
+    if (replaced) replaced(0, nullptr, 0);
 }
 
 void osk_close() {
@@ -258,31 +268,42 @@ std::string osk_utf8(const std::u16string& s) {
     return ui::utf16_to_utf8(s);
 }
 
-// In frame: show or close the keyboard as the game asked. Without the UI (it failed to start) the game gets its
-// initial text back rather than waiting for good.
+// The keyboard that is up closes without an answer; the port's gets Cancel.
+void close_active_osk() {
+    if (ui::OskWindow* osk = ui::active_osk()) osk->close_silently();
+    if (KeyboardDone done = std::exchange(sPortOskDone, nullptr)) done(0, nullptr, 0);
+}
+
+// In frame: show or close the keyboard as the game (or the port) asked. Without the UI (it failed to start) the game
+// gets its initial text back rather than waiting for good, and the port gets Cancel.
 void apply_osk_request(bool ui_up) {
     OskRequest r;
     {
         std::lock_guard<std::mutex> lock(sOskLock);
         r = std::exchange(sOsk, {});
     }
-    if (r.close) {
-        if (ui::OskWindow* osk = ui::active_osk()) osk->close_silently();
-    }
+    if (r.close) close_active_osk();
     if (!r.open) return;
     if (!ui_up) {
-        cellOskDialog_host_finish(1, reinterpret_cast<const unsigned short*>(r.text.c_str()), unsigned(r.text.size()));
+        if (r.done) r.done(0, nullptr, 0);
+        else cellOskDialog_host_finish(1, reinterpret_cast<const unsigned short*>(r.text.c_str()), unsigned(r.text.size()));
         return;
     }
-    if (ui::OskWindow* osk = ui::active_osk()) osk->close_silently();
+    close_active_osk();
+    sPortOskDone = r.done;
     ui::push_document(std::make_unique<ui::OskWindow>(ui::OskWindow::Props{
         .prompt = osk_utf8(r.prompt),
         .text = r.text,
         .limit = r.limit,
-        .onDone = [](bool ok, const std::u16string& text) {
+        .onDone = [done = r.done](bool ok, const std::u16string& text) {
             std::fprintf(stderr, "[ui] keyboard: %s, %zu characters\n", ok ? "Done" : "Cancel", text.size());
-            cellOskDialog_host_finish(ok ? 1 : 0, reinterpret_cast<const unsigned short*>(text.c_str()),
-                                      unsigned(text.size()));
+            const auto* t = reinterpret_cast<const unsigned short*>(text.c_str());
+            if (!done) {
+                cellOskDialog_host_finish(ok ? 1 : 0, t, unsigned(text.size()));
+            } else if (sPortOskDone == done) {
+                sPortOskDone = nullptr;
+                done(ok ? 1 : 0, t, unsigned(text.size()));
+            }
         },
     }));
 }
@@ -1317,6 +1338,19 @@ App& app() {
 // For des_options.cpp: the start screen is up (or about to be), so DES_AUTO_CONTINUE waits for Play.
 extern "C" int des_ui_start_screen_up(void) { return sStartUp.load() ? 1 : 0; }
 
+// des_ui.h. Any thread; frame shows it (apply_osk_request).
+extern "C" int des_ui_keyboard_ready(void) { return sOskHost.load() ? 1 : 0; }
+
+extern "C" int des_ui_keyboard(const unsigned short* prompt, const unsigned short* text, unsigned limit,
+                               void (*done)(int ok, const unsigned short* text, unsigned n)) {
+    if (!done || !sOskHost.load()) return 0;
+    std::lock_guard<std::mutex> lock(sOskLock);
+    if (sOsk.open) return 0;  // (one already waits to show: the game's, or another of the port's)
+    sOsk = {true, false, osk_string(prompt), osk_string(text), limit ? limit : 1, done};
+    sOskPending.store(true, std::memory_order_release);
+    return 1;
+}
+
 // des_ui.h. The game's main thread, before the game's code: the frame hook shows the note while this waits (and wakes
 // the overlay until it does: with no document up it sleeps). With RSX_PRESENT=0 nothing is drawn, so nothing can ask.
 extern "C" void des_ui_privacy_wait(void) {
@@ -1486,6 +1520,7 @@ extern "C" void des_ui_early_init(void) {
 #endif
     static const CellOskDialogHost kOsk = {osk_open, osk_close};
     cellOskDialog_set_host(&kOsk);
+    sOskHost.store(!sSetupOnly);
     if (sSetupOnly) return;  // (no game: no trophies, and no frames to watch)
     ui::trophies::install();
     ui::button_icons::start();  // (the button icons in the game's prompts: button_icons.hpp)
