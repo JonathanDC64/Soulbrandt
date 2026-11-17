@@ -140,6 +140,9 @@ struct RowDesc {
     std::function<std::vector<Button>()> buttons;  // below the help, made when the row is shown
     unsigned flags = 0;                            // RowFlag
     std::function<bool()> when;                    // shown only where it holds (a disc's languages); none: always
+    // A colour setting: the colour a stored value stands for, "RRGGBB", drawn as a swatch beside the value and beside
+    // each choice of its list. Given the value as stored ("" its default); none: no swatch.
+    std::function<std::string(const std::string& value)> swatch;
 };
 
 struct SectionDesc {

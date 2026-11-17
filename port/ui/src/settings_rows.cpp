@@ -78,7 +78,8 @@ bool set_toggle(const RowDesc& row, const ToggleRow& kind, bool on) {
 
 }  // namespace
 
-Value value(const RowDesc& row) {
+namespace {
+Value plain_value(const RowDesc& row) {
     if (own_lock(row)) {
         if (const std::string v = row.lockedValue(); !v.empty()) return {.text = v, .first = true, .last = true};
     }
@@ -120,6 +121,13 @@ Value value(const RowDesc& row) {
             },
         },
         row.kind);
+}
+}  // namespace
+
+Value value(const RowDesc& row) {
+    Value v = plain_value(row);
+    if (row.swatch && !row.key.empty()) v.swatch = row.swatch(settings::in_use(row.key));
+    return v;
 }
 
 bool modified(const RowDesc& row) {
@@ -193,8 +201,11 @@ std::vector<Item> items(const RowDesc& row) {
         const std::vector<Choice> list = list_of(row, *kind);
         const int i = index_of(row, *kind, list);
         for (size_t c = 0; c < list.size(); c++)
-            out.push_back({.label = list[c].label, .original = shows_original(list[c]), .current = int(c) == i});
-        if (kind->custom) out.push_back({.label = kind->custom->label, .current = i == int(list.size())});
+            out.push_back({.label = list[c].label, .original = shows_original(list[c]), .current = int(c) == i,
+                .swatch = row.swatch ? row.swatch(list[c].value) : ""});
+        if (kind->custom)
+            out.push_back({.label = kind->custom->label, .current = i == int(list.size()),
+                .swatch = row.swatch && kind->custom->value ? row.swatch(kind->custom->value()) : ""});
     } else if (const auto* t = std::get_if<ToggleRow>(&row.kind)) {
         const bool on = toggle_on(row, *t);
         out.push_back({.label = "Off", .current = !on});

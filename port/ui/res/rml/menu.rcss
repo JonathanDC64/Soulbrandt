@@ -428,6 +428,27 @@ menu-tag:empty {
     display: none;
 }
 
+/* A colour setting's colour (settings_catalog.hpp's swatch): before its value, and before each choice of its list. */
+menu-swatch {
+    display: block;
+    flex: 0 0 auto;
+    position: relative;
+    width: 14dp;
+    height: 14dp;
+    margin-right: 8dp;
+    border-width: 1dp;
+    border-color: rgba(var(--color-text-rgb), 45%);
+    border-radius: 3dp;
+}
+
+menu-swatch.none {
+    display: none;
+}
+
+menu-item menu-swatch {
+    margin-right: 0;
+}
+
 /* A number's share of its range, for a look that draws it. */
 menu-gauge {
     display: none;

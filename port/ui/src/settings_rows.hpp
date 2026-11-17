@@ -20,6 +20,7 @@ struct Value {
     bool first = false;     // Left can't go further (the first choice, Off, the smallest number)
     bool last = false;      // nor Right
     float fill = -1.f;      // a number: how far it is from its least (0) to its most (1); -1 for any other row
+    std::string swatch;     // a colour row's colour, "RRGGBB" (catalog::RowDesc::swatch); "" for none
 };
 Value value(const RowDesc& row);
 
@@ -46,6 +47,7 @@ struct Item {
     bool disabled = false;  // a button that can't be pressed now
     bool button = false;    // pressed, not chosen
     catalog::Sound sound = catalog::Sound::None;  // a button's
+    std::string swatch;     // a colour row's choice: its colour, "RRGGBB"; "" for none
 };
 std::vector<Item> items(const RowDesc& row);
 // The index-th of them chosen, or pressed: whether anything happened.

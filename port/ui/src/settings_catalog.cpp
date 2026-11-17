@@ -495,12 +495,14 @@ std::vector<TabDesc> make_tabs() {
                             {"Teal"}}),
                     .custom = ChoiceRow::Custom{"Custom", [] { return s::hue_hex(s::glow_hue()); }}},
                 .help = "The colour of your phantom glow while you are in a host's world. The other players see it, "
-                        "and so do you. Each player picks its own. A change counts at once."},
+                        "and so do you. Each player picks its own. A change counts at once.",
+                .swatch = s::glow_swatch},
             {.label = "Custom glow colour", .key = "DES_SEAMLESS_GLOW_COLOR",
                 .kind = NumberRow{.min = 0, .max = 350, .step = 10, .get = s::glow_hue, .set = s::set_glow_hue,
                     .format = [](int v) { return "Hue " + std::to_string(v); }, .modified = s::glow_is_custom},
                 .help = "Your own glow colour, by hue: 0 red, 60 yellow, 120 green, 180 cyan, 240 blue, 300 magenta. "
-                        "Setting it picks Custom in Your glow colour."},
+                        "Setting it picks Custom in Your glow colour.",
+                .swatch = [](const std::string&) { return s::hue_hex(s::glow_hue()); }},
         }},
         {"In your world", {
             toggle("Messages", "DES_NET_MESSAGES", "Messages from other players. Off hides all of them, yours too."),

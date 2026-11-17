@@ -70,6 +70,8 @@ private:
         Rml::Element* tag = nullptr;
         Rml::Element* fill = nullptr;  // a number row's: its share of the value box (menu-gauge > menu-fill)
         float fillShown = -1.f;
+        Rml::Element* swatch = nullptr;  // a colour row's: its colour, beside the value (menu-swatch)
+        std::string swatchShown;
         std::string info;  // an info row's value, read once (unless it is read each frame)
     };
 

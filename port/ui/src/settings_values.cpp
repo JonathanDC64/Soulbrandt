@@ -4,6 +4,7 @@
 #include "settings_hooks.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -68,6 +69,13 @@ void set_glow_hue(int hue) {
     if (pinned("DES_SEAMLESS_GLOW_COLOR")) return;
     set("glow_hue_custom", std::to_string(hue));
     set("DES_SEAMLESS_GLOW_COLOR", hue_hex(hue));
+}
+
+std::string glow_swatch(const std::string& value) {
+    std::string v = value;
+    if (!v.empty() && v[0] == '#') v.erase(0, 1);
+    const bool hex = v.size() == 6 && std::all_of(v.begin(), v.end(), [](char c) { return std::isxdigit(static_cast<unsigned char>(c)) != 0; });
+    return hex ? v : "7FA8FF";
 }
 
 std::string hue_hex(int h) {

@@ -36,6 +36,9 @@ bool glow_is_custom();
 int glow_hue();
 void set_glow_hue(int hue);  // and picks Custom
 std::string hue_hex(int hue);  // the hue (degrees) at full saturation and brightness, as "RRGGBB"
+// The swatch for a glow colour value (catalog::RowDesc::swatch): the colour itself, or for "" a blue near the game's
+// own (its phantom material has an edge and a body colour, lit as it is drawn, so no one flat colour is it).
+std::string glow_swatch(const std::string& value);
 
 // Mouse sensitivity as a percentage of its default (DES_MOUSE_SENS, degrees per count; des_mouse_look in
 // des_options.cpp).
