@@ -85,6 +85,9 @@ constexpr uint32_t kObjDrawn = 0x40000000u;
  * vtable +0x4C, is 0x00717E30). As a dialog's draw begins, it maps the space the dialog's rect is in (its host's
  * layout) to the canvas, with the host piece's slide: identity for a root. */
 constexpr uint32_t kRendMatrix = 0x30u;
+/* Its colour (vtable +8 sets it, +0xC gets it), the alpha in the low byte. As a dialog's draw begins it is its host's,
+ * with the host's fade in it: a dialog faded out is drawn at an alpha of 0. */
+constexpr uint32_t kRendColour = 0x28u;
 constexpr uint32_t kCursorVt = 0x01867F50u;   /* DsMenuDlgCursor */
 constexpr float kCursorLayout = 32.0f;         /* a cursor dialog's layout: 0,0,32,32 (the class or a plain dialog) */
 constexpr uint32_t kMaxKids = 256;
@@ -234,6 +237,7 @@ struct Drawn {
     uint32_t dlg, vt;
     float cur[4], lay[4];
     bool vis;
+    uint32_t col;  /* the renderer's colour as its draw began (kRendColour): its host's, the alpha in the low byte */
     float at[4];   /* the renderer's matrix as its draw began (kRendMatrix), as a map: scale x, y, then offset x, y */
     bool at_ok;    /* (a plain scale and offset) */
 };
@@ -442,6 +446,25 @@ void log_menus(const std::vector<Menu>& menus, const std::vector<LeftOut>& left,
 
 void build_menus(ppu_context* ctx)
 {
+    /* A dialog faded out is drawn on, unseen, and no byte of it changes: the Select menu in play (Write Message, ...)
+     * closes with a fade and stays drawn, so its glow stayed over the field (issue #426). The fade is in its host's
+     * colour, the renderer's as its draw began (kRendColour): a dialog that can hold a menu, drawn at an alpha of 0,
+     * counts as not shown. (Its own colour, 0x00F5E3E0, stayed opaque through every fade seen.) */
+    {
+        std::string said;
+        for (Drawn& d : s_draws) {
+            if (!d.vis || (d.col & 0xFFu) || !has_cursor_piece(d.dlg)) continue;
+            d.vis = false;
+            if (s_log) {
+                char b[48];
+                snprintf(b, sizeof b, " 0x%08X (vt 0x%08X)", d.dlg, d.vt);
+                said += b;
+            }
+        }
+        static std::string last;
+        if (s_log && said != last) fprintf(stderr, "[mm] faded out:%s\n", said.empty() ? " none" : said.c_str());
+        if (s_log) last = said;
+    }
     const std::vector<Drawn>& ds = s_draws;
     const size_t n = ds.size();
     std::vector<Menu> menus;
@@ -1751,6 +1774,7 @@ extern "C" void des_mm_draw_enter(ppu_context* ctx, uint32_t dlg)
     }
     d.vis = vm_read8(dlg + kDlgVisible) != 0;
     const uint32_t rend = (uint32_t)ctx->gpr[4];
+    d.col = guest_ok(rend + kRendColour, 4) ? vm_read32(rend + kRendColour) : 0xFFFFFFFFu;
     if (guest_ok(rend, 4)) {
         float m[16];
         for (uint32_t k = 0; k < 16; k++) m[k] = rdf(rend + kRendMatrix + 4 * k);
