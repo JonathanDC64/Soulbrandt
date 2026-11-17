@@ -11,7 +11,7 @@
 namespace ui::looks {
 
 const Look& current() {
-    const Look* look = find(settings::get("ui_look"));
+    const Look* look = find(settings::get("menu_look"));
     if (look && offered(*look)) return *look;
     return *find(kDefault);
 }

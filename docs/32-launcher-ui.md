@@ -661,14 +661,25 @@ documents. Only the style sheets differ.
 
 There are two looks:
 
-- **Alpha UI** (`alpha`), the default and the only one in a release build.
-- **DeS UI** (`des`), offered in developer builds only until it is signed
-  off. It copies the game's own pause menu and its band.
+- **DeS UI** (`des`), the default. It copies the game's own pause menu and
+  its band.
+- **Alpha UI** (`alpha`), the first look, still offered in Interface > Menu
+  look.
+
+The setting is `menu_look`. Before DeS UI was the default it was `ui_look`,
+and every settings file said `alpha`, because a release offered no other
+look. That old line is dropped when the file is read, so everyone starts in
+the default.
+
+Setup keeps its own style in every look: no look's sheet styles its
+elements. Settings opened from setup does follow the look, as does the start
+screen (`body.prelaunch`). `ui_render_compare`'s `des-setup-*` pages draw
+setup in DeS UI, to compare with its `setup-*` pages.
 
 How it works:
 
 - **The list.** `looks.hpp` lists the looks. Each look's `id` is three
-  things: its `ui_look` value, its RmlUi theme name, and its sheet's name,
+  things: its `menu_look` value, its RmlUi theme name, and its sheet's name,
   `res/rml/looks/<id>.rcss`.
 - **The sheets.** A look's sheet holds only what it changes. All of it sits
   inside `@media (theme: <id>)`, its `@spritesheet` and `@keyframes` too.

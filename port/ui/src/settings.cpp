@@ -123,7 +123,9 @@ constexpr Def kDefs[] = {
     {"DES_NET_SYNC", "", Apply::Live},         // des_net_sync: position packets a second; "" = every 6th frame
     {"DES_DISCORD", "1", Apply::Live},         // discord_presence.cpp: the Discord status; "0" = none
     {"ui_scale", "0", Apply::UiOnly},          // 0 = Auto, else percent
-    {"ui_look", "alpha", Apply::UiOnly},       // the menus' look: a looks.hpp id
+    // The menus' look: a looks.hpp id. Before DeS UI was the default it was ui_look, and every file said alpha (a
+    // release offered no other), so that line is dropped (load_file) and everyone starts in the default.
+    {"menu_look", "des", Apply::UiOnly},
     {"ui_menu_height", "40", Apply::UiOnly},   // menu_shell.cpp: Settings' height, 0 = 640 dp ... 100 = the window's
     {"show_start_screen", "1", Apply::UiOnly},
     {"update_check", "1", Apply::UiOnly},      // updates.hpp: look for a newer release at each start (docs/105)
