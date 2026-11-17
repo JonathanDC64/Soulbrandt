@@ -105,6 +105,11 @@ Found in the census runs (`DES_MENU_MOUSE_LOG=3`, section 1); nothing here is a 
 - **Spots.** The spots are the drawn pieces of the cursor's host dialog named after the host piece and their place:
   `cursor0_0`, `cursor1_0`, `list_cursor2_0`, `tab_cursor0_3`, `cursor_button0_0` (row, then column). The spot whose
   rect is the cursor dialog's is the selected one.
+  - A spot over the selected one's is another layout's, and is left out. The online server message (DsMenuDlgTos,
+    `0x01870708`, after NEW GAME or LOAD GAME) draws both its layouts: OK in the middle (`cursor0_2`) and two buttons
+    beside it (`cursor0_0`, `cursor0_1`). With OK shown, a click on its left or right part went to a button that is
+    not there, and the walk stopped ("stuck"). No other menu had spots over each other (all the test runs' menus and
+    a player's online session).
 - **Which menus count.** The host piece is drawn only while its menu has the pad: the pause menu's bar hides
   `cursor` while a page is open and draws `stay_cursor` on that page's tab instead (a *stay* menu: its tabs turn
   the pages with L2/R2). Two more rules leave out what the player cannot use:

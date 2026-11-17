@@ -665,6 +665,22 @@ void build_menus(ppu_context* ctx)
                 if (same_box(lay, ds[i].cur)) m.cur = (int)m.spots.size();
                 m.spots.push_back(s);
             }
+            /* Two layouts in one dialog: the online server message (DsMenuDlgTos) has OK in the middle (cursor0_2)
+             * and two buttons beside it (cursor0_0, cursor0_1), all drawn, though only one layout shows. The
+             * cursor is on the shown one's, so a spot over the cursor's is the other layout's: the cursor never
+             * goes there, and a click on it walked to nowhere ("stuck"). */
+            if (m.cur >= 0) {
+                const Spot at = m.spots[m.cur];
+                std::vector<Spot> shown;
+                int cur = -1;
+                for (size_t k = 0; k < m.spots.size(); k++) {
+                    if ((int)k == m.cur) cur = (int)shown.size();
+                    else if (overlap(m.spots[k].box, at.box)) continue;
+                    shown.push_back(m.spots[k]);
+                }
+                m.spots.swap(shown);
+                m.cur = cur;
+            }
             if (m.spots.empty()) continue;
             bool dup = false;   /* a stay cursor beside its own menu's cursor: the active one counts */
             for (Menu& e : menus)
