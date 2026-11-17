@@ -264,6 +264,7 @@ DES_REGION_ADDR(0x00798CD8, 0x0079A560)  /* call kScrollMsgUpdate */
 DES_REGION_ADDR(0x0079EF7C, 0x007A0804)  /* hook des_hud_w2s */
 DES_REGION_ADDR(0x007A6264, 0x007A7AEC)  /* hook des_hud_onscreen */
 DES_REGION_ADDR(0x007A8C60, 0x007AA4E8)  /* call kGetSoulUpdate */
+DES_REGION_ADDR(0x007ADB80, 0x007AF408)  /* call kShortcutUpdate */
 DES_REGION_ADDR(0x007B5AE8, 0x007B7370)  /* hook des_hud_onscreen */
 DES_REGION_ADDR(0x007B61D4, 0x007B7A5C)  /* hook des_hud_onscreen */
 DES_REGION_ADDR(0x007C8260, 0x007C9AE8)  /* code kOptionCloseFn */
@@ -356,6 +357,7 @@ DES_REGION_ADDR(0x01866068, 0x018660B0)  /* data kEquipSlotsVt */
 DES_REGION_ADDR(0x01866570, 0x018665B8)  /* data kInvTabsVt */
 DES_REGION_ADDR(0x01867F50, 0x01867F98)  /* data kCursorVt */
 DES_REGION_ADDR(0x018692C0, 0x01869308)  /* data kStartTabVt */
+DES_REGION_ADDR(0x018697B0, 0x018697F8)  /* data kShortcutVt */
 DES_REGION_ADDR(0x018698A0, 0x018698E8)  /* data kHudDialogVt */
 DES_REGION_ADDR(0x01869FB8, 0x0186A000)  /* data kPromptVt */
 DES_REGION_ADDR(0x0186A398, 0x0186A3E0)  /* data kOptionVt */

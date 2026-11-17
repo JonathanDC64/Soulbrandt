@@ -183,6 +183,8 @@ add_executable(des_boot
     "${CMAKE_CURRENT_SOURCE_DIR}/des_guest_exit.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/des_souls_use.cpp"         # DES_SOULS_AT_ONCE: Use several soul items at once
     "${CMAKE_CURRENT_SOURCE_DIR}/des_respec.cpp"            # DES_RESPEC: stat respec at the Nexus statue and the Maiden
+    "${CMAKE_CURRENT_SOURCE_DIR}/des_keybinds.cpp"          # the port's own keys (Kick, the item slots)
+    "${CMAKE_CURRENT_SOURCE_DIR}/des_item_hotkeys.cpp"      # the Keyboard page's Item slot keys
     "${CMAKE_CURRENT_SOURCE_DIR}/des_luagc.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/des_luaheap.cpp"           # room for Lua when its heap is full
     "${CMAKE_CURRENT_SOURCE_DIR}/des_memstat.cpp"           # DES_MEMSTAT: how full the game's heaps get
@@ -252,6 +254,7 @@ else()
             "${CMAKE_CURRENT_SOURCE_DIR}/des_guest_exit.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/des_souls_use.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/des_respec.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/des_item_hotkeys.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/des_luagc.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/des_luaheap.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/des_pantheon.cpp"
