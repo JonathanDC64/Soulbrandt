@@ -49,7 +49,7 @@ struct Binding {
 };
 using Bindings = std::vector<Binding>;
 
-// The actions: cellPad's PAD_KEYS targets, in the screens' order.
+// The actions: cellPad's PAD_KEYS targets, and the port's own (Kick, Item slot 1 to 5), in the screens' order.
 struct Target {
     const char* name;
     const char* label;
@@ -57,7 +57,7 @@ struct Target {
     const char* about;    // a line on what it does, for a label that says too little (nullptr: the label says it)
 };
 extern const Target kTargets[];
-constexpr int kTargetCount = 26;
+constexpr int kTargetCount = 31;
 constexpr int kSlots = 2;    // inputs an action shows (cellPad takes up to 4: a hand-written PAD_KEYS's others stay)
 constexpr int kBindMax = 4;  // cellPad's PAD_BIND_MAX
 using KeyMap = std::array<Bindings, kTargetCount>;

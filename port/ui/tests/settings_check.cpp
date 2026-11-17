@@ -5,7 +5,9 @@
 // a GeForce card before the RTX 20 series (DES_RENDERER_GPU_ID gives the GPU's PCI IDs here; the other cases give
 // none), the default is Vulkan, and a saved D3D12 becomes Vulkan once. The gpu-in-* cases are in that rule, the
 // gpu-out-* cases are not. And a restart-only setting changed in the menu waits for the next start (restart_pending):
-// not a live one, not one in effect already, not one pinned by the environment.
+// not a live one, not one in effect already, not one pinned by the environment. And the Keyboard page's item slot keys
+// (keys_for_pad): DES_ITEM_KEYS from the layout and PAD_KEYS's changes, without wheel notches and without an input a
+// cellPad row has too, and none of the item rows in the PAD_KEYS cellPad reads.
 //
 //   settings_check --row      a build with the row (DES_RSX_VULKAN: port/CMakeLists.txt found the Vulkan route)
 //   settings_check --no-row   a build without it: nothing of it, and settings.ini's RSX_BACKEND is not applied
@@ -207,6 +209,14 @@ int run_case(const std::string& name) {
     } else if (name == "restart-pinned") {  // DES_LANGUAGE=en in the environment: the next start has it again
         settings::set("DES_LANGUAGE", "ja");
         check(settings::restart_pending().empty(), "a pinned setting never waits");
+    } else if (name.rfind("keys-", 0) == 0) {  // the item slot keys
+        const std::string pad = env("PAD_KEYS");
+        check(pad.find("item") == std::string::npos, "no item rows for cellPad: " + pad);
+        const std::string want = name == "keys-default" ? "1,2,3,4,5"
+                                 : name == "keys-taken" ? ",2,shift+3,4,5"   // 1 is L2's; the wheel notch is left out
+                                                        : ",2,3,4,6";        // keys-changed: slot 1 none, slot 5 on 6
+        check(env("DES_ITEM_KEYS") == want, "DES_ITEM_KEYS " + want + ": " + env("DES_ITEM_KEYS"));
+        if (name == "keys-taken") check(pad.find("l2=1|lctrl") != std::string::npos, "L2 keeps 1: " + pad);
     } else if (name == "set-saves") {  // the row changed in the menu: kept for the next start, not applied now
         settings::set("RSX_BACKEND", "vulkan");
         check(env("RSX_BACKEND").empty(), "not applied before a restart: " + env("RSX_BACKEND"));
@@ -238,6 +248,9 @@ const Case kCases[] = {
     {"set-saves", nullptr, {}},
     {"restart-waits", nullptr, {}},
     {"restart-pinned", nullptr, {{"DES_LANGUAGE", "en"}}},
+    {"keys-default", nullptr, {}},
+    {"keys-taken", "keys_layout = souls\nPAD_KEYS = l2=1|lctrl,item3=shift+3|wheelup\n", {}},   // from before the rows
+    {"keys-changed", "keys_layout = souls\nPAD_KEYS = item1=none,item5=6\n", {}},
     // 0.1.0's settings.ini ("d3d12" whether picked or not), by GPU
     {"gpu-in-1070-saved", "RSX_BACKEND = d3d12\n", {{"DES_RENDERER_GPU_ID", "10de:1b81"}}},        // GTX 1070 (#205, #372)
     {"gpu-in-1060-saved", "RSX_BACKEND = d3d12\n", {{"DES_RENDERER_GPU_ID", "10de:1c03"}}},        // GTX 1060 6GB (#398)
@@ -274,7 +287,8 @@ int main(int argc, char** argv) {
         std::filesystem::create_directories(dir, ec);
         if (c.ini) std::ofstream(dir / "settings.ini") << c.ini;
         for (const char* k :
-            {"RSX_BACKEND", "RSX_STATE_DIR", "DES_SETTINGS", "DES_DATA_DIR", "PS3_PIDFILE", "DES_LANGUAGE"})
+            {"RSX_BACKEND", "RSX_STATE_DIR", "DES_SETTINGS", "DES_DATA_DIR", "PS3_PIDFILE", "DES_LANGUAGE", "PAD_KEYS",
+             "DES_ITEM_KEYS"})
             ps3_setenv(k, "");
         ps3_setenv("DES_RENDERER_GPU", "Test GPU");  // (not this PC's: a case gives the rule's GPU itself)
         ps3_setenv("DES_RENDERER_GPU_ID", "");
