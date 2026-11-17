@@ -96,7 +96,7 @@ duo_start() {
     if [ "${DUO_TEST:-0}" = 1 ]; then
       export DES_KIND=test PS3_NO_USER_INPUT=1 DES_AUTO_CONTINUE=1 DES_SKIP_INTRO=1 PS3_SAIL_MOVIES=0
       export DES_ONLINE="${DES_ONLINE:-0}"
-      DES_OWN_MARK=.des_staged
+      DES_OWN_MARK=$DES_STAGED_MARK   # (deslib.sh: DES_TEST_MARK)
     else
       # a play session's staged exe has no test-run marker, so other test scripts' des_kill_own leave it alone
       export DES_KIND=play
