@@ -771,10 +771,12 @@ void dialog_draw_inner(ppu_context* ctx)
 }
 
 extern "C" void des_mm_draw_enter(ppu_context* ctx, uint32_t dlg);   /* des_menu_mouse.cpp */
+extern "C" void des_respec_dialog_drawn(uint32_t dlg);              /* des_respec.cpp: the statue's talk box */
 
-void dialog_draw(ppu_context* ctx)   /* for 0x00F60BD0; the menus' mouse sees each dialog drawn too */
+void dialog_draw(ppu_context* ctx)   /* for 0x00F60BD0; the menus' mouse and the statue see each dialog drawn too */
 {
     des_mm_draw_enter(ctx, (uint32_t)ctx->gpr[3]);
+    des_respec_dialog_drawn((uint32_t)ctx->gpr[3]);
     dialog_draw_inner(ctx);
 }
 

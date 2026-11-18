@@ -2126,8 +2126,9 @@ extern "C" void des_net_sync(ppu_context* ctx, uint32_t addr)
     if (s_fps > 0) ctx->fpr[12] = (float)(ctx->fpr[12] / (30.0 * dt));
 }
 
-/* DES_NET_TENDENCY=own: the server stops changing this player's world
- * tendency (docs/69, "World tendency"). The game's QWC object (*(*0x01B4EF9C
+/* DES_NET_TENDENCY: anything but "server" (Settings' default is "own", Yours
+ * only) stops the server changing this player's world tendency; "server" lets
+ * it, as the game does (docs/69, "World tendency"). The game's QWC object (*(*0x01B4EF9C
  * + 0x24)) keeps the player's own value per area at +0x48 + 8 * (area - 1),
  * two floats, white/black then left/right. Online, two functions read the
  * server's per-area values from the getQWCData reply through 0x00567E98
@@ -2148,7 +2149,7 @@ extern "C" void des_qwc_local(ppu_context* ctx, uint32_t)
     static int own = 0;
     PS3_KNOB(own, [] {
         const char* e = std::getenv("DES_NET_TENDENCY");
-        return (e && std::strcmp(e, "own") == 0) || des::seamless::mode() != des::seamless::Mode::Off ? 1 : 0;
+        return !(e && std::strcmp(e, "server") == 0) || des::seamless::mode() != des::seamless::Mode::Off ? 1 : 0;
     }());
     if (!own) return;
     const uint32_t out = (uint32_t)ctx->gpr[4], area = (uint32_t)ctx->gpr[5];
