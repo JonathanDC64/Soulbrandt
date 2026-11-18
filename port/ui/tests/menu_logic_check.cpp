@@ -191,6 +191,27 @@ void settings_page() {
     m.rows_changed(rows);
     check(m.mode() == Mode::Rows, "the look changed to one with the help beside the rows: the box closes");
 
+    // An info row with text to read (About online play): Enter opens its help where the look has a Help key.
+    std::vector<RowFacts> readable = rows;
+    readable[2].enter = RowFacts::Enter::Read;
+    readable[2].enterLabel = "Read";
+    m.rows_changed(readable);
+    m.set_focus(2, readable);
+    check(m.enter(readable) == Action::None && m.mode() == Mode::Rows,
+          "Enter on it where the help is beside the rows: nothing");
+    check(keys(m.prompts(readable, "Back")) == std::vector<Key>{Key::PrevTab, Key::NextTab, Key::Move, Key::Back},
+          "and no Read prompt");
+    m.set_help_key(true);
+    check(keys(m.prompts(readable, "Back")) ==
+              std::vector<Key>{Key::PrevTab, Key::NextTab, Key::Move, Key::Confirm, Key::Help, Key::Back},
+          "a look with a strip: Read, then Help");
+    check(m.prompts(readable, "Back")[3].label == "Read", "Enter's label: Read");
+    check(m.enter(readable) == Action::Read && m.mode() == Mode::Help, "Enter opens the row's help");
+    check(keys(m.prompts(readable, "Back")) == std::vector<Key>{Key::Back}, "the help's prompt: Close");
+    check(m.back() && m.mode() == Mode::Rows, "Back closes it");
+    m.set_help_key(false);
+    m.rows_changed(rows);
+
     // Rows that come or go.
     m.set_focus(5, rows);
     const std::vector<RowFacts> shorter(rows.begin(), rows.begin() + 3);

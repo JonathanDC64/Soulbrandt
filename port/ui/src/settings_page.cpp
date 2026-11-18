@@ -355,6 +355,13 @@ void SettingsPage::refresh_facts() {
         f.enter = facts_enter(rows::enter(r));
         const bool focused = static_cast<int>(i) == mModel.focus();
         f.enterLabel = focused ? rows::enter_label(r) : std::string();
+        // An info row with nothing to press, in a look whose help opens with Help (a strip under the band): Enter, or
+        // a click, opens its help too, so a row like About online play reads without knowing the Help key.
+        if (f.enter == RowFacts::Enter::None && std::holds_alternative<catalog::InfoRow>(r.kind) &&
+            !looks::current().helpPane && !r.help().empty()) {
+            f.enter = RowFacts::Enter::Read;
+            if (focused) f.enterLabel = "Read";
+        }
         if (focused && f.enter == RowFacts::Enter::List) {
             const std::vector<rows::Item> items = rows::items(r);
             f.items = static_cast<int>(items.size());
@@ -752,6 +759,7 @@ void SettingsPage::enter() {
             play_sound(kSoundItemDisable);
         }
         break;
+    case SettingsModel::Action::Read: play_sound(kSoundWindowOpen); break;  // (the help opens, as Help opens it)
     case SettingsModel::Action::None:
         if (rows::locked(*row)) play_sound(kSoundItemDisable);
         break;

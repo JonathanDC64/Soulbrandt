@@ -69,6 +69,10 @@ SettingsModel::Action SettingsModel::enter(std::span<const RowFacts> rows) {
     case RowFacts::Enter::Edit: mMode = Mode::Edit; return Action::Edit;
     case RowFacts::Enter::Open: return Action::Open;
     case RowFacts::Enter::Press: return Action::Press;
+    case RowFacts::Enter::Read:
+        if (!mHelpKey) return Action::None;  // (the help is beside the rows already)
+        mMode = Mode::Help;
+        return Action::Read;
     case RowFacts::Enter::None: break;
     }
     return Action::None;
@@ -147,7 +151,9 @@ std::vector<prompts::Prompt> SettingsModel::prompts(std::span<const RowFacts> ro
         out.push_back({Key::NextTab, "Tabs", "tabs"});
         out.push_back({Key::Move, "Select"});
         if (r && r->steps) out.push_back({Key::Change, "Change"});
-        if (r && r->enter != RowFacts::Enter::None && !r->enterLabel.empty()) out.push_back({Key::Confirm, r->enterLabel});
+        if (r && r->enter != RowFacts::Enter::None && !(r->enter == RowFacts::Enter::Read && !mHelpKey) &&
+            !r->enterLabel.empty())
+            out.push_back({Key::Confirm, r->enterLabel});
         if (r && r->previewable) out.push_back({Key::Preview, "Preview"});
         if (r && mHelpKey) out.push_back({Key::Help, "Help"});
         out.push_back({Key::Back, back});
