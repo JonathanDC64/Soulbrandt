@@ -7,7 +7,7 @@ About tab of the settings lists the same.
 | --- | --- | --- | --- |
 | [Dusklight](https://github.com/TwilitRealm/dusklight) | The interface code (`src/dusk/ui`) and stylesheets (`res/rml`), adapted by way of FFCCEOT-Recomp. Each adapted file says so in its header. | CC0 1.0 (public domain) | `port/ui/src`, `port/ui/res/rml` |
 | FFCCEOT-Recomp | The same interface as adapted there (D3D/SDL host, settings, embedding), and its problem reports (data folder, log, crash reports and dialog, report an issue, zip writer); by the author of this port | The author's own, or Dusklight's (CC0) | `port/ui/src`, `port/cmake/EmbedFiles.cmake` |
-| [RmlUi](https://github.com/mikke89/RmlUi) 6.3 | The HTML/CSS interface library, with its D3D11 renderer and Win32 helpers (`Backends/`) | MIT (below) | Downloaded at configure time (FetchContent), compiled in |
+| [RmlUi](https://github.com/mikke89/RmlUi) 6.3 | The HTML/CSS interface library, with its D3D11 renderer and Win32 helpers (`Backends/`) | MIT (below) | Downloaded at configure time (FetchContent), compiled in, with one fix of ours (`port/ui/cmake/rmlui_fixes.cmake`) |
 | [FreeType](https://freetype.org) 2.14.3 | Font rendering for RmlUi | FreeType Licence (FTL) | Downloaded at configure time (FetchContent), compiled in |
 | [Cinzel](https://github.com/NDISCOVER/Cinzel) | Headings | SIL Open Font Licence 1.1 | `res/fonts/Cinzel.ttf`, licence in `res/fonts/OFL-Cinzel.txt` |
 | [Alegreya Sans](https://github.com/huertatipografica/Alegreya-Sans) | Body text | SIL Open Font Licence 1.1 | `res/fonts/AlegreyaSans-*.ttf`, licence in `res/fonts/OFL-AlegreyaSans.txt` |
