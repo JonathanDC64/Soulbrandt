@@ -1,6 +1,7 @@
 // Written for Demon's Souls. Smoke drawn live behind the start screen (DeS UI): RmlUi's "shader" decorator with the
-// value "fog:<name>", drawn by render_gpu.cpp (the Windows menu renderer, D3D12 and Vulkan) as one pixel shader over
-// the element. The smoke is 3D gradient noise with time as its third axis, so its shapes churn and dissolve instead of
+// value "fog:<name>", drawn by render_gpu.cpp (the Windows menu renderer, D3D12 and Vulkan) as one pixel shader into a
+// small picture of the element, which is scaled up over it (the smoke is soft: render_effect). The smoke is 3D
+// gradient noise with time as its third axis, so its shapes churn and dissolve instead of
 // sliding, and its coordinates are bent by two more noises so it curls. The numbers in kLooks were tuned on a preview
 // page that ran the same maths in WebGL (layer by layer, the preview's sliders).
 //
@@ -86,7 +87,7 @@ float4 main(PS_IN i) : SV_Target {
     float a1 = fog_layer(uv, m_time, m_p[0], m_p[1], m_p[2], m_p[3], m_p[4]);
     float a2 = fog_layer(uv, m_time, m_p[5], m_p[6], m_p[7], m_p[8], m_p[9]);
     float a = 1.0 - (1.0 - a1) * (1.0 - a2);
-    a = saturate(a + hash33(floor(float3(i.position.xy, 7.0))).x * (0.5 / 255.0));  // a dither: no bands on black
+    // (The dither that keeps it from banding on black is the scaling up's, at the window's pixels.)
     return float4(float3(0.894, 0.894, 0.886) * a, a) * i.color.a;
 }
 )"

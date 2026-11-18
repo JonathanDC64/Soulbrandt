@@ -1,6 +1,7 @@
 // Written for Demon's Souls. A cold flame rising off the start screen's logo (DeS UI): RmlUi's "shader" decorator with
 // the value "flame:<name>", drawn by render_gpu.cpp (the Windows menu renderer, D3D12 and Vulkan) as one pixel shader
-// over the logo's element, padding box included. It reads one image, the logo's map (soulbrandt-logo-map.png, made by
+// into a picture of the logo's element at half its size, padding box included, which is scaled up over it
+// (render_effect). It reads one image, the logo's map (soulbrandt-logo-map.png, made by
 // tools/ui/make_logo_map.py): the letters softened, and a wide halo round them that the flame rises from, carried up
 // and bent by the smoke's noise (fog_shader.hpp's DES_UI_HLSL_NOISE). It gives light only; the letters, an image
 // decorator over the content box, are drawn over it. The numbers in kLooks were picked on a preview page that ran the
@@ -48,9 +49,8 @@ float4 main(PS_IN i) : SV_Target {
     float above = smoothstep(-0.05, 0.15, f - m.b * 0.35);
     float flick = lerp(1.0, 0.55 + 0.9 * (0.5 + 0.5 * gnoise(float3(q * m_box.xy * 0.035, m_clock * 2.3))), m_shape.z);
     float3 light = m_color.rgb * S * flick * (f * tongues * above * 9.0 + m.r * 0.45 + m.b * 0.2 * R);
-    // A dither where there is light, so the glow doesn't band on black.
-    light += hash33(floor(float3(i.position.xy, 5.0))).x * (0.5 / 255.0) * step(1.0 / 255.0, max(light.r, max(light.g, light.b)));
-    // Light only (alpha 0): added to what is behind it.
+    // Light only (alpha 0): added to what is behind it. (The dither that keeps the glow from banding on black is the
+    // scaling up's, at the window's pixels.)
     return float4(max(light, 0.0), 0.0) * i.color.a;
 }
 )"
