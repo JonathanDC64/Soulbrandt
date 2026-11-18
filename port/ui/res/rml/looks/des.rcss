@@ -1166,10 +1166,12 @@ window.modal button.ack-tick tick-value {
    as centred lines with a blood smear behind the chosen one, the hint and the version as the title's small lines, and
    the prompts at the foot. Behind it, on black (the game booting behind shows nothing through, not even its own
    notices), smoke rises and churns, drawn live (fog_shader.hpp's "start"): black at the top over the title, and black
-   again behind the choices, fading out around them. ---- */
+   again behind the choices, fading out around them. The black at the top fades out by 51.4% of the height, just past
+   the logo, so the smoke round the logo stays as dim as it was picked (with the logo 17 dp higher, over a fade to 49%).
+   ---- */
 body.prelaunch prelaunch-gradient {
     background-color: #000;
-    decorator: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0%) 49%),
+    decorator: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0%) 51.4%),
         radial-gradient(ellipse 420dp 290dp at 50% 50%, #000 0%, rgba(0, 0, 0, 0%) 100%),
         shader("fog:start");
 }
