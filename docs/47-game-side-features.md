@@ -518,9 +518,9 @@ Approach C, at the user's choice: the game's own count picker, the one Drop open
 
 Not tested: menu mode 1 (0x85), the storage box, and a co-op phantom's use.
 
-### 2.6 Send items to Storage (US lift, in progress)
+### 2.6 Send items to Storage
 
-`DES_STORAGE` adds **Send to Storage** below Drop in the inventory's command menu. The transfer calls the game's own deposit routine. Addresses and behavior below come from a static read of the local US lift for BLUS30443 01.00; no regional address mapping or runtime result is implied.
+`DES_STORAGE` adds **Send to Storage** below Drop in the player's inventory command menu. The transfer calls the game's own deposit routine. The addresses below are US keys for BLUS30443 01.00. `DES_GAME_CALLS` resolves them through the EU, JP and Asia tables.
 
 | Routine | Inputs and result |
 |---|---|
@@ -532,9 +532,9 @@ The box has a 12-byte header followed by 2048 records of 20 bytes each. Records 
 
 The inventory's burden-reason word is at `inventory + 0x1B0`. The earlier US pickup prototype treated value 1 as an inventory-burden refusal; that value interpretation is specific to the prototype's US path, not a regional guarantee.
 
-The added command is a fifth visible row after Use and Drop. The navigation state maps Use, Drop, Send, Reorganize and Auto Sort to logical rows 0 through 4. Send is intercepted at native row 2; Reorganize and Auto Sort dispatch to their original native rows 2 and 3. A `past_last` flag distinguishes Auto Sort when the native row wraps to 0. The port enables Send only when Drop's grey overlay is off and helper `0x008F88D0` accepts the selected slot. The lift does not tie the generic inventory-row processing callback that calls this helper to Thomas's screen, so Thomas's exact pre-confirmation filter remains open.
+The added command is a fifth visible row after Use and Drop. The navigation state maps Use, Drop, Send, Reorganize and Auto Sort to logical rows 0 through 4. Send is intercepted at native row 2; Reorganize and Auto Sort dispatch to their original native rows 2 and 3. A `past_last` flag distinguishes Auto Sort when the native row wraps to 0. The port enables Send only when Drop's grey overlay is off and helper `0x008F88D0` accepts the selected slot. Thomas's Deposit Item screen uses its own eligibility checks and opens its quantity selector directly.
 
-The picker and command menu are not yet confirmed on Thomas's screen or in the other menu mode. The shared command handler chooses slot `0x95` in mode 0 and `0x85` in mode 1, but that alone does not prove Thomas opens that handler. The native picker has distinct OK (`2000`) and cancel (`2002`) messages. A US copy-save run with Storage off at `d53905fb` opened native Drop on a stack of 16 with CANCEL selected; this is the default Send preserves, not a guarantee for other discs.
+In US gameplay, the player's inventory used mode 0 (slot `0x95`). Thomas's Take Item screen opened the shared command menu in mode 1 (slot `0x85`), where the selected row belongs to the box. Send is limited to the player's inventory mode. The native picker has distinct OK (`2000`) and cancel (`2002`) messages. A US copy-save run with Storage off at `d53905fb` opened native Drop on a stack of 16 with CANCEL selected. Send preserves the native default.
 
 ## 3. 8-direction movement while locked on
 
