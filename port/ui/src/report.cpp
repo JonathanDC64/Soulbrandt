@@ -1619,9 +1619,10 @@ const char* renderer_name(const char** why) {
 
 std::string system_info() {
     std::ostringstream o;
-    // The game's own process (its renderer is up), not the crash dialog's: only then are this process's memory and
-    // the other software loaded into it the game's.
-    const bool game_process = rsx_d3d12_device() != nullptr;
+    // The game's own process (it has shown a frame of its own), not the crash dialog's or setup's: only then are this
+    // process's memory and the other software loaded into it the game's. (It was "the D3D12 device is up", which
+    // Vulkan's route never has: its reports lacked these lines.)
+    const bool game_process = ppu_boot_frames_presented() > 0;
 #if DES_DEV
     o << "Developer build (cheats compiled in)\n";
 #endif
