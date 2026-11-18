@@ -183,7 +183,8 @@ std::unique_ptr<Renderer> make_renderer(void* device, void* queue) { return d3d1
 // the window holds.
 //
 // A document that needs more width than that (the menus are laid out for 1280 dp: set_room) is never scaled past what
-// the window holds of its width, after the UI scale setting (render).
+// the window holds of its width, after the UI scale setting (render). The same for one that needs more height
+// (set_room_height): the start screen, whose choices would otherwise run into its lines at the foot at 125% and up.
 float base_scale(int width, int height, unsigned dpi, bool follow_window) {
     const float display = std::max(1.0f, float(dpi) / 96.0f);  // (dpi 0 is not known. A TV can say less than 96.)
     if (width <= 0 || height <= 0) return display;
@@ -252,6 +253,7 @@ struct State {
     float ui_scale = 0.0f;
     bool follow_height = false;
     float room = 0.0f;  // set_room
+    float room_height = 0.0f;  // set_room_height
     bool initialised = false;
     int pointer_x = 0, pointer_y = 0;  // set_pointer
     bool pointer_inside = false, cursor_wanted = false;
@@ -464,6 +466,7 @@ void set_hdr(float scale, bool srgb) {
 }
 void set_follow_height(bool on) { s.follow_height = on; }
 void set_room(float dp) { s.room = std::max(0.0f, dp); }
+void set_room_height(float dp) { s.room_height = std::max(0.0f, dp); }
 
 unsigned window_dpi() {
     // DES_UI_DPI=<n>: as if the display said so, to try another PC's on this one.
@@ -492,6 +495,8 @@ void render(void* back_buffer, unsigned index, int width, int height, const char
     const float base = base_scale(width, height, window_dpi(), s.follow_height);
     float ratio = (s.ui_scale > 0.0f ? s.ui_scale : 1.0f) * base;
     if (s.room > 0.0f) ratio = std::min(ratio, std::max(0.5f, std::floor(float(width) / s.room * 16.0f) / 16.0f));
+    if (s.room_height > 0.0f)
+        ratio = std::min(ratio, std::max(0.5f, std::floor(float(height) / s.room_height * 16.0f) / 16.0f));
     if (ratio != s.rml->GetDensityIndependentPixelRatio()) {
         s.rml->SetDensityIndependentPixelRatio(ratio);
         restyle_documents();

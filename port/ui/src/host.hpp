@@ -35,6 +35,8 @@ void set_follow_height(bool on);
 // scale setting's included, is never more than the window holds of that width: in 1/16 steps down, and not under 0.5.
 // ui::update sets it.
 void set_room(float dp);
+// The same for the window height the open documents are laid out for (Document::room_height): the start screen.
+void set_room_height(float dp);
 
 // The window's DPI (96 is 100%), 0 if not known.
 unsigned window_dpi();

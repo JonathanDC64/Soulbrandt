@@ -222,6 +222,7 @@ void Prelaunch::show_update() {
         set_display(button.root(), Rml::Style::Display::None);
     }
     if (Rml::Element* note = mDocument->GetElementById("update-note")) note->SetClass("on", found);
+    mDocument->SetClass("update-found", found);  // (a seventh choice: the sheet's --start-room is taller)
     if (Rml::Element* title = mDocument->GetElementById("update-title"))
         set_text_content(title, found ? "Version " + version + " is out" : std::string());
 }
@@ -248,6 +249,7 @@ void Prelaunch::update() {
                                     input::chord_label(settings::get_int("pad_menu_chord")) + " opens the menu.");
     }
     update_prompts();
+    mRoomHeight = dp_property(mDocument, "--start-room");
 
     Document::update();
 }

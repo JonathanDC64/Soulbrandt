@@ -1195,6 +1195,16 @@ body.prelaunch menu {
     gap: 30dp;  /* (a little above the middle: room for a seventh choice, Update, above the hint) */
 }
 
+/* (prelaunch.rcss's --start-room: QUIT clears the hint by 5 dp at 688 dp of height. With Update shown, 720 dp: the
+   choices sit at 46% for it, so it fits a 16:9 window at 100% as it did.) */
+body.prelaunch {
+    --start-room: 688dp;
+}
+
+body.prelaunch.update-found {
+    --start-room: 720dp;
+}
+
 body.prelaunch hero {
     align-items: center;
     gap: 12dp;

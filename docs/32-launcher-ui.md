@@ -217,6 +217,15 @@ before the first change and hands the vblank back to the PS3's 59.94 Hz. A
   (`Document::room`, `host::set_room`). A window under 1280 dp wide, or a
   large UI scale, makes the menu smaller instead of cutting it off. At a
   window of 1280 dp or more nothing changes.
+- **The start screen's height** (11-17). The same for the height: the start
+  screen is laid out for 688 dp (its sheet's `--start-room`; 720 dp in DeS UI
+  and 744 dp in Alpha UI with the Update choice shown), and while it is open
+  the UI's scale is never more than the window holds of that
+  (`Document::room_height`, `host::set_room_height`). It already fills the
+  window at 100%, so at 125% and 150% the choices ran into the hint and the
+  version below; now they clear them, at any window size. At 100% in a 16:9
+  window nothing changes, except in Alpha UI with Update shown: its QUIT ran
+  into the hint there, and the screen is now drawn a sixteenth smaller.
 - It opens maximized on the primary display (Start maximized,
   `DES_MAXIMIZED`, on by default; it sets the runtime's `RSX_MAXIMIZED`,
   read once as the window is made, so a change takes effect at the next

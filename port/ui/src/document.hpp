@@ -30,6 +30,8 @@ public:
     // The window width this document is laid out for, in dp; 0 for any. While it is open, the UI's scale is never more
     // than the window holds of it (host::set_room): the menus (MenuShell, its sheet's --menu-room).
     virtual float room() const { return 0.f; }
+    // The same for the window height (host::set_room_height): the start screen (Prelaunch, its sheet's --start-room).
+    virtual float room_height() const { return 0.f; }
     virtual void cover() {
         mWasVisible = visible();
         hide(false);

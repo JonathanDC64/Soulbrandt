@@ -1,7 +1,11 @@
 /* The start screen. Layout from Dusklight's prelaunch.rcss (CC0) by way of FFCCEOT-Recomp. Adapted for Demon's Souls:
    no background picture (the game boots behind the screen, darkened from the left and at the edges), the title in
    Cinzel over a thin silver rule, and the menu buttons in bone that light up soul-white. Colours from theme.rcss. */
+/* --start-room: the window height the screen is laid out for. The UI's scale is never more than the window holds of it
+   (prelaunch.cpp's room_height()), so at a UI scale of 125% or more the last choice still clears the hint below:
+   5 dp between them at 688 dp, and at 744 dp with a seventh choice (Update). */
 body {
+    --start-room: 688dp;
     --color-prelaunch-muted: rgba(var(--color-text-rgb), 62%);
     --menu-button-decorator: horizontal-gradient(rgba(var(--color-interactive-rgb), 0%) rgba(var(--color-interactive-rgb), 0%));
     --menu-button-decorator-hover: horizontal-gradient(rgba(var(--color-interactive-rgb), 16%) rgba(var(--color-interactive-rgb), 0%));
@@ -19,6 +23,10 @@ body {
 
 body[open] {
     filter: opacity(1);
+}
+
+body.update-found {
+    --start-room: 744dp;
 }
 
 /* The game shows through on the right; the menu side is near black. */
