@@ -121,7 +121,8 @@ Tutorial, regression save, 1280x720, this PC's Dell (HDR on, 280-nit peak, 240-n
 - **In-game brightness** (Options, Brightness, 0 to 10, default 5) is the display copy's table, which applies up to
   white. It bends the curve between black and white and keeps both ends; the highlights above white are added after
   it and do not change with it (measured, section 7).
-- **Linux:** no HDR. vkd3d's swap chain has no colour-space methods, so the display always reads as SDR there.
+- **Linux:** on the Vulkan route only, since 2026-11-18 (section 8). vkd3d's swap chain has no colour-space methods,
+  so the D3D12 route there stays SDR.
 - **The D3D11 menu renderer** ignores HDR. Windows uses the D3D12 one.
 - **Other titles:** Stage A works for any title. Stage B needs the title's scene program named in
   `RSX_HDR_SCENE_FP`; without it nothing is promoted.
@@ -186,3 +187,47 @@ Brightness (measured; input and output out of 255):
   less.
 - With HDR on, the HDR rows are the better tools: HDR brightness (paper white) scales the whole picture, highlights
   included, and HDR shadows (the sRGB curve) lifts only the darkest shades.
+
+## 8. Linux (2026-11-18)
+
+HDR works on Linux with the Vulkan renderer, under gamescope or on a Wayland desktop with HDR on. It is off by default,
+as on Windows. Nothing here could show it on an HDR display: WSL has none. Testers check it on a Steam Deck OLED and
+on KDE Plasma 6.
+
+**How the game knows.** Off Windows nothing reports the display's HDR, so the runtime asks the game window's own
+surface whether it takes scRGB (`gpu_swap_hdr_offered`, read in `rsxc_hdr.inc` `hdr_display_check`). It asks again
+when the window is focused or moves to another display.
+
+| Where | Does the window take scRGB? | Settings needed |
+|---|---|---|
+| gamescope (Steam Deck Game Mode, Bazzite, `gamescope --hdr-enabled`) | Only while gamescope's output is HDR (its layer adds the HDR formats to X11 windows then) | HDR: On. Takes effect at once. |
+| A Wayland desktop that manages colour (KDE Plasma 6; GNOME not confirmed) | Whenever the compositor manages colour, an SDR display too, which the compositor then maps | Turn on HDR for the display in the desktop's settings, then HDR: On, then restart the game |
+| X11, XWayland | Never | (none) |
+
+**The window.** SDL 2 opens an X11 window first, which on a Wayland desktop is XWayland's, with no HDR. With HDR on at
+the start, the game opens a Wayland window of its own instead. That is why a desktop needs a restart after HDR: On.
+`RSX_WAYLAND` overrides it: unset is "with HDR on, not under gamescope"; 1 is always on a Wayland desktop; 0 is never.
+A player's own `SDL_VIDEODRIVER` wins. If the Wayland window doesn't open, the game uses X11's as before.
+
+**Brightness.** The game writes scRGB, where 1.0 means 80 nits on Windows and under gamescope.
+- On a Wayland window 1.0 means the desktop's own white instead. Mesa sets no luminances, so the colour management
+  protocol's defaults hold: 1.0 is the reference white, and the compositor shows it at the desktop's white.
+- So on Wayland, HDR brightness Automatic is the desktop's white exactly. A number of nits counts with that white
+  taken as 203 nits (BT.2408's reference white, which the protocol itself suggests). On a desktop whose white is set
+  elsewhere, the numbered choices are off by that ratio. Automatic is not.
+- Under gamescope, Automatic is 200 nits, the same fallback Windows uses when it can't read its own setting.
+- HDR peak Automatic is 1000 nits on Linux. Nothing tells the display's own peak there yet. Reading it (and the
+  desktop's real white) needs Wayland's colour management protocol in the game, which is not built.
+
+**Scaled desktops.** A Wayland window on a scaled desktop has more pixels than SDL's window points. The swap chain was
+already in pixels; the menus' size and mouse positions now are too (`win_pt` in `rsxc_window.inc`).
+
+**Known risks.**
+- A compositor without the FIFO protocol (`wp_fifo_v1`) makes Mesa wait for the window's frame callbacks with V-sync
+  on. A hidden window gets none, so the game's frames would stop there. wayland.app lists it from KWin 6.2 and
+  Mutter 47.3 (not checked against their release notes). Compositors with colour management are that recent too.
+- On GNOME without libdecor a Wayland window has no title bar.
+
+Both only matter with HDR on at the start, or `RSX_WAYLAND=1`.
+
+**What changed:** ps3recomp #300 (the query, the window, the brightness unit) and the port's Settings wording.

@@ -97,7 +97,7 @@ struct Display {
 Display display();
 
 // Whether Windows has HDR on for a display (an HMONITOR): its DXGI output's colour space is HDR10's then. Always false
-// off Windows, where the game has no HDR.
+// off Windows, where only the game's own window can tell (the runtime's hdr_display_check).
 bool hdr_on(void* monitor);
 
 }  // namespace ui::setup
