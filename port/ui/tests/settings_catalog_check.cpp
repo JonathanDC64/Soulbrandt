@@ -110,6 +110,7 @@ std::vector<Sword> swords() { return {{settings::get("DES_CURSOR_SWORD"), "The d
 void apply_scale() {}
 void apply_look() {}
 bool menu_height_used() { return true; }
+bool start_effects_used() { return true; }
 void party_size_changed() {}
 std::string update_status() { return "Up to date."; }
 bool update_possible() { return true; }

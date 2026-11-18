@@ -36,6 +36,7 @@ std::vector<Sword> swords();
 void apply_scale();
 void apply_look();  // Menu look: the menus take the chosen look at once
 bool menu_height_used();  // Menu height: the chosen look's frame takes its height from it (looks.hpp's menuHeight)
+bool start_effects_used();  // Start screen smoke, Soul flame: the chosen look draws them (DeS UI)
 
 // Network
 void party_size_changed();  // Players when you host: a host takes the new size at once

@@ -79,6 +79,10 @@ bool menu_height_used() {
     return looks::current().menuHeight;
 }
 
+bool start_effects_used() {
+    return looks::current().id == "des";  // (des.rcss's start screen: the smoke and the logo's flame)
+}
+
 void party_size_changed() {
     des::seamless::party_size_changed();
 }
