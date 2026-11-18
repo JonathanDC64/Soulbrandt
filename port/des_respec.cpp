@@ -1059,12 +1059,13 @@ uint32_t tendency_at(uint32_t q, int target)
 }
 
 /* The server's tendency mixes into the own values at each load into the Nexus: online play on, Settings > Network >
- * World tendency "With the server's", and not seamless co-op (des_options.cpp's des_qwc_local). */
+ * World tendency "With the server's" (DES_NET_TENDENCY=server; the default is Yours only), and not seamless co-op
+ * (des_options.cpp's des_qwc_local). */
 bool server_mixes()
 {
     const char* net = std::getenv("PS3_NET_ONLINE");
-    const char* own = std::getenv("DES_NET_TENDENCY");
-    return net && *net && strcmp(net, "0") != 0 && !(own && strcmp(own, "own") == 0) &&
+    const char* mix = std::getenv("DES_NET_TENDENCY");
+    return net && *net && strcmp(net, "0") != 0 && mix && strcmp(mix, "server") == 0 &&
            des::seamless::mode() == des::seamless::Mode::Off;
 }
 

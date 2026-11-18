@@ -338,7 +338,7 @@ Issue #517. `DES_TENDENCY` (Settings > Game > Items > Change tendency in the Nex
 1. **Change Tendency** opens World Tendency, Character Tendency, Leave.
 2. **World Tendency** lists the five worlds in the game's order, each with its level now, for example "Boletarian Palace (Neutral)" and "Stonefang Tunnel (White)".
 3. **A world, or Character Tendency,** lists Pure White, White, Neutral, Black, Pure Black. The current one says "(now)".
-4. **A level asks first.** For a world: "Make Boletarian Palace Pure White?" and "It takes effect the next time you enter it." Online, when the server's tendency mixes in, a third line says "Online, the server's tendency mixes in at each return to the Nexus." That is when online play is on, Settings > Network > World tendency is "With the server's" (the default), and it is not seamless co-op. For the character: "Make your character Pure Black?"
+4. **A level asks first.** For a world: "Make Boletarian Palace Pure White?" and "It takes effect the next time you enter it." Online, when the server's tendency mixes in, a third line says "Online, the server's tendency mixes in at each return to the Nexus." That is when online play is on, Settings > Network > World tendency is "With the server's" (`DES_NET_TENDENCY=server`; the default is "Yours only"), and it is not seamless co-op. For the character: "Make your character Pure Black?"
 5. **YES** sets the value and asks the game to save. The world list comes back with the new level in its row; for the character, the first list comes back. **NO** goes back to the levels.
 
 **The cursor starts at the top of each list.** The current level says "(now)" because the cursor can't start on it. The talk menu's box (DsMenuDlgTalkMsgbox, a list box) works like this (read):
@@ -398,8 +398,10 @@ No new addresses: every function used already had its line for the other discs.
 | Character Tendency (170) | "White (now)"; Pure Black asks "Make your character Pure Black?"; YES: +0x08 to -200, back to the first list |
 | Pause menu, World Tendency page | Latria's stone black, Valley's the brightest, Shrine's lit, Boletarian Palace's darker than Stonefang's, the figure dark: each area is the world above |
 | The game stopped without Quit Game, started again from that save | every value as set, before and after a reload of the Nexus |
-| `PS3_NET_ONLINE=1` set from the debug console (the session already locked offline by a cheat) | the question has the online line |
+| `PS3_NET_ONLINE=1` set from the debug console (the session already locked offline by a cheat), with World tendency then "With the server's" | the question has the online line |
 | Then `DES_NET_TENDENCY=own` | no online line |
+| A settings.ini with World tendency's old empty line, `PS3_NET_ONLINE=1` | Settings reads it as Yours only (`logs\settings.txt`: `DES_NET_TENDENCY = own`); no online line |
+| Then `DES_NET_TENDENCY=server` | the online line |
 | Leave and Circle | back one list each time; Circle at the first list goes back to the statue's |
 | Before the scroll fix: statue list scrolled to Leave and closed; the world list's Leave | the next talk, and the next list, shown from the second row |
 | With the fix, the same three cases (statue's Leave then a new talk, the world list's Leave, the level list's Leave) | each list shown from its first row, the cursor on it |

@@ -467,7 +467,7 @@ std::vector<TabDesc> make_tabs() {
                 .kind = TextRow{32, [](const std::string& v) { s::set("DES_NET_PASSWORD", s::trim_spaces(v)); }},
                 .help = "Summon signs and invasions only between players with the same password. Messages, "
                         "bloodstains and ghosts stay shared. Empty plays with everyone."},
-            choice("World tendency", "DES_NET_TENDENCY", {{"", "With the server's"}, {"own", "Yours only"}},
+            choice("World tendency", "DES_NET_TENDENCY", {{"server", "With the server's"}, {"own", "Yours only"}},
                 "Online, the game mixes other players' world tendency into yours. Yours only changes it by what you "
                 "do alone. Applies from the next load."),
             choice("Message ratings", "DES_NET_RATING_POLL", {{"", "Every 5 minutes"}, {"30", "Every 30 seconds"}},
