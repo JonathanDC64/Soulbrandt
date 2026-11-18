@@ -171,26 +171,23 @@ std::unique_ptr<Renderer> make_renderer(void* device, void* queue) { return d3d1
 
 // ---- The same everywhere ----
 
-// The UI's scale, before the UI scale setting. Dusklight's (and FFCCEOT-Recomp's) rule: the display's scale (its DPI).
-// The window's size does not scale the UI: a larger window gives the documents more room, as for any program.
+// The UI's scale, before the UI scale setting: what the window holds, as the game's own menus and HUD grow with the
+// window. The same everywhere (the setup screens, the start screen, the menus in the game), so nothing changes size
+// when one closes and another opens, as at Play. The display's scale (its DPI) no longer counts: it gave the start
+// screen's logo and choices small in the middle of its smoke on a 1440p display at 100%, and the game's menus another
+// size than the start screen's.
 //
-// Except that it is never more than the window holds. That is in quarter steps rounded down, so the documents always
-// have at least 960 x 720 dp (1080p 1.5, 1440p 2), and a window drag lays them out again only every 180 px. Text is
-// drawn at whole pixel sizes, so no step blurs it. A small screen needs this: a Steam Deck's 1280 x 800 says 215 dpi,
-// as SDL gives the panel's real density (Windows gives the scale the player chose), and 2.25 x leaves 320 dp of height.
-//
-// While a full-window page is open (set_follow_height, the setup screens and the start screen) the scale is simply what
-// the window holds.
+// In quarter steps rounded down, so the documents always have at least 960 x 720 dp (1080p 1.5, a maximised 1440p
+// window 1.75), and a window drag lays them out again only every 180 px. Text is drawn at whole pixel sizes, so no
+// step blurs it.
 //
 // A document that needs more width than that (the menus are laid out for 1280 dp: set_room) is never scaled past what
 // the window holds of its width, after the UI scale setting (render). The same for one that needs more height
 // (set_room_height): the start screen, whose choices would otherwise run into its lines at the foot at 125% and up.
-float base_scale(int width, int height, unsigned dpi, bool follow_window) {
-    const float display = std::max(1.0f, float(dpi) / 96.0f);  // (dpi 0 is not known. A TV can say less than 96.)
-    if (width <= 0 || height <= 0) return display;
+float base_scale(int width, int height, unsigned dpi) {
+    if (width <= 0 || height <= 0) return std::max(1.0f, float(dpi) / 96.0f);  // (not known yet: the display's)
     const float fit = std::floor(std::min(float(width) / 960.0f, float(height) / 720.0f) * 4.0f) / 4.0f;
-    const float holds = std::clamp(fit, 0.5f, 4.0f);
-    return follow_window ? holds : std::min(display, holds);
+    return std::clamp(fit, 0.5f, 4.0f);
 }
 
 // "res/rml/../fonts/x.ttf" -> "res/fonts/x.ttf"
@@ -251,7 +248,6 @@ struct State {
     std::unique_ptr<Renderer> renderer;
     Rml::Context* rml = nullptr;
     float ui_scale = 0.0f;
-    bool follow_height = false;
     float room = 0.0f;  // set_room
     float room_height = 0.0f;  // set_room_height
     bool initialised = false;
@@ -464,18 +460,10 @@ void set_ui_scale(float scale) { s.ui_scale = std::clamp(scale, 0.0f, 4.0f); }
 void set_hdr(float scale, bool srgb) {
     if (s.renderer) s.renderer->set_hdr(scale, srgb);
 }
-void set_follow_height(bool on) { s.follow_height = on; }
 void set_room(float dp) { s.room = std::max(0.0f, dp); }
 void set_room_height(float dp) { s.room_height = std::max(0.0f, dp); }
 
-unsigned window_dpi() {
-    // DES_UI_DPI=<n>: as if the display said so, to try another PC's on this one.
-    static const int forced = [] {
-        const char* v = std::getenv("DES_UI_DPI");
-        return v ? std::atoi(v) : 0;
-    }();
-    return forced > 0 ? unsigned(forced) : dpi_of_window();
-}
+unsigned window_dpi() { return dpi_of_window(); }
 
 // After a change of the dp ratio. RmlUi works a length out again only where it is written in dp: one taken from a
 // variable (var(--space-md), most of the theme's sizes) keeps its old size. A document given a new copy of its style
@@ -492,7 +480,7 @@ static void restyle_documents() {
 void render(void* back_buffer, unsigned index, int width, int height, const char* shot_path) {
     if (!s.initialised) return;
     if (s.rml->GetDimensions() != Rml::Vector2i{width, height}) s.rml->SetDimensions({width, height});
-    const float base = base_scale(width, height, window_dpi(), s.follow_height);
+    const float base = base_scale(width, height, window_dpi());
     float ratio = (s.ui_scale > 0.0f ? s.ui_scale : 1.0f) * base;
     if (s.room > 0.0f) ratio = std::min(ratio, std::max(0.5f, std::floor(float(width) / s.room * 16.0f) / 16.0f));
     if (s.room_height > 0.0f)

@@ -32,7 +32,6 @@ public:
     bool focus() override;
     bool visible() const override;
     bool obscures_game() const override { return true; }
-    bool scales_with_window() const override { return true; }
 
 protected:
     enum class Look { Plain, Primary, Danger, Quiet };
