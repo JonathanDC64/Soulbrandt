@@ -1,5 +1,5 @@
 // Written for Demon's Souls. A cold flame rising off the start screen's logo (DeS UI): RmlUi's "shader" decorator with
-// the value "flame:<name>", drawn by render_gpu.cpp (the Windows menu renderer, D3D12 and Vulkan) as one pixel shader
+// the value "flame:<name>", drawn by render_gpu.cpp (the menus' renderer on D3D12 and Vulkan, Linux's too) as one pixel shader
 // over the logo's element, padding box included (on an integrated GPU, into a picture of the element at half its size,
 // which is scaled up over it: render_effect). It reads one image, the logo's map (soulbrandt-logo-map.png, made by
 // tools/ui/make_logo_map.py): the letters softened, and a wide halo round them that the flame rises from, carried up
@@ -7,8 +7,8 @@
 // decorator over the content box, are drawn over it. The numbers in kLooks were picked on a preview page that ran the
 // same maths in WebGL ("Soul flame").
 //
-// With DES_UI_NO_ANIM (the tests' pictures) the flame stands still at its first frame. render_d3d12.cpp (frozen, the
-// Linux menu) and the D3D11 renderer draw no flame: there the logo shows plain.
+// With DES_UI_NO_ANIM (the tests' pictures) the flame stands still at its first frame. render_d3d12.cpp (frozen: the
+// legacy route, and Linux's menus only when Vulkan cannot start) and the D3D11 renderer draw no flame: there the logo shows plain.
 #pragma once
 
 #include <cstring>
