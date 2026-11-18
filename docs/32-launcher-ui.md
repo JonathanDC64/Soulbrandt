@@ -419,6 +419,7 @@ issue text is cut to fit a link (about 6.5 KB encoded); the zip has the rest.
 | `DES_UI_KEYS=<frame>:<KEY>[,...]` | Press keys at presented frames: F1 ESC UP DOWN LEFT RIGHT ENTER PGUP PGDN TAB SPACE SHIFT, and a letter (A-Z). OSK opens the on-screen keyboard as the game would, and a digit (0-9) is typed, for a number field. `<KEY>+` holds a key down and `<KEY>-` lets it go, for Compare and Hide (`300:C+,360:C-`). With DES_UI_SHOT, a test can walk the menus. |
 | `DES_UI_PICK=<folder>[;<folder>...]` | The setup screens' folder dialogs answer in turn with these folders, and none is shown; past the list's end, as if closed without a choice. With DES_UI_KEYS and DES_UI_SHOT, a test can walk the game folder pages. |
 | `DES_UI_NO_ANIM=1` | No transitions. |
+| `DES_UI_FX_SMALL=1` / `0` | The start screen's smoke and the logo's flame drawn small and scaled up, as on an integrated GPU (1), or at full size, as on a dedicated one (0), whatever the GPU, to compare. |
 | `DES_TEST_OLD_CPU=1` | As if the processor had no SSE4.1: the message, then the exit (`port/des_cpu_check.cpp`). |
 | `DES_UI_DPI=<n>` | As if the display said this DPI (96 is 100%). A Steam Deck says 215. |
 | `DES_UI_RENDER=d3d11` | The menus and the crash dialog draw through D3D11On12, as before the D3D12 renderer (Windows; kept for one release, with no settings row). |
@@ -697,6 +698,14 @@ it, drawn live:
   black with the same gradients.
 - **Still.** With `DES_UI_NO_ANIM` (the tests' pictures) the smoke stands at
   its first frame.
+- **Drawn small on an integrated GPU.** Drawn at full size over a maximised
+  1440p window, the smoke held a small integrated GPU to 11 fps. So on an
+  integrated GPU (the adapter's `integrated`: D3D12's UMA, Vulkan's device
+  type), the shader draws into a small picture of the element instead, at most
+  240 rows whatever the window's size. The picture is scaled up over the
+  element, with a dither so the gradients don't band on black. The smoke is
+  soft, so it looks the same. A dedicated GPU draws it at full size, as
+  before. `DES_UI_FX_SMALL=1` or `0` picks either way, to compare.
 
 A cold, pale blue flame rises off the logo's letters, drawn live the same way:
 
@@ -716,6 +725,9 @@ A cold, pale blue flame rises off the logo's letters, drawn live the same way:
   maths in WebGL 2.
 - **Where it draws, and still pictures:** as for the smoke. Off Windows'
   GPU-layer renderer the logo shows plain.
+- **Drawn small on an integrated GPU,** as the smoke is: at half the
+  element's size, and at most 376 rows (a pixel per dp). Its thinnest wisps
+  are a touch softer there; a third of the size softened them clearly.
 
 How it works:
 

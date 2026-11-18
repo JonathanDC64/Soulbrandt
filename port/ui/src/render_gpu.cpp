@@ -206,6 +206,19 @@ float4 main(PS_IN i) : SV_Target {
 // The start screen's smoke (fog_shader.hpp) and its logo's flame (flame_shader.hpp).
 const char kPsFog[] = DES_UI_HLSL_COMMON DES_UI_HLSL_NOISE DES_UI_HLSL_FOG;
 const char kPsFlame[] = DES_UI_HLSL_COMMON DES_UI_HLSL_NOISE DES_UI_HLSL_FLAME;
+// The smoke's and the flame's pictures (render_effect) scaled up over their elements, bilinear, through RmlUi's
+// transform, with a dither at the window's pixels where there is anything, so their soft gradients don't band on black.
+const char kPsUpscale[] = DES_UI_HLSL_COMMON DES_UI_HLSL_NOISE R"(
+float4 main(PS_IN i) : SV_Target {
+    float4 c = t0.Sample(s_clamp, i.uv);
+    if (max(c.a, max(c.r, max(c.g, c.b))) >= 1.0 / 255.0) {
+        float d = hash33(floor(float3(i.position.xy, 5.0))).x * (0.5 / 255.0);
+        c.rgb = max(c.rgb + d, 0.0);
+        if (c.a > 0.0) c.a = saturate(c.a + d);  // (the flame's light keeps its alpha 0: added to what is behind)
+    }
+    return c * i.color.a;
+}
+)";
 
 // The game's models (docs/112), shaded as the previews were: the diffuse texture under a light from the upper left
 // (ambient plus Lambert, both sides of a face lit as the side toward the viewer), the specular texture's colour as a
@@ -281,17 +294,20 @@ float4 main(MODEL_PS i) : SV_Target {
 )";
 
 enum Program {
-    kColor, kTexture, kGradient, kFog, kFlame,  // (RmlUi's geometry, through its transform)
+    kColor, kTexture, kGradient, kFog, kFlame, kUpscale,  // (RmlUi's geometry, through its transform)
     kPassthrough, kColorMatrix, kBlendMask, kBlur, kDropShadow, kHdrOut,
     kModel, kModelBlend,  // (the model shaders: their own vertices, and the depth buffer)
     kProgramCount
 };
 const char* const kProgramPs[kProgramCount] = {kPsColor,       kPsTexture,     kPsGradient,  kPsFog,  kPsFlame,
-                                               kPsPassthrough, kPsColorMatrix, kPsBlendMask, kPsBlur,
-                                               kPsDropShadow,  kPsHdrOut,      kPsModel,     kPsModel};
+                                               kPsUpscale,     kPsPassthrough, kPsColorMatrix, kPsBlendMask,
+                                               kPsBlur,        kPsDropShadow,  kPsHdrOut,      kPsModel,
+                                               kPsModel};
 const char* const kProgramName[kProgramCount] = {"color",       "texture",      "gradient",   "fog",  "flame",
-                                                 "passthrough", "color matrix", "blend mask", "blur",
-                                                 "drop shadow", "hdr out",      "model",      "model blend"};
+                                                 "upscale",     "passthrough",  "color matrix", "blend mask",
+                                                 "blur",        "drop shadow",  "hdr out",    "model",
+                                                 "model blend"};
+static_assert(kProgramCount <= 16, "the pipeline key keeps a program in 4 bits");
 
 enum Blend { kPremultiplied, kReplace, kFactor, kNoColor };
 enum Stencil { kStencilOff, kStencilTest, kStencilSet, kStencilIntersect, kStencilAuto };
@@ -560,7 +576,9 @@ private:
     std::pair<uint8_t*, gpu_addr> ring(size_t size, size_t align);
     gpu_addr constants(const void* data, size_t size);
     Texture* make_image(const uint8_t* rgba, int w, int h);
-    std::unique_ptr<Target> make_target(uint32_t samples, bool layer);
+    // At the window's size (w, h 0), or at this one.
+    std::unique_ptr<Target> make_target(uint32_t samples, bool layer, int w = 0, int h = 0,
+                                        gpu_format format = kColorFormat);
     void drop(std::unique_ptr<Target>& t);
     void resize(int width, int height);
     Target* layer(int i) { return i >= 0 && i < mLayerCount && i < int(mLayers.size()) ? mLayers[i].get() : nullptr; }
@@ -596,6 +614,7 @@ private:
     void resolve(Target& from, Target& to);
     void render_filters(Rml::Span<const Rml::CompiledFilterHandle> filters);
     void render_blur(float sigma, Target& source_destination, Target& temp, Rml::Rectanglei window);
+    void render_effect(const CompiledShader& s, const Geometry& g, Rml::Vector2f translation);
 
     // The game's models
     Texture* make_block_texture(const ui::models::Texture& src);
@@ -655,6 +674,8 @@ private:
     gpu_texture mStencil{};
     gpu_view mStencilDsv{};
     std::unique_ptr<Target> mPost[4];  // primary, secondary, tertiary, blend mask
+    std::map<const CompiledShader*, std::unique_ptr<Target>> mEffects;  // the smoke's and the flame's pictures
+    bool mSmallEffects = false;  // an integrated GPU: the smoke and the flame drawn small (render_effect)
     std::map<void*, Output> mOutputs;
 
     // Render state
@@ -788,6 +809,17 @@ bool RendererImpl::init() {
     const bool msaa = (gpu_format_support(mDev, kColorFormat, kLayerSamples) & GPU_FMT_MSAA) &&
                       (gpu_format_support(mDev, mStencilFormat, kLayerSamples) & GPU_FMT_MSAA);
     mSamples = msaa ? kLayerSamples : 1;
+
+    // The start screen's smoke and flame are drawn small on an integrated GPU only (render_effect); a dedicated one
+    // draws them at full size. DES_UI_FX_SMALL=1 or 0 says which, to compare.
+    gpu_adapter_info adapter;
+    gpu_adapter(mDev, &adapter);
+    const char* small = std::getenv("DES_UI_FX_SMALL");
+    const bool forced = small && *small;
+    mSmallEffects = forced ? *small == '1' : adapter.integrated != 0;
+    if (mSmallEffects)
+        std::fprintf(stderr, "[ui] the start screen's smoke and flame are drawn small (%s)\n",
+                     forced ? "DES_UI_FX_SMALL" : "integrated GPU");
     return true;
 }
 
@@ -806,6 +838,7 @@ RendererImpl::~RendererImpl() {
     }
     for (auto& t : mLayers) drop(t);
     for (auto& t : mPost) drop(t);
+    for (auto& [shader, t] : mEffects) drop(t);
     if (GPU_VALID(mStencil)) gpu_texture_destroy(mDev, mStencil, 0);
     reclaim(true);
     for (const auto& [res, o] : mOutputs)
@@ -924,17 +957,18 @@ gpu_addr RendererImpl::constants(const void* data, size_t size) {
     return cpu ? gpu : 0;
 }
 
-std::unique_ptr<Target> RendererImpl::make_target(uint32_t samples, bool layer) {
+std::unique_ptr<Target> RendererImpl::make_target(uint32_t samples, bool layer, int w, int h, gpu_format format) {
     auto t = std::make_unique<Target>();
-    t->w = mWidth;
-    t->h = mHeight;
+    t->w = w > 0 ? w : mWidth;
+    t->h = h > 0 ? h : mHeight;
     t->samples = samples;
     t->layer = layer;
-    gpu_texture_desc d = texture_desc(mWidth, mHeight, 1, kColorFormat, samples,
+    t->format = format;
+    gpu_texture_desc d = texture_desc(t->w, t->h, 1, format, samples,
                                       GPU_USE_RT | GPU_USE_COPY_SRC | GPU_USE_COPY_DST |
                                           (samples == 1 ? GPU_USE_SAMPLED : 0u),
                                       GPU_STATE_RENDER_TARGET);
-    d.clear_format = kColorFormat;
+    d.clear_format = format;
     t->tex = make_texture(d);
     if (GPU_VALID(t->tex)) {
         const gpu_view_desc v = view_of(t->tex, GPU_VIEW_RTV, samples);
@@ -2093,6 +2127,10 @@ void RendererImpl::RenderShader(Rml::CompiledShaderHandle shader, Rml::CompiledG
                                 Rml::Vector2f translation, Rml::TextureHandle) {
     const auto* s = reinterpret_cast<const CompiledShader*>(shader);
     const auto* g = reinterpret_cast<const Geometry*>(geometry);
+    if (s && g && (s->fog || s->flame) && mSmallEffects) {
+        render_effect(*s, *g, translation);
+        return;
+    }
     if (s && g && s->fog) {
         if (!g->count || !prepare(kFog)) return;
         // Still at its first frame with the animations off (DES_UI_NO_ANIM: the tests' pictures).
@@ -2176,7 +2214,76 @@ void RendererImpl::RenderShader(Rml::CompiledShaderHandle shader, Rml::CompiledG
 void RendererImpl::ReleaseShader(Rml::CompiledShaderHandle shader) {
     auto* s = reinterpret_cast<CompiledShader*>(shader);
     if (s && s->map) ReleaseTexture(s->map);
+    if (const auto it = mEffects.find(s); it != mEffects.end()) {
+        drop(it->second);
+        mEffects.erase(it);
+    }
     delete s;
+}
+
+// The start screen's smoke and the logo's flame (shader("fog:...") and shader("flame:...")) on an integrated GPU
+// (mSmallEffects): the pixel shader drawn into a picture of the element, which is then scaled up over the element
+// (kUpscale), bilinear, with the dither. Drawn over the whole of a maximised 1440p window, the smoke was 3.5 million
+// pixels of noise a frame, and a small integrated GPU (2 compute units) drew the start screen at 11 fps. Both are
+// soft, so the smaller picture looks almost the same (the flame's thinnest wisps a touch softer); a dedicated GPU
+// draws them over the element at full size, as they were. The smoke's picture is at most kFogRows rows tall, whatever
+// the window's size; the flame's half its element's size, at most kFlameRows rows. The picture is RGBA16F, so the
+// scaling up blends the shader's own values, not 8-bit steps.
+void RendererImpl::render_effect(const CompiledShader& s, const Geometry& g, Rml::Vector2f translation) {
+    constexpr float kFogRows = 240.f;
+    constexpr float kFlameRows = 376.f;  // (the logo's element is 376 dp tall: at most a pixel per dp)
+    const auto* map = reinterpret_cast<const Texture*>(s.map);
+    if (!g.count || !mOpen || !mBound || (s.flame && !map)) return;
+    // The picture's size, from the element's box in the layout's pixels (before the transform, so that an animated
+    // scale doesn't make it again each frame).
+    const float bw = g.hi.x - g.lo.x, bh = g.hi.y - g.lo.y;
+    if (bw < 1.f || bh < 1.f) return;
+    const float scale = std::min(s.fog ? 1.f : 0.5f, (s.fog ? kFogRows : kFlameRows) / bh);
+    const int w = std::max(1, int(std::ceil(bw * scale))), h = std::max(1, int(std::ceil(bh * scale)));
+    std::unique_ptr<Target>& t = mEffects[&s];
+    if (t && (t->w != w || t->h != h)) drop(t);
+    if (!t) t = make_target(1, false, w, h, GPU_FORMAT_R16G16B16A16_FLOAT);
+    if (!t) return;
+
+    // Still at its first frame with the animations off (DES_UI_NO_ANIM: the tests' pictures).
+    static const bool still = std::getenv("DES_UI_NO_ANIM") != nullptr;
+    const double seconds =
+        still ? 0.0 : std::chrono::duration<double>(std::chrono::steady_clock::now() - mStart).count();
+    // The whole picture, replaced (no scissor, no blend), by a quad already in clip space (no transform).
+    Target& into = *mBound;
+    const Rml::Rectanglei scissor = mScissor;
+    const Blend blend = mBlend;
+    mScissor = Rml::Rectanglei::MakeInvalid();
+    mBlend = kReplace;
+    bind(*t);
+    bool drawn = false;
+    const auto quad = [&](const void* c, size_t size) {
+        if (const auto gpu = constants(c, size)) {
+            gpu_cmd_bind_cb(mCmd, 0, gpu);
+            draw_quad(0, 0, 1, 1);
+            drawn = true;
+        }
+    };
+    if (s.fog) {
+        ui::fog::Constants c{};
+        store(Rml::Matrix4f::Identity(), c.transform);
+        ui::fog::fill(*s.fog, seconds, s.aspect, c);
+        c.dither[0] = 0.f;  // (kUpscale's, at the window's pixels)
+        if (prepare(kFog)) quad(&c, sizeof c);
+    } else {
+        gpu_cmd_bind_table(mCmd, 2, map->table);
+        ui::flame::Constants c{};
+        store(Rml::Matrix4f::Identity(), c.transform);
+        ui::flame::fill(*s.flame, seconds, c);
+        c.dither[0] = 0.f;
+        if (prepare(kFlame)) quad(&c, sizeof c);
+    }
+    mScissor = scissor;
+    mBlend = blend;
+    bind(into);
+    if (!drawn) return;
+    sample(2, *t);
+    if (prepare(kUpscale) && set_common(translation)) draw(g);
 }
 
 // ---- The game's models (docs/112) ----
