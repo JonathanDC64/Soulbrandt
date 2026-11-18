@@ -162,6 +162,7 @@ std::atomic<int> sBufferW{1280}, sBufferH{720};
 
 bool sStartScreen = false;
 bool sSetupOnly = false;  // setup's screens alone, no game (des_ui_launch)
+bool sCrashDialog = false;  // off Windows, the crash dialog's process: setup's window alone, the dialog's window in it
 std::atomic<bool> sStartUp{false};
 // The window's close button (and Alt+F4) asks first, as Quit does; a test run's window closes at once.
 bool sCloseAsks = false;
@@ -646,6 +647,17 @@ void push_setup(const char* open) {
     }
 }
 
+// Off Windows, the crash dialog's process (crash_report.hpp's dialog_process: DES_UI_OPEN=crash-dialog, started by
+// crash_report_posix.cpp): setup's window-only start, with the dialog's window in place of setup's screens. Windows'
+// dialog has a window of its own (crash_dialog.cpp).
+bool crash_dialog_process() {
+#ifdef _WIN32
+    return false;
+#else
+    return ui::crash_report::dialog_process();
+#endif
+}
+
 // DES_UI_OPEN's values that open setup's screens alone (des_ui_launch): no game below them.
 bool setup_only_open(const char* open) {
     return open && (!std::strcmp(open, "setup") || !std::strcmp(open, "setup-run") ||
@@ -656,6 +668,12 @@ void push_documents() {
     if (sDocumentsPushed) return;
     sDocumentsPushed = true;
     ui::push_document(std::make_unique<ui::Overlay>(), true, true);
+#ifndef _WIN32
+    if (sCrashDialog) {  // (no update check either: the dialog has nothing to show it on)
+        ui::crash_report::push_dialog();
+        return;
+    }
+#endif
     // The update check (updates.hpp), off this thread: what it finds shows on the start screens and in Settings, About.
     ui::updates::set_over_game(!sSetupOnly);
     if (const char* open = std::getenv("DES_UI_OPEN");
@@ -1080,9 +1098,10 @@ void sync_fullscreen() {
 void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned height) {
     ++sFrame;
     sFramesRun.fetch_add(1, std::memory_order_relaxed);
-    sync_fullscreen();
+    // (the crash dialog stays a window, and has the game's environment: its test knobs are the game's, not its own)
+    if (!sCrashDialog) sync_fullscreen();
     ui::mouse::on_frame();  // (mouse look: is the game's camera taking the mouse?)
-    if (ui::report::frame_hook(sFrame)) sReportCountdown = 4;  // DES_REPORT_AT_FRAME (and the crash test knobs)
+    if (!sCrashDialog && ui::report::frame_hook(sFrame)) sReportCountdown = 4;  // DES_REPORT_AT_FRAME (and the crash test knobs)
     const bool script = !sScriptKeys.empty();
     std::string shotNow;  // DES_UI_SHOT_NOW's, for this frame
     {
@@ -1396,6 +1415,17 @@ void setup_only_env() {
     if (!std::getenv("RSX_VP_BUFFERS")) ps3_setenv("RSX_VP_BUFFERS", "0");
 }
 
+// The crash dialog's process, on top of setup_only_env: no mark of its renderer's start (RSX_STATE_DIR: a start of
+// the dialog's that never finished is not the game's), and crash_dialog.hpp's DES_CRASH_DIALOG_SHOT=<file.bmp> as a
+// DES_UI_SHOT, at frame 40 (DES_CRASH_DIALOG_SHOT_FRAME=<n>: at frame n).
+void crash_dialog_env() {
+    ps3_setenv("RSX_STATE_DIR", "");
+    if (const char* shot = std::getenv("DES_CRASH_DIALOG_SHOT"); shot && *shot) {
+        const char* at = std::getenv("DES_CRASH_DIALOG_SHOT_FRAME");
+        sShots.push_back({shot, at && *at ? std::strtoull(at, nullptr, 10) : 40});
+    }
+}
+
 // A player's start keeps the saves where a double-click puts them. They are the PS3 file system's gamedata/dev_hdd0
 // under the working folder (cellFs.c, cellSaveData.c), so a shortcut's "Start in", or a start from a terminal in
 // another folder, would read and write saves there. So the game works in the exe's folder (docs/90 section 4, item
@@ -1424,6 +1454,8 @@ void work_in_exe_folder() {
 
 extern "C" int des_ui_launch(int* argc, char*** argv) {
     if (const char* v = std::getenv("DES_UI"); v && !std::strcmp(v, "0")) return -1;
+    // The crash dialog's process: the window alone, before anything here touches the program's files.
+    if (crash_dialog_process()) return -2;
     ui::updates::drop_old_program();
     // An update's swap cut short (updates.hpp): undone, then the program that is in place now starts.
     if (ui::updates::recover_swap() && ui::crash_report::start_again({}, false)) return 0;
@@ -1490,6 +1522,8 @@ extern "C" void des_ui_early_init(void) {
     }
     ui::settings::load_and_apply_env();
     if (sSetupOnly) setup_only_env();
+    sCrashDialog = sSetupOnly && crash_dialog_process();
+    if (sCrashDialog) crash_dialog_env();
     if (!sSetupOnly && ui::settings::net_custom_held()) sCustomServerNotice.store(true);
     // A gameplay mod (settings.cpp's apply_network left the network knobs unset): the network also stays off when
     // something sets them later, the environment's or the debug console's included.
@@ -1497,7 +1531,7 @@ extern "C" void des_ui_early_init(void) {
         ps3_net_lock_offline();
         if (ui::settings::net_mods_held()) sModsNotice.store(true);
     }
-    parse_debug_knobs();
+    if (!sCrashDialog) parse_debug_knobs();  // (the dialog's are crash_dialog_env's: these are the game's)
     sOpenPending = sSetupOnly || env_on("DES_UI_OPEN");
     sChordMask = ui::input::chord_mask(ui::settings::get_int("pad_menu_chord"));
 

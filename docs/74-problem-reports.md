@@ -51,6 +51,23 @@ startup and after each change. The dialog uses that file, and falls back to
 `settings.ini` only if it is missing. Without it, a player who had never
 changed a setting would send no settings at all.
 
+**Off Windows (2026-11-18).** The same dialog, with the same three forms and buttons:
+- **Its process** is the program started again with `DES_UI_OPEN=crash-dialog`, `DES_CRASH_REPORT=<the report>` and
+  `DES_CRASH_PID=<the game>` (`crash_report_posix.cpp`).
+  - That is setup's window-only start (`des_ui_launch` returns -2), on the renderer the game used. The dialog's
+    window (`crash_dialog_window.cpp`) takes the place of setup's screens.
+  - It has the arguments and the environment the game started with, so **Restart game** starts the game as it was
+    started (`start_again`).
+- **Its output** goes to `logs/crash-dialog.log`.
+  - The game's standard output and error are the pipes of its log's threads, which end with the game.
+  - It keeps none of the game's open files and sockets.
+- **The command line** for `environment.txt` is the dialog's own, which is the game's.
+- **Without a window:** if the window has not come up after 30 s (no renderer started), an SDL message box says
+  where the report is.
+- **Shared code:** the reading of a report and **Report on GitHub** are `crash_report_dialog.cpp`, on both systems.
+- **A Linux crash report's first lines** are now as on Windows: `=== CRASH: <what> ===`, the version line, the
+  renderer, then `stack:` and the backtrace.
+
 ### The runtime snapshot
 
 `ps3_diag_report(out, seconds)` writes, in one go, what the debug console's

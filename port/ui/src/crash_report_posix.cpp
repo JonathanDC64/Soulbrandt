@@ -1,30 +1,52 @@
 // Written for Demon's Souls. Crash reports off Windows (docs/76; crash_report.hpp, and crash_report.cpp for Windows):
 // the log starts here (des_ui_early_init), and when the game ends on a fault nothing handled or on an abort, this
 // writes crash-<time>.txt (what happened, the last HLE call and a backtrace) and crash-<time>.log (the end of the log)
-// in the data folder's crashes folder; a hang (report_hang) writes hang-<time>.txt and .log beside them. No dialog yet:
-// the report is on disk, and the player is told where in the log.
+// in the data folder's crashes folder; a hang (report_hang) or a lost graphics device (report_graphics_lost) writes
+// hang-<time>.txt or graphics-<time>.txt and .log beside them.
+//
+// Then, as on Windows, a second process tells the player and offers what to do (crash_dialog.hpp). It is this program
+// started again with DES_UI_OPEN=crash-dialog, DES_CRASH_REPORT=<the report> and DES_CRASH_PID=<the game's process>:
+// setup's window-only start (des_ui.cpp, boot_main's PS3_LAUNCH_WINDOW) with the dialog's window in it (push_dialog
+// below), on the renderer the game used. It has the arguments and the environment the game started with, so its
+// Restart starts the game as it was started (start_again). Its output goes to the data folder's
+// logs/crash-dialog.log, and it keeps none of the game's open files and sockets. If its window has not come up after
+// kWindowWaitS, an SDL message box says where the report is. DES_NO_CRASH_DIALOG=1 writes the report alone.
 //
 // The faults come through the runtime's Win32 exception shim (runtime/platform/win32_compat.h): its unhandled filter
 // runs only after the runtime's own handlers passed on the fault, as SetUnhandledExceptionFilter does on Windows.
 // The runtime's previous filter and abort handler still run afterwards (they print the guest state).
 #include "crash_report.hpp"
 
+#include "app.hpp"
+#include "crash_dialog.hpp"
+#include "crash_report_dialog.hpp"
+#include "modal.hpp"
 #include "mouse.hpp"
 #include "report.hpp"
+#include "report_ack.hpp"
+#include "ui.hpp"
 #include "version.hpp"
 
+#include <SDL.h>
 #include <execinfo.h>
+#include <fcntl.h>
 #include <spawn.h>
+#include <sys/syscall.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
+#include <atomic>
+#include <chrono>
 #include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <filesystem>
 #include <fstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 extern char** environ;
@@ -56,11 +78,16 @@ namespace ui::crash_report {
 
 namespace {
 
+constexpr int kWindowWaitS = 30;  // the dialog's process: its window by then, or the message box
+
 std::string g_dir;  // where the reports go (with a trailing slash)
 bool g_installed = false;
-volatile sig_atomic_t g_reported = 0;
+bool g_dialog = false;  // start the dialog's process (DES_NO_CRASH_DIALOG=1: not)
+volatile sig_atomic_t g_reported = 0, g_dialog_started = 0;
 Filter g_prev_filter = nullptr;            // boot_main's, if any
 void (*g_prev_abort)(int) = nullptr;       // boot_main's (prints a backtrace, then exits)
+pid_t g_hang_dialog = 0;                   // the hang (or lost graphics) dialog's process, while it may be open
+char g_txt[4096];                          // the crash report written (write_report), for its dialog
 
 // The environment and the command line as the program started (start_again's), saved before main, before anything
 // changed the environment. (Function statics: the saving may run before this file's other static initializers.)
@@ -113,7 +140,81 @@ void write_log_tail(const std::string& path) {
         write(path.substr(0, path.size() - 4) + ".coop.log", report::read_head_tail(coop, 200, 2 << 20));
 }
 
-// The report, once: what happened, then a backtrace, then the end of the log beside it.
+// ---- Starting the dialog's process ----
+
+// Made once, at install: a fault may come with the heap in any state, so starting the dialog then allocates nothing.
+struct DialogStart {
+    std::vector<std::string> vars;  // the environment the game started with, less what this one sets, plus it
+    std::vector<char*> envp, argv;
+    char report_var[4200] = {};     // DES_CRASH_REPORT=<the report>, filled in when there is one
+    posix_spawn_file_actions_t files;
+    posix_spawnattr_t attr;
+    bool ready = false;
+};
+DialogStart g_start;
+
+void prepare_dialog() {
+    DialogStart& s = g_start;
+    static const char* kSet[] = {"DES_UI_OPEN=", "DES_LAUNCH_AFTER=", "DES_UPDATE_TO=", "DES_CRASH_REPORT=",
+                                 "DES_CRASH_PID="};
+    for (const std::string& v : started_environment()) {
+        bool drop = false;
+        for (const char* name : kSet) drop = drop || v.rfind(name, 0) == 0;
+        if (!drop) s.vars.push_back(v);
+    }
+    s.vars.push_back("DES_UI_OPEN=crash-dialog");
+    s.vars.push_back("DES_CRASH_PID=" + std::to_string(getpid()));
+    for (std::string& v : s.vars) s.envp.push_back(v.data());
+    s.envp.push_back(s.report_var);
+    s.envp.push_back(nullptr);
+    for (std::string& a : started_arguments()) s.argv.push_back(a.data());
+    if (s.argv.empty()) s.argv.push_back(const_cast<char*>("des_host"));
+    s.argv.push_back(nullptr);
+    // Its output to a log of its own: the game's standard output and error are the pipes of its log's threads
+    // (report.cpp), which end with it. And none of the game's other files and sockets, held open while it is up.
+    posix_spawn_file_actions_init(&s.files);
+    const std::string log = (report::data_dir() / "logs" / "crash-dialog.log").string();
+    posix_spawn_file_actions_addopen(&s.files, 1, log.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    posix_spawn_file_actions_adddup2(&s.files, 1, 2);
+    posix_spawn_file_actions_addclosefrom_np(&s.files, 3);
+    // A fault's handler runs with its signal blocked, and a new process keeps the mask it was started with.
+    posix_spawnattr_init(&s.attr);
+    sigset_t none;
+    sigemptyset(&none);
+    posix_spawnattr_setsigmask(&s.attr, &none);
+    posix_spawnattr_setflags(&s.attr, POSIX_SPAWN_SETSIGMASK);
+    s.ready = true;
+}
+
+// Starts the dialog's process for the report at `txt`; its id, or 0. The program this one runs (/proc/self/exe:
+// the same file, even replaced since), else the one where it was started.
+pid_t start_dialog(const char* txt) {
+    DialogStart& s = g_start;
+    if (!s.ready || !txt || !*txt) return 0;
+    std::snprintf(s.report_var, sizeof s.report_var, "DES_CRASH_REPORT=%s", txt);
+    pid_t child = 0;
+    int rc = posix_spawn(&child, "/proc/self/exe", &s.files, &s.attr, s.argv.data(), s.envp.data());
+    if (rc != 0) {
+        const std::string exe = report::program_now().string();
+        if (!exe.empty()) rc = posix_spawn(&child, exe.c_str(), &s.files, &s.attr, s.argv.data(), s.envp.data());
+    }
+    if (rc != 0) {
+        std::fprintf(stderr, "[crash] the dialog could not start: %s\n", std::strerror(rc));
+        return 0;
+    }
+    std::fprintf(stderr, "[crash] the dialog's process: %ld (its log: logs/crash-dialog.log)\n", long(child));
+    return child;
+}
+
+// The crash dialog, once, after the report.
+void show_dialog() {
+    if (!g_dialog || !g_txt[0] || g_dialog_started) return;
+    g_dialog_started = 1;
+    start_dialog(g_txt);
+}
+
+// The report, once: what happened, then a backtrace, then the end of the log beside it. Its first lines are as on
+// Windows (the "=== CRASH:" line the dialog reads, then "stack:").
 void write_report(const char* what, const char* notes = nullptr) {
     if (g_reported) return;
     g_reported = 1;
@@ -122,13 +223,22 @@ void write_report(const char* what, const char* notes = nullptr) {
     std::fprintf(stderr, "[crash] %s; last HLE call %s (0x%08X)\n", what, g_last_hle_name ? g_last_hle_name : "?",
                  g_last_hle_nid);
     if (FILE* f = std::fopen((base + ".txt").c_str(), "w")) {
-        std::fprintf(f, "DemonsSoulsRecomp %s crashed: %s\nLast HLE call: %s (0x%08X)\n\n", kVersion, what,
-                     g_last_hle_name ? g_last_hle_name : "?", g_last_hle_nid);
+        std::fprintf(f, "\n%s%s ===\n", kCrashMark, what);
+        std::fprintf(f, "version %s, last HLE call 0x%08X (%s), thread %ld\n", kVersion, g_last_hle_nid,
+                     g_last_hle_name ? g_last_hle_name : "", long(syscall(SYS_gettid)));
+        std::fprintf(f, "ps3recomp %s, game dump %s\n", kPs3recompVersion, *kDumpSha256 ? kDumpSha256 : "unknown");
         if (notes && *notes) std::fprintf(f, "%s\n", notes);
+        {
+            const char* why = nullptr;
+            if (const char* r = report::renderer_name(&why))  // (the dialog's report takes it from here)
+                std::fprintf(f, "renderer %s%s%s%s\n", r, why ? " (" : "", why ? why : "", why ? ")" : "");
+        }
+        std::fprintf(f, "stack:\n");
         std::fflush(f);
         void* frames[64];
         backtrace_symbols_fd(frames, backtrace(frames, 64), fileno(f));
         std::fclose(f);
+        std::snprintf(g_txt, sizeof g_txt, "%s.txt", base.c_str());
     }
     write_log_tail(base + ".log");
     std::fprintf(stderr, "[crash] report: %s.txt\n", base.c_str());
@@ -144,26 +254,133 @@ int32_t on_unhandled(ExceptionPointers* e) {
     else
         std::snprintf(what, sizeof what, "exception 0x%08X at %p", r ? r->code : 0u, r ? r->address : nullptr);
     write_report(what);
+    show_dialog();
     return g_prev_filter ? g_prev_filter(e) : 0;  // (0: EXCEPTION_CONTINUE_SEARCH, the process ends as it would have)
 }
 
 void on_abort(int sig) {
-    write_report("abort");
+    write_report("abort (see the messages above it in the log)");
+    show_dialog();
     if (g_prev_abort && g_prev_abort != SIG_DFL && g_prev_abort != SIG_IGN) g_prev_abort(sig);
     std::signal(SIGABRT, SIG_DFL);
     std::raise(SIGABRT);
 }
 
+// ---- The dialog's process ----
+
+std::atomic<bool> g_window_up{false};  // push_dialog ran: the window-only start has its renderer and the UI
+
+// Whether the process `pid` still runs: not when it is gone, when it has ended and waits for its parent to reap it
+// (a zombie), or when the id is another user's now.
+bool running(unsigned long pid) {
+    if (pid == 0 || kill(pid_t(pid), 0) != 0) return false;
+    std::ifstream stat("/proc/" + std::to_string(pid) + "/stat");
+    std::string line;
+    std::getline(stat, line);
+    const size_t name_end = line.rfind(')');  // (the process's name is in brackets, and may hold anything)
+    return !(name_end != std::string::npos && name_end + 2 < line.size() && line[name_end + 2] == 'Z');
+}
+
+void wait_gone(unsigned long pid, int ms) {
+    for (int waited = 0; waited < ms && running(pid); waited += 50) usleep(50000);
+}
+
+// A hang's "Close the game", and a lost device's before its restart: the game is still running.
+void close_game(const Dialog& d) {
+    if (!running(d.pid)) return;
+    kill(pid_t(d.pid), SIGKILL);
+    wait_gone(d.pid, 5000);
+}
+
+// The game again, as it was started (this process has its arguments and environment), once the crashed one is gone.
+void restart(const Dialog& d) {
+    wait_gone(d.pid, 10000);
+    const char* skip = std::getenv("DES_SKIP_UI");  // (start_again sets it only for a start from setup's Play)
+    if (!start_again({}, skip && *skip && std::strcmp(skip, "0") != 0))
+        std::fprintf(stderr, "[crash-dialog] the game could not be started again\n");
+}
+
+// No window after kWindowWaitS (its renderer did not start): a plain message box, then the end of this process.
+void watch_window(std::string txt, std::string title) {
+    for (int i = 0; i < kWindowWaitS * 10 && !g_window_up.load(); i++) usleep(100000);
+    if (g_window_up.load()) return;
+    std::fprintf(stderr, "[crash-dialog] no window after %d s: a message box\n", kWindowWaitS);
+    const std::string text = "A report was saved in " + std::filesystem::path(txt).parent_path().string() +
+                             ".\nTo report it, attach the files in that folder to a new issue at " +
+                             std::string(report::kRepositoryUrl);
+    if (SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, title.c_str(), text.c_str(), nullptr) != 0)
+        std::fprintf(stderr, "[crash-dialog] no message box either: %s\n", SDL_GetError());
+    std::fflush(stderr);
+    _exit(0);
+}
+
 }  // namespace
 
-bool hang_dialog_open() { return false; }  // (no dialog off Windows yet)
+bool dialog_process() {
+    static const bool yes = [] {
+        const char* open = std::getenv("DES_UI_OPEN");
+        return open && std::strcmp(open, "crash-dialog") == 0;
+    }();
+    return yes;
+}
+
+void push_dialog() {
+    static Dialog d;
+    static crash_dialog::Content content;
+    static crash_dialog::Actions actions;
+    const char* txt = std::getenv("DES_CRASH_REPORT");
+    const char* pid = std::getenv("DES_CRASH_PID");
+    d.txt = txt ? txt : "";
+    d.pid = pid ? std::strtoul(pid, nullptr, 10) : 0;
+    d.data = report::data_dir();
+    for (const std::string& a : started_arguments()) d.command_line += (d.command_line.empty() ? "" : " ") + a;
+    content = read_report(d);
+    actions.report = [] { return make_report(d); };
+    actions.restart = [] {
+        if (d.lost) close_game(d);  // (the game is still running, with nothing to draw with)
+        restart(d);
+    };
+    actions.close_game = [] { close_game(d); };
+    crash_dialog::push_window(content, actions, [] {
+        if (ui::app().quit) ui::app().quit();
+    });
+    g_window_up.store(true);
+    std::fprintf(stderr, "[crash-dialog] the window for %s (process %lu)\n", d.txt.string().c_str(), d.pid);
+
+    // The test knobs of crash_dialog.hpp, but at once: this window has its first frame already.
+    const char* auto_details = std::getenv("DES_CRASH_DIALOG_DETAILS");
+    const char* auto_report = std::getenv("DES_CRASH_DIALOG_REPORT");
+    auto* modal = dynamic_cast<Modal*>(top_document());
+    if (modal && auto_report && *auto_report && *auto_report != '0') {
+        if (std::strcmp(auto_report, "ask") == 0)  // (as the button: the first report's question first)
+            with_zip_ack([modal] { modal->set_body_text(actions.report()); });
+        else
+            modal->set_body_text(actions.report());
+    }
+    if (modal && auto_details && *auto_details && *auto_details != '0') crash_dialog::show_details(content, *modal);
+    if (const char* ms = std::getenv("DES_CRASH_DIALOG_EXIT_MS"); ms && std::atoll(ms) > 0) {
+        const long long after = std::atoll(ms);
+        std::thread([after] {
+            std::this_thread::sleep_for(std::chrono::milliseconds(after));
+            if (ui::app().quit) ui::app().quit();
+        }).detach();
+    }
+}
+
+bool hang_dialog_open() {
+    if (g_hang_dialog <= 0) return false;
+    int status = 0;
+    if (waitpid(g_hang_dialog, &status, WNOHANG) == 0) return true;
+    g_hang_dialog = 0;  // (it ended, and is reaped here)
+    return false;
+}
 
 namespace {
 
 // A report of a game that is still running: <kind>-<time>.txt (`mark`, `what`, then `note` and the runtime's
-// snapshot) and the end of the log beside it.
+// snapshot) and the end of the log beside it, then the dialog.
 void report_running(const char* kind, const char* mark, const std::string& what, const char* note) {
-    if (!g_installed) return;
+    if (!g_installed || hang_dialog_open()) return;
     const std::string base = stem_of(kind);
     FILE* out = std::fopen((base + ".txt").c_str(), "w");
     if (!out) return;
@@ -180,35 +397,52 @@ void report_running(const char* kind, const char* mark, const std::string& what,
     std::fclose(out);
     write_log_tail(base + ".log");
     std::fprintf(stderr, "[report] %s report: %s.txt\n", kind, base.c_str());
+    if (g_dialog) g_hang_dialog = start_dialog((base + ".txt").c_str());
 }
 
 }  // namespace
 
 void report_hang(long long ms_since_frame) {
-    report_running("hang", "=== NOT RESPONDING: ", "no new frame for " + std::to_string(ms_since_frame / 1000) + " s",
+    report_running("hang", kHangMark, "no new frame for " + std::to_string(ms_since_frame / 1000) + " s",
                    "The menu could not open: the render thread did not answer.");
 }
 
 void report_graphics_lost(const std::string& what) {
-    report_running("graphics", "=== GRAPHICS LOST: ", what,
+    report_running("graphics", kLostMark, what,
                    "The graphics device was lost: nothing more can be drawn, while the game runs on.");
 }
 
 void install() {
+    // The dialog's process: no reports of its own (a dialog for the dialog, and its own des.log over the game's),
+    // only the message box if its window does not come up.
+    if (dialog_process()) {
+        const char* txt = std::getenv("DES_CRASH_REPORT");
+        const std::string report = txt ? txt : "";
+        const std::string text = read_text(report);
+        const char* title = text.find(kLostMark) != std::string::npos   ? DES_PRODUCT_NAME " can no longer draw"
+                            : text.find(kHangMark) != std::string::npos ? DES_PRODUCT_NAME " is not responding"
+                                                                        : DES_PRODUCT_NAME " has crashed";
+        std::thread(watch_window, report, std::string(title)).detach();
+        return;
+    }
     wait_for_launcher();
     if (g_installed || report::data_dir().empty()) return;  // test runs: nothing
     g_installed = true;
+    const char* no_dialog = std::getenv("DES_NO_CRASH_DIALOG");
+    g_dialog = !(no_dialog && *no_dialog && std::strcmp(no_dialog, "0") != 0);
     report::start_log();
     std::error_code ec;
     const auto dir = report::data_dir() / "crashes";
     std::filesystem::create_directories(dir, ec);
     g_dir = dir.string() + "/";
+    if (g_dialog) prepare_dialog();
     g_prev_filter = SetUnhandledExceptionFilter(on_unhandled);
     g_prev_abort = std::signal(SIGABRT, on_abort);
 }
 
 bool start_again(const std::vector<std::string>& set, bool play) {
-    std::vector<std::string> drops = {"DES_UI_OPEN=", "DES_SKIP_UI=", "DES_LAUNCH_AFTER=", "DES_UPDATE_TO="};
+    std::vector<std::string> drops = {"DES_UI_OPEN=", "DES_SKIP_UI=", "DES_LAUNCH_AFTER=", "DES_UPDATE_TO=",
+                                      "DES_CRASH_REPORT=", "DES_CRASH_PID="};
     for (const std::string& v : set) drops.push_back(v.substr(0, v.find('=') + 1));
     std::vector<std::string> vars;
     for (const std::string& v : started_environment()) {
@@ -246,7 +480,10 @@ bool start_again(const std::vector<std::string>& set, bool play) {
 
 bool reports_on() { return g_installed; }
 
-void report_guest_exit(const char* what, const char* notes) { write_report(what, notes); }
+void report_guest_exit(const char* what, const char* notes) {
+    write_report(what, notes);
+    show_dialog();
+}
 
 }  // namespace ui::crash_report
 
