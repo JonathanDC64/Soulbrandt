@@ -138,8 +138,7 @@ Windows now uses the D3D12 renderer too, and keeps the D3D11On12 path
   - in `report.cpp`: the process id, the command line, the environment,
     file truncate and seek, the user's and the PC's names, the home folder,
     and the system facts.
-  The crash dialog, the minidumps, `hdr_on` and `other_modules` stay
-  Windows-only.
+  The minidumps and `hdr_on` stay Windows-only.
 - **Reports.**
   - The data folder is `$XDG_DATA_HOME/DemonsSoulsRecomp/DemonsSouls` (else
     `~/.local/share/...`).
@@ -148,10 +147,11 @@ Windows now uses the D3D12 renderer too, and keeps the D3D11On12 path
   - Links and folders open with `xdg-open`.
   - Crashes (a fault nothing handled, or an abort) go through win32_compat's
     exception shim and write `crashes/crash-<time>.txt` with a backtrace,
-    plus the end of the log. There is no dialog.
+    plus the end of the log, then start the crash dialog (docs/74, "Off
+    Windows").
   - Hangs: when the game has stopped and the render thread does not answer
     the menu key, the watch thread writes `crashes/hang-<time>.txt` (the
-    runtime's snapshot) and `.log`. There is no dialog.
+    runtime's snapshot) and `.log`, then starts the dialog in its hang form.
 
 stb is fetched at configure time, as RmlUi and FreeType are.
 
@@ -264,7 +264,7 @@ cache in the data folder. Packing with appimagetool has not been run.
 |---|---|
 | Startup shader precompile | `rsx_shader_precompile.c` is Windows-only; shaders compile as the game draws them |
 | Pipeline cache across runs | vkd3d's `CreatePipelineLibrary` is a stub; the backend carries on without one, and pipelines are built again each run |
-| Crash and hang dialog, F8 mark | Win32 code; not ported. Crash and hang reports are written, with no dialog |
+| F8 mark | Win32 code; not ported. (The crash and hang dialog is: docs/74, "Off Windows".) |
 | Runtime snapshot | the runtime's `ps3_diag_report` (what every thread is doing) and its debug console (`PS3_DEBUG`) are Windows-only; reports and hang reports say the snapshot is not available |
 | IME | RmlUi's text fields take SDL's text input; no IME window |
 | Frame statistics | the swap chain reports none (`present_queued` and `FRAME_LOG` take "cannot say") |
