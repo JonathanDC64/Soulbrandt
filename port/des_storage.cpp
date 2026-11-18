@@ -730,19 +730,32 @@ struct InventoryTransfer {
     bool cancel_when_closed = false;
 };
 InventoryTransfer s_inventory_transfer;
+bool player_inventory_menu();
 void sync_send_help_blank()
 {
-    const bool active = on() && s_dlg && vm_read8(s_dlg + kDialogActive);
-    const bool picker = s_inventory_transfer.state != InventoryAsk::Idle;
-    const bool blank = (active && s_forced) || picker;
+    // The two help slots are shared with every command menu, including Reclaim.
+    // Blank them only while Send is the player's own row or its quantity picker
+    // is still live. A blank this function installed is put back when that
+    // ends; a slot holding anything else is left alone, so a stale Asking
+    // cannot empty Reclaim's footer.
+    const bool inventory = player_inventory_menu();
+    const bool dialog_active = on() && s_dlg && vm_read8(s_dlg + kDialogActive);
+    const bool active = inventory && dialog_active;
+    const bool live_picker = inventory && s_inventory_transfer.state == InventoryAsk::Asking &&
+                             !s_inventory_transfer.cancel_when_closed;
+    const bool blank = (active && s_forced) || live_picker;
+    const uint32_t blank_offset = s_help_blank_text - s_help_bank;
     for (unsigned i = 0; i < 2; ++i) {
         if (!s_help_slots[i]) continue;
-        const uint32_t offset = blank ? s_help_blank_text - s_help_bank :
+        const uint32_t current = vm_read32(s_help_slots[i]);
+        const bool ours = s_help_blank_text && current == blank_offset;
+        if (!blank && !active && !ours) continue;
+        const uint32_t offset = blank ? blank_offset :
             active && s_visible_row() >= 3 ? s_help_offsets[s_visible_row() == 3 ? 0 : 1] : s_help_offsets[i];
         vm_write32(s_help_slots[i], offset);
     }
     static int logged_row = -2;
-    const int row = picker && !active ? -3 : active ? s_visible_row() : -1;
+    const int row = live_picker && !active ? -3 : active ? s_visible_row() : -1;
     if (logging() && row != logged_row && row != -1) {
         fprintf(stderr, "[des] storage: footer visual row %d -> %s\n",
                 row == -3 ? 2 : row,
@@ -1515,29 +1528,44 @@ extern "C" int des_storage_command(ppu_context* ctx)
         fprintf(stderr, "[storage-nav] confirm tick=%llu draw=%llu dlg=%08x visual=%d native=%d pad=%04x\n",
                 (unsigned long long)s_nav_tick, (unsigned long long)s_nav_draw, (uint32_t)ctx->gpr[3], s_visible_row(),
                 s_dlg ? (int32_t)vm_read32(s_dlg + kCmdRow) : -1, (unsigned)g_pad0_buttons);
+    const bool in_player_inventory = player_inventory_menu();
+    const uint32_t dialog = (uint32_t)ctx->gpr[3];
+    // Armed and Ready are not modal. Outside mode 0 they must not stay armed
+    // for a later inventory tick, and the native choice still runs.
+    if (!in_player_inventory && (s_inventory_transfer.state == InventoryAsk::Armed ||
+                                 s_inventory_transfer.state == InventoryAsk::Ready)) {
+        s_inventory_transfer = {};
+        return 0;
+    }
     // A new command choice revokes an Armed request so Use/Drop can open
     // their own picker. The native command callback proves that input has
     // returned; retire the old owner only after the picker is no longer open.
-    if ((uint32_t)ctx->gpr[3] == s_dlg && s_inventory_transfer.state == InventoryAsk::Armed &&
-        player_inventory_menu())
+    if (dialog == s_dlg && s_inventory_transfer.state == InventoryAsk::Armed && in_player_inventory)
         s_inventory_transfer = {};
     if (s_inventory_transfer.state == InventoryAsk::Asking) {
         // Message 2000/2002 still decide a picker that is modal. A later choice
-        // on the command dialog means that picker already closed. EU/fr cancel
-        // does that without message 2002 and can leave slot 2 at mode 9, so the
-        // return slots alone never released ownership and the next Send was swallowed.
-        // Reclaim is mode 1 and must not be that choice: it shares the command
-        // shape, and releasing here would drop a picker that is still open.
-        if (command_dialog_active((uint32_t)ctx->gpr[3]) && player_inventory_menu()) {
+        // on the player's command dialog means that picker already closed. EU/fr
+        // cancel does that without message 2002 and can leave slot 2 at mode 9,
+        // so the return slots alone never released ownership and the next Send
+        // was swallowed. Reclaim is mode 1: it is not that choice, so the open
+        // picker stays owned and the native action is not swallowed.
+        if (command_dialog_active(dialog) && in_player_inventory) {
             s_inventory_transfer = {};
             log_detail("[des] storage: inventory quantity picker cancelled by native state\n");
+        } else if (!in_player_inventory) {
+            // Mark it before returning to mode 0. A tick is not required: the
+            // next OK is consumed and cancelled, and the help blank is ours
+            // to put back now.
+            s_inventory_transfer.cancel_when_closed = true;
+            sync_send_help_blank();
+            return 0;
         } else return 1;
     }
     if (s_inventory_transfer.state == InventoryAsk::Ready) {
         if (!on()) s_inventory_transfer = {};
         else return 1;
     }
-    if (!on() || !player_inventory_menu() || (uint32_t)ctx->gpr[3] != s_dlg || !is_command(s_dlg)) return 0;
+    if (!on() || !in_player_inventory || dialog != s_dlg || !is_command(s_dlg)) return 0;
     sync_navigation("confirm", true);
     const bool send = send_row_active();
     if (s_visible_row() > 2 && !send) {
@@ -1586,15 +1614,22 @@ void inventory_confirmation_tick(ppu_context* ctx)
     auto& pending = s_inventory_transfer;
     if (pending.state == InventoryAsk::Idle) return;
     if (pending.state == InventoryAsk::Asking) {
-        if (!on() || pending.player != pgd() || pending.dialog != inventory())
+        // The measured inventory quantity picker stays in mode 0. Any other
+        // mode means this request is no longer the player's item menu: keep
+        // the picker owned so its OK is still consumed, and cancel the transfer.
+        if (!on() || pending.player != pgd() || pending.dialog != inventory() || !player_inventory_menu())
             pending.cancel_when_closed = true;
+        // A cancelled request still owns OK, but the open picker may now be
+        // Reclaim's. Do not replace that prompt with the Send question.
         const uint32_t menus = menus_obj();
-        if (quantity_picker_open(menus) && on() && pending.picker_text &&
+        if (!pending.cancel_when_closed && quantity_picker_open(menus) && on() && pending.picker_text &&
             vm_read32(menus + kPickerText) != pending.picker_text)
             vm_write32(menus + kPickerText, pending.picker_text);
         return; // Keep ownership until native OK/CANCEL or a new command input.
     }
-    if (pending.player != pgd() || pending.dialog != inventory() || !on()) {
+    // Armed would open a picker and Ready would deposit. Neither may run
+    // after the menu leaves mode 0.
+    if (pending.player != pgd() || pending.dialog != inventory() || !on() || !player_inventory_menu()) {
         pending = {};
         return;
     }
@@ -1647,7 +1682,8 @@ extern "C" int des_storage_inventory_message(ppu_context* ctx)
         return 0;
     }
     if (message != (int)kInventoryOkMessage) return 0;
-    if (pending.cancel_when_closed || !on() || pending.player != pgd() || pending.dialog != inventory()) {
+    if (pending.cancel_when_closed || !on() || !player_inventory_menu() || pending.player != pgd() ||
+        pending.dialog != inventory()) {
         pending = {};
         log_detail("[des] storage: inventory quantity picker OK consumed; transfer cancelled\n");
         return 1;

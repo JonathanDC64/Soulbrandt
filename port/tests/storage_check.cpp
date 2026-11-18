@@ -459,9 +459,80 @@ int main(int argc, char** argv) {
     asking_picker(item);
     vm_write8(menu + kDialogActive, 1);
     ctx.gpr[3] = menu;
-    CHECK(des_storage_command(&ctx) == 1); // Reclaim is not the inventory choice that releases
+    CHECK(des_storage_command(&ctx) == 0); // mode 1 dispatches natively
+    CHECK(s_inventory_transfer.state == InventoryAsk::Asking); // the open picker stays owned
+    const int calls_before_reclaim_ok = deposit_calls;
+    ctx.gpr[3] = test_dialog;
+    ctx.gpr[4] = 2000;
+    CHECK(des_storage_inventory_message(&ctx) == 1); // OK is still ours
+    CHECK(s_inventory_transfer.state == InventoryAsk::Idle); // and the transfer is cancelled
+    CHECK(deposit_calls == calls_before_reclaim_ok);
+    // The same command must not keep an Armed or Ready request. Nothing here
+    // clears the transfer except the production path under test.
+    asking_picker(item);
+    s_inventory_transfer.state = InventoryAsk::Armed;
+    ctx.gpr[3] = menu;
+    CHECK(des_storage_command(&ctx) == 0);
+    CHECK(s_inventory_transfer.state == InventoryAsk::Idle);
+    set_menu_mode(0);
+    asking_picker(item);
+    ctx.gpr[3] = test_dialog;
+    ctx.gpr[4] = 2000;
+    CHECK(des_storage_inventory_message(&ctx) == 1);
+    CHECK(s_inventory_transfer.state == InventoryAsk::Ready);
+    set_menu_mode(1);
+    inventory_confirmation_tick(&ctx);
+    CHECK(s_inventory_transfer.state == InventoryAsk::Idle);
+    CHECK(deposit_calls == calls_before_reclaim_ok);
+    asking_picker(item);
+    s_inventory_transfer.state = InventoryAsk::Armed;
+    inventory_confirmation_tick(&ctx); // mode is still 1
+    CHECK(s_inventory_transfer.state == InventoryAsk::Idle);
+    CHECK(deposit_calls == calls_before_reclaim_ok);
+    // An Asking left over from inventory must not blank the shared help slots.
+    s_help_bank = 0x61000000;
+    s_help_blank_text = 0x61000020;
+    s_help_slots[0] = 0x62000000;
+    s_help_slots[1] = 0x62000004;
+    s_help_offsets[0] = 0x40;
+    s_help_offsets[1] = 0x80;
+    vm_write32(s_help_slots[0], 0x40);
+    vm_write32(s_help_slots[1], 0x80);
+    asking_picker(item);
+    des_storage_tick(&ctx);
     CHECK(s_inventory_transfer.state == InventoryAsk::Asking);
-    s_inventory_transfer = {};
+    CHECK(vm_read32(s_help_slots[0]) == 0x40);
+    CHECK(vm_read32(s_help_slots[1]) == 0x80);
+    set_menu_mode(0);
+    asking_picker(item);
+    des_storage_tick(&ctx);
+    CHECK(vm_read32(s_help_slots[0]) == s_help_blank_text - s_help_bank);
+    CHECK(vm_read32(s_help_slots[1]) == s_help_blank_text - s_help_bank);
+    // Leaving mode 0 through a native command marks the cancel immediately
+    // and puts back the blank this request installed. Re-entering mode 0
+    // without a tick still consumes OK and does not deposit.
+    set_menu_mode(1);
+    ctx.gpr[3] = menu;
+    CHECK(des_storage_command(&ctx) == 0);
+    CHECK(s_inventory_transfer.state == InventoryAsk::Asking);
+    CHECK(s_inventory_transfer.cancel_when_closed);
+    CHECK(vm_read32(s_help_slots[0]) == 0x40);
+    CHECK(vm_read32(s_help_slots[1]) == 0x80);
+    set_menu_mode(0);
+    ctx.gpr[3] = test_dialog;
+    ctx.gpr[4] = 2000;
+    CHECK(des_storage_inventory_message(&ctx) == 1);
+    CHECK(s_inventory_transfer.state == InventoryAsk::Idle);
+    CHECK(deposit_calls == calls_before_reclaim_ok);
+    // A cancelled Asking must not replace the prompt of the picker now open.
+    asking_picker(item);
+    s_inventory_transfer.cancel_when_closed = true;
+    s_inventory_transfer.picker_text = 0x63000100;
+    vm_write32(test_menus + kPickerText, 0x64000200);
+    set_menu_mode(1);
+    inventory_confirmation_tick(&ctx);
+    CHECK(s_inventory_transfer.state == InventoryAsk::Asking);
+    CHECK(vm_read32(test_menus + kPickerText) == 0x64000200);
     player_inventory(63);
     held_count = 48;
     full_box(false);
