@@ -587,14 +587,12 @@ std::vector<TabDesc> make_tabs() {
         {"Start screen", {
             own_setting(toggle("Start screen", "show_start_screen",
                 "Shows Play, Settings and Quit when the game starts. Off goes straight to the game.")),
-#ifdef _WIN32
-            // (the look that draws them, on the renderer that does: Windows')
+            // (the look that draws them: render_gpu.cpp, the menus' renderer on D3D12 and Vulkan, Linux's included)
             only(hooks::start_effects_used, own_setting(toggle("Start screen smoke", "start_smoke",
                 "Smoke rises behind the start screen. Off saves a little graphics work, most on integrated "
                 "graphics."))),
             only(hooks::start_effects_used, own_setting(toggle("Soul flame", "start_flame",
                 "A pale flame rises off the logo on the start screen. Off saves a little graphics work."))),
-#endif
         }},
         {"Cursor", {
             own_setting(toggle("Sword cursor", "DES_CURSOR3D",

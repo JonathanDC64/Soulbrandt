@@ -119,8 +119,8 @@ the file keeps the value chosen.
 | UI scale (Interface) | `ui_scale` | 0 = auto (what the window holds), 25, 50, 75, 100, 125, 150 (% of it) | at once |
 | Menu height (Interface) | `ui_menu_height` | 0-100 in steps of 10 (default 40): how far Settings' height goes from its 640 dp (0, Compact) to the window's whole height (100) | at once |
 | Start screen (Interface) | `show_start_screen` | 1 / 0 | next start |
-| Start screen smoke (Interface; DeS UI, Windows) | `start_smoke` | 1 / 0 (off: the start screen on plain black, its fades and vignette gone too) | at once |
-| Soul flame (Interface; DeS UI, Windows) | `start_flame` | 1 / 0 (off: the start screen's logo without its flame) | at once |
+| Start screen smoke (Interface; DeS UI) | `start_smoke` | 1 / 0 (off: the start screen on plain black, its fades and vignette gone too) | at once |
+| Soul flame (Interface; DeS UI) | `start_flame` | 1 / 0 (off: the start screen's logo without its flame) | at once |
 | Menu hint (Interface) | `menu_hint` | 1 / 0 | at once |
 | Trophy pop-ups (Interface) | `trophy_popups` | 1 / 0 (off hides the toast; the unlock is still kept) | at once |
 | Trophy sound (Interface) | `trophy_sound` | 1 / 0 (the tune `m777777777` when a trophy is earned, docs/33) | at once |
@@ -702,9 +702,11 @@ it, drawn live:
   hash drew straight seams along the cells' edges, because the compiler may
   reorder its maths.
 - **Where it draws.** Only on the menus' GPU-layer renderer (`render_gpu.cpp`:
-  Windows, D3D12 and Vulkan). The older renderer (`render_d3d12.cpp`, Linux)
+  D3D12 and Vulkan, so Linux too, whose default is Vulkan). The older renderer
+  (`render_d3d12.cpp`: the legacy route, and Linux when Vulkan can't start)
   and the D3D11 fallback draw no fog, so there the start screen is plain
-  black with the same gradients.
+  black with the same gradients. Checked on Linux 11-18: master's Linux build
+  on Vulkan (lavapipe) draws the smoke and the flame.
 - **Still.** With `DES_UI_NO_ANIM` (the tests' pictures) the smoke stands at
   its first frame.
 - **Drawn small on an integrated GPU.** Drawn at full size over a maximised
@@ -742,7 +744,7 @@ A cold, pale blue flame rises off the logo's letters, drawn live the same way:
 - **Its numbers** (colour, strength, how tall it rises, how much it wavers,
   speed, flicker) are in `kLooks`, picked on a preview page that ran the same
   maths in WebGL 2.
-- **Where it draws, and still pictures:** as for the smoke. Off Windows'
+- **Where it draws, and still pictures:** as for the smoke. Off the
   GPU-layer renderer the logo shows plain.
 - **Drawn small on an integrated GPU,** as the smoke is: at half the
   element's size, and at most 376 rows (a pixel per dp). Its thinnest wisps
