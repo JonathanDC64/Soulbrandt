@@ -169,15 +169,11 @@ extern "C" int des_hud_obj_rect(ppu_context*, uint32_t obj, float out[4]) {
     out[2] = (float)(rb >> 16); out[3] = (float)(rb & 0xFFFF);
     return out[2] > out[0] && out[3] > out[1];
 }
-extern "C" void (*des_lift_find(const char* name))(ppu_context*) {
-    if (!std::strcmp(name, "func_00924D58")) return native_count;
-    if (!std::strcmp(name, "func_00923FD8")) return native_limit;
-    if (!std::strcmp(name, "func_008F88D0")) return native_movable;
-    if (!std::strcmp(name, "func_00924BB8")) return native_deposit;
-    return nullptr;
-}
-
 namespace des_game_calls {
+void f_008F88D0(ppu_context* ctx) { native_movable(ctx); }
+void f_00923FD8(ppu_context* ctx) { native_limit(ctx); }
+void f_00924BB8(ppu_context* ctx) { native_deposit(ctx); }
+void f_00924D58(ppu_context* ctx) { native_count(ctx); }
 void f_005C2810(ppu_context* ctx) { ctx->gpr[3] = 0; }
 void f_00720F50(ppu_context*) {}
 void f_0072D970(ppu_context*) {}
@@ -395,6 +391,36 @@ int main(int argc, char** argv) {
     vm_write32(flags_at, vm_read32(flags_at) | 0x80); // native draw changes an unrelated bit
     restore_draw();
     CHECK(vm_read32(flags_at) == 0x88);
+    // EU/fr cancel closes the picker without message 2002. The command dialog
+    // is active again, dispatch has cleared the input bit, and slot 2 can
+    // still say mode 9. A choice then must drop ownership. While the dialog
+    // is inactive the picker stays modal and the choice is still swallowed.
+    storage_environment()["DES_STORAGE"] = "1";
+    CHECK(on());
+    const uint32_t command = command_layout(0x1000);
+    vm_write32(command + kCmdRow, 0);
+    vm_write8(command + kDialogActive, 1);
+    vm_write32(command + kDialogInput, kDialogInputEnabled);
+    des_storage_on_draw(&ctx, command);
+    des_storage_draw_end();
+    vm_write8(command + kDialogActive, 0);
+    vm_write32(command + kDialogInput, 0);
+    asking_picker(item);
+    vm_write32(test_menus + kPickerMenuState + 4 * kPickerSlot, kPickerMode);
+    vm_write32(test_menus + kPickerMenuState + 4 * kMenuCancelSlot, 0);
+    vm_write32(test_menus + kPickerMenuState + 4 * kMenuCloseSlot, 0);
+    ctx.gpr[3] = command;
+    CHECK(des_storage_command(&ctx) == 1);
+    CHECK(s_inventory_transfer.state == InventoryAsk::Asking);
+    vm_write8(command + kDialogActive, 1);
+    des_storage_command(&ctx); // cursor is not on Send; native choice continues
+    CHECK(s_inventory_transfer.state != InventoryAsk::Asking);
+    const int calls_after_release = deposit_calls;
+    ctx.gpr[3] = test_dialog;
+    ctx.gpr[4] = 2000;
+    CHECK(des_storage_inventory_message(&ctx) == 0); // the closed picker no longer owns OK
+    CHECK(deposit_calls == calls_after_release);
+    ctx = before_call;
     storage_environment()["DES_STORAGE"] = "0";
     const int allocations_before_draw = allocations;
     des_storage_on_draw(&ctx, 0);

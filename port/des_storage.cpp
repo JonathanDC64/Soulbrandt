@@ -3,7 +3,7 @@
  * The inventory's command menu is the dialog whose pieces include
  * grayout_drop00 and grayout_drop01: Use and Drop. With the knob on, a line
  * is added under them, labelled "Send to Storage". Choosing it calls the
- * game's own deposit (currently the US lift's func_00924BB8): the box at
+ * game's own deposit (func_00924BB8): the box at
  * PGD+0x478, the inventory at PGD+0x128, the selected slot, and the chosen
  * quantity. The picker and final deposit check the native storage count and
  * limit first. Send greys with Drop's overlay when the item is equipped or
@@ -16,15 +16,13 @@
  * mode 9 or rewrites its prompt, because that happens on OK before 2000 arrives.
  *
  * Use and Drop are unchanged. The line is a copy of the Drop piece, so the
- * menu's own two commands stay where they are. A disc whose lift does not
- * name that deposit function does not get the line; other disc addresses are
- * not yet resolved here.
+ * menu's own two commands stay where they are. DES_GAME_CALLS resolves Storage
+ * functions through verified regional address mappings.
  *
  * All entry points and state below run on the game's main thread. DES_STORAGE_LOG=1
  * prints layout and transfer details; DES_STORAGE_LOG=2 adds navigation traces.
- * The dialog, inventory and PGD offsets and lift names are currently verified
- * only against the US program. Other-region call and layout mappings remain
- * unresolved, so these translations do not claim those builds are supported. */
+ * Dialog, inventory and PGD offsets were read from the US program and still
+ * need separate validation on other discs. */
 
 #include "ps3emu/ppu_lift.h"
 #include "des_region.h"
@@ -47,9 +45,6 @@ extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
 extern "C" void ds_malloc(ppu_context* ctx);
 extern "C" int des_hud_obj_rect(ppu_context* ctx, uint32_t obj, float out[4]);
 extern "C" volatile unsigned g_pad0_buttons, g_pad0_reads, g_pad0_empty_reads;
-#ifdef PS3_GAME_SPLIT
-extern "C" void (*des_lift_find(const char* name))(ppu_context*);
-#endif
 
 namespace {
 
@@ -362,20 +357,6 @@ bool ensure_storage_texts(ppu_context* ctx)
     return s_label_ptr && s_quantity_question && s_cursor4_name;
 }
 
-void (*deposit_fn())(ppu_context*)
-{
-    static int s_tried = 0;
-    static void (*s_fn)(ppu_context*) = nullptr;
-    if (s_tried) return s_fn;
-    s_tried = 1;
-#ifdef PS3_GAME_SPLIT
-    s_fn = des_lift_find("func_00924BB8");
-#endif
-    if (!s_fn)
-        fprintf(stderr, "[des] storage: this disc's lift has no deposit function, so the line stays hidden\n");
-    return s_fn;
-}
-
 uint32_t pgd()
 {
     const uint32_t root = vm_read32(DES_AT(kPgdRoot));
@@ -430,22 +411,14 @@ bool storage_has_free_record(uint32_t box)
 
 int storage_count(ppu_context* ctx, uint32_t box, const Entry& item)
 {
-#ifdef PS3_GAME_SPLIT
-    static auto count = des_lift_find("func_00924D58");
-    if (!count || !guest_ok(box, 4)) return -1;
-    return (int32_t)call_game(ctx, count, {box, item.cat, item.id});
-#else
-    (void)ctx; (void)box; (void)item;
-    return -1;
-#endif
+    if (!guest_ok(box, 4)) return -1;
+    return (int32_t)call_game(ctx, func_00924D58, {box, item.cat, item.id});
 }
 
 int storage_room(ppu_context* ctx, uint32_t box, const Entry& item)
 {
-#ifdef PS3_GAME_SPLIT
-    static auto limit = des_lift_find("func_00923FD8");
     static uint32_t probe = 0;
-    if (s_send_disabled || !limit || !guest_ok(box, 4)) return 0;
+    if (s_send_disabled || !guest_ok(box, 4)) return 0;
     const int held = storage_count(ctx, box, item);
     if (held < 0) return 0;
     if (held == 0 && !storage_record_matches(box, item) && !storage_has_free_record(box)) return 0;
@@ -455,12 +428,9 @@ int storage_room(ppu_context* ctx, uint32_t box, const Entry& item)
     if (!probe) return 0;
     for (uint32_t i = 0; i < 32; i += 4) vm_write32(probe + i, 0);
     vm_write32(probe + 12, item.cat | item.id);
-    const int maximum = (int32_t)call_game(ctx, limit, {probe, 0});
+    const int maximum = (int32_t)call_game(ctx, func_00923FD8, {probe, 0});
     if (maximum <= 0 || held < 0 || held >= maximum) return 0;
     return maximum - held;
-#else
-    return 0;
-#endif
 }
 
 Entry entry_at(uint32_t p, int32_t idx)
@@ -1285,7 +1255,7 @@ void on_draw(ppu_context* ctx, uint32_t dlg)
         s_forced = 0;
         return;
     }
-    if (!deposit_fn() || !guest_ok(dlg, 4)) return;
+    if (!guest_ok(dlg, 4)) return;
     static int s_alive = 0;
     if (!s_alive) {
         s_alive = 1;
@@ -1381,13 +1351,9 @@ extern "C" void des_storage_draw_end() { restore_draw(); }
 
 bool slot_movable(ppu_context* ctx, uint32_t player, int32_t slot)
 {
-#ifdef PS3_GAME_SPLIT
     // Deposit itself can unequip a weapon. Use the inventory's native
     // equipment/protected-item check before allowing a remote transfer.
-    static auto check = des_lift_find("func_008F88D0");
-    if (check && call_game(ctx, check, {player + kPgdInv, slot}) == 0) return true;
-#endif
-    return false;
+    return call_game(ctx, func_008F88D0, {player + kPgdInv, slot}) == 0;
 }
 
 bool drop_greyed(uint32_t dlg)
@@ -1447,7 +1413,6 @@ DepositDelta verify_deposit_deltas(int native_result, int inventory_delta, int b
 int deposit_inventory(ppu_context* ctx, const InventoryTransfer& pending)
 {
     s_forced = 0;
-    void (*fn)(ppu_context*) = deposit_fn();
     const uint32_t p = pgd();
     const uint32_t inv = inventory();
     const int32_t idx = inv ? selected(inv) : -1;
@@ -1459,7 +1424,7 @@ int deposit_inventory(ppu_context* ctx, const InventoryTransfer& pending)
         return 1;
     }
     const uint32_t box = p ? vm_read32(p + kPgdBox) : 0;
-    if (!fn || !p || !guest_ok(box, 4) || idx < 0 || e.count < 1 || e.count > 9999) {
+    if (!p || !guest_ok(box, 4) || idx < 0 || e.count < 1 || e.count > 9999) {
         fprintf(stderr, "[des] storage: refused, box %08x slot %d x%d\n", box, idx, e.count);
         return 1;
     }
@@ -1474,7 +1439,7 @@ int deposit_inventory(ppu_context* ctx, const InventoryTransfer& pending)
         fprintf(stderr, "[des] storage: cannot verify box count; Send disabled for this session\n");
         return 1;
     }
-    const uint32_t result = call_game(ctx, fn, {box, p + kPgdInv, idx, pending.amount});
+    const uint32_t result = call_game(ctx, func_00924BB8, {box, p + kPgdInv, idx, pending.amount});
     const Entry after = entry_at(p, idx);
     const int box_after = storage_count(ctx, box, e);
     const int inv_delta = inventory_count_delta(e, after);
@@ -1518,12 +1483,13 @@ bool quantity_picker_open(uint32_t menus)
     return menu_slot_value(menus, kPickerSlot) == kPickerMode;
 }
 
-bool inventory_input_returned(uint32_t menus, uint32_t command_dialog)
+bool command_dialog_active(uint32_t dialog)
 {
-    return command_dialog && command_dialog == s_dlg && command_open() &&
-           menu_slot_value(menus, kPickerSlot) == 2u &&
-           menu_slot_value(menus, kMenuCancelSlot) == kMenuReturnState &&
-           menu_slot_value(menus, kMenuCloseSlot) == kMenuReturnState;
+    // Dispatch clears the input bit before the choice callback, so command_open()
+    // is false for the press that must release the picker. The active byte is
+    // the game's own "this command dialog has the player again".
+    return dialog && dialog == s_dlg && guest_ok(dialog, 4) && is_command(dialog) &&
+           vm_read8(dialog + kDialogActive) != 0;
 }
 
 extern "C" int des_storage_command(ppu_context* ctx)
@@ -1538,9 +1504,13 @@ extern "C" int des_storage_command(ppu_context* ctx)
     if ((uint32_t)ctx->gpr[3] == s_dlg && s_inventory_transfer.state == InventoryAsk::Armed)
         s_inventory_transfer = {};
     if (s_inventory_transfer.state == InventoryAsk::Asking) {
-        const uint32_t menus = menus_obj();
-        if (!quantity_picker_open(menus) && inventory_input_returned(menus, (uint32_t)ctx->gpr[3])) {
+        // Message 2000/2002 still decide a picker that is modal. A later choice
+        // on the command dialog means that picker already closed. EU/fr cancel
+        // does that without message 2002 and can leave slot 2 at mode 9, so the
+        // return slots alone never released ownership and the next Send was swallowed.
+        if (command_dialog_active((uint32_t)ctx->gpr[3])) {
             s_inventory_transfer = {};
+            log_detail("[des] storage: inventory quantity picker cancelled by native state\n");
         } else return 1;
     }
     if (s_inventory_transfer.state == InventoryAsk::Ready) {
