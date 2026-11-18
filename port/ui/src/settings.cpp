@@ -74,8 +74,8 @@ constexpr Def kDefs[] = {
     {"RSX_AA", "0", Apply::Live},              // 0 = none, as on the PS3; 1 = FXAA, 2 = SMAA, before the HUD; per batch
     {"RSX_SCALE", "100", Apply::Live},         // the D3D12 backend remakes its render targets at the next batch
     {"RSX_OUTFILTER", "0", Apply::Live},       // 0 = bilinear, as before; 1 = area down, bicubic up; next present
-    {"RSX_HDR", "0", Apply::Live},             // 1 = HDR output while Windows has HDR on for the display; next frame
-    {"RSX_HDR_WHITE", "0", Apply::Live},       // HDR paper white, nits; 0 = Windows' SDR white level
+    {"RSX_HDR", "0", Apply::Live},             // 1 = HDR output while the display has HDR on; next frame
+    {"RSX_HDR_WHITE", "0", Apply::Live},       // HDR paper white, nits; 0 = Windows' or the desktop's
     {"RSX_HDR_PEAK", "0", Apply::Live},        // HDR peak, nits; 0 = the display's
     {"RSX_HDR_GAMMA", "0", Apply::Live},       // HDR decode: 0 = gamma 2.2, 1 = the sRGB curve
     {"RSX_TEXFILTER", "0", Apply::Live},       // 0 = the game's filters; the backend's sampler key, per draw

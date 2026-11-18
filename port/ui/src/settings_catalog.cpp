@@ -172,6 +172,7 @@ std::vector<TabDesc> make_tabs() {
                 "resolution to keep a wide picture sharp.")),
         }},
         {"HDR", {
+#ifdef _WIN32
             preview(choice("HDR", "RSX_HDR", {{"0", "Off", true}, {"1", "On"}},
                 "Brighter lights and sky on an HDR display. Turn on HDR in Windows first. Turn off RTX HDR and Auto "
                 "HDR for the game when this is on.")),
@@ -183,6 +184,22 @@ std::vector<TabDesc> make_tabs() {
                 {{"0", "The display's"}, {"400", "400 nits"}, {"600", "600 nits"}, {"1000", "1000 nits"},
                     {"1500", "1500 nits"}},
                 "The brightest the highlights get with HDR on. The display's own figure suits most.")),
+#else  // (the window's own HDR: a Wayland desktop's, or gamescope's on a Steam Deck; docs/104 section 8)
+            preview(choice("HDR", "RSX_HDR", {{"0", "Off", true}, {"1", "On"}},
+                "Brighter lights and sky on an HDR display. Turn on HDR for the display in your desktop's settings "
+                "first, or play in Game Mode on a Steam Deck OLED. On a desktop, restart the game after turning "
+                "this on.")),
+            preview(choice("HDR brightness", "RSX_HDR_WHITE",
+                {{"0", "Automatic"}, {"100", "100 nits"}, {"150", "150 nits"}, {"200", "200 nits"},
+                    {"250", "250 nits"}, {"300", "300 nits"}, {"400", "400 nits"}},
+                "How bright white is with HDR on. Automatic is the desktop's white, or 200 nits in Game Mode. "
+                "Lower leaves more room for the highlights.")),
+            preview(choice("HDR peak", "RSX_HDR_PEAK",
+                {{"0", "Automatic"}, {"400", "400 nits"}, {"600", "600 nits"}, {"1000", "1000 nits"},
+                    {"1500", "1500 nits"}},
+                "The brightest the highlights get with HDR on. Automatic is 1000 nits; pick your display's own "
+                "figure if you know it.")),
+#endif
             preview(choice("HDR shadows", "RSX_HDR_GAMMA", {{"0", "Gamma 2.2 (darker)"}, {"1", "sRGB (lighter)"}},
                 "How dark areas look with HDR on. Gamma 2.2 matches a TV.")),
         }},
