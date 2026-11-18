@@ -1351,12 +1351,7 @@ bool env_on(const char* name) {
 
 }  // namespace
 
-namespace ui {
-App& app() {
-    static App s;
-    return s;
-}
-}  // namespace ui
+// (ui::app() is app.cpp's. This file had a second copy, which linked only while nothing reached app.cpp first.)
 
 // For des_options.cpp: the start screen is up (or about to be), so DES_AUTO_CONTINUE waits for Play.
 extern "C" int des_ui_start_screen_up(void) { return sStartUp.load() ? 1 : 0; }
