@@ -706,6 +706,16 @@ it, drawn live:
   element, with a dither so the gradients don't band on black. The smoke is
   soft, so it looks the same. A dedicated GPU draws it at full size, as
   before. `DES_UI_FX_SMALL=1` or `0` picks either way, to compare.
+- **One picture for the smoke and its fades** (11-17, integrated GPU only).
+  The fades over the smoke (the black from the top, the ellipse behind the
+  choices) and the vignette are gradients over the same box. Each was one more
+  pass over the whole window. Now the small picture waits to be scaled up
+  until something else is drawn (`settle_effect`), and gradients over the same
+  box are drawn into it first (`join_effect`). The window gets one scaled-up
+  picture. On a 2-CU integrated GPU the start screen took 26.0 ms of GPU time a
+  frame at 2560x1361 and now takes 12.2 ms; at 1280x720, 9.6 ms and now 6.2
+  ms. The picture differs from the earlier small one by at most 2/255. A
+  dedicated GPU's is unchanged, to the pixel.
 
 A cold, pale blue flame rises off the logo's letters, drawn live the same way:
 
