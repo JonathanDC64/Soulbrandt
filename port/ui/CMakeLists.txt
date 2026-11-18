@@ -294,6 +294,17 @@ if(MSVC)
   target_compile_options(report_addresses_check PRIVATE /EHsc /W3)
 endif()
 
+# shader_cache.cpp on its own (tests/shader_cache_check.cpp): the menus' shaders kept compiled between starts. A stored
+# one comes back only for exactly the input it was made from, and only whole: every byte of a file changed in turn,
+# cut short at every length, another input, another format, the other kind of bytecode. CI runs it on both (host.yml).
+# Built on demand:
+#   cmake --build <build> --target shader_cache_check, then shader_cache_check
+add_executable(shader_cache_check EXCLUDE_FROM_ALL tests/shader_cache_check.cpp src/shader_cache.cpp)
+target_include_directories(shader_cache_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+if(MSVC)
+  target_compile_options(shader_cache_check PRIVATE /EHsc /W3)
+endif()
+
 # The F1 menu's rules on their own (tests/menu_logic_check.cpp): menu_model.cpp and settings_model.cpp with no RmlUi
 # and no settings: where Back goes, what closing the menu does while settings wait for a restart, and what Settings
 # has open and prompts. The same on every platform; CI runs it on both (host.yml). Built on demand:
