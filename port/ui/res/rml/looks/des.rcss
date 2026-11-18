@@ -1219,7 +1219,10 @@ body.prelaunch #menu-list button {
     letter-spacing: 2.5dp;
     color: var(--des-tan);
     font-effect: glow(0dp 3dp 0dp 0dp rgba(0, 0, 0, 85%));
-    decorator: none;
+    /* The chosen one's smear, fully clear: the same gradient, so the choice change fades it in and out (prelaunch.rcss's
+       transition). RmlUi can't blend a gradient with none or with one of other stops; it skips those frames. */
+    decorator: radial-gradient(ellipse 190dp 12dp at center, rgba(178, 34, 30, 0%) 0%, rgba(150, 24, 22, 0%) 45%,
+        rgba(110, 16, 14, 0%) 100%);
 }
 
 /* A new version: a stone bar at the top right, as the notes over the game, its mark amber and the bar breathing so it
@@ -1274,20 +1277,14 @@ body.prelaunch #menu-list button.update {
     color: var(--des-amber-light);
 }
 
-body.prelaunch #menu-list button:not(:disabled):hover {
-    color: var(--des-tan-light);
-    font-effect: glow(0dp 3dp 0dp 0dp rgba(0, 0, 0, 85%));
-    decorator: radial-gradient(ellipse 190dp 14dp at center, rgba(255, 236, 214, 22%) 0%, rgba(255, 236, 214, 0%) 100%);
-}
-
-/* A choice that can't be taken now: the locked rows' colour, and no smear or glow when the pointer is on it. */
+/* A choice that can't be taken now: the locked rows' colour. The pointer doesn't pick it, so it never has the smear. */
 body.prelaunch #menu-list button:disabled {
     opacity: 1;
     color: var(--des-locked);
-    decorator: none;
 }
 
-/* The chosen one: on the blood smear the game draws behind its choice. */
+/* The chosen one: on the blood smear the game draws behind its choice. The pointer picks a choice as Up and Down do
+   (prelaunch.cpp), so it has no look of its own for the pointer. */
 body.prelaunch #menu-list button:not(:disabled):focus-visible {
     color: #f6ebdc;
     font-effect: glow(0dp 3dp 0dp 0dp rgba(40, 0, 0, 90%));
