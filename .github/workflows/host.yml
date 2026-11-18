@@ -943,11 +943,13 @@ jobs:
           cmake --build build/host --target report_addresses_check
           build/host/ui/report_addresses_check
 
-      # The menus' shader cache, as on Windows above.
+      # The menus' shader cache, as on Windows above. It knows the build by des_host's build id, which lld writes only
+      # when asked (port/CMakeLists.txt): without one a copy of des_host would count as another build.
       - name: The menus' shader cache
         run: |
           cmake --build build/host --target shader_cache_check
           build/host/ui/shader_cache_check
+          readelf -n build/host/des_host | grep -q "Build ID" || { echo "::error::des_host has no build id"; exit 1; }
 
       # The F1 menu's rules, as on Windows above.
       - name: The F1 menu's rules
