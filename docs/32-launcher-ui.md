@@ -47,7 +47,8 @@ licences in `port/ui/NOTICE.md`.
   the help of the row with the focus on the right: what it does, why it is
   as it is now, when it applies and its variable. Display has the window,
   HDR and the frame rate; Picture the render resolution ("150%
-  (1920 × 1080)"), the filtering and the effects. On a row:
+  (1920 × 1080)"), the filtering and the effects; Interface this menu, the
+  start screen, the cursor and trophies. On a row:
   - Left and Right change the value in place.
   - Enter lists the values beside it (or types it, or opens what the row
     opens). The list opens below the row, or above it when there is no room.
