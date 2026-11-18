@@ -11,14 +11,8 @@
 #include <cmath>
 #include <cstring>
 
-// The pixel shader, after the renderer's HLSL prelude (DES_UI_HLSL_COMMON: PS_IN with the element's uv, 0 to 1).
-// b0 starts as RmlUi's vertex shader reads it (the transform and the translation). The preview ran the same maths in
-// WebGL 2. One layer is five float4s:
-//   A size, stretch x, stretch y, detail   B roughness, swirl, churn, curl   C drift right, drift up, coverage, softness
-//   D strands, strand width, brightness, on   E top, fade, seed, -
-#define DES_UI_HLSL_FOG R"(
-cbuffer Fog : register(b0) { float4x4 m_transform; float2 m_translate; float m_time; float m_aspect; float4 m_p[10]; };
-
+// The noise, shared with the logo's flame (flame_shader.hpp): 3D gradient noise and its octaves.
+#define DES_UI_HLSL_NOISE R"(
 // The lattice's random gradients: PCG3D (Jarzynski and Olano), in integers. A float hash is not safe here: the
 // compiler may reorder its float maths, so a corner shared by two cells can hash differently from each side, and the
 // smoke shows straight seams along the cells' edges.
@@ -56,6 +50,16 @@ float fbm(float3 p, float oct, float gain) {
     }
     return s / n;
 }
+)"
+
+// The pixel shader, after the renderer's HLSL prelude (DES_UI_HLSL_COMMON: PS_IN with the element's uv, 0 to 1) and
+// DES_UI_HLSL_NOISE. b0 starts as RmlUi's vertex shader reads it (the transform and the translation). The preview ran
+// the same maths in WebGL 2. One layer is five float4s:
+//   A size, stretch x, stretch y, detail   B roughness, swirl, churn, curl   C drift right, drift up, coverage, softness
+//   D strands, strand width, brightness, on   E top, fade, seed, -
+#define DES_UI_HLSL_FOG R"(
+cbuffer Fog : register(b0) { float4x4 m_transform; float2 m_translate; float m_time; float m_aspect; float4 m_p[10]; };
+
 float fog_layer(float2 uv, float t, float4 A, float4 B, float4 C, float4 D, float4 E) {
     if (D.w < 0.5) return 0.0;
     float2 q = (uv - float2(C.x, -C.y) * t) * A.x / A.yz;

@@ -201,8 +201,12 @@ before the first change and hands the vblank back to the PS3's 59.94 Hz. A
   Deck needed this: on Linux SDL gives the panel's real density, 215 dpi on
   the Deck's 7" screen, where Windows gives the scale the player chose. At
   2.25 x a 1280 x 720 window has 320 dp of height, and the setup page was
-  cut off. Now it has 1 x. The setup screens take exactly what the window
-  holds, as they did for the height. `DES_UI_DPI=<n>` tries another
+  cut off. Now it has 1 x. The setup screens and the start screen take
+  exactly what the window holds, as the setup screens did for the height.
+  The start screen does so (11-17) because its smoke and fades are drawn
+  as shares of the window: at the display's scale alone, a maximised
+  window on a 1440p display at 100% had the logo and the choices small in
+  the middle, in thin fades. Settings opened from it follows too. `DES_UI_DPI=<n>` tries another
   display's figure on this PC.
 - **The menus' width** (11-16). The F1 menu and Settings are laid out for
   1280 dp of width (their sheet's `--menu-room`), more than those 960. While
@@ -693,6 +697,25 @@ it, drawn live:
   black with the same gradients.
 - **Still.** With `DES_UI_NO_ANIM` (the tests' pictures) the smoke stands at
   its first frame.
+
+A cold, pale blue flame rises off the logo's letters, drawn live the same way:
+
+- **How.** A second shader decorator on the logo, `flame:logo`
+  (`flame_shader.hpp`), drawn over the logo's padding box: 60 dp round the
+  letters, and 100 dp more above them for the flame to rise into. Negative
+  margins take that padding back out of the layout. The letters are an image
+  decorator on the content box, drawn over the flame. The logo sets
+  `box-sizing: content-box`, so its width and height stay the letters' own.
+- **The map.** The shader reads one picture, `soulbrandt-logo-map.png`: the
+  letters softened (red) and a wide halo round them (blue), which the flame
+  rises from. `tools/ui/make_logo_map.py` makes it from the logo; run it again
+  when the logo changes. It shares the smoke's noise (`DES_UI_HLSL_NOISE` in
+  `fog_shader.hpp`).
+- **Its numbers** (colour, strength, how tall it rises, how much it wavers,
+  speed, flicker) are in `kLooks`, picked on a preview page that ran the same
+  maths in WebGL 2.
+- **Where it draws, and still pictures:** as for the smoke. Off Windows'
+  GPU-layer renderer the logo shows plain.
 
 How it works:
 

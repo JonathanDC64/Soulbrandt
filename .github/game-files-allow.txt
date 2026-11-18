@@ -21,6 +21,8 @@ port/ui/res/img/grain.png
 port/ui/res/img/valuebox.png
 
 # The project's own logo: white letters of its name, drawn for the port, the full-size files in assets/brand/ and the
-# start screen's smaller copy cut from them. Not taken from the game's files.
+# start screen's smaller copy cut from them, and the map its flame reads (tools/ui/make_logo_map.py makes it from
+# that copy). Not taken from the game's files.
 assets/brand/soulbrandt-logo*.png
 port/ui/res/img/soulbrandt-logo.png
+port/ui/res/img/soulbrandt-logo-map.png

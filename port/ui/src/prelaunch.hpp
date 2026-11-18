@@ -25,6 +25,10 @@ public:
     bool focus() override;
     bool visible() const override;
     bool obscures_game() const override { return true; }
+    // Drawn as the whole window, as the setup screens are: its scale follows the window's size, so the logo and the
+    // choices keep their place in the smoke and the fades, which are drawn as shares of the window. At the display's
+    // scale alone (100% on a 1440p display) a maximised window had them small in the middle, in thin fades.
+    bool scales_with_window() const override { return true; }
 
 protected:
     bool handle_nav_command(Rml::Event& event, NavCommand cmd) override;

@@ -179,7 +179,8 @@ std::unique_ptr<Renderer> make_renderer(void* device, void* queue) { return d3d1
 // drawn at whole pixel sizes, so no step blurs it. A small screen needs this: a Steam Deck's 1280 x 800 says 215 dpi,
 // as SDL gives the panel's real density (Windows gives the scale the player chose), and 2.25 x leaves 320 dp of height.
 //
-// While a full-window page is open (set_follow_height, the setup screens) the scale is simply what the window holds.
+// While a full-window page is open (set_follow_height, the setup screens and the start screen) the scale is simply what
+// the window holds.
 //
 // A document that needs more width than that (the menus are laid out for 1280 dp: set_room) is never scaled past what
 // the window holds of its width, after the UI scale setting (render).
