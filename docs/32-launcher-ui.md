@@ -823,7 +823,9 @@ How it works:
   `kLooks`. The rule: if RCSS can do it, it isn't a trait.
   - `helpPane`: Settings shows the help beside the rows. Without it there's a
     line under the band (`menu-strip`), and Help (H, View, Select) opens the
-    whole help in a box. What the help shows that matters while a value
+    whole help in a box. Enter, or a click, on an info row with nothing to
+    press (About online play, Keyboard and mouse) opens that box too, with a
+    Read prompt. What the help shows that matters while a value
     changes goes beside the focused row instead (`menu-aside`): the row's
     notes (why it is as it is, such as staying offline) and a stick's
     picture for a deadzone.
@@ -842,7 +844,9 @@ How it works:
     `players_page.cpp`, through the shell's `open_over`; Back goes back to
     Settings as it was). A page over another with no tabs of its own
     (Players) shows the tabs of the page under it, and the band's buttons go
-    back to that page and move its tab. Without it they
+    back to that page and move its tab. With no one to list, Players says
+    so in its box (Not online, Asking the online server, No one in the last
+    30 days). Without it they
     open as their own windows, as Alpha UI keeps them. The start screen
     opens them the same way, alone in the frame (`menu::screen_alone`).
 - **Alpha UI** is the documents' own sheets as they are (for the F1 menu and

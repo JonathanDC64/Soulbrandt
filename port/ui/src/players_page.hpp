@@ -4,8 +4,9 @@
 //   The band keeps Settings' tabs, Network marked: the band's buttons (L1 and R1, Q and E) go back to Settings and
 //   move its tab. The list shows six players at a time, each with a mark for how you met (a summon sign for help
 //   either way, swords for an invasion, the Old Monk's flame, a block) and an arrow for which way: into the mark when
-//   they came to your world, out of it when you went to theirs. The strip says how far back the list goes; with no
-//   list (offline, or no one met), its one line goes there and no box stands empty (class none).
+//   they came to your world, out of it when you went to theirs. The strip says how far back the list goes. With no
+//   one to list (class none: offline, asking, no answer, no one met), the box says so in a title and a line, as Mods
+//   does with no mods, so the page never stands blank.
 //
 // Its elements, the same in every look (how they look is the look's sheet):
 //   menu-tabs > menu-tab-key(.prev .next) > menu-glyph, menu-tab(.on)
@@ -14,6 +15,7 @@
 //                                           player-words > player-name > player-tag; player-how
 //                                           player-ago
 //                                       list-more(.up .down)(.on)
+//                                       players-empty > empty-title, empty-lead
 #pragma once
 
 #include "menu_page.hpp"
@@ -50,6 +52,7 @@ public:
 
 private:
     void draw();
+    void draw_empty();
     void move(int by);
     void press();
     int count() const { return static_cast<int>(mState.players.size()); }
@@ -59,6 +62,8 @@ private:
     Rml::Element* mTabs = nullptr;
     Rml::Element* mPage = nullptr;
     Rml::Element* mMore[2] = {};
+    Rml::Element* mEmptyTitle = nullptr;  // with no one to list: what (Not online, No one in the last 30 days)
+    Rml::Element* mEmptyLead = nullptr;   // and why, or what to do
     std::vector<Rml::Element*> mItems;  // kPageRows of them, showing the players from mTop
     std::vector<std::unique_ptr<ScopedEventListener>> mListeners;
     players::State mState;

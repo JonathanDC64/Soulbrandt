@@ -19,7 +19,8 @@ struct RowFacts {
     bool steps = false;        // Left and Right change it
     bool previewable = false;  // Preview shows it on the game
     bool comparable = false;   // Compare shows the value the page opened with
-    enum class Enter { None, List, Edit, Open, Press } enter = Enter::None;
+    // Read: an info row with nothing to press; Enter opens its help, as Help does (only in a look with a Help key).
+    enum class Enter { None, List, Edit, Open, Press, Read } enter = Enter::None;
     int items = 0;             // what Enter lists
     int current = -1;          // the one of them in use
     std::string enterLabel;    // Enter's prompt ("List", "Type", "Open the website")
@@ -49,7 +50,7 @@ public:
     bool set_tab(int tab);
 
     // Enter on the row with the focus: what the page does. A list opens with the value in use under the cursor.
-    enum class Action { None, List, Edit, Open, Press };
+    enum class Action { None, List, Edit, Open, Press, Read };
     Action enter(std::span<const RowFacts> rows);
     bool list_move(int dir, std::span<const RowFacts> rows);
     // Enter in the list: the item under the cursor, and the list closes.

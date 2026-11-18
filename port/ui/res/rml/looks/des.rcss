@@ -2404,8 +2404,14 @@ players-box {
     background-color: rgba(0, 0, 0, 62%);
 }
 
-players-page.none players-box {
+/* No one to list: the box says what and why (players_page.cpp's draw_empty), as Mods' box does with no mods. */
+players-empty {
     display: none;
+}
+
+players-page.none players-empty {
+    display: block;
+    padding: 14dp 14dp 10dp;
 }
 
 player-item {
