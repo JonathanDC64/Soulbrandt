@@ -97,6 +97,8 @@ Rml::Element* append_text_element(
 void clear_children(Rml::Element* parent) noexcept;
 void set_text_content(Rml::Element* parent, const Rml::String& text) noexcept;
 void set_display(Rml::Element* element, Rml::Style::Display display) noexcept;
+// A length the element's sheet gives in dp (a variable such as --menu-room), in dp; 0 if it has none or another unit.
+float dp_property(Rml::Element* element, const Rml::String& name) noexcept;
 
 NavCommand map_nav_event(const Rml::Event& event) noexcept;
 Insets safe_area_insets(Rml::Context* context) noexcept;

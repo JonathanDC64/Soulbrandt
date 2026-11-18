@@ -374,13 +374,7 @@ void MenuShell::update_column() {
         }
     }
     // The width the look lays the menu out for, in dp (its sheet's --menu-room; room()).
-    mRoom = 0.f;
-    if (const Rml::Property* room = mBody->GetProperty("--menu-room")) {
-        const std::string text = room->ToString();
-        char* end = nullptr;
-        const float n = std::strtof(text.c_str(), &end);
-        if (end != text.c_str() && std::string_view(end).starts_with("dp")) mRoom = n;
-    }
+    mRoom = dp_property(mBody, "--menu-room");
     if (side == mSide) return;
     mSide = side;
     if (side < 0.f)

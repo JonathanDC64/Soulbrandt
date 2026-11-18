@@ -29,6 +29,9 @@ public:
     // choices keep their place in the smoke and the fades, which are drawn as shares of the window. At the display's
     // scale alone (100% on a 1440p display) a maximised window had them small in the middle, in thin fades.
     bool scales_with_window() const override { return true; }
+    // The height its look lays it out for (the sheet's --start-room): a UI scale of 125% or more fills the window with
+    // it, so the scale goes no further than the window holds of it, and the choices clear the lines at the foot.
+    float room_height() const override { return mRoomHeight; }
 
 protected:
     bool handle_nav_command(Rml::Event& event, NavCommand cmd) override;
@@ -49,6 +52,7 @@ private:
     Rml::Element* mHint = nullptr;
     Rml::Element* mPrompts = nullptr;
     std::string mPromptsShown;
+    float mRoomHeight = 0.f;  // --start-room, in dp (room_height())
 };
 
 }  // namespace ui
