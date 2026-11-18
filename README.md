@@ -40,7 +40,7 @@ Press **F1** (or **L3 + R3** on a controller) at any time to open the menu. Most
 - V-sync on or off, "Even frames" for smooth motion, and G-Sync / FreeSync.
 - Render resolution from 50% (for handhelds) up to 300% (4K), ultrawide aspect ratios (21:9 and 32:9), and 16:10 for the Steam Deck's screen.
 - Anti-aliasing (FXAA or SMAA), anisotropic filtering up to 16x, texture filtering and a sharp scaling filter.
-- HDR on HDR displays (Windows), with settings for brightness, peak and shadows.
+- HDR on HDR displays, with settings for brightness, peak and shadows. On Linux: a Steam Deck OLED in Game Mode, or a desktop with HDR on for the display (KDE Plasma 6).
 - Turn off the game's depth of field and motion blur.
 - Window, borderless fullscreen, or exclusive fullscreen on Windows (Settings > Display > Display mode). Alt+Enter switches.
 - Two renderers (Settings > Display > Renderer): DirectX 12 and Vulkan. Windows starts on DirectX 12, except with a GeForce GTX 10 series card or older, which starts on Vulkan. Linux starts on Vulkan.
