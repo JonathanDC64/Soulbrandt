@@ -2771,6 +2771,23 @@ std::unique_ptr<Renderer> create_d3d12(void* device, void* queue, ImageSource im
 #endif
 }
 
+bool adapter_facts(gpu_device* device, AdapterFacts& out) {
+    if (!device) return false;
+    gpu_adapter_info a;
+    std::memset(&a, 0, sizeof a);
+    gpu_adapter(device, &a);
+    a.name[sizeof a.name - 1] = a.driver[sizeof a.driver - 1] = 0;
+    out = {a.name, a.driver, a.vendor, a.device, a.vram, a.integrated != 0};
+    // The Vulkan backend keeps 31 characters of the driver's own text ("Mesa 25.2.8-0ubuntu0.24.04.4 (L"): a bracket
+    // the cut left open goes, with what follows it.
+    if (std::count(out.driver.begin(), out.driver.end(), '(') > std::count(out.driver.begin(), out.driver.end(), ')')) {
+        const size_t open = out.driver.rfind('(');
+        const size_t keep = open == 0 ? std::string::npos : out.driver.find_last_not_of(' ', open - 1);
+        out.driver.erase(keep == std::string::npos ? 0 : keep + 1);
+    }
+    return !out.name.empty();
+}
+
 }  // namespace ui::gpu
 
 #endif  // PS3RECOMP_RSX_HAL

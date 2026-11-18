@@ -7,6 +7,7 @@
 
 #include <functional>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace ui {
@@ -122,5 +123,14 @@ struct CoreFrame {
 // On the core's device: recording on the recorders CoreFrame hands it, the core submitting them (no slots of its own).
 // Null if the device cannot make what the renderer needs.
 std::unique_ptr<Renderer> create_core(gpu_device* device, ImageSource images);
+
+// The GPU a device of the layer runs on (gpu_adapter), for a problem report: false without a device.
+struct AdapterFacts {
+    std::string name, driver;  // the driver's name and version, as the API tells them
+    uint32_t vendor = 0, device = 0;
+    uint64_t vram = 0;         // dedicated memory, bytes
+    bool integrated = false;   // shares the system's memory
+};
+bool adapter_facts(gpu_device* device, AdapterFacts& out);
 }  // namespace ui::gpu
 #endif

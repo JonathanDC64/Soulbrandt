@@ -11,6 +11,9 @@
 #include "setup_engine.hpp"  // (setup::disc_summary: what setup found of the disc copy)
 #include "setup_pc.hpp"  // (setup::hdr_on, for the displays' lines)
 #include "version.hpp"
+#if defined(PS3RECOMP_RSX_HAL)
+#include "renderer.hpp"  // (ui::gpu::adapter_facts: the GPU the game draws with, for the Linux report)
+#endif
 #include "../../des_rsx_route.h"  // the renderer calls below: through rsx_out in a PS3RECOMP_RSX_HAL build
 
 #include <stb_image_write.h>
@@ -57,9 +60,12 @@ extern char** environ;
 #include <cstring>
 #include <ctime>
 #include <fstream>
+#include <iterator>
+#include <map>
 #include <initializer_list>
 #include <mutex>
 #include <regex>
+#include <set>
 #include <sstream>
 #include <thread>
 
@@ -1316,25 +1322,242 @@ void platform_facts(std::ostringstream& o, bool game_process) {
     if (game_process) o << other_modules();
 }
 #else
-void platform_facts(std::ostringstream& o, bool) {
-    struct utsname u {};
-    if (uname(&u) == 0) o << "OS: " << u.sysname << " " << u.release << " " << u.machine << "\n";
-    std::ifstream cpuinfo("/proc/cpuinfo"), meminfo("/proc/meminfo");
-    std::string cpu = "?";
-    for (std::string line; std::getline(cpuinfo, line);) {
-        if (line.rfind("model name", 0) == 0 && line.find(':') != std::string::npos) {
-            cpu = line.substr(line.find(':') + 2);
-            break;
+// A file's text, or its first line ("" if it cannot be read): /proc and /sys.
+std::string file_text(const std::string& path) {
+    std::ifstream f(path);
+    return std::string(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+}
+std::string first_line(const std::string& path) {
+    std::ifstream f(path);
+    std::string s;
+    std::getline(f, s);
+    return s;
+}
+
+// /proc/meminfo's and /proc/self/status's "Key:   1234 kB" lines: the number, in MB. 0 if missing.
+uint64_t kb_line_mb(const std::string& text, const char* key) {
+    const std::string k = std::string(key) + ":";
+    size_t at = text.rfind(k, 0) == 0 ? 0 : text.find("\n" + k);
+    if (at == std::string::npos) return 0;
+    if (at != 0) at++;
+    return std::strtoull(text.c_str() + at + k.size(), nullptr, 10) >> 10;
+}
+
+// A kernel CPU list ("0-15", "0,2,8-11"): the CPUs in it.
+std::vector<int> cpu_list(const std::string& text) {
+    std::vector<int> out;
+    for (const char* p = text.c_str(); *p;) {
+        char* end = nullptr;
+        const long a = std::strtol(p, &end, 10);
+        if (end == p) break;
+        long b = a;
+        if (*end == '-') b = std::strtol(end + 1, &end, 10);
+        for (long i = a; i <= b && i - a < 4096; i++) out.push_back(int(i));
+        if (*end != ',') break;
+        p = end + 1;
+    }
+    return out;
+}
+
+// "Ubuntu 24.04.1 LTS" from os-release; the host's, under Steam's runtime container (/run/host).
+std::string os_name() {
+    for (const char* path : {"/run/host/os-release", "/etc/os-release", "/usr/lib/os-release"}) {
+        std::ifstream f(path);
+        for (std::string line; std::getline(f, line);) {
+            if (line.rfind("PRETTY_NAME=", 0) != 0) continue;
+            std::string v = line.substr(12);
+            if (v.size() >= 2 && (v.front() == '"' || v.front() == '\'')) v = v.substr(1, v.size() - 2);
+            if (!v.empty()) return v;
         }
     }
-    o << "CPU: " << cpu << " (" << sysconf(_SC_NPROCESSORS_ONLN) << " threads)\n";
-    for (std::string line; std::getline(meminfo, line);) {
-        if (line.rfind("MemTotal:", 0) == 0) {
-            o << "Memory: " << (std::strtoull(line.c_str() + 9, nullptr, 10) >> 10) << " MB\n";
-            break;
+    return "Linux";
+}
+
+// The PCI Express link of a graphics card in sysfs, as pci_link says it on Windows: ", PCIe 4.0 x16", or ", PCIe 1.1
+// x16 now (the card: 4.0 x16)" when the link runs below what the card can do (a card at rest slows its link).
+std::string pcie_link(const std::string& dev) {
+    const auto gen = [](const std::string& speed) -> std::string {
+        const double gt = std::strtod(speed.c_str(), nullptr);  // "16.0 GT/s PCIe"
+        return gt >= 60 ? "6.0" : gt >= 30 ? "5.0" : gt >= 15 ? "4.0" : gt >= 7 ? "3.0" : gt >= 4 ? "2.0" : gt > 0 ? "1.1" : "";
+    };
+    const std::string now = gen(first_line(dev + "/current_link_speed")), top = gen(first_line(dev + "/max_link_speed"));
+    const std::string width = first_line(dev + "/current_link_width"), top_width = first_line(dev + "/max_link_width");
+    if (now.empty() || width.empty()) return {};
+    std::string out = ", PCIe " + now + " x" + width;
+    if (!top.empty() && (top != now || (!top_width.empty() && top_width != width)))
+        out += " now (the card: " + top + " x" + (top_width.empty() ? width : top_width) + ")";
+    return out;
+}
+
+// The kernel's log of the last 7 days (journalctl), for the graphics driver's resets and hangs: amdgpu's GPU resets and
+// ring timeouts, NVIDIA's Xid errors, i915's and xe's hangs and resets. The game then has no device to draw with, and
+// its picture stops while it runs on (issue #205 on Windows). "can't be read here" when there is no journal to ask or
+// this user may not read the kernel's lines (journalctl then gives none).
+std::string driver_resets() {
+    std::string out = "Graphics driver resets (the kernel's log), the last 7 days: ";
+    FILE* p = popen("journalctl -k -q -o short-iso --no-pager --since=-7d 2>/dev/null", "r");
+    if (!p) return out + "can't be read here\n";
+    int lines = 0, count = 0;
+    std::string newest;
+    char buf[2048];
+    const auto has = [](const std::string& s, const char* what) { return s.find(what) != std::string::npos; };
+    while (std::fgets(buf, sizeof buf, p)) {
+        lines++;
+        std::string low(buf);
+        for (char& c : low) c = char(std::tolower(static_cast<unsigned char>(c)));
+        const bool amd = has(low, "amdgpu") && (has(low, "gpu reset") || has(low, "gpu recovery") ||
+                                                (has(low, "ring ") && has(low, "timeout")));
+        const bool intel = (has(low, "i915") || has(low, " xe ")) &&
+                           (has(low, "gpu hang") || has(low, "resetting") || has(low, "gt reset"));
+        if (!amd && !intel && !has(low, "nvrm: xid")) continue;
+        count++;
+        newest = low.substr(0, low.find(' '));  // "2026-11-18t10:23:45-05:00": the lines come oldest first
+    }
+    const int rc = pclose(p);
+    if (lines == 0 || rc != 0) return out + "can't be read here\n";
+    if (!count) return out + "none\n";
+    out += std::to_string(count);
+    if (newest.size() >= 16) out += " (the last on " + newest.substr(0, 10) + " at " + newest.substr(11, 5) + ")";
+    return out + "\n";
+}
+
+// The libraries loaded into the game that are neither the system's nor the game's own: overlays, recorders, injectors,
+// as other_modules on Windows. A library outside the system's folders, any LD_PRELOAD one, and a known overlay or
+// Vulkan layer wherever it is (a distribution installs MangoHud or vkBasalt beside the system's libraries). "beside
+// the game" for one in the program's folder (the libraries the download brings, such as SDL2).
+std::string other_modules() {
+    const std::string game = exe_dir().string(), module_dir = setup::data_dir().string();
+    std::error_code ec;
+    const std::string self = std::filesystem::read_symlink("/proc/self/exe", ec).string();
+    const auto under = [](const std::string& path, const std::string& dir) {
+        return !dir.empty() && path.size() > dir.size() && path.compare(0, dir.size(), dir) == 0 && path[dir.size()] == '/';
+    };
+    const std::string preload = env("LD_PRELOAD");
+    std::vector<std::string> names;
+    std::istringstream maps(file_text("/proc/self/maps"));
+    for (std::string line; std::getline(maps, line);) {
+        const size_t slash = line.find('/');
+        if (slash == std::string::npos) continue;
+        std::string path = line.substr(slash);
+        if (const size_t del = path.find(" (deleted)"); del != std::string::npos) path.erase(del);
+        const std::string name = std::filesystem::path(path).filename().string();
+        if (path == self || name.find(".so") == std::string::npos) continue;
+        std::string low = name;
+        for (char& c : low) c = char(std::tolower(static_cast<unsigned char>(c)));
+        bool known = false;
+        for (const char* k : {"mangohud", "vkbasalt", "gameoverlayrenderer", "reshade", "vkcapture", "obs", "strangle",
+                              "gamemode", "vklayer", "vk_layer", "overlay", "fps"})
+            known = known || low.find(k) != std::string::npos;
+        const bool system = path.rfind("/usr/", 0) == 0 || path.rfind("/lib", 0) == 0 || path.rfind("/run/host/", 0) == 0 ||
+                            path.rfind("/nix/store/", 0) == 0 || path.rfind("/app/", 0) == 0 || path.rfind("/snap/", 0) == 0;
+        const bool preloaded = !preload.empty() && preload.find(name) != std::string::npos;
+        if (under(path, module_dir) || (system && !known && !preloaded)) continue;
+        const std::string entry = name + (under(path, game) ? " (beside the game)" : preloaded ? " (LD_PRELOAD)" : "");
+        if (std::find(names.begin(), names.end(), entry) == names.end()) names.push_back(entry);
+    }
+    std::sort(names.begin(), names.end());
+    std::string out = "Other software in the game (" + std::to_string(names.size()) + "):";
+    for (const auto& name : names) out += " " + name + ";";
+    if (!names.empty()) out.pop_back();
+    return out + "\n";
+}
+
+void platform_facts(std::ostringstream& o, bool game_process) {
+    {
+        struct utsname u {};
+        o << "OS: " << os_name();
+        if (uname(&u) == 0) o << ", " << u.sysname << " " << u.release << " " << u.machine;
+        o << "\n";
+    }
+    {
+        // Cores (a processor's "physical id" and "core id" pairs), and on a hybrid Intel processor how many of each
+        // kind: the kernel lists the fast cores' CPUs in /sys/devices/cpu_core and the efficient ones' in cpu_atom.
+        std::istringstream info(file_text("/proc/cpuinfo"));
+        std::string cpu = "?", flags;
+        std::map<int, std::pair<int, int>> core_of;  // CPU number -> (physical id, core id)
+        int processor = -1, physical = 0;
+        for (std::string line; std::getline(info, line);) {
+            const size_t colon = line.find(':');
+            if (colon == std::string::npos) continue;
+            const std::string value = colon + 2 <= line.size() ? line.substr(colon + 2) : "";
+            if (line.rfind("processor", 0) == 0) processor = std::atoi(value.c_str());
+            else if (line.rfind("physical id", 0) == 0) physical = std::atoi(value.c_str());
+            else if (line.rfind("core id", 0) == 0 && processor >= 0) core_of[processor] = {physical, std::atoi(value.c_str())};
+            else if (line.rfind("model name", 0) == 0 && cpu == "?") cpu = value;
+            else if (line.rfind("flags", 0) == 0 && flags.empty()) flags = " " + value + " ";
+        }
+        std::set<std::pair<int, int>> cores, fast;
+        for (const auto& [n, c] : core_of) cores.insert(c);
+        for (int n : cpu_list(first_line("/sys/devices/cpu_core/cpus")))
+            if (auto it = core_of.find(n); it != core_of.end()) fast.insert(it->second);
+        const auto has = [&](const char* f) { return flags.find(std::string(" ") + f + " ") != std::string::npos; };
+        const long threads = sysconf(_SC_NPROCESSORS_ONLN);
+        o << "CPU: " << cpu << " (" << (cores.empty() ? threads : long(cores.size())) << " cores";
+        if (!fast.empty() && fast.size() < cores.size())
+            o << ": " << fast.size() << " fast, " << (cores.size() - fast.size()) << " efficient";
+        o << ", " << threads << " threads; " << (has("sse4_2") ? "SSE4.2" : "no SSE4.2") << (has("avx") ? " AVX" : "")
+          << (has("avx2") ? " AVX2" : "") << (has("fma") ? " FMA" : "") << (has("bmi2") ? " BMI2" : "")
+          << (has("avx512f") ? " AVX-512" : "") << ")\n";
+        const std::string mem = file_text("/proc/meminfo");
+        o << "Memory: " << kb_line_mb(mem, "MemTotal") << " MB, " << kb_line_mb(mem, "MemAvailable") << " MB free now; swap "
+          << kb_line_mb(mem, "SwapTotal") << " MB, " << kb_line_mb(mem, "SwapFree") << " MB free\n";
+        if (game_process) {
+            const std::string self = file_text("/proc/self/status");
+            o << "This process: " << kb_line_mb(self, "VmRSS") << " MB in memory (peak " << kb_line_mb(self, "VmHWM")
+              << " MB), " << kb_line_mb(self, "VmSwap") << " MB swapped out\n";
         }
     }
-    o << "GPU: in the log ([D3D12] vkd3d: ...)\n";
+    {
+        // The graphics cards (the kernel's DRM devices), the one the game draws with named by the renderer.
+        struct {
+            std::string name, driver;
+            uint32_t vendor = 0, device = 0;
+            uint64_t vram = 0;
+            bool integrated = false;
+        } used;
+        bool have_used = false;
+#if defined(PS3RECOMP_RSX_HAL)
+        if (ui::gpu::AdapterFacts a; ui::gpu::adapter_facts(rsx_out_gpu_device(), a)) {
+            used = {a.name, a.driver, a.vendor, a.device, a.vram, a.integrated};
+            have_used = true;
+        }
+#endif
+        int listed = 0;
+        bool used_listed = false;
+        std::error_code ec;
+        std::vector<std::filesystem::path> cards;
+        for (const auto& e : std::filesystem::directory_iterator("/sys/class/drm", ec)) {
+            const std::string n = e.path().filename().string();
+            if (n.rfind("card", 0) == 0 && n.size() > 4 && n.find('-') == std::string::npos) cards.push_back(e.path());
+        }
+        std::sort(cards.begin(), cards.end());
+        for (const auto& card : cards) {
+            const std::string dev = (card / "device").string();
+            const uint32_t vendor = uint32_t(std::strtoul(first_line(dev + "/vendor").c_str(), nullptr, 16));
+            const uint32_t device = uint32_t(std::strtoul(first_line(dev + "/device").c_str(), nullptr, 16));
+            if (!vendor) continue;
+            const std::string driver = std::filesystem::read_symlink(dev + "/driver", ec).filename().string();
+            const bool in_use = have_used && used.vendor == vendor && used.device == device && !used_listed;
+            char ids[32];
+            std::snprintf(ids, sizeof ids, "PCI %04x:%04x", unsigned(vendor), unsigned(device));
+            o << "GPU: " << (in_use ? used.name : std::string(ids)) << (driver.empty() ? "" : " (" + driver + ")");
+            uint64_t vram = std::strtoull(first_line(dev + "/mem_info_vram_total").c_str(), nullptr, 10);  // (amdgpu)
+            if (!vram && in_use && !used.integrated) vram = used.vram;
+            if (vram) o << ", " << (vram >> 20) << " MB";
+            if (in_use && !used.driver.empty()) o << ", driver " << used.driver;
+            o << pcie_link(dev);
+            if (in_use) o << " (in use" << (used.integrated ? ", integrated" : "") << ")";
+            o << "\n";
+            used_listed = used_listed || in_use;
+            listed++;
+        }
+        if (have_used && !used_listed)  // (a GPU the kernel lists as no DRM card: WSL's, a VM's)
+            o << "GPU: " << used.name << ", " << (used.vram >> 20) << " MB, driver " << used.driver << " (in use"
+              << (used.integrated ? ", integrated" : "") << ")\n";
+        else if (!listed)
+            o << "GPU: not known here (the log's renderer lines name it)\n";
+        o << driver_resets();
+    }
     o << "Session: " << (no_desktop() ? "gamescope, no desktop" : "desktop") << ", XDG_SESSION_TYPE=" << env("XDG_SESSION_TYPE")
       << ", XDG_CURRENT_DESKTOP=" << env("XDG_CURRENT_DESKTOP") << ", SteamDeck=" << env("SteamDeck") << "\n";
     if (const char* driver = SDL_GetCurrentVideoDriver()) o << "SDL video driver: " << driver << "\n";
@@ -1343,6 +1566,40 @@ void platform_facts(std::ostringstream& o, bool) {
         if (SDL_GetCurrentDisplayMode(i, &m) == 0)
             o << "Display " << i + 1 << ": " << m.w << "x" << m.h << " at " << m.refresh_rate << " Hz\n";
     }
+    {
+        // The batteries and the mains in sysfs (a Steam Deck, a laptop); a mouse's or a pad's battery is not one.
+        int battery = -1;
+        bool plugged = false, discharging = false;
+        std::error_code ec;
+        for (const auto& e : std::filesystem::directory_iterator("/sys/class/power_supply", ec)) {
+            const std::string dir = e.path().string(), type = first_line(dir + "/type");
+            if (type == "Battery" && first_line(dir + "/scope") != "Device") {
+                if (battery < 0) battery = std::atoi(first_line(dir + "/capacity").c_str());
+                discharging = discharging || first_line(dir + "/status") == "Discharging";
+            } else if ((type == "Mains" || type == "USB") && first_line(dir + "/online") == "1") {
+                plugged = true;
+            }
+        }
+        if (battery < 0) o << "Power: no battery\n";
+        else o << "Power: " << (plugged || !discharging ? "plugged in" : "on battery") << ", battery " << battery << "%\n";
+    }
+    {
+        const auto free_on = [](const std::filesystem::path& p) -> std::string {
+            if (p.empty()) return "?";
+            std::error_code ec;
+            const auto s = std::filesystem::space(p, ec);
+            return ec ? "?" : std::to_string(s.available >> 30) + " GB";
+        };
+        o << "Free disk space: " << free_on(exe_dir()) << " where the game is, " << free_on(data_dir())
+          << " where its data is\n";
+    }
+    if (SDL_WasInit(SDL_INIT_JOYSTICK)) {
+        int pads = 0;
+        const int sticks = SDL_NumJoysticks();
+        for (int i = 0; i < sticks; i++) pads += SDL_IsGameController(i) ? 1 : 0;
+        o << "Gamepads: " << pads << " SDL game controllers (" << (sticks < 0 ? 0 : sticks) << " joysticks)\n";
+    }
+    if (game_process) o << other_modules();
 }
 #endif
 
@@ -1362,9 +1619,10 @@ const char* renderer_name(const char** why) {
 
 std::string system_info() {
     std::ostringstream o;
-    // The game's own process (its renderer is up), not the crash dialog's: only then are this process's memory and
-    // the other software loaded into it the game's.
-    const bool game_process = rsx_d3d12_device() != nullptr;
+    // The game's own process (it has shown a frame of its own), not the crash dialog's or setup's: only then are this
+    // process's memory and the other software loaded into it the game's. (It was "the D3D12 device is up", which
+    // Vulkan's route never has: its reports lacked these lines.)
+    const bool game_process = ppu_boot_frames_presented() > 0;
 #if DES_DEV
     o << "Developer build (cheats compiled in)\n";
 #endif
