@@ -18,11 +18,14 @@ Two labels are used below:
 
 > **Built (2026-11-17): Change Name and Change Body at the Nexus statue**, `DES_IDENTITY`, on by default but only with `DES_APPEARANCE` on (section 1.11). On a body change, worn armour made only for the other body comes off and stays in the inventory.
 
+> **Built (2026-11-18): Change Tendency at the Nexus statue**, `DES_TENDENCY`, off by default (section 1.12). Each world's tendency, and the character's, can be set to Pure White, White, Neutral, Black or Pure Black.
+
 ## Summary
 
 | Feature | Verdict | Effort |
 |---|---|---|
 | Change Appearance | **Built** (section 1.10): `DES_APPEARANCE` adds a row to the statue's menu that opens Edit Appearance. Keeping the changes reloads the Nexus. | Done. |
+| Change Tendency | **Built** (section 1.12): `DES_TENDENCY` adds a row to the statue's menu. It lists the worlds with their levels now, or the character, then the five levels; YES sets the value and saves. | Done. |
 | Change Name and Change Body | **Built** (section 1.11): `DES_IDENTITY`, with `DES_APPEARANCE`, adds both rows. The name goes through the on-screen keyboard. A new body takes off worn armour made only for the other body, opens Edit Appearance, then the Nexus reloads. | Done. |
 | Stat respec | **Built** (section 1.9): `DES_RESPEC` makes the statue in front of the Nexus spawn open a menu whose Respecialization resets to the class, refunds the levels and opens the level-up screen. The Maiden in Black's menu has the same row after Seek Soul Power. | Done. No on-screen prompt at the statue yet. |
 | Use several souls at once | **Built** (section 2.5): `DES_SOULS_AT_ONCE` makes Use on a soul stack ask how many, in Drop's count picker. | Done. |
@@ -326,6 +329,89 @@ Not tested:
 - letters typed (the test types digits);
 - a full item list with a No Equipment row missing (AddItem would have no room; the slot then keeps its piece and the log says so);
 - seamless co-op after a rename (its setup reads the name from `04USER.DAT`, which follows at the next load).
+
+### 1.12 Built: `DES_TENDENCY`, Change Tendency (2026-11-18)
+
+Issue #517. `DES_TENDENCY` (Settings > Game > Items > Change tendency in the Nexus; off by default) adds Change Tendency to the statue's menu, before Leave. The statue answers with this knob on even when the other statue knobs are off.
+
+**What the player sees.** Everything happens in the statue's menu, one list after another. Each list ends with Leave, and Leave or Circle goes back one list (from the first, back to the statue's own list).
+1. **Change Tendency** opens World Tendency, Character Tendency, Leave.
+2. **World Tendency** lists the five worlds in the game's order, each with its level now, for example "Boletarian Palace (Neutral)" and "Stonefang Tunnel (White)".
+3. **A world, or Character Tendency,** lists Pure White, White, Neutral, Black, Pure Black. The current one says "(now)".
+4. **A level asks first.** For a world: "Make Boletarian Palace Pure White?" and "It takes effect the next time you enter it." Online, when the server's tendency mixes in, a third line says "Online, the server's tendency mixes in at each return to the Nexus." That is when online play is on, Settings > Network > World tendency is "With the server's" (the default), and it is not seamless co-op. For the character: "Make your character Pure Black?"
+5. **YES** sets the value and asks the game to save. The world list comes back with the new level in its row; for the character, the first list comes back. **NO** goes back to the levels.
+
+**The cursor starts at the top of each list.** The current level says "(now)" because the cursor can't start on it. The talk menu's box (DsMenuDlgTalkMsgbox, a list box) works like this (read):
+- **Its fields:** rows shown +0xF4 (5), columns +0xF8 (1), the cursor among the rows shown +0x100, items +0x104, the first item shown +0x108. The chosen row is +0x108 plus +0x100.
+- **Its open** (0x00791FC0, message 0x3EC) sets +0x100 to 0 and sends the list's item count (0x00781D20, message 0xBBB).
+
+**Each list is scrolled back to the top before it opens.** The game keeps the one box from talk to talk, and the item count resets +0x108 only for an empty list. So a list scrolled down to its sixth row (Leave, say) left the next list, or the next talk, shown from its second row: the first row was out of sight above, with the cursor on the second. With every statue knob on, the statue's own list has six rows, so this showed there too. The fix:
+- **Finding the box.** des_hud.cpp's wrapper of the dialog draw (0x00F60BD0) passes each dialog to `des_respec_dialog_drawn`. While one of the statue's lists is open, the list box drawn with 5 rows shown, 1 column and the list's item count is the talk box. Its class keeps the list's cursor placement (0x007814F0) at vt+0x8C, as the menu mouse checks. Another list box, of another class, is drawn at the same time with 3 rows shown.
+- **The reset.** Before each list opens, the box's +0x108 is set to 0, if the object still has the vtable it had when it was found.
+- **The first time.** Before the statue's menu has been seen once, the box isn't known yet. A game menu scrolled before that could still leave the statue's first list scrolled.
+
+**Where the values are** (read). The QWC object is `*(*0x01B4EF9C + 0x24)`, the same one `des_qwc_local` (docs/69) uses.
+- **The character's tendency** is at +0x08.
+- **Areas 1-7** each have two values: the tendency in use at +0x10 + 8 × (area - 1), and the player's own at +0x48 + 8 × (area - 1).
+- **Each value is two floats**, white/black first (the one this changes), then a second axis that stays as it is. The game clamps them to -200..200.
+- **The save** keeps the character's value and both of each area's.
+- **At each load** the game makes an area's in-use value its own (0x009204A0). Online it first mixes in the server's: own = 0.5 × own + 0.5 × server, with the 0.5 at +0x108.
+- **Two copies.** +0x80 is a copy of the in-use values that the game makes at a load (0x0091F9D8). While another player's world is in use (+0x10C at 1), +0xC0 keeps this player's in-use values, and 0x0091F878 puts them back after (0x0091F928 makes the copy).
+
+**Which area is which world** (read from the game's own debug names for areas m01-m07, then checked on the World Tendency page): 2 Boletarian Palace, 3 Shrine of Storms, 4 Tower of Latria, 5 Valley of Defilement, 6 Stonefang Tunnel. Area 1 is the Nexus and 7 the Northern Limit; neither is listed.
+
+**The levels** (read from QwcJudgeParam in `gameparam.parambnd`). The world events are at ±50, ±100, ±150 and ±180, and the character's at ±100 and ±180. Neutral is -49 to 49.
+
+| Level | Shown for | Set to |
+|---|---|---|
+| Pure White | 180 and up | 200 |
+| White | 50 to 179 | 120 |
+| Neutral | -49 to 49 | 0 |
+| Black | -179 to -50 | -120 |
+| Pure Black | -180 and down | -200 |
+
+**What YES writes** (`set_tendency` in `port/des_respec.cpp`):
+- **For the character:** +0x08.
+- **For a world:** its own value. Its in-use value and the +0x80 copy get the same value, so the pause menu's World Tendency page shows it at once. While another player's world is in use, the +0xC0 copy gets it instead.
+- **A seamless co-op guest** only gets its own value written: its in-use values are the host's world (`des_seamless_game.cpp`). The game takes the own value at the next load.
+- **Then the save:** the SaveRequest script binding (0x004418B8), as Change Name uses.
+
+**The texts.** The rows' texts go in unused ids of the talk menu's texts, as in section 1.9. The rows that show a level (the world rows, the level rows) and the question each have their own guest memory, written again before each list. So each row keeps one id however often its text changes. An own text now takes the first free id from the top. Before this, the k-th own row skipped k free ids, which used about two ids per row and could leave a gap when a knob changed.
+
+No new addresses: every function used already had its line for the other discs.
+
+**The log.** One line per change, for example `[des] tendency: Boletarian Palace 0 to 200 (Pure White); save requested`. `DES_RESPEC_LOG=1` adds the steps and each new text id.
+
+**Tests.** US disc, a copy of a save in the Nexus (all five worlds at 200, the character at 170), hidden window. The step driver pressed the buttons and read the QWC object.
+
+| Check | Result |
+|---|---|
+| Rows, all statue knobs on | Respecialization, Change Appearance, Change Name, Change Body, Change Tendency, Leave |
+| `DES_TENDENCY` alone | Change Tendency, Leave |
+| Change Tendency | World Tendency, Character Tendency, Leave |
+| World Tendency | the five worlds, each "(Pure White)"; Leave below |
+| Boletarian Palace | Pure White (now), White, Neutral, Black, Pure Black; Leave below |
+| Black, offline | "Make Boletarian Palace Black?", "It takes effect the next time you enter it.", YES first |
+| NO | the levels again, "Pure White (now)"; nothing written |
+| YES | area 2 own, in use and copy 200 to -120; the world list again, "Boletarian Palace (Black)"; the character file saved at once |
+| Stonefang Neutral, Latria Pure Black, Shrine White | areas 6, 3 and 4 as set; the world list shows each |
+| Character Tendency (170) | "White (now)"; Pure Black asks "Make your character Pure Black?"; YES: +0x08 to -200, back to the first list |
+| Pause menu, World Tendency page | Latria's stone black, Valley's the brightest, Shrine's lit, Boletarian Palace's darker than Stonefang's, the figure dark: each area is the world above |
+| The game stopped without Quit Game, started again from that save | every value as set, before and after a reload of the Nexus |
+| `PS3_NET_ONLINE=1` set from the debug console (the session already locked offline by a cheat) | the question has the online line |
+| Then `DES_NET_TENDENCY=own` | no online line |
+| Leave and Circle | back one list each time; Circle at the first list goes back to the statue's |
+| Before the scroll fix: statue list scrolled to Leave and closed; the world list's Leave | the next talk, and the next list, shown from the second row |
+| With the fix, the same three cases (statue's Leave then a new talk, the world list's Leave, the level list's Leave) | each list shown from its first row, the cursor on it |
+| Respecialization after the text id change | its question as before; NO changes nothing |
+| Text ids | 17 own rows take 15000055 down to 15000034 (the game's own ids in between skipped); they stay the same while the game runs |
+
+Not tested:
+- other discs (no new addresses);
+- online for real, with the server's tendency mixing in at a Nexus load (the line's condition was checked, not the mix);
+- a seamless co-op guest, and a world in use from another player (+0x10C);
+- the Maiden's menu after the text id change (her row uses the same id as the statue's Respecialization, which was checked);
+- a real pad by hand, and the mouse in these lists.
 
 ## 2. Use several souls at once
 

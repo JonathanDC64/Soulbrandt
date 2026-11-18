@@ -63,17 +63,27 @@
  *   menu greys out for that body (Dark Silver, Dull Gold, Saint's, ...). They
  *   stay in the inventory as they are, and the Storage Monument is not
  *   touched. The hairstyle becomes the new body's of the same number. Edit
- *   Appearance then opens on the new body, and the Nexus reloads after it. */
+ *   Appearance then opens on the new body, and the Nexus reloads after it.
+ *
+ * DES_TENDENCY=1 (Settings, Game; off by default) adds Change Tendency
+ * (docs/47 section 1.12). It opens more lists in the same menu: World Tendency
+ * or Character Tendency, then for a world the five worlds with where each is
+ * now, then Pure White ... Pure Black with "(now)" on the current one, then a
+ * yes/no question. YES sets the value and asks the game to save; the world
+ * list (or, for the character, the first list) comes back. Leave and Circle go
+ * back a list. */
 
 #include "ps3emu/ppu_lift.h"
 #include "des_region.h"      /* DES_AT: the running disc's addresses */
 #include "des_game_calls.h"
 #include "ps3emu/ps3_knob.h"
+#include "des_seamless.h"    /* seamless co-op's mode: a guest's world tendency in use is the host's */
 #include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <initializer_list>
 #include <string>
@@ -133,12 +143,21 @@ constexpr int32_t kPlayerEntity = 10000;   /* the player's event id, for the scr
 constexpr uint32_t kTalkList = 0xAB4u;
 constexpr int kMaxEntries = 16;
 
+/* The talk menu's box (DsMenuDlgTalkMsgbox, a DsMenuDlgListbox: its vt+0x8C is the list's cursor placement): rows
+ * shown +0xF4 (5), columns +0xF8 (1), the cursor among the rows shown +0x100, items +0x104, the first item shown
+ * +0x108. The game keeps the one box from talk to talk. Its open (0x00791FC0, message 0x3EC) puts the cursor on the
+ * first row shown, but the first row shown stays where the last list was scrolled to: the list's item count
+ * (0x00781D20, message 0xBBB) resets it only for an empty list. */
+constexpr uint32_t kListPlaceFn = 0x007814F0u;
+constexpr uint32_t kBoxRows = 0xF4u, kBoxCols = 0xF8u, kBoxItems = 0x104u, kBoxTop = 0x108u;
+
 /* The Maiden's Seek Soul Power row, and ours in her menu: one her script has no use for. */
 constexpr int32_t kMaidenSeekRow = 1, kMaidenRespecRow = 70;
 const char kRespecText[] = "Respecialization";
 const char kLookText[] = "Change Appearance";
 const char kNameText[] = "Change Name";
 const char kBodyText[] = "Change Body";
+const char kTendText[] = "Change Tendency";
 
 /* The statue, in the Nexus (map m01): a save that quit there starts at (0, 479.46, -41.69), facing it (-z); the
  * player stops against it at z -41.8. Cross from in front of it, within kReach of (kStatueX, kStatueZ). */
@@ -176,6 +195,13 @@ float readf(uint32_t a)
     float f;
     memcpy(&f, &w, 4);
     return f;
+}
+
+void writef(uint32_t a, float f)
+{
+    uint32_t w;
+    memcpy(&w, &f, 4);
+    vm_write32(a, w);
 }
 
 void drain(ppu_context* ctx)
@@ -261,6 +287,13 @@ bool identity_on()
     return s_on != 0;
 }
 
+bool tendency_on()
+{
+    static int s_on = 0;
+    PS3_KNOB(s_on, ps3_env_int("DES_TENDENCY", 0));
+    return s_on != 0;
+}
+
 /* The rows DES_IDENTITY adds, with Change Appearance only. Change Name needs the UI's keyboard. */
 bool body_on() { return look_on() && identity_on(); }
 bool name_on() { return body_on() && des_ui_keyboard_ready(); }
@@ -302,11 +335,12 @@ int64_t refund(ppu_context* ctx, int32_t lo, int32_t hi)
     return s;
 }
 
-/* The game's text id in the talk menu's FMG for an own text: an id of the group that holds Leave that has no text
- * (offset 0), its offset set to the text (offsets are from the FMG's start, modulo 2^32, as 0x005C2848 adds them).
- * k picks the k-th such id, so each own text keeps its own. -1 if none. The lookup (0x005C2848): groups of
- * {offset index, first id, last id} from +0x1C (count at +0x0C), the offsets at *(+0x14). */
-int32_t own_text_id(ppu_context* ctx, int k, uint32_t text)
+/* The game's text id in the talk menu's FMG for an own text: the id of the group that holds Leave that already has
+ * this text, else the first with no text (offset 0), its offset set to the text (offsets are from the FMG's start,
+ * modulo 2^32, as 0x005C2848 adds them). From the group's last id down, so each own text keeps its id. -1 if none.
+ * The lookup (0x005C2848): groups of {offset index, first id, last id} from +0x1C (count at +0x0C), the offsets at
+ * *(+0x14). */
+int32_t own_text_id(ppu_context* ctx, uint32_t text)
 {
     const uint32_t fmg = call_game(ctx, func_005C2810, {kFmgTalk});
     if (!guest_ok(fmg) || !text) return -1;
@@ -318,14 +352,16 @@ int32_t own_text_id(ppu_context* ctx, int k, uint32_t text)
         if ((uint32_t)kTextLeave < first || (uint32_t)kTextLeave > last) continue;
         for (uint32_t id = last; id > (uint32_t)kTextLeave; id--) {
             const uint32_t at = offs + 4 * (oi + id - first), off = vm_read32(at);
-            if (off == text - fmg) { if (k-- == 0) return (int32_t)id; continue; }
+            if (off == text - fmg) return (int32_t)id;
             if (off) continue;
-            if (k-- == 0) {
-                vm_write32(at, text - fmg);
-                return (int32_t)id;
-            }
+            vm_write32(at, text - fmg);
+            if (logging()) fprintf(stderr, "[des] respec: text id %u\n", id);
+            return (int32_t)id;
         }
     }
+    static bool s_told = false;
+    if (!s_told) fprintf(stderr, "[des] respec: no free text id in the talk menu's texts; a row is left out\n");
+    s_told = true;
     return -1;
 }
 
@@ -335,6 +371,7 @@ void ask_respec(ppu_context* ctx);
 void open_editor(ppu_context* ctx);
 void ask_name(ppu_context* ctx);
 void ask_body(ppu_context* ctx);
+void open_what(ppu_context* ctx);
 
 /* The statue's rows, in order (the talk list's row number is the position + 1). own: a text of ours (own_text_id),
  * else game: the game's text id. choose: what the row does, nullptr to close (Leave). shown: the row's knob, nullptr
@@ -345,14 +382,19 @@ constexpr Row kRows[] = {
     {kLookText, 0, open_editor, look_on},
     {kNameText, 0, ask_name, name_on},
     {kBodyText, 0, ask_body, body_on},
+    {kTendText, 0, open_what, tendency_on},
     {nullptr, kTextLeave, nullptr, nullptr},
 };
 constexpr int kRowCount = (int)(sizeof kRows / sizeof kRows[0]);
 
+/* The lists the statue's menu shows: its own, then Change Tendency's: what to change, which world, the level. */
+enum class List { statue, what, world, level };
+List s_list = List::statue;
+
 /* An own text in the guest heap, one copy per text for good, so the statue and the Maiden share its id. */
 uint32_t own_text(ppu_context* ctx, const char* s)
 {
-    constexpr int kTexts = 12;
+    constexpr int kTexts = 24;
     static const char* s_keys[kTexts];
     static uint32_t s_vals[kTexts];
     for (int i = 0; i < kTexts; i++) {
@@ -405,10 +447,11 @@ const char kToFemale[] = "Change to a female body?\nWorn armour made only for a 
  * notice while her script waits; maiden_again, the dialog closing before her menu comes back. look_title, the statue
  * menu's title bar going; look_load, the title's menus loading; look_edit, the editor open; look_close, the title's
  * menus ending; look_settle, their pages going; look_keep, the question. name, the keyboard up; name_end, its
- * buttons being let go. body, the Change Body question. */
+ * buttons being let go. body, the Change Body question. tend_ask, Change Tendency's question; tend_back, its
+ * dialog closing before a list comes back. (Change Tendency's lists are menu too, s_list saying which.) */
 enum class Phase {
     idle, menu, confirm, notice, maiden, maiden_ask, maiden_confirm, maiden_notice, maiden_again,
-    look_title, look_load, look_edit, look_close, look_settle, look_keep, name, name_end, body,
+    look_title, look_load, look_edit, look_close, look_settle, look_keep, name, name_end, body, tend_ask, tend_back,
 };
 Phase s_phase = Phase::idle;
 bool s_here = false;              /* the player was at the statue last frame (for the log) */
@@ -461,19 +504,55 @@ bool at_statue(ppu_context* ctx, uint32_t m)
     return menus_clear(ctx, m);
 }
 
+/* The talk menu's box as last seen drawn with one of the statue's lists open (des_respec_dialog_drawn), and its
+ * vtable; s_listing while one is open, s_items its row count. */
+std::atomic<uint32_t> s_box{0}, s_box_vt{0};
+std::atomic<bool> s_listing{false};
+std::atomic<int> s_items{0};
+
+/* The rows in the talk list now, or -1. */
+int talk_rows(uint32_t m)
+{
+    const uint32_t v = vm_read32(m + kTalkList + 4);
+    const uint32_t b = guest_ok(v) ? vm_read32(v + 4) : 0, e = guest_ok(v) ? vm_read32(v + 8) : 0;
+    return guest_ok(b) && e >= b && e - b <= 8u * kMaxEntries ? (int)((e - b) / 8) : -1;
+}
+
+/* Each list starts from its first row: the box, if it is still the one seen, is scrolled back to the top before it
+ * opens. (A list scrolled down to its sixth row, Leave say, left the next list shown from its second row, the first
+ * out of sight above it.) */
+void scroll_to_top()
+{
+    const uint32_t box = s_box.load(std::memory_order_relaxed);
+    if (!box || vm_read32(box) != s_box_vt.load(std::memory_order_relaxed)) return;
+    if (vm_read32(box + kBoxRows) != 5 || vm_read32(box + kBoxCols) != 1) return;
+    vm_write32(box + kBoxTop, 0);
+}
+
+/* The rows added since ClearTalkListData as the statue's menu, list saying which. */
+void show_rows(ppu_context* ctx, List list)
+{
+    const uint32_t m = menus();
+    s_items.store(m ? talk_rows(m) : -1, std::memory_order_relaxed);
+    scroll_to_top();
+    s_listing.store(true, std::memory_order_relaxed);
+    title_on();
+    call_game(ctx, func_00721490, {-1});             /* no talk partner: the title is the missing name's */
+    show_menu(ctx);
+    s_list = list;
+    s_phase = Phase::menu;
+}
+
 void open_menu(ppu_context* ctx)
 {
     if (!talk_entry(ctx)) return;
     call_game(ctx, func_00723450, {});
-    for (int i = 0, own = 0; i < kRowCount; i++) {
+    for (int i = 0; i < kRowCount; i++) {
         if (kRows[i].shown && !kRows[i].shown()) continue;
-        const int32_t id = kRows[i].own ? own_text_id(ctx, own++, own_text(ctx, kRows[i].own)) : kRows[i].game;
+        const int32_t id = kRows[i].own ? own_text_id(ctx, own_text(ctx, kRows[i].own)) : kRows[i].game;
         if (id >= 0) add_row(ctx, id, i + 1);
     }
-    title_on();
-    call_game(ctx, func_00721490, {-1});             /* no talk partner: the title is the missing name's */
-    show_menu(ctx);
-    s_phase = Phase::menu;
+    show_rows(ctx, List::statue);
 }
 
 /* ---- The Maiden's menu ---- */
@@ -508,7 +587,7 @@ bool maiden_menu_asked(uint32_t m)
 /* Her entries again, ours after Seek Soul Power. */
 void maiden_list(ppu_context* ctx)
 {
-    const int32_t own = own_text_id(ctx, 0, own_text(ctx, kRespecText));
+    const int32_t own = own_text_id(ctx, own_text(ctx, kRespecText));
     call_game(ctx, func_00723450, {});
     for (int i = 0; i < s_her_count; i++) {
         add_row(ctx, s_her[i][0], s_her[i][1]);
@@ -525,10 +604,10 @@ void maiden_menu_again(ppu_context* ctx)
     if (logging()) fprintf(stderr, "[des] respec: the Maiden's menu again\n");
 }
 
-void dialog(ppu_context* ctx, int32_t kind, const char* text, Phase next)
+/* The yes/no (or OK) dialog with t, a text in the guest heap, as its question. */
+void dialog_at(ppu_context* ctx, int32_t kind, uint32_t t, Phase next)
 {
     static const char kOk[] = "OK";
-    const uint32_t t = own_text(ctx, text);
     const uint32_t fmg = call_game(ctx, func_005C2810, {kFmgTalk});
     if (!t || !guest_ok(fmg)) return;
     uint32_t yes = call_game(ctx, func_005C2848, {fmg, kTextYes});
@@ -542,6 +621,11 @@ void dialog(ppu_context* ctx, int32_t kind, const char* text, Phase next)
     call_game(ctx, func_00720F50, {0x4F, -1});
     s_phase = next;
     if (logging()) fprintf(stderr, "[des] respec: dialog %d\n", kind);
+}
+
+void dialog(ppu_context* ctx, int32_t kind, const char* text, Phase next)
+{
+    dialog_at(ctx, kind, own_text(ctx, text), next);
 }
 
 void ask_respec(ppu_context* ctx) { dialog(ctx, kDialogYesNo, kAsk, Phase::confirm); }
@@ -925,6 +1009,195 @@ void ask_body(ppu_context* ctx)
     dialog(ctx, kDialogYesNo, vm_read8(p + kPgdBody) ? kToFemale : kToMale, Phase::body);
 }
 
+/* ---- Change Tendency ---- */
+
+/* The QWC object, *(*kPgdRoot + 0x24) (des_options.cpp's des_qwc_local): the character's tendency at +0x08, and for
+ * the areas 1-7 the tendency in use at +0x10 + 8 * (area - 1) and the player's own at +0x48 + 8 * (area - 1). Each
+ * is two floats, white/black first (the one changed here), clamped to -200..200. The save keeps the character's and
+ * both of each area's. At each load the game makes an area's in-use value its own (0x009204A0); online it first mixes
+ * the server's in, own = 0.5 * own + 0.5 * server. +0x80 is a copy of the in-use values that the game makes at a load
+ * (0x0091F9D8). While another player's world is in use (+0x10C at 1), +0xC0 keeps this player's in-use values, put
+ * back after (0x0091F928, 0x0091F878). */
+constexpr uint32_t kQwc = 0x24u, kQwcCharacter = 0x08u, kQwcInUse = 0x10u, kQwcOwn = 0x48u, kQwcCopy = 0x80u,
+                   kQwcAwayCopy = 0xC0u, kQwcAway = 0x10Cu;
+
+/* The worlds by their number in the game (1-1 is Boletarian Palace), and their area. */
+struct World { const char* name; uint32_t area; };
+constexpr World kWorlds[] = {
+    {"Boletarian Palace", 2}, {"Stonefang Tunnel", 6}, {"Tower of Latria", 4}, {"Shrine of Storms", 3},
+    {"Valley of Defilement", 5},
+};
+constexpr int kWorldCount = (int)(sizeof kWorlds / sizeof kWorlds[0]);
+
+/* The levels and the value each sets. The game's judge table (QwcJudgeParam) has its last events at 180 and -180
+ * and neutral at -49..49, so White and Black are set inside their ranges, at 120 and -120 (past the character's
+ * events at 100 and -100). */
+struct Level { const char* name; float value; };
+constexpr Level kLevels[] = {{"Pure White", 200}, {"White", 120}, {"Neutral", 0}, {"Black", -120}, {"Pure Black", -200}};
+constexpr int kLevelCount = (int)(sizeof kLevels / sizeof kLevels[0]);
+
+const char kWorldText[] = "World Tendency";
+const char kCharacterText[] = "Character Tendency";
+
+int s_target = 0;   /* what the level list sets: 0 the character, else kWorlds[s_target - 1] */
+int s_level = 0;    /* the level the question asks about */
+List s_back = List::level;   /* the list the question goes back to */
+
+int level_of(float v) { return v >= 180 ? 0 : v >= 50 ? 1 : v > -50 ? 2 : v > -180 ? 3 : 4; }
+
+uint32_t qwc()
+{
+    const uint32_t root = vm_read32(DES_AT(kPgdRoot));
+    const uint32_t q = guest_ok(root) ? vm_read32(root + kQwc) : 0;
+    return guest_ok(q) ? q : 0;
+}
+
+/* The white/black value target means: the character's, or the world's own. */
+uint32_t tendency_at(uint32_t q, int target)
+{
+    return q + (target ? kQwcOwn + 8 * (kWorlds[target - 1].area - 1) : kQwcCharacter);
+}
+
+/* The server's tendency mixes into the own values at each load into the Nexus: online play on, Settings > Network >
+ * World tendency "With the server's", and not seamless co-op (des_options.cpp's des_qwc_local). */
+bool server_mixes()
+{
+    const char* net = std::getenv("PS3_NET_ONLINE");
+    const char* own = std::getenv("DES_NET_TENDENCY");
+    return net && *net && strcmp(net, "0") != 0 && !(own && strcmp(own, "own") == 0) &&
+           des::seamless::mode() == des::seamless::Mode::Off;
+}
+
+/* Texts that change (the rows that show a level, the question): guest memory made once and written again each time. */
+constexpr uint32_t kRowUnits = 48, kAskUnits = 256;
+uint32_t s_world_rows[kWorldCount], s_level_rows[kLevelCount], s_ask = 0;
+
+uint32_t text_at(ppu_context* ctx, uint32_t* at, uint32_t units)
+{
+    return *at ? *at : (*at = guest_alloc(ctx, 2 * units));
+}
+
+void put_text(uint32_t at, uint32_t units, const std::string& s)
+{
+    uint32_t i = 0;
+    for (; i + 1 < units && i < s.size(); i++) vm_write16(at + 2 * i, (uint16_t)(uint8_t)s[i]);
+    vm_write16(at + 2 * i, 0);
+}
+
+/* A row whose text is s, written into its own memory at (once made, its text id stays the same). */
+void add_text_row(ppu_context* ctx, uint32_t* at, const std::string& s, int32_t row)
+{
+    const uint32_t t = text_at(ctx, at, kRowUnits);
+    if (!t) return;
+    put_text(t, kRowUnits, s);
+    const int32_t id = own_text_id(ctx, t);
+    if (id >= 0) add_row(ctx, id, row);
+}
+
+/* The statue's row, and back from the world list: World Tendency, Character Tendency, Leave. */
+void open_what(ppu_context* ctx)
+{
+    call_game(ctx, func_00723450, {});
+    const int32_t world = own_text_id(ctx, own_text(ctx, kWorldText));
+    const int32_t character = own_text_id(ctx, own_text(ctx, kCharacterText));
+    if (world >= 0) add_row(ctx, world, 1);
+    if (character >= 0) add_row(ctx, character, 2);
+    add_row(ctx, kTextLeave, 3);
+    show_rows(ctx, List::what);
+}
+
+/* Each world with its level now (its own value), then Leave. */
+void open_worlds(ppu_context* ctx)
+{
+    const uint32_t q = qwc();
+    if (!q) return;
+    call_game(ctx, func_00723450, {});
+    for (int i = 0; i < kWorldCount; i++) {
+        const char* now = kLevels[level_of(readf(tendency_at(q, i + 1)))].name;
+        add_text_row(ctx, &s_world_rows[i], std::string(kWorlds[i].name) + " (" + now + ")", i + 1);
+    }
+    add_row(ctx, kTextLeave, kWorldCount + 1);
+    show_rows(ctx, List::world);
+}
+
+/* The levels for target, "(now)" on its current one, then Leave. */
+void open_levels(ppu_context* ctx, int target)
+{
+    const uint32_t q = qwc();
+    if (!q) return;
+    s_target = target;
+    const int now = level_of(readf(tendency_at(q, target)));
+    call_game(ctx, func_00723450, {});
+    for (int i = 0; i < kLevelCount; i++)
+        add_text_row(ctx, &s_level_rows[i], std::string(kLevels[i].name) + (i == now ? " (now)" : ""), i + 1);
+    add_row(ctx, kTextLeave, kLevelCount + 1);
+    show_rows(ctx, List::level);
+}
+
+void ask_level(ppu_context* ctx, int level)
+{
+    const uint32_t t = text_at(ctx, &s_ask, kAskUnits);
+    if (!t) return;
+    s_level = level;
+    std::string s;
+    if (s_target) {
+        s = std::string("Make ") + kWorlds[s_target - 1].name + " " + kLevels[level].name +
+            "?\nIt takes effect the next time you enter it.";
+        if (server_mixes()) s += "\nOnline, the server's tendency mixes in\nat each return to the Nexus.";
+    } else {
+        s = std::string("Make your character ") + kLevels[level].name + "?";
+    }
+    put_text(t, kAskUnits, s);
+    dialog_at(ctx, kDialogYesNo, t, Phase::tend_ask);
+}
+
+/* The question's YES: the value in place, and the game asked to save. A world's in-use value (and its copy) changes
+ * too, so the pause menu's World Tendency page shows it now; while another player's world is in use, the copy that
+ * comes back after it. A seamless co-op guest's in-use values are the host's world (des_seamless_game.cpp), so there
+ * only the own value changes; the game takes it at the next load. */
+void set_tendency(ppu_context* ctx)
+{
+    const uint32_t q = qwc();
+    if (!q) return;
+    const float to = kLevels[s_level].value, was = readf(tendency_at(q, s_target));
+    writef(tendency_at(q, s_target), to);
+    if (s_target && des::seamless::mode() != des::seamless::Mode::Join) {
+        const uint32_t a = 8 * (kWorlds[s_target - 1].area - 1);
+        if (vm_read8(q + kQwcAway)) {
+            writef(q + kQwcAwayCopy + a, to);
+        } else {
+            writef(q + kQwcInUse + a, to);
+            writef(q + kQwcCopy + a, to);
+        }
+    }
+    call_game(ctx, func_004418B8, {});
+    fprintf(stderr, "[des] tendency: %s %.0f to %.0f (%s); save requested\n",
+            s_target ? kWorlds[s_target - 1].name : "the character", was, to, kLevels[s_level].name);
+}
+
+/* A Change Tendency list answered (row 0 for Circle): the next list, or back one. */
+void tendency_row(ppu_context* ctx, List list, int row)
+{
+    switch (list) {
+    case List::what:
+        if (row == 1) open_worlds(ctx);
+        else if (row == 2) open_levels(ctx, 0);
+        else open_menu(ctx);
+        break;
+    case List::world:
+        if (row >= 1 && row <= kWorldCount) open_levels(ctx, row);
+        else open_what(ctx);
+        break;
+    case List::level:
+        if (row >= 1 && row <= kLevelCount) ask_level(ctx, row - 1);
+        else if (s_target) open_worlds(ctx);
+        else open_what(ctx);
+        break;
+    case List::statue:
+        break;
+    }
+}
+
 } // namespace
 
 /* From des_options.cpp's file-open hook (the file thread): a level's script archive, /script/mNN.luabnd..., names
@@ -934,6 +1207,22 @@ extern "C" void des_respec_on_open(const char* path)
     const char* s = strstr(path, "/script/m");
     if (!s || !strstr(s, ".luabnd") || s[9] < '0' || s[9] > '9' || s[10] < '0' || s[10] > '9') return;
     s_map.store((s[9] - '0') * 10 + (s[10] - '0'), std::memory_order_relaxed);
+}
+
+/* From des_hud.cpp's wrapper of the dialog draw (0x00F60BD0), for each dialog drawn: while one of the statue's lists
+ * is open, the list box drawn with five rows shown, one column and the list's row count is the talk menu's
+ * (scroll_to_top). (Another list box is drawn meanwhile, of another class, with three rows shown.) */
+extern "C" void des_respec_dialog_drawn(uint32_t dlg)
+{
+    if (!s_listing.load(std::memory_order_relaxed) || s_box.load(std::memory_order_relaxed) == dlg) return;
+    if (!guest_ok(dlg) || vm_read32(dlg + kBoxRows) != 5 || vm_read32(dlg + kBoxCols) != 1) return;
+    if ((int)vm_read32(dlg + kBoxItems) != s_items.load(std::memory_order_relaxed)) return;
+    const uint32_t vt = vm_read32(dlg);
+    const uint32_t place = guest_ok(vt) ? vm_read32(vt + 0x8C) : 0;
+    if (!guest_ok(place) || vm_read32(place) != DES_AT(kListPlaceFn)) return;
+    s_box_vt.store(vt, std::memory_order_relaxed);
+    s_box.store(dlg, std::memory_order_relaxed);
+    if (logging()) fprintf(stderr, "[des] respec: the talk box 0x%08X\n", dlg);
 }
 
 /* From des_menu_tick (des_menu_sfx.cpp), on the main thread just before the menus' update (0x00724AD0). */
@@ -955,7 +1244,7 @@ extern "C" void des_respec_tick(ppu_context* ctx)
             if (logging()) fprintf(stderr, "[des] respec: the Maiden's menu, with Respecialization\n");
             break;
         }
-        const bool here = (on() || look_on()) && at_statue(ctx, m);
+        const bool here = (on() || look_on() || tendency_on()) && at_statue(ctx, m);
         if (here != s_here && logging()) fprintf(stderr, "[des] respec: %s the statue\n", here ? "at" : "away from");
         s_here = here;
         if (here && pressed) {
@@ -971,10 +1260,12 @@ extern "C" void des_respec_tick(ppu_context* ctx)
         const int row = s_chosen ? (int32_t)vm_read32(m + kMenuRow) : 0;
         call_game(ctx, func_00723450, {});   /* as the scripts do once the menu answers */
         title_off();
+        s_listing.store(false, std::memory_order_relaxed);
         s_phase = Phase::idle;
         s_chosen = 0;
-        if (logging()) fprintf(stderr, "[des] respec: menu row %d\n", row);
-        if (row >= 1 && row <= kRowCount && kRows[row - 1].choose) kRows[row - 1].choose(ctx);
+        if (logging()) fprintf(stderr, "[des] respec: menu %d row %d\n", (int)s_list, row);
+        if (s_list != List::statue) tendency_row(ctx, s_list, row);
+        else if (row >= 1 && row <= kRowCount && kRows[row - 1].choose) kRows[row - 1].choose(ctx);
         break;
     }
     case Phase::confirm: {
@@ -1102,5 +1393,21 @@ extern "C" void des_respec_tick(ppu_context* ctx)
         if (s_phase == Phase::idle) reload(ctx);   /* (no editor: the new body at once) */
         break;
     }
+    case Phase::tend_ask: {   /* YES: the world list (the first, for the character) with the new level; NO: the levels */
+        if (slot(m, kSlotDialog)) break;
+        const int32_t answer = (int32_t)vm_read32(m + kDialogAnswer);
+        if (logging()) fprintf(stderr, "[des] tendency: answer %d\n", answer);
+        if (answer == 1) set_tendency(ctx);
+        s_back = answer != 1 ? List::level : s_target ? List::world : List::what;
+        s_phase = Phase::tend_back;
+        break;
+    }
+    case Phase::tend_back:   /* once the dialog's page is gone */
+        if (!menus_clear(ctx, m)) break;
+        s_phase = Phase::idle;
+        if (s_back == List::level) open_levels(ctx, s_target);
+        else if (s_back == List::world) open_worlds(ctx);
+        else open_what(ctx);
+        break;
     }
 }

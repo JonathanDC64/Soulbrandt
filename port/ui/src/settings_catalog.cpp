@@ -288,6 +288,10 @@ std::vector<TabDesc> make_tabs() {
                 "Needs Change appearance in the Nexus. The statue also offers Change Name and Change Body. A new "
                 "body takes off worn armour made only for the other body (it stays in the inventory), then opens "
                 "Edit Appearance."),
+            toggle("Change tendency in the Nexus", "DES_TENDENCY",
+                "Press Cross facing the statue in front of where you wake in the Nexus and pick Change Tendency to "
+                "set a world's tendency or your character's, from Pure White to Pure Black. Some events only happen "
+                "at a tendency, and what has already happened stays."),
         }},
         {"HUD", {
             action("Edit HUD", Opens::HudEditor, "Move, resize, hide or show each part of the HUD on the game screen."),
