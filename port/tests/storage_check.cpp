@@ -58,6 +58,15 @@ void full_box(bool occupied) {
         vm_write32(test_box + 12 + i * 20 + 8, occupied ? 0x00010000u : 0);
 }
 
+void set_menu_mode(uint32_t mode) {
+    // func_0081E110's holder: *(menus - 0x7FFC) is the mode word.
+    // Mode 0 is the player's item command menu. Mode 1 is Thomas's Reclaim.
+    const uint32_t root = 0x45008000;
+    vm_write32(DES_AT(kInventoryMenuSlot), root);
+    vm_write32(root - kMenuHolderDelta, 0x45000020);
+    vm_write32(0x45000020, mode);
+}
+
 void player_inventory(int count) {
     // Synthetic pointer chains used by production pgd(), inventory(), selected()
     // and entry_at(). Constants here are guest objects made by this test.
@@ -79,6 +88,7 @@ void player_inventory(int count) {
     vm_write32(0x47000014, 0x47000030);
     vm_write32(0x47000020, 0);
     vm_write32(0x47000030, 0);
+    set_menu_mode(0);
 }
 
 constexpr uint32_t test_menus = 0x49000000;
@@ -122,6 +132,7 @@ uint32_t command_layout(uint32_t shift = 0) {
             vm_write32(obj + 0x60, 0x54000000 + shift);
         }
     }
+    set_menu_mode(0);
     return dialog;
 }
 
@@ -420,6 +431,55 @@ int main(int argc, char** argv) {
     ctx.gpr[4] = 2000;
     CHECK(des_storage_inventory_message(&ctx) == 0); // the closed picker no longer owns OK
     CHECK(deposit_calls == calls_after_release);
+    // Thomas's Reclaim is menu mode 1 and reuses this command shape. Send must
+    // not decorate, navigate, or confirm there. A picker already open stays owned.
+    storage_environment()["DES_STORAGE"] = "1";
+    s_inventory_transfer = {};
+    const uint32_t menu = command_layout(0x2000);
+    const uint32_t native_kids = vm_read32(menu + kKidCount);
+    vm_write32(menu + kCmdRow, 0);
+    des_storage_on_draw(&ctx, menu);
+    CHECK(vm_read32(menu + kKidCount) > native_kids);
+    CHECK(des_storage_mouse_spot(menu, 2, 0) != 0);
+    des_storage_draw_end();
+    CHECK(vm_read32(menu + kKidCount) == native_kids);
+    set_menu_mode(1);
+    vm_write32(menu + kCmdRow, 1);
+    vm_write8(menu + kDialogActive, 1);
+    vm_write32(menu + kDialogInput, kDialogInputEnabled);
+    des_storage_on_draw(&ctx, menu);
+    CHECK(vm_read32(menu + kKidCount) == native_kids); // four native rows, no Send
+    CHECK(vm_read32(menu + kCmdRow) == 1); // navigation does not rewrite Reclaim
+    CHECK(des_storage_mouse_row(menu) < 0);
+    CHECK(des_storage_mouse_spot(menu, 2, 0) == 0);
+    ctx.gpr[3] = menu;
+    CHECK(des_storage_command(&ctx) == 0);
+    CHECK(s_inventory_transfer.state == InventoryAsk::Idle);
+    des_storage_draw_end();
+    asking_picker(item);
+    vm_write8(menu + kDialogActive, 1);
+    ctx.gpr[3] = menu;
+    CHECK(des_storage_command(&ctx) == 1); // Reclaim is not the inventory choice that releases
+    CHECK(s_inventory_transfer.state == InventoryAsk::Asking);
+    s_inventory_transfer = {};
+    player_inventory(63);
+    held_count = 48;
+    full_box(false);
+    s_send_disabled = false;
+    set_menu_mode(0);
+    vm_write8(menu + kDialogActive, 1);
+    vm_write32(menu + kDialogInput, kDialogInputEnabled);
+    vm_write32(menu + kCmdRow, 0);
+    des_storage_on_draw(&ctx, menu);
+    const uint32_t grey = find_named(menu, "grayout_drop01");
+    CHECK(grey != 0);
+    vm_write32(grey + kObjFlags, vm_read32(grey + kObjFlags) & ~kObjDrawn);
+    CHECK(des_storage_mouse_select(&ctx, menu, 2, 0) == 1);
+    ctx.gpr[3] = menu;
+    CHECK(des_storage_command(&ctx) == 1);
+    CHECK(s_inventory_transfer.state == InventoryAsk::Armed); // Send still acts in the player's menu
+    des_storage_draw_end();
+    s_inventory_transfer = {};
     ctx = before_call;
     storage_environment()["DES_STORAGE"] = "0";
     const int allocations_before_draw = allocations;

@@ -1214,13 +1214,23 @@ bool command_open()
            (vm_read32(s_dlg + kDialogInput) & kDialogInputEnabled) != 0;
 }
 
+bool player_inventory_menu()
+{
+    // func_0081E110's mode word, *(menus - 0x7FFC). Measured on the US copy:
+    // the player's item command menu is 0. Thomas's Reclaim command menu is 1
+    // and resolves that row through the player's inventory, a different item.
+    const uint32_t root = vm_read32(DES_AT(kInventoryMenuSlot));
+    const uint32_t holder = guest_ok(root, 4) ? vm_read32(root - kMenuHolderDelta) : 0;
+    return guest_ok(holder, 4) && vm_read32(holder) == 0;
+}
+
 int sync_navigation(const char* phase, bool confirming = false)
 {
     // Native dispatch may hide the command before invoking its callback. Keep
     // that callback's established selection until it has consumed the action.
     const bool dispatching = confirming && s_navigation.active() && s_dlg &&
                              guest_ok(s_dlg, 4) && is_command(s_dlg);
-    if (!on() || (!command_open() && !dispatching)) {
+    if (!on() || !player_inventory_menu() || (!command_open() && !dispatching)) {
         s_navigation.reset();
         s_forced = 0;
         return 0;
@@ -1262,6 +1272,13 @@ void on_draw(ppu_context* ctx, uint32_t dlg)
         log_detail("[des] storage: draw hook\n");
     }
     if (!is_command(dlg) || vm_read8(dlg + kDialogActive) == 0) return;
+    if (!player_inventory_menu()) {
+        // Reclaim uses this command shape in mode 1. Do not add Send, do not
+        // adopt that dialog, and do not drop a quantity picker already open.
+        s_navigation.reset();
+        s_forced = 0;
+        return;
+    }
     if (!ensure_line(ctx, dlg)) return;
     const int step = sync_navigation("draw");
     show_line();
@@ -1501,14 +1518,17 @@ extern "C" int des_storage_command(ppu_context* ctx)
     // A new command choice revokes an Armed request so Use/Drop can open
     // their own picker. The native command callback proves that input has
     // returned; retire the old owner only after the picker is no longer open.
-    if ((uint32_t)ctx->gpr[3] == s_dlg && s_inventory_transfer.state == InventoryAsk::Armed)
+    if ((uint32_t)ctx->gpr[3] == s_dlg && s_inventory_transfer.state == InventoryAsk::Armed &&
+        player_inventory_menu())
         s_inventory_transfer = {};
     if (s_inventory_transfer.state == InventoryAsk::Asking) {
         // Message 2000/2002 still decide a picker that is modal. A later choice
         // on the command dialog means that picker already closed. EU/fr cancel
         // does that without message 2002 and can leave slot 2 at mode 9, so the
         // return slots alone never released ownership and the next Send was swallowed.
-        if (command_dialog_active((uint32_t)ctx->gpr[3])) {
+        // Reclaim is mode 1 and must not be that choice: it shares the command
+        // shape, and releasing here would drop a picker that is still open.
+        if (command_dialog_active((uint32_t)ctx->gpr[3]) && player_inventory_menu()) {
             s_inventory_transfer = {};
             log_detail("[des] storage: inventory quantity picker cancelled by native state\n");
         } else return 1;
@@ -1517,7 +1537,7 @@ extern "C" int des_storage_command(ppu_context* ctx)
         if (!on()) s_inventory_transfer = {};
         else return 1;
     }
-    if (!on() || (uint32_t)ctx->gpr[3] != s_dlg || !is_command(s_dlg)) return 0;
+    if (!on() || !player_inventory_menu() || (uint32_t)ctx->gpr[3] != s_dlg || !is_command(s_dlg)) return 0;
     sync_navigation("confirm", true);
     const bool send = send_row_active();
     if (s_visible_row() > 2 && !send) {
@@ -1682,14 +1702,14 @@ extern "C" void des_storage_tick(ppu_context* ctx) { storage_tick(ctx); }
 
 extern "C" int des_storage_mouse_row(uint32_t dialog)
 {
-    if (!on() || dialog != s_dlg || s_line_state != 1 || !guest_ok(dialog, 4) ||
+    if (!on() || !player_inventory_menu() || dialog != s_dlg || s_line_state != 1 || !guest_ok(dialog, 4) ||
         !is_command(dialog) || vm_read8(dialog + kDialogActive) == 0) return -1;
     return s_navigation.active() ? s_visible_row() : (int32_t)vm_read32(dialog + kCmdRow);
 }
 
 extern "C" uint32_t des_storage_mouse_spot(uint32_t dialog, int row, int column)
 {
-    if (!on() || dialog != s_dlg || s_line_state != 1 || !guest_ok(dialog, 4) ||
+    if (!on() || !player_inventory_menu() || dialog != s_dlg || s_line_state != 1 || !guest_ok(dialog, 4) ||
         !is_command(dialog) || column != 0 || row < 0 || row > 4) return 0;
     // Cursor visuals can move when Auto Sort is selected. Row pieces keep
     // stable geometry and remain available even when native drawing hides them.
