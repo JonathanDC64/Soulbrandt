@@ -234,6 +234,9 @@ void Prelaunch::update() {
         mEntranceAnimationStarted = true;
     }
     show_update();
+    // Settings > Interface: the smoke and the logo's flame (DeS UI draws them) can be off; des.rcss leaves them out.
+    mDocument->SetClass("no-smoke", settings::get_int("start_smoke") == 0);
+    mDocument->SetClass("no-flame", settings::get_int("start_flame") == 0);
     for (const auto& button : mMenuButtons) {
         button->update();
     }

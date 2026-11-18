@@ -118,6 +118,8 @@ the file keeps the value chosen.
 | UI scale (Interface) | `ui_scale` | 0 = auto (the display's scale, less on a small window), 75, 100, 125, 150 (% of it) | at once |
 | Menu height (Interface) | `ui_menu_height` | 0-100 in steps of 10 (default 40): how far Settings' height goes from its 640 dp (0, Compact) to the window's whole height (100) | at once |
 | Start screen (Interface) | `show_start_screen` | 1 / 0 | next start |
+| Start screen smoke (Interface; DeS UI, Windows) | `start_smoke` | 1 / 0 (off: the start screen on plain black, its fades and vignette gone too) | at once |
+| Soul flame (Interface; DeS UI, Windows) | `start_flame` | 1 / 0 (off: the start screen's logo without its flame) | at once |
 | Menu hint (Interface) | `menu_hint` | 1 / 0 | at once |
 | Trophy pop-ups (Interface) | `trophy_popups` | 1 / 0 (off hides the toast; the unlock is still kept) | at once |
 | Trophy sound (Interface) | `trophy_sound` | 1 / 0 (the tune `m777777777` when a trophy is earned, docs/33) | at once |
@@ -706,6 +708,9 @@ it, drawn live:
   element, with a dither so the gradients don't band on black. The smoke is
   soft, so it looks the same. A dedicated GPU draws it at full size, as
   before. `DES_UI_FX_SMALL=1` or `0` picks either way, to compare.
+- **Off.** Settings > Interface > Start screen smoke (on by default) turns it
+  off: the start screen on plain black. Its fades and the vignette only darken
+  the smoke, so they go with it, and nothing of it is drawn.
 
 A cold, pale blue flame rises off the logo's letters, drawn live the same way:
 
@@ -728,6 +733,8 @@ A cold, pale blue flame rises off the logo's letters, drawn live the same way:
 - **Drawn small on an integrated GPU,** as the smoke is: at half the
   element's size, and at most 376 rows (a pixel per dp). Its thinnest wisps
   are a touch softer there; a third of the size softened them clearly.
+- **Off.** Settings > Interface > Soul flame (on by default) leaves the letters
+  alone.
 
 How it works:
 

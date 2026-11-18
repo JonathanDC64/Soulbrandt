@@ -571,6 +571,13 @@ std::vector<TabDesc> make_tabs() {
                     "window's whole height. Taller shows more rows before they scroll."})),
         own_setting(toggle("Start screen", "show_start_screen",
             "Shows Play, Settings and Quit when the game starts. Off goes straight to the game.")),
+#ifdef _WIN32
+        // (the look that draws them, on the renderer that does: Windows')
+        only(hooks::start_effects_used, own_setting(toggle("Start screen smoke", "start_smoke",
+            "Smoke rises behind the start screen. Off saves a little graphics work, most on integrated graphics."))),
+        only(hooks::start_effects_used, own_setting(toggle("Soul flame", "start_flame",
+            "A pale flame rises off the logo on the start screen. Off saves a little graphics work."))),
+#endif
         own_setting(toggle("Menu hint", "menu_hint", "After Play, a note says how to open this menu.")),
         own_setting(toggle("Trophy pop-ups", "trophy_popups", "Shows a note when you earn a trophy. Off only hides the note.")),
         own_setting(toggle("Trophy sound", "trophy_sound", "Plays a short tune from the game when you earn a trophy.")),

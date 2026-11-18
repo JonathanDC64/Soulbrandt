@@ -140,6 +140,8 @@ constexpr Def kDefs[] = {
     {"DES_CURSOR_SWORD", "moonlight", Apply::Live},  // host.cpp, each frame: which sword (souls_model.hpp's swords())
     {"DES_CURSOR_SIZE", "64", Apply::Live},    // host.cpp, each frame: the sword's length in dp
     {"DES_UI_LIZARD", "1", Apply::Live},       // host.cpp, each frame: 0 = no dancing crystal lizard in the corner
+    {"start_smoke", "1", Apply::UiOnly},       // prelaunch.cpp: 0 = no smoke behind the start screen (DeS UI)
+    {"start_flame", "1", Apply::UiOnly},       // prelaunch.cpp: 0 = no flame off the start screen's logo (DeS UI)
     {"trophies_show_hidden", "0", Apply::UiOnly},  // trophies_window.cpp: hidden trophies listed with their names
     {"pad_menu_chord", "0", Apply::UiOnly},    // 0 = L3 + R3, 1 = Select + Start
     {"PAD_MAP", "", Apply::Live},              // cellPad, gamepad buttons (controls_window.cpp)
