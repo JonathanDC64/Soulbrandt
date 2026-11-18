@@ -295,7 +295,7 @@ void close_game(const Dialog& d) {
 // The game again, as it was started (this process has its arguments and environment), once the crashed one is gone.
 void restart(const Dialog& d) {
     wait_gone(d.pid, 10000);
-    const char* skip = std::getenv("DES_SKIP_UI");  // (start_again sets it only for a start from setup's Play)
+    const char* skip = std::getenv("DES_SKIP_UI");  // (start_again sets it only for the restart for a setting)
     if (!start_again({}, skip && *skip && std::strcmp(skip, "0") != 0))
         std::fprintf(stderr, "[crash-dialog] the game could not be started again\n");
 }

@@ -423,7 +423,7 @@ The steps, as built (setup_python.cpp, `PythonFetch`; built and run 10-22: secti
 - **The working folder** (10-23): before those, the hook makes the exe's folder the working folder, unless `DES_KEEP_CWD=1`, so the saves (`gamedata/dev_hdd0` under it) are where a double-click puts them, whatever folder a shortcut or a terminal starts the game in (docs/90 section 4, item 3).
 - **Why not the other two ways.** Teaching `game_host.c` to look in this title's data folder puts the port's folder names into ps3recomp. A separate launcher exe that sets `PS3_GAME_MODULE` is a second program to ship and sign, for what the host's own hook does in a few lines (inferred).
 - **Play, as built** (`crash_report::start_again`, 10-22):
-  - It starts this exe again with the same command line and the environment the process started with (saved before `main`, so the setup-alone variables are not in it), minus `DES_UI_OPEN`, plus `DES_SKIP_UI=1` (no start screen: Play was the choice) and `DES_LAUNCH_AFTER=<this pid>`. Then this one quits.
+  - It starts this exe again with the same command line and the environment the process started with (saved before `main`, so the setup-alone variables are not in it), minus `DES_UI_OPEN`, plus `DES_LAUNCH_AFTER=<this pid>`. Then this one quits. The new one opens at the start screen, as every later start does (11-18; until then it had `DES_SKIP_UI=1`, so the first start after setup went straight into the game).
   - The new process waits up to 10 s for that pid to end before it opens its log, so it gets des.log and the only window.
   - Not `ChildProcess`: its job object would end the game when setup's process ends.
   - Measured in section 11.
