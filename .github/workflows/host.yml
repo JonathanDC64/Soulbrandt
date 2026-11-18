@@ -399,6 +399,14 @@ jobs:
           cmake --build build/host --target report_addresses_check
           build/host/ui/report_addresses_check.exe
 
+      # The menus' shaders kept compiled between starts (port/ui/tests/shader_cache_check.cpp): a stored one is used
+      # only for exactly its input, and only whole. Linux runs it below.
+      - name: The menus' shader cache
+        shell: bash
+        run: |
+          cmake --build build/host --target shader_cache_check
+          build/host/ui/shader_cache_check.exe
+
       # The F1 menu's rules on their own (port/ui/tests/menu_logic_check.cpp): what closing it does while settings
       # wait for a restart. Linux runs it below.
       - name: The F1 menu's rules
@@ -934,6 +942,14 @@ jobs:
         run: |
           cmake --build build/host --target report_addresses_check
           build/host/ui/report_addresses_check
+
+      # The menus' shader cache, as on Windows above. It knows the build by des_host's build id, which lld writes only
+      # when asked (port/CMakeLists.txt): without one a copy of des_host would count as another build.
+      - name: The menus' shader cache
+        run: |
+          cmake --build build/host --target shader_cache_check
+          build/host/ui/shader_cache_check
+          readelf -n build/host/des_host | grep -q "Build ID" || { echo "::error::des_host has no build id"; exit 1; }
 
       # The F1 menu's rules, as on Windows above.
       - name: The F1 menu's rules
