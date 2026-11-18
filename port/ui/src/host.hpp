@@ -22,15 +22,12 @@ Rml::Context* context();
 // system's belongs to (folder_picker.hpp).
 void* window();
 
-// The UI's size: 0 is automatic (the display's scale, or less if the window could not hold 960 x 720 dp at that),
-// anything else multiplies that.
+// The UI's size: 0 is automatic (what the window holds: 960 x 720 dp at the least, in quarter steps), anything else
+// multiplies that.
 void set_ui_scale(float scale);
 // HDR output (RSX_HDR): on an FP16 scRGB back buffer the UI's colours are decoded (srgb: the sRGB curve, else gamma
 // 2.2) and multiplied by scale, the game's paper white over 80 nits. Before render; ignored on an RGBA8 one.
 void set_hdr(float scale, bool srgb);
-// While on, the UI's base scale is what the window holds, 960 x 720 px = 1 px a dp, whatever the display's: for documents
-// drawn as the whole window, the setup screens and the start screen (Document::scales_with_window). ui::update sets it.
-void set_follow_height(bool on);
 // The window width the open documents are laid out for, in dp; 0 for any (Document::room). The UI's scale, the UI
 // scale setting's included, is never more than the window holds of that width: in 1/16 steps down, and not under 0.5.
 // ui::update sets it.

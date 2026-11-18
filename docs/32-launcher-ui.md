@@ -116,7 +116,7 @@ the file keeps the value chosen.
 | Skip opening movie (Game) | `DES_SKIP_INTRO_MOVIE` (sets `PS3_SAIL_SKIP_FIRST`: the advert's first play only) | 0 / 1 | from the next movie |
 | Continue automatically (Game) | `DES_AUTO_CONTINUE` | 0 / 1 | at once until the first level loads (read at each pad poll); from the file it waits for Play on the start screen |
 | Sound (Game) | `AUDIO_MUTE` (inverted) | 0 / 1 | at once (live knob) |
-| UI scale (Interface) | `ui_scale` | 0 = auto (the display's scale, less on a small window), 25, 50, 75, 100, 125, 150 (% of it) | at once |
+| UI scale (Interface) | `ui_scale` | 0 = auto (what the window holds), 25, 50, 75, 100, 125, 150 (% of it) | at once |
 | Menu height (Interface) | `ui_menu_height` | 0-100 in steps of 10 (default 40): how far Settings' height goes from its 640 dp (0, Compact) to the window's whole height (100) | at once |
 | Start screen (Interface) | `show_start_screen` | 1 / 0 | next start |
 | Start screen smoke (Interface; DeS UI, Windows) | `start_smoke` | 1 / 0 (off: the start screen on plain black, its fades and vignette gone too) | at once |
@@ -189,28 +189,26 @@ before the first change and hands the vblank back to the PS3's 59.94 Hz. A
   area, at the display's scale). The game still draws at 1280x720; each
   frame is scaled with a linear filter into a swap chain the size of the
   window, letterboxed to 16:9. The UI draws over that at the window's size.
-- **UI size by the display, not the window**, as in FFCCEOT-Recomp
-  (Dusklight's rule): 1 dp is the display's scale (the window's DPI / 96)
-  times the UI scale setting. A larger window gives the menus more room
-  around them; their text stays the same size. The window is per-monitor
-  DPI aware, so on a display scaled above 100% it is drawn at the
-  display's resolution (not stretched by Windows) and the menus are as
-  large as other programs' text; moving it to a display of another scale
-  takes the size Windows suggests. (It used to be the window's height /
-  720, which made everything grow with the window.)
-- **Never more than the window holds** (11-04, `host.cpp`'s `base_scale`).
-  The menus and the setup screens always have at least 960 x 720 dp, in
-  quarter steps rounded down, whatever the display says. A tester's Steam
-  Deck needed this: on Linux SDL gives the panel's real density, 215 dpi on
-  the Deck's 7" screen, where Windows gives the scale the player chose. At
-  2.25 x a 1280 x 720 window has 320 dp of height, and the setup page was
-  cut off. Now it has 1 x. The setup screens and the start screen take
-  exactly what the window holds, as the setup screens did for the height.
-  The start screen does so (11-17) because its smoke and fades are drawn
-  as shares of the window: at the display's scale alone, a maximised
-  window on a 1440p display at 100% had the logo and the choices small in
-  the middle, in thin fades. Settings opened from it follows too. `DES_UI_DPI=<n>` tries another
-  display's figure on this PC.
+- **UI size by the window** (11-18, `host.cpp`'s `base_scale`): 1 dp is
+  what the window holds, 960 x 720 dp at the least, in quarter steps
+  rounded down (1080p 1.5, a maximised 1440p window 1.75, 4K 2.75), times
+  the UI scale setting. It is the same everywhere: the setup screens, the
+  start screen and the menus in the game, so nothing changes size when one
+  closes and another opens. The game's own menus and HUD grow with the
+  window the same way. Text is drawn at whole pixel sizes, so no step blurs
+  it, and a window drag lays the UI out again only every 180 px. The window
+  is per-monitor DPI aware, so it is drawn at the display's resolution
+  (not stretched by Windows); the display's scale itself no longer counts.
+  - Before: the UI was the window's height / 720 at first, then the
+    display's scale (the window's DPI / 96), as for a desktop program,
+    capped at what the window holds (11-04: a Steam Deck says 215 dpi, and
+    2.25 x left a 1280 x 720 window 320 dp of height). The setup screens
+    took what the window holds, and from 11-17 the start screen too: at the
+    display's scale its logo and choices were small in the middle of its
+    smoke on a 1440p display at 100%. The menus in the game kept the
+    display's scale, so one UI scale gave two sizes (1.75 x at the start
+    screen, 1 x in the game, on that display), and the menu hint, shown at
+    Play, shrank as the start screen closed.
 - **The menus' width** (11-16). The F1 menu and Settings are laid out for
   1280 dp of width (their sheet's `--menu-room`), more than those 960. While
   one is open, the UI's scale, the UI scale setting's included, is never
@@ -433,7 +431,6 @@ issue text is cut to fit a link (about 6.5 KB encoded); the zip has the rest.
 | `DES_UI_NO_ANIM=1` | No transitions. |
 | `DES_UI_FX_SMALL=1` / `0` | The start screen's smoke and the logo's flame drawn small and scaled up, as on an integrated GPU (1), or at full size, as on a dedicated one (0), whatever the GPU, to compare. |
 | `DES_TEST_OLD_CPU=1` | As if the processor had no SSE4.1: the message, then the exit (`port/des_cpu_check.cpp`). |
-| `DES_UI_DPI=<n>` | As if the display said this DPI (96 is 100%). A Steam Deck says 215. |
 | `DES_UI_RENDER=d3d11` | The menus and the crash dialog draw through D3D11On12, as before the D3D12 renderer (Windows; kept for one release, with no settings row). |
 | `DES_UI_RENDER=d3d12` | On the `d3d12` route (the default since 2026-11-02, docs/120), the menus draw through the legacy menu renderer (`render_d3d12.cpp`) instead of on the renderer's own device. |
 | `RSX_OVERLAY_REPAINT=0` | The UI moves only with the game's frames, not at the display's refresh rate (live; "The UI's frame rate" below). |

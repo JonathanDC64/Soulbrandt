@@ -225,10 +225,6 @@ void update() noexcept {
         }
     }
 
-    // Anywhere in the stack, not only on top: Settings or the on-screen keyboard opened over a setup page keep its
-    // scale, so the page behind them is not laid out again when they open and close.
-    host::set_follow_height(std::any_of(sDocumentStack.begin(), sDocumentStack.end(),
-        [](const auto& doc) { return !doc->closed() && doc->scales_with_window(); }));
     // The widest and the tallest an open document is laid out for (Document::room, room_height).
     float room = 0.f, roomHeight = 0.f;
     for (const auto& doc : sDocumentStack) {
@@ -411,7 +407,7 @@ bool consume_menu_notification_request() noexcept {
 }
 
 
-// The UI scale setting: 0 is Auto (the display's scale), otherwise a percentage of it.
+// The UI scale setting: 0 is Auto (what the window holds), otherwise a percentage of it.
 void apply_scale() noexcept {
     const int userScale = settings::get_int("ui_scale");
     host::set_ui_scale(userScale > 0 ? static_cast<float>(userScale) / 100.0f : 0.0f);

@@ -555,8 +555,7 @@ std::vector<TabDesc> make_tabs() {
                     .choices = {{"0", "Auto"}, {"25", "25%"}, {"50", "50%"}, {"75", "75%"}, {"100", "100%"},
                                 {"125", "125%"}, {"150", "150%"}},
                     .changed = hooks::apply_scale},
-                .help = "The size of these menus. Auto follows the display's scale, and shrinks to fit a small "
-                        "window."}),
+                .help = "The size of these menus. Auto fits them to the window."}),
             // (shown once this build offers more than one look)
             only([] { return looks::offered_count() > 1; },
                 own_setting({.label = "Menu look", .key = "menu_look",
