@@ -47,7 +47,8 @@ licences in `port/ui/NOTICE.md`.
   the help of the row with the focus on the right: what it does, why it is
   as it is now, when it applies and its variable. Display has the window,
   HDR and the frame rate; Picture the render resolution ("150%
-  (1920 × 1080)"), the filtering and the effects. On a row:
+  (1920 × 1080)"), the filtering and the effects; Interface this menu, the
+  start screen, the cursor and trophies. On a row:
   - Left and Right change the value in place.
   - Enter lists the values beside it (or types it, or opens what the row
     opens). The list opens below the row, or above it when there is no room.
@@ -115,7 +116,7 @@ the file keeps the value chosen.
 | Skip opening movie (Game) | `DES_SKIP_INTRO_MOVIE` (sets `PS3_SAIL_SKIP_FIRST`: the advert's first play only) | 0 / 1 | from the next movie |
 | Continue automatically (Game) | `DES_AUTO_CONTINUE` | 0 / 1 | at once until the first level loads (read at each pad poll); from the file it waits for Play on the start screen |
 | Sound (Game) | `AUDIO_MUTE` (inverted) | 0 / 1 | at once (live knob) |
-| UI scale (Interface) | `ui_scale` | 0 = auto (the display's scale, less on a small window), 75, 100, 125, 150 (% of it) | at once |
+| UI scale (Interface) | `ui_scale` | 0 = auto (the display's scale, less on a small window), 25, 50, 75, 100, 125, 150 (% of it) | at once |
 | Menu height (Interface) | `ui_menu_height` | 0-100 in steps of 10 (default 40): how far Settings' height goes from its 640 dp (0, Compact) to the window's whole height (100) | at once |
 | Start screen (Interface) | `show_start_screen` | 1 / 0 | next start |
 | Start screen smoke (Interface; DeS UI, Windows) | `start_smoke` | 1 / 0 (off: the start screen on plain black, its fades and vignette gone too) | at once |
