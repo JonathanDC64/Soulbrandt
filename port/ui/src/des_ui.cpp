@@ -617,10 +617,13 @@ void open_test_osk() {
 }
 
 // Play on setup alone: the game in a new process of this program (crash_report::start_again: with the environment
-// this one started with, so the game reads what setup stored in settings.ini), then this one closes.
+// this one started with, so the game reads what setup stored in settings.ini), then this one closes. Not past the
+// start screen: it comes next, as at every later start.
 void play_from_setup() {
-    if (!ui::crash_report::start_again()) std::fprintf(stderr, "[setup] play: the game could not be started\n");
-    else std::fprintf(stderr, "[setup] play: the game starts in a new process\n");
+    if (!ui::crash_report::start_again({}, false))
+        std::fprintf(stderr, "[setup] play: the game could not be started\n");
+    else
+        std::fprintf(stderr, "[setup] play: the game starts in a new process\n");
     ui::app().quit();
 }
 

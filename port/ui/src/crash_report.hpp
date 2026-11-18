@@ -48,15 +48,16 @@ bool reports_on();
 // the dialog. Returns once the report is written and the dialog started; the caller then lets the process end.
 void report_guest_exit(const char* what, const char* notes);
 
-// Play on setup alone (des_ui.cpp): starts this program again as a new process, with the command line and the
-// environment it started with, less DES_UI_OPEN (setup's opener), plus DES_SKIP_UI=1 (setup's Play was the start screen)
-// and DES_LAUNCH_AFTER=<this process's id>: the new one waits for this one to end before it starts its log, so one
-// window shows. The environment it started with, not this process's: settings.ini put its values in this one's, and
-// the new one would take them as set from outside, over what setup stored since. False if it could not start.
-// The update (updates.hpp) passes `set`, NAME=value variables for the new one in place of DES_SKIP_UI=1 (what its setup
-// screens open: DES_UI_OPEN=update-run or setup-run), and `play` false; any variable named there is dropped from the
-// environment first. On Windows the new one is the program at the path this one started from, which an update has
-// just filled with the new version's program.
-bool start_again(const std::vector<std::string>& set = {}, bool play = true);
+// Starts this program again as a new process, with the command line and the environment it started with, less
+// DES_UI_OPEN (setup's opener), plus DES_LAUNCH_AFTER=<this process's id>: the new one waits for this one to end before
+// it starts its log, so one window shows. The environment it started with, not this process's: settings.ini put its
+// values in this one's, and the new one would take them as set from outside, over what setup stored since.
+// `play` adds DES_SKIP_UI=1, past the start screen: the restart for a setting (menu_pages.cpp), as they were playing.
+// Setup's Play (des_ui.cpp) passes false: the start screen comes next, as at every later start.
+// The update (updates.hpp) passes `set`, NAME=value variables for the new one (what its setup screens open:
+// DES_UI_OPEN=update-run or setup-run); any variable named there is dropped from the environment first. On Windows the
+// new one is the program at the path this one started from, which an update has just filled with the new version's
+// program. False if it could not start.
+bool start_again(const std::vector<std::string>& set, bool play);
 
 }  // namespace ui::crash_report
