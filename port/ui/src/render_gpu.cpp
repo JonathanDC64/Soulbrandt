@@ -2771,6 +2771,16 @@ std::unique_ptr<Renderer> create_d3d12(void* device, void* queue, ImageSource im
 #endif
 }
 
+bool adapter_facts(gpu_device* device, AdapterFacts& out) {
+    if (!device) return false;
+    gpu_adapter_info a;
+    std::memset(&a, 0, sizeof a);
+    gpu_adapter(device, &a);
+    a.name[sizeof a.name - 1] = a.driver[sizeof a.driver - 1] = 0;
+    out = {a.name, a.driver, a.vendor, a.device, a.vram, a.integrated != 0};
+    return !out.name.empty();
+}
+
 }  // namespace ui::gpu
 
 #endif  // PS3RECOMP_RSX_HAL
