@@ -5,7 +5,9 @@
 //   ("and (max-height: 640dp)"), so a look never changes another one;
 // - RmlUi reads each sheet without a warning;
 // - a theme switched on and off changes an element's style and changes it back, which is how the looks are switched
-//   (looks::apply).
+//   (looks::apply);
+// - the F1 menu's bar, which slides by a transform in dp, sits right after a new dp ratio (UI scale). This needs
+//   port/ui/cmake/rmlui_fixes.cmake's fix 1 in RmlUi.
 //
 // Prints a line per look, a line per failure and "ui_style_check: N looks, M failed"; exit 1 on a failure. Built on
 // demand: cmake --build <build> --target ui_style_check, then ui_style_check.
@@ -26,6 +28,7 @@ namespace {
 
 int g_fail = 0;
 int g_warnings = 0;
+double g_now = 0.0;  // (RmlUi's clock, in seconds: the transitions' check moves it on)
 
 void check(bool ok, const std::string& what) {
     if (!ok) {
@@ -36,7 +39,7 @@ void check(bool ok, const std::string& what) {
 
 class System final : public Rml::SystemInterface {
 public:
-    double GetElapsedTime() override { return 0.0; }
+    double GetElapsedTime() override { return g_now; }
     bool LogMessage(Rml::Log::Type type, const Rml::String& message) override {
         if (type <= Rml::Log::LT_WARNING) {
             std::printf("  [rml] %s\n", message.c_str());
@@ -204,6 +207,77 @@ int main() {
         check(plain == 100.f && themed == 7.f && back == 100.f,
             "the probe's width " + std::to_string(plain) + ", themed " + std::to_string(themed) + ", after " +
                 std::to_string(back) + " (100, 7, 100)");
+    }
+
+    // The F1 menu's bar (Alpha UI: menu.rcss's menu-entries) after a new dp ratio (a new UI scale). The steps follow the
+    // game:
+    // - the document and its sheets are made as menu_shell.cpp and document.cpp make them;
+    // - the body's classes go as MenuShell::draw writes them: closed, the bar open (entries), then a page (Settings).
+    //   Closed and on a page, the bar sits its height and a dp up (translateY(-65dp));
+    // - each frame is an update and a draw;
+    // - a new ratio is set as host.cpp's render sets it: the ratio, then each document's sheets again
+    //   (restyle_documents).
+    // At each ratio the bar must be 65dp up, before a transition and after one.
+    //
+    // Without rmlui_fixes.cmake's fix 1, opening the bar turned the sheet's own translateY(-65dp) into px at that
+    // moment's ratio, for good. After a larger UI scale, the bar then stayed partly in view under Settings.
+    Rml::ElementDocument* menu = context ? context->LoadDocumentFromMemory(R"(<rml><head>
+        <link type="text/rcss" href="res/rml/theme.rcss" />
+        <link type="text/rcss" href="res/rml/controls.rcss" />
+        <link type="text/rcss" href="res/rml/menu.rcss" />
+        </head><body><menu-entries id="entries" /></body></rml>)")
+                                         : nullptr;
+    check(menu != nullptr, "the menu's document did not load");
+    if (menu) {
+        if (auto sheets = Rml::Factory::InstanceStyleSheetFile("res/rml/global.rcss")) {
+            if (const auto* local = menu->GetStyleSheetContainer()) sheets = sheets->CombineStyleSheetContainer(*local);
+            for (const ui::looks::Look& look : ui::looks::kLooks)
+                if (auto own = Rml::Factory::InstanceStyleSheetFile("res/rml/looks/" + std::string(look.id) + ".rcss"))
+                    sheets = sheets->CombineStyleSheetContainer(*own);
+            menu->SetStyleSheetContainer(std::move(sheets));
+        }
+        for (const ui::looks::Look& look : ui::looks::kLooks)
+            context->ActivateTheme(std::string(look.id), look.id == "alpha");
+        menu->Show();
+        Rml::Element* bar = menu->GetElementById("entries");
+        // One frame. RmlUi works a transform out when it draws (NoRender draws nothing).
+        const auto frame = [&] {
+            context->Update();
+            context->Render();
+        };
+        // How far the bar's transform moves it, in px. Project takes a window point into the element's own space, so
+        // a translation t takes (0, 0) to -t.
+        const auto bar_y = [&] {
+            frame();
+            Rml::Vector2f p(0.f, 0.f);
+            bar->Project(p);
+            return -p.y;
+        };
+        // New classes on the body, then half a second in 50 ms frames, for the transition to end. RmlUi moves an
+        // animation on by at most 0.1 s per update (ElementAnimation.cpp).
+        const auto go = [&](const char* classes) {
+            menu->SetClassNames(classes);
+            for (int i = 0; i < 10; i++) {
+                g_now += 0.05;
+                frame();
+            }
+        };
+        static const Rml::StyleSheetContainer kNothing;
+        go("closed motion");
+        for (const float ratio : {1.0f, 2.0f, 1.5f}) {
+            context->SetDensityIndependentPixelRatio(ratio);
+            if (const Rml::StyleSheetContainer* sheet = menu->GetStyleSheetContainer())
+                menu->SetStyleSheetContainer(sheet->CombineStyleSheetContainer(kNothing));
+            for (int pass = 0; pass < 2; pass++) {  // (before and after a transition at this ratio)
+                const float y = bar_y();
+                check(std::fabs(y + 65.f * ratio) < 0.01f, "the F1 bar at dp ratio " + std::to_string(ratio) +
+                                                               (pass ? ", after it opened and closed" : "") + ": " +
+                                                               std::to_string(y) + " px (" +
+                                                               std::to_string(-65.f * ratio) + ")");
+                go("entries motion");
+                go("page motion");
+            }
+        }
     }
 
     Rml::Shutdown();

@@ -34,6 +34,7 @@ FetchContent_Declare(RmlUi
   GIT_TAG ba95ffe8bfb6370efb2cdcca927eaad4710c5413   # 6.3
   EXCLUDE_FROM_ALL)
 FetchContent_MakeAvailable(RmlUi)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/rmlui_fixes.cmake)   # (fixes to its sources, made at configure time)
 
 if(WIN32)
   # RmlUi's Win32 platform helpers (the system interface) and its D3D11 renderer (the fallback) are sources in its tree.

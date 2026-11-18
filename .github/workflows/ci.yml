@@ -49,14 +49,15 @@ jobs:
           ninja --version
 
       # FreeType, RmlUi and stb are cloned by commit (port/ui/CMakeLists.txt), so not shallow: most of each
-      # configure's minute and more. A copy without .git is cached on that file and handed to the configure
-      # (tools/ci/fetch_src.py); a miss clones and the step after the configure keeps the copy.
+      # configure's minute and more. A copy without .git is cached on that file and on the fixes made to RmlUi's
+      # copy (port/ui/cmake/rmlui_fixes.cmake), and handed to the configure (tools/ci/fetch_src.py); a miss clones and
+      # the step after the configure keeps the copy.
       - name: Cache the wrapper UI's sources
         id: ui-src
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ github.workspace }}/.ci-cache/ui-src
-          key: ui-src-${{ runner.os }}-${{ hashFiles('port/ui/CMakeLists.txt') }}-v1
+          key: ui-src-${{ runner.os }}-${{ hashFiles('port/ui/CMakeLists.txt', 'port/ui/cmake/rmlui_fixes.cmake') }}-v1
 
       # port/ui is its own static library (start screen, menu, settings, crash and issue reports) with
       # FreeType and RmlUi fetched at configure time. des_boot only links it, so it builds here alone,
@@ -146,7 +147,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ github.workspace }}/.ci-cache/ui-src
-          key: ui-src-${{ runner.os }}-${{ hashFiles('port/ui/CMakeLists.txt') }}-v1
+          key: ui-src-${{ runner.os }}-${{ hashFiles('port/ui/CMakeLists.txt', 'port/ui/cmake/rmlui_fixes.cmake') }}-v1
 
       - name: Wrapper UI, configure
         id: ui-cfg
@@ -278,7 +279,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ github.workspace }}/.ci-cache/ui-src
-          key: ui-src-${{ runner.os }}-${{ hashFiles('port/ui/CMakeLists.txt') }}-v1
+          key: ui-src-${{ runner.os }}-${{ hashFiles('port/ui/CMakeLists.txt', 'port/ui/cmake/rmlui_fixes.cmake') }}-v1
 
       # As the description was written (docs/86): no build type, no developer code.
       - name: Configure

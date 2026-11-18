@@ -315,14 +315,15 @@ jobs:
               f.write(f"HOST_LIFT={lift}\n")
 
       # The wrapper UI's FreeType, RmlUi and stb are cloned by commit (port/ui/CMakeLists.txt), so not shallow:
-      # most of this configure's minute. A copy without .git is cached on that file, as in ci.yml, and handed to
-      # the configure (tools/ci/fetch_src.py); a miss clones and the step after the configure keeps the copy.
+      # most of this configure's minute. A copy without .git is cached on that file and on rmlui_fixes.cmake, as in
+      # ci.yml, and handed to the configure (tools/ci/fetch_src.py); a miss clones and the step after the configure
+      # keeps the copy.
       - name: Cache the wrapper UI's sources
         id: ui-src
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ github.workspace }}/.ci-cache/ui-src
-          key: ui-src-${{ runner.os }}-${{ hashFiles('port/ui/CMakeLists.txt') }}-v1
+          key: ui-src-${{ runner.os }}-${{ hashFiles('port/ui/CMakeLists.txt', 'port/ui/cmake/rmlui_fixes.cmake') }}-v1
 
       # The port with only des_host in it (DES_HOST_ONLY: no des_boot or des_game build, no SPU workload
       # table), the hybrid CRT for every target (des_ui, FreeType and RmlUi too), exactly the pinned
@@ -882,7 +883,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ github.workspace }}/.ci-cache/ui-src
-          key: ui-src-${{ runner.os }}-${{ hashFiles('port/ui/CMakeLists.txt') }}-v1
+          key: ui-src-${{ runner.os }}-${{ hashFiles('port/ui/CMakeLists.txt', 'port/ui/cmake/rmlui_fixes.cmake') }}-v1
 
       # des_host alone (DES_HOST_ONLY), exactly the pinned ps3recomp, no developer code, and RUNPATH $ORIGIN only.
       # DES_RSX_HAL=AUTO finds the renderer's option in the runtime's build: the port calls through the route switch.
