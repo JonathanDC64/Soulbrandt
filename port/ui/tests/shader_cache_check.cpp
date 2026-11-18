@@ -258,6 +258,10 @@ int main(int argc, char** argv) {
     // program (another file, another time) is the same build: it says the same.
     const std::string me = sc::program_identity();
     check(!me.empty() && me == sc::program_identity(), "this program's build");
+#ifdef __linux__
+    // Its build id, not the fallback (the file's size and time, which a copy changes): linked with --build-id, as des_host.
+    check(me.rfind("build-id ", 0) == 0, "this program's build id");
+#endif
     {
         const fs::path self = program_path();
         const fs::path copy = root / ("copy_" + self.filename().string());

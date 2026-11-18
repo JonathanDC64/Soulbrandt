@@ -304,6 +304,9 @@ target_include_directories(shader_cache_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR
 if(MSVC)
   target_compile_options(shader_cache_check PRIVATE /EHsc /W3)
 endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_link_options(shader_cache_check PRIVATE "-Wl,--build-id=sha1")  # (as des_host: the build is known by it)
+endif()
 
 # The F1 menu's rules on their own (tests/menu_logic_check.cpp): menu_model.cpp and settings_model.cpp with no RmlUi
 # and no settings: where Back goes, what closing the menu does while settings wait for a restart, and what Settings
