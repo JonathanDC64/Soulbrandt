@@ -8,7 +8,7 @@
 #   screens: settings (the default; one shot per tab), menu, trophies, mods,
 #            players, setup
 #   UISHOTS_SCALES    the UI scale setting (ui_scale) per run, in percent
-#                     (default "100 150"; the settings row offers 75 to 150)
+#                     (default "100 150"; the settings row offers 25 to 150)
 #   UISHOTS_LOOKS     the menu looks (menu_look, a looks.hpp id) per run, e.g.
 #                     "alpha des" (default: none set, so the default look). A
 #                     look the build doesn't offer draws as the default, so one
