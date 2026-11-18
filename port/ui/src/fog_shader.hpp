@@ -1,9 +1,9 @@
 // Written for Demon's Souls. Smoke drawn live behind the start screen (DeS UI): RmlUi's "shader" decorator with the
-// value "fog:<name>", drawn by render_gpu.cpp (the Windows menu renderer, D3D12 and Vulkan) as one pixel shader into a
-// small picture of the element, which is scaled up over it (the smoke is soft: render_effect). The smoke is 3D
-// gradient noise with time as its third axis, so its shapes churn and dissolve instead of
-// sliding, and its coordinates are bent by two more noises so it curls. The numbers in kLooks were tuned on a preview
-// page that ran the same maths in WebGL (layer by layer, the preview's sliders).
+// value "fog:<name>", drawn by render_gpu.cpp (the Windows menu renderer, D3D12 and Vulkan) as one pixel shader over
+// the element. On an integrated GPU it is drawn into a small picture of the element instead, which is scaled up over it
+// (render_effect). The smoke is 3D gradient noise with time as its third axis, so its shapes churn and dissolve instead
+// of sliding, and its coordinates are bent by two more noises so it curls. The numbers in kLooks were tuned on a
+// preview page that ran the same maths in WebGL (layer by layer, the preview's sliders).
 //
 // With DES_UI_NO_ANIM (the tests' pictures) the smoke stands still at its first frame. render_d3d12.cpp (frozen, the
 // Linux menu) and the D3D11 renderer draw no smoke: there the element shows only its black background.
@@ -58,8 +58,11 @@ float fbm(float3 p, float oct, float gain) {
 // the same maths in WebGL 2. One layer is five float4s:
 //   A size, stretch x, stretch y, detail   B roughness, swirl, churn, curl   C drift right, drift up, coverage, softness
 //   D strands, strand width, brightness, on   E top, fade, seed, -
+// m_dither.x is 1, or 0 when it is drawn small (the scaling up dithers then, at the window's pixels).
 #define DES_UI_HLSL_FOG R"(
-cbuffer Fog : register(b0) { float4x4 m_transform; float2 m_translate; float m_time; float m_aspect; float4 m_p[10]; };
+cbuffer Fog : register(b0) {
+    float4x4 m_transform; float2 m_translate; float m_time; float m_aspect; float4 m_p[10]; float4 m_dither;
+};
 
 float fog_layer(float2 uv, float t, float4 A, float4 B, float4 C, float4 D, float4 E) {
     if (D.w < 0.5) return 0.0;
@@ -87,7 +90,7 @@ float4 main(PS_IN i) : SV_Target {
     float a1 = fog_layer(uv, m_time, m_p[0], m_p[1], m_p[2], m_p[3], m_p[4]);
     float a2 = fog_layer(uv, m_time, m_p[5], m_p[6], m_p[7], m_p[8], m_p[9]);
     float a = 1.0 - (1.0 - a1) * (1.0 - a2);
-    // (The dither that keeps it from banding on black is the scaling up's, at the window's pixels.)
+    a = saturate(a + hash33(floor(float3(i.position.xy, 7.0))).x * (0.5 / 255.0) * m_dither.x);  // no bands on black
     return float4(float3(0.894, 0.894, 0.886) * a, a) * i.color.a;
 }
 )"
@@ -140,14 +143,16 @@ struct Constants {
     float time;
     float aspect;
     float p[10][4];
+    float dither[4];
 };
-static_assert(sizeof(Constants) == 240, "the HLSL cbuffer above");
+static_assert(sizeof(Constants) == 256, "the HLSL cbuffer above");
 
 // Fills all but the transform and the translation: seconds since the smoke began (0 holds it still), the element's
 // width over its height.
 inline void fill(const Look& look, double seconds, float aspect, Constants& c) {
     c.time = float(seconds * look.speed);
     c.aspect = aspect;
+    c.dither[0] = 1.f;
     std::memset(c.p, 0, sizeof c.p);
     for (int i = 0; i < look.count && i < 2; i++) {
         const Layer& l = look.layers[i];

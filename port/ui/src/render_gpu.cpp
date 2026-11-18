@@ -675,6 +675,7 @@ private:
     gpu_view mStencilDsv{};
     std::unique_ptr<Target> mPost[4];  // primary, secondary, tertiary, blend mask
     std::map<const CompiledShader*, std::unique_ptr<Target>> mEffects;  // the smoke's and the flame's pictures
+    bool mSmallEffects = false;  // an integrated GPU: the smoke and the flame drawn small (render_effect)
     std::map<void*, Output> mOutputs;
 
     // Render state
@@ -808,6 +809,17 @@ bool RendererImpl::init() {
     const bool msaa = (gpu_format_support(mDev, kColorFormat, kLayerSamples) & GPU_FMT_MSAA) &&
                       (gpu_format_support(mDev, mStencilFormat, kLayerSamples) & GPU_FMT_MSAA);
     mSamples = msaa ? kLayerSamples : 1;
+
+    // The start screen's smoke and flame are drawn small on an integrated GPU only (render_effect); a dedicated one
+    // draws them at full size. DES_UI_FX_SMALL=1 or 0 says which, to compare.
+    gpu_adapter_info adapter;
+    gpu_adapter(mDev, &adapter);
+    const char* small = std::getenv("DES_UI_FX_SMALL");
+    const bool forced = small && *small;
+    mSmallEffects = forced ? *small == '1' : adapter.integrated != 0;
+    if (mSmallEffects)
+        std::fprintf(stderr, "[ui] the start screen's smoke and flame are drawn small (%s)\n",
+                     forced ? "DES_UI_FX_SMALL" : "integrated GPU");
     return true;
 }
 
@@ -2115,8 +2127,42 @@ void RendererImpl::RenderShader(Rml::CompiledShaderHandle shader, Rml::CompiledG
                                 Rml::Vector2f translation, Rml::TextureHandle) {
     const auto* s = reinterpret_cast<const CompiledShader*>(shader);
     const auto* g = reinterpret_cast<const Geometry*>(geometry);
-    if (s && g && (s->fog || s->flame)) {
+    if (s && g && (s->fog || s->flame) && mSmallEffects) {
         render_effect(*s, *g, translation);
+        return;
+    }
+    if (s && g && s->fog) {
+        if (!g->count || !prepare(kFog)) return;
+        // Still at its first frame with the animations off (DES_UI_NO_ANIM: the tests' pictures).
+        static const bool still = std::getenv("DES_UI_NO_ANIM") != nullptr;
+        ui::fog::Constants c{};
+        store(mTransform, c.transform);
+        c.translate[0] = translation.x;
+        c.translate[1] = translation.y;
+        ui::fog::fill(*s->fog, still ? 0.0 : std::chrono::duration<double>(std::chrono::steady_clock::now() - mStart).count(),
+                      s->aspect, c);
+        if (const auto gpu = constants(&c, sizeof c)) {
+            gpu_cmd_bind_cb(mCmd, 0, gpu);
+            draw(*g);
+        }
+        return;
+    }
+    if (s && g && s->flame) {
+        const auto* map = reinterpret_cast<const Texture*>(s->map);
+        if (!g->count || !map || !mOpen) return;
+        gpu_cmd_bind_table(mCmd, 2, map->table);
+        if (!prepare(kFlame)) return;
+        static const bool still = std::getenv("DES_UI_NO_ANIM") != nullptr;
+        ui::flame::Constants c{};
+        store(mTransform, c.transform);
+        c.translate[0] = translation.x;
+        c.translate[1] = translation.y;
+        ui::flame::fill(*s->flame,
+                        still ? 0.0 : std::chrono::duration<double>(std::chrono::steady_clock::now() - mStart).count(), c);
+        if (const auto gpu = constants(&c, sizeof c)) {
+            gpu_cmd_bind_cb(mCmd, 0, gpu);
+            draw(*g);
+        }
         return;
     }
     if (s && g && !s->model.empty()) {
@@ -2175,13 +2221,14 @@ void RendererImpl::ReleaseShader(Rml::CompiledShaderHandle shader) {
     delete s;
 }
 
-// The start screen's smoke and the logo's flame (shader("fog:...") and shader("flame:...")): the pixel shader drawn
-// into a picture of the element, which is then scaled up over the element (kUpscale), bilinear, with the dither. Both
-// are soft, so a smaller picture looks the same. Drawn over the whole of a maximised 1440p window, the smoke was 3.5
-// million pixels of noise a frame, and a small integrated GPU (2 compute units) drew the start screen at 11 fps. The
-// smoke's picture is at most kFogRows rows tall, whatever the window's size; the flame's half its element's size, at
-// most kFlameRows rows. The picture is RGBA16F, so the scaling up blends the shader's own values, not 8-bit steps.
-// DES_UI_FX_FULL=1 draws both at their elements' full size, to compare.
+// The start screen's smoke and the logo's flame (shader("fog:...") and shader("flame:...")) on an integrated GPU
+// (mSmallEffects): the pixel shader drawn into a picture of the element, which is then scaled up over the element
+// (kUpscale), bilinear, with the dither. Drawn over the whole of a maximised 1440p window, the smoke was 3.5 million
+// pixels of noise a frame, and a small integrated GPU (2 compute units) drew the start screen at 11 fps. Both are
+// soft, so the smaller picture looks almost the same (the flame's thinnest wisps a touch softer); a dedicated GPU
+// draws them over the element at full size, as they were. The smoke's picture is at most kFogRows rows tall, whatever
+// the window's size; the flame's half its element's size, at most kFlameRows rows. The picture is RGBA16F, so the
+// scaling up blends the shader's own values, not 8-bit steps.
 void RendererImpl::render_effect(const CompiledShader& s, const Geometry& g, Rml::Vector2f translation) {
     constexpr float kFogRows = 240.f;
     constexpr float kFlameRows = 376.f;  // (the logo's element is 376 dp tall: at most a pixel per dp)
@@ -2191,8 +2238,7 @@ void RendererImpl::render_effect(const CompiledShader& s, const Geometry& g, Rml
     // scale doesn't make it again each frame).
     const float bw = g.hi.x - g.lo.x, bh = g.hi.y - g.lo.y;
     if (bw < 1.f || bh < 1.f) return;
-    static const bool full = std::getenv("DES_UI_FX_FULL") != nullptr;
-    const float scale = full ? 1.f : std::min(s.fog ? 1.f : 0.5f, (s.fog ? kFogRows : kFlameRows) / bh);
+    const float scale = std::min(s.fog ? 1.f : 0.5f, (s.fog ? kFogRows : kFlameRows) / bh);
     const int w = std::max(1, int(std::ceil(bw * scale))), h = std::max(1, int(std::ceil(bh * scale)));
     std::unique_ptr<Target>& t = mEffects[&s];
     if (t && (t->w != w || t->h != h)) drop(t);
@@ -2222,12 +2268,14 @@ void RendererImpl::render_effect(const CompiledShader& s, const Geometry& g, Rml
         ui::fog::Constants c{};
         store(Rml::Matrix4f::Identity(), c.transform);
         ui::fog::fill(*s.fog, seconds, s.aspect, c);
+        c.dither[0] = 0.f;  // (kUpscale's, at the window's pixels)
         if (prepare(kFog)) quad(&c, sizeof c);
     } else {
         gpu_cmd_bind_table(mCmd, 2, map->table);
         ui::flame::Constants c{};
         store(Rml::Matrix4f::Identity(), c.transform);
         ui::flame::fill(*s.flame, seconds, c);
+        c.dither[0] = 0.f;
         if (prepare(kFlame)) quad(&c, sizeof c);
     }
     mScissor = scissor;

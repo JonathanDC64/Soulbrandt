@@ -1,7 +1,7 @@
 // Written for Demon's Souls. A cold flame rising off the start screen's logo (DeS UI): RmlUi's "shader" decorator with
 // the value "flame:<name>", drawn by render_gpu.cpp (the Windows menu renderer, D3D12 and Vulkan) as one pixel shader
-// into a picture of the logo's element at half its size, padding box included, which is scaled up over it
-// (render_effect). It reads one image, the logo's map (soulbrandt-logo-map.png, made by
+// over the logo's element, padding box included (on an integrated GPU, into a picture of the element at half its size,
+// which is scaled up over it: render_effect). It reads one image, the logo's map (soulbrandt-logo-map.png, made by
 // tools/ui/make_logo_map.py): the letters softened, and a wide halo round them that the flame rises from, carried up
 // and bent by the smoke's noise (fog_shader.hpp's DES_UI_HLSL_NOISE). It gives light only; the letters, an image
 // decorator over the content box, are drawn over it. The numbers in kLooks were picked on a preview page that ran the
@@ -19,10 +19,12 @@
 // and s_clamp) and DES_UI_HLSL_NOISE. b0 starts as RmlUi's vertex shader reads it (the transform and the translation).
 //   m_time   seconds times the look's speed (the flame's motion)    m_clock  seconds (the flicker)
 //   m_color  the light's colour, its strength                       m_shape  reach, width, flicker, the room above
-//   m_box    the map's box in dp at 1280 x 720
+//   m_box    the map's box in dp at 1280 x 720                     m_dither x: 1, or 0 when it is drawn small (the
+//                                                                            scaling up dithers then)
 #define DES_UI_HLSL_FLAME R"(
 cbuffer Flame : register(b0) {
     float4x4 m_transform; float2 m_translate; float m_time; float m_clock; float4 m_color; float4 m_shape; float4 m_box;
+    float4 m_dither;
 };
 
 // The map: red the letters, softened; blue a wide halo round them. Nothing outside it.
@@ -49,8 +51,10 @@ float4 main(PS_IN i) : SV_Target {
     float above = smoothstep(-0.05, 0.15, f - m.b * 0.35);
     float flick = lerp(1.0, 0.55 + 0.9 * (0.5 + 0.5 * gnoise(float3(q * m_box.xy * 0.035, m_clock * 2.3))), m_shape.z);
     float3 light = m_color.rgb * S * flick * (f * tongues * above * 9.0 + m.r * 0.45 + m.b * 0.2 * R);
-    // Light only (alpha 0): added to what is behind it. (The dither that keeps the glow from banding on black is the
-    // scaling up's, at the window's pixels.)
+    // A dither where there is light, so the glow doesn't band on black.
+    light += hash33(floor(float3(i.position.xy, 5.0))).x * (0.5 / 255.0) * m_dither.x *
+             step(1.0 / 255.0, max(light.r, max(light.g, light.b)));
+    // Light only (alpha 0): added to what is behind it.
     return float4(max(light, 0.0), 0.0) * i.color.a;
 }
 )"
@@ -96,8 +100,9 @@ struct Constants {
     float color[4];
     float shape[4];
     float box[4];
+    float dither[4];
 };
-static_assert(sizeof(Constants) == 128, "the HLSL cbuffer above");
+static_assert(sizeof(Constants) == 144, "the HLSL cbuffer above");
 
 // Fills all but the transform and the translation: seconds since the flame began (0 holds it still).
 inline void fill(const Look& look, double seconds, Constants& c) {
@@ -115,6 +120,7 @@ inline void fill(const Look& look, double seconds, Constants& c) {
     c.box[1] = kMapDp[1];
     c.box[2] = 0.f;
     c.box[3] = 0.f;
+    c.dither[0] = 1.f;
 }
 
 }  // namespace ui::flame
