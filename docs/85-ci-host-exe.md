@@ -244,7 +244,8 @@ action SHAs (`actions/checkout` v4.4.0, `ilammy/msvc-dev-cmd` v1.13.0, `actions/
 
 1. Check out the port, with full history (the version string counts commits).
 2. Read `ps3recomp.pin`; check out that commit of the fork into `ps3recomp/`.
-3. Show the toolchain. A clang-cl other than 22.1.8 is a warning for now (open question 2).
+3. LLVM's own 22.1.8 for Windows, checked by size and SHA-256 and cached (`.github/actions/llvm-windows`), first
+   on the path. Then show the toolchain: a clang-cl other than 22.1.8 fails the job (open question 2).
 4. Configure and build the runtime library: `PS3RECOMP_GAME_SPLIT=ON`, `PS3RECOMP_STATIC_CRT=ON`, Release.
 5. Make `hle_nid_table.cpp` with `gen_hle_nids.py --all` in the runner's temp folder.
 6. (Gone with the header split: the stopgap that wrote an empty lift's `ppu_recomp.h` there, section 4.)
@@ -363,9 +364,11 @@ What to check, and what it gave on 10-22:
 1. **The pinned commit on the fork.** Done: CI checks ps3recomp out by the pin, and `DES_REQUIRE_PIN` wants
    exactly that commit. Both the split (ps3recomp #101) and the static runtime (ps3recomp #102) are merged,
    and this branch pins the fork's master (555b043), so the workflow can run.
-2. **The compiler.** The runner's clang-cl is not pinned. docs/54 5.4 wants CI on 22.1.8, failing on any
-   other. CI could use the same trimmed LLVM 22.1.8 archive it will make for players (docs/81): the host and
-   the DLL then come from one compiler.
+2. **The compiler.** Done 2026-11-18: CI uses LLVM's own 22.1.8 Windows archive, pinned by size and SHA-256
+   (`.github/actions/llvm-windows`, the pins of `llvm-archive.yml`), and fails on any other clang-cl. The host
+   and the DLL setup builds now come from one compiler. What forced it: the runner's clang-cl was 20.1.8, and
+   from the windows-2025-vs2026 image of 2026-11-16 on, MSVC 14.52's C++ library refuses any Clang before 22
+   (`error STL1000: Unexpected compiler version, expected Clang 22 or newer`).
 3. **The runner image.** `windows-latest` moves to new Visual Studio and SDK versions on its own, and the
    static runtime is linked into the exe, so the exe changes with them. Pin an image (`windows-2025`)?
 4. **Required check.** Not until it passes. It builds FreeType, RmlUi, the runtime library and the host on

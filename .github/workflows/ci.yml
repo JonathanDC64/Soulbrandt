@@ -39,6 +39,9 @@ jobs:
       - name: Install Ninja
         run: choco install ninja --version=1.13.2 --allow-downgrade -y --no-progress
 
+      # LLVM's own 22.1.8, as host.yml's des_host.exe job (.github/actions/llvm-windows).
+      - uses: ./.github/actions/llvm-windows
+
       - name: Show toolchain
         run: |
           clang-cl --version

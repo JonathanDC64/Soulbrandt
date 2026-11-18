@@ -1,9 +1,9 @@
 // Crash reports (docs/32): when the game ends on an unhandled exception (an access violation and the like) or an
 // abort, writes crash-<time>.txt (what happened and a symbolized stack), crash-<time>.dmp (a minidump) and
 // crash-<time>.log (the end of the log) in the data folder's crashes folder. Then a second process of this program
-// (des_boot.exe --crash-dialog ...) tells the player: restart the game, or report the problem on GitHub (an issue with
-// the details filled in, and a zip of the report to attach). Adapted for Demon's Souls from FFCCEOT-Recomp's
-// crash_report.hpp.
+// (des_boot.exe --crash-dialog ...; off Windows, dialog_process below) tells the player: restart the game, or report
+// the problem on GitHub (an issue with the details filled in, and a zip of the report to attach). Adapted for Demon's
+// Souls from FFCCEOT-Recomp's crash_report.hpp. (Off Windows: no minidump, and a backtrace in place of the stack.)
 //
 // Only a truly unhandled exception counts: the runtime's vectored handlers (guest memory committed on first touch,
 // its guard pages) run first and keep handling what they handle, and the runtime's own top-level filter and abort
@@ -34,6 +34,13 @@ void report_hang(long long ms_since_frame);
 void report_graphics_lost(const std::string& what);
 // A hang (or lost graphics) dialog report_hang started is still open.
 bool hang_dialog_open();
+
+// Off Windows (crash_report_posix.cpp): the dialog's process is this program started with DES_UI_OPEN=crash-dialog,
+// which is setup's window-only start (des_ui_launch returns -2) with push_dialog's window in place of setup's
+// screens: the report DES_CRASH_REPORT names, for the game DES_CRASH_PID names. Windows' dialog has a window of its
+// own (crash_dialog.cpp's show).
+bool dialog_process();
+void push_dialog();
 
 // Whether install() set up the reports.
 bool reports_on();
