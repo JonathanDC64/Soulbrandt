@@ -5,6 +5,7 @@
 #include "input.hpp"
 #include "menu_shell.hpp"
 #include "settings_catalog.hpp"
+#include "settings_values.hpp"
 #include "sound.hpp"
 #include "ui.hpp"
 
@@ -57,6 +58,9 @@ PlayersPage::PlayersPage(Rml::Element* host, menu::PageHost& shell) : mHost(host
         mMore[w] = append(box, "list-more");
         mMore[w]->SetClass(w ? "down" : "up", true);
     }
+    Rml::Element* empty = append(box, "players-empty");
+    mEmptyTitle = append(empty, "empty-title");
+    mEmptyLead = append(empty, "empty-lead");
     mState.start();
     draw();
 }
@@ -72,10 +76,12 @@ void PlayersPage::draw() {
     if (mFocus < mTop) mTop = mFocus;
     if (mFocus >= mTop + kPageRows) mTop = mFocus - kPageRows + 1;
     mTop = std::clamp(mTop, 0, std::max(0, n - kPageRows));
-    std::string all = std::to_string(mState.generation) + '/' + std::to_string(mFocus) + '/' + std::to_string(mTop);
+    std::string all = std::to_string(mState.generation) + '/' + std::to_string(mFocus) + '/' + std::to_string(mTop) +
+                      '/' + std::to_string(mState.signedIn) + std::to_string(mState.status);
     if (all == mShown) return;
     mShown = all;
     set_class(mPage, "none", n == 0);
+    if (n == 0) draw_empty();
     for (int i = 0; i < kPageRows; i++) {
         Rml::Element* item = mItems[static_cast<size_t>(i)];
         const int index = mTop + i;
@@ -101,6 +107,30 @@ void PlayersPage::draw() {
     }
     set_class(mMore[0], "on", mTop > 0);
     set_class(mMore[1], "on", mTop + kPageRows < n);
+}
+
+// No one to list: what, and why or what to do. The strip keeps the state's one line (players_state.cpp's summary).
+void PlayersPage::draw_empty() {
+    std::string title, lead;
+    if (!mState.signedIn) {
+        title = "Not online";
+        lead = settings::cheat_session()
+                   ? "A developer cheat is on, so this session stays offline."
+                   : "Turn on Online in Settings > Network. Players you meet in co-op and invasions show here.";
+    } else if (mState.status == kFailed) {
+        title = "No answer from the server";
+        lead = "The list is asked for again in a few seconds.";
+    } else if (mState.status != kReady) {
+        title = "Asking the online server";
+        lead = "The list shows here when it answers.";
+    } else {
+        title = "No one in the last " + std::to_string(mState.days) + " days";
+        lead = "Players who help you, who you help, and who invade you show here. You can block or report them.";
+    }
+    clear_children(mEmptyTitle);
+    append_text(mEmptyTitle, title);
+    clear_children(mEmptyLead);
+    append_text(mEmptyLead, lead);
 }
 
 void PlayersPage::update() {
