@@ -253,12 +253,12 @@ void Prelaunch::update() {
 }
 
 // The prompts for the keys here, as the menus show theirs (a look that draws them: DeS UI), drawn again only when
-// they change (the device used last).
+// they change (the device used last). The choices are a column, so Select is Up / Down (Move), as in Settings' rows.
 void Prelaunch::update_prompts() {
     if (mPrompts == nullptr) return;
     const prompts::Device device = input::menu_device();
     std::string rml;
-    for (const prompts::Prompt& p : {prompts::Prompt{prompts::Key::Change, "Select"},
+    for (const prompts::Prompt& p : {prompts::Prompt{prompts::Key::Move, "Select"},
                                      prompts::Prompt{prompts::Key::Confirm, "Open"},
                                      prompts::Prompt{prompts::Key::Back, "Quit"}})
         rml += "<menu-prompt data-key=\"" + std::to_string(static_cast<int>(p.key)) + "\">" +
