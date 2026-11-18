@@ -1180,6 +1180,13 @@ body.prelaunch prelaunch-vignette {
     decorator: radial-gradient(farthest-corner at 50% 45%, rgba(0, 0, 0, 0%) 30%, rgba(0, 0, 0, 50%) 100%);
 }
 
+/* The smoke off (Settings > Interface > Start screen smoke): plain black. The fades and the vignette darken only the
+   smoke, so they go with it. */
+body.prelaunch.no-smoke prelaunch-gradient,
+body.prelaunch.no-smoke prelaunch-vignette {
+    decorator: none;
+}
+
 body.prelaunch menu {
     left: 0;
     width: 100%;
@@ -1207,6 +1214,11 @@ body.prelaunch hero title-logo {
     margin: -160dp -60dp -60dp -60dp;
     image-color: #f7fbff;
     decorator: image(/res/img/soulbrandt-logo.png) content-box, shader("flame:logo") padding-box;
+}
+
+/* The flame off (Settings > Interface > Soul flame): the letters alone. */
+body.prelaunch.no-flame hero title-logo {
+    decorator: image(/res/img/soulbrandt-logo.png) content-box;
 }
 
 body.prelaunch title-rule {
