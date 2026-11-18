@@ -387,6 +387,31 @@ struct CompiledShader {
     Rml::TextureHandle map = {};             // (its map, this shader's own)
 };
 
+bool is_gradient(const CompiledShader& s) {
+    return !s.fog && !s.flame && s.model.empty() && !s.stop_positions.empty();
+}
+
+// A gradient's constants, through this transform with its geometry moved by this translation.
+GradientConstants gradient_constants(const CompiledShader& s, const Rml::Matrix4f& transform, Rml::Vector2f translation) {
+    GradientConstants c{};
+    store(transform, c.transform);
+    c.translate[0] = translation.x;
+    c.translate[1] = translation.y;
+    c.func = int32_t(s.function);
+    c.num_stops = int32_t(s.stop_positions.size());
+    c.p[0] = s.p.x;
+    c.p[1] = s.p.y;
+    c.v[0] = s.v.x;
+    c.v[1] = s.v.y;
+    c.range[0] = s.stop_positions.front();
+    c.range[1] = s.stop_positions.back();
+    for (size_t i = 0; i < s.stop_positions.size(); i++) {
+        c.positions[i][0] = s.stop_positions[i];
+        for (int k = 0; k < 4; k++) c.colors[i][k] = s.stop_colors[i][k];
+    }
+    return c;
+}
+
 // SigmaToParameters and SetBlurWeights, RmlUi's.
 void sigma_to_parameters(float desired, int& pass_level, float& sigma) {
     constexpr int kMaxPasses = 10;
@@ -432,6 +457,10 @@ struct Geometry {
     uint32_t count = 0;
     Rml::Vector2f lo, hi;  // its vertices' box, and the first one's alpha (a decorator's: the element's opacity)
     float alpha = 1.f;
+    // Four white corners, their texture coordinates along the sides (uv_lo at lo, uv_hi at hi): a decorator's box,
+    // which a quad over a picture of the box can stand for (join_effect).
+    bool plain = false;
+    Rml::Vector2f uv_lo, uv_hi;
 };
 
 struct Texture {
@@ -615,6 +644,8 @@ private:
     void render_filters(Rml::Span<const Rml::CompiledFilterHandle> filters);
     void render_blur(float sigma, Target& source_destination, Target& temp, Rml::Rectanglei window);
     void render_effect(const CompiledShader& s, const Geometry& g, Rml::Vector2f translation);
+    bool join_effect(const CompiledShader& s, const Geometry& g, Rml::Vector2f translation);
+    void settle_effect();
 
     // The game's models
     Texture* make_block_texture(const ui::models::Texture& src);
@@ -676,6 +707,15 @@ private:
     std::unique_ptr<Target> mPost[4];  // primary, secondary, tertiary, blend mask
     std::map<const CompiledShader*, std::unique_ptr<Target>> mEffects;  // the smoke's and the flame's pictures
     bool mSmallEffects = false;  // an integrated GPU: the smoke and the flame drawn small (render_effect)
+    // The picture render_effect drew last, not scaled up yet: gradients over the same box join it (join_effect), and
+    // whatever else draws, or changes the transform, scissor, clip or target, scales it up first (settle_effect).
+    struct PendingEffect {
+        const CompiledShader* shader = nullptr;
+        const Geometry* geometry = nullptr;
+        Rml::Vector2f translation;
+        Target* target = nullptr;
+        Target* into = nullptr;
+    } mFx;
     std::map<void*, Output> mOutputs;
 
     // Render state
@@ -1412,6 +1452,7 @@ bool RendererImpl::begin_frame(void* back_buffer, unsigned index, int width, int
     mFrameBufferIndex = index;
     width = std::max(width, 1);
     height = std::max(height, 1);
+    mFx = {};  // (one left from a frame that never ended: its picture is not this frame's)
     if (!open()) return true;
     if (width != mWidth || height != mHeight) resize(width, height);
     mProjection = Rml::Matrix4f::ProjectOrtho(0, float(width), float(height), 0, -10000, 10000);
@@ -1441,6 +1482,7 @@ bool RendererImpl::begin_frame(void* back_buffer, unsigned index, int width, int
 }
 
 void RendererImpl::end_frame() {
+    settle_effect();
     void* const back_buffer = mFrameBuffer;
     mFrameBuffer = nullptr;
     if (!mOpen) return;
@@ -1561,11 +1603,28 @@ Rml::CompiledGeometryHandle RendererImpl::CompileGeometry(Rml::Span<const Rml::V
             g->hi = Rml::Math::Max(g->hi, v.position);
         }
         g->alpha = float(vertices[0].colour.alpha) / 255.f;
+        if (vertices.size() == 4 && indices.size() == 6) {
+            const auto corner = [&](const Rml::Vertex& v, bool hi_x, bool hi_y) {
+                return v.position.x == (hi_x ? g->hi.x : g->lo.x) && v.position.y == (hi_y ? g->hi.y : g->lo.y);
+            };
+            for (const Rml::Vertex& v : vertices) {
+                if (corner(v, false, false)) g->uv_lo = v.tex_coord;
+                if (corner(v, true, true)) g->uv_hi = v.tex_coord;
+            }
+            bool plain = g->lo.x < g->hi.x && g->lo.y < g->hi.y;
+            for (const Rml::Vertex& v : vertices) {
+                const bool hx = v.position.x == g->hi.x, hy = v.position.y == g->hi.y;
+                plain = plain && corner(v, hx, hy) && v.colour == Rml::ColourbPremultiplied(255, 255, 255, 255) &&
+                        v.tex_coord == Rml::Vector2f(hx ? g->uv_hi.x : g->uv_lo.x, hy ? g->uv_hi.y : g->uv_lo.y);
+            }
+            g->plain = plain;
+        }
     }
     return reinterpret_cast<Rml::CompiledGeometryHandle>(g);
 }
 
 void RendererImpl::RenderGeometry(Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation, Rml::TextureHandle texture) {
+    settle_effect();
     const auto* g = reinterpret_cast<const Geometry*>(geometry);
     const auto* t = reinterpret_cast<const Texture*>(texture);
     if (!g || !g->count) return;
@@ -1579,6 +1638,7 @@ void RendererImpl::RenderGeometry(Rml::CompiledGeometryHandle geometry, Rml::Vec
 void RendererImpl::ReleaseGeometry(Rml::CompiledGeometryHandle geometry) {
     auto* g = reinterpret_cast<Geometry*>(geometry);
     if (!g) return;
+    if (g == mFx.geometry) settle_effect();
     const Block b = g->block;
     delete g;
     if (GPU_VALID(b.buffer)) retire([this, b] { free_block(b); });
@@ -1707,18 +1767,24 @@ void RendererImpl::ReleaseTexture(Rml::TextureHandle texture) {
 // ---- Scissor, transform, clip mask ----
 
 void RendererImpl::EnableScissorRegion(bool enable) {
-    if (!enable) set_scissor(Rml::Rectanglei::MakeInvalid());  // (an enable is followed by SetScissorRegion)
+    if (enable) return;  // (an enable is followed by SetScissorRegion)
+    if (mScissor.Valid()) settle_effect();
+    set_scissor(Rml::Rectanglei::MakeInvalid());
 }
 
 void RendererImpl::SetScissorRegion(Rml::Rectanglei region) {
+    if (!(region == mScissor)) settle_effect();
     set_scissor(region);
 }
 
 void RendererImpl::SetTransform(const Rml::Matrix4f* transform) {
-    mTransform = transform ? mProjection * *transform : mProjection;
+    const Rml::Matrix4f t = transform ? mProjection * *transform : mProjection;
+    if (!(t == mTransform)) settle_effect();
+    mTransform = t;
 }
 
 void RendererImpl::EnableClipMask(bool enable) {
+    if (enable != mClip) settle_effect();
     mClip = enable;
 }
 
@@ -1726,6 +1792,7 @@ void RendererImpl::EnableClipMask(bool enable) {
 // adds 1 under the geometry and tests for one more than before.
 void RendererImpl::RenderToClipMask(Rml::ClipMaskOperation operation, Rml::CompiledGeometryHandle geometry,
                                     Rml::Vector2f translation) {
+    settle_effect();
     const auto* g = reinterpret_cast<const Geometry*>(geometry);
     if (!mOpen || !mBound || !mBound->layer) return;
     Stencil s = kStencilSet;
@@ -1751,6 +1818,7 @@ void RendererImpl::RenderToClipMask(Rml::ClipMaskOperation operation, Rml::Compi
 // ---- Layers ----
 
 Rml::LayerHandle RendererImpl::PushLayer() {
+    settle_effect();
     if (mLayerCount == int(mLayers.size())) mLayers.emplace_back();
     std::unique_ptr<Target>& t = mLayers[size_t(mLayerCount++)];
     if (!t) t = make_target(mSamples, true);
@@ -1766,6 +1834,7 @@ Rml::LayerHandle RendererImpl::PushLayer() {
 
 void RendererImpl::CompositeLayers(Rml::LayerHandle source, Rml::LayerHandle destination, Rml::BlendMode blend_mode,
                                    Rml::Span<const Rml::CompiledFilterHandle> filters) {
+    settle_effect();
     Target* from = layer(int(source));
     Target* to = layer(int(destination));
     if (!mOpen || !from || !to || !post(0)) return;
@@ -1784,6 +1853,7 @@ void RendererImpl::CompositeLayers(Rml::LayerHandle source, Rml::LayerHandle des
 }
 
 void RendererImpl::PopLayer() {
+    settle_effect();
     if (mLayerCount > 0) mLayerCount--;
     Target* top = layer(mLayerCount - 1);
     if (mOpen && top) bind(*top);
@@ -1792,6 +1862,7 @@ void RendererImpl::PopLayer() {
 
 // The top layer's pixels under the scissor, as a texture with its top left at (0, 0).
 Rml::TextureHandle RendererImpl::SaveLayerAsTexture() {
+    settle_effect();
     Target* top = layer(mLayerCount - 1);
     const Rml::Rectanglei r = region();
     if (!mOpen || !top || !post(0) || r.Width() <= 0 || r.Height() <= 0) return {};
@@ -1807,6 +1878,7 @@ Rml::TextureHandle RendererImpl::SaveLayerAsTexture() {
 }
 
 Rml::CompiledFilterHandle RendererImpl::SaveLayerAsMaskImage() {
+    settle_effect();
     Target* top = layer(mLayerCount - 1);
     if (!mOpen || !top || !post(0) || !post(3)) return {};
     resolve(*top, *post(0));
@@ -2127,6 +2199,8 @@ void RendererImpl::RenderShader(Rml::CompiledShaderHandle shader, Rml::CompiledG
                                 Rml::Vector2f translation, Rml::TextureHandle) {
     const auto* s = reinterpret_cast<const CompiledShader*>(shader);
     const auto* g = reinterpret_cast<const Geometry*>(geometry);
+    if (s && g && mFx.target && join_effect(*s, *g, translation)) return;
+    settle_effect();
     if (s && g && (s->fog || s->flame) && mSmallEffects) {
         render_effect(*s, *g, translation);
         return;
@@ -2188,23 +2262,8 @@ void RendererImpl::RenderShader(Rml::CompiledShaderHandle shader, Rml::CompiledG
         render_model(s->model, view, g->alpha);
         return;
     }
-    if (!s || !g || !g->count || !prepare(kGradient)) return;
-    GradientConstants c{};
-    store(mTransform, c.transform);
-    c.translate[0] = translation.x;
-    c.translate[1] = translation.y;
-    c.func = int32_t(s->function);
-    c.num_stops = int32_t(s->stop_positions.size());
-    c.p[0] = s->p.x;
-    c.p[1] = s->p.y;
-    c.v[0] = s->v.x;
-    c.v[1] = s->v.y;
-    c.range[0] = s->stop_positions.front();
-    c.range[1] = s->stop_positions.back();
-    for (size_t i = 0; i < s->stop_positions.size(); i++) {
-        c.positions[i][0] = s->stop_positions[i];
-        for (int k = 0; k < 4; k++) c.colors[i][k] = s->stop_colors[i][k];
-    }
+    if (!s || !g || !g->count || !is_gradient(*s) || !prepare(kGradient)) return;
+    const GradientConstants c = gradient_constants(*s, mTransform, translation);
     if (const auto gpu = constants(&c, sizeof c)) {
         gpu_cmd_bind_cb(mCmd, 0, gpu);
         draw(*g);
@@ -2213,6 +2272,7 @@ void RendererImpl::RenderShader(Rml::CompiledShaderHandle shader, Rml::CompiledG
 
 void RendererImpl::ReleaseShader(Rml::CompiledShaderHandle shader) {
     auto* s = reinterpret_cast<CompiledShader*>(shader);
+    if (s && s == mFx.shader) settle_effect();
     if (s && s->map) ReleaseTexture(s->map);
     if (const auto it = mEffects.find(s); it != mEffects.end()) {
         drop(it->second);
@@ -2229,6 +2289,10 @@ void RendererImpl::ReleaseShader(Rml::CompiledShaderHandle shader) {
 // draws them over the element at full size, as they were. The smoke's picture is at most kFogRows rows tall, whatever
 // the window's size; the flame's half its element's size, at most kFlameRows rows. The picture is RGBA16F, so the
 // scaling up blends the shader's own values, not 8-bit steps.
+//
+// The picture is scaled up when the next thing is drawn (settle_effect), so the start screen's fades and vignette,
+// gradients over the same box as the smoke, are drawn into it first (join_effect): the window gets one scaled-up
+// picture, where each of them was a pass over the whole window more (about 4 ms each on a 2-CU GPU at 1440p).
 void RendererImpl::render_effect(const CompiledShader& s, const Geometry& g, Rml::Vector2f translation) {
     constexpr float kFogRows = 240.f;
     constexpr float kFlameRows = 376.f;  // (the logo's element is 376 dp tall: at most a pixel per dp)
@@ -2281,9 +2345,49 @@ void RendererImpl::render_effect(const CompiledShader& s, const Geometry& g, Rml
     mScissor = scissor;
     mBlend = blend;
     bind(into);
-    if (!drawn) return;
-    sample(2, *t);
-    if (prepare(kUpscale) && set_common(translation)) draw(g);
+    if (drawn) mFx = {&s, &g, translation, t.get(), &into};
+}
+
+// A gradient over the box of the picture that waits (mFx), opaque and plain (no rounded corners, no opacity): drawn
+// into the picture, over what is there, as it would have been drawn over the element. Gradients are soft, so at the
+// picture's size they look the same, and the scaling up dithers them as it does the smoke. Over is associative, so the
+// picture scaled up over the window is what the smoke and the gradients drawn one by one over it were.
+bool RendererImpl::join_effect(const CompiledShader& s, const Geometry& g, Rml::Vector2f translation) {
+    const Geometry& box = *mFx.geometry;
+    if (!is_gradient(s) || !g.count || !g.plain || !box.plain || !mOpen || mBound != mFx.into) return false;
+    const auto same = [](Rml::Vector2f a, Rml::Vector2f b) {
+        return std::abs(a.x - b.x) < 0.5f && std::abs(a.y - b.y) < 0.5f;
+    };
+    if (!same(g.lo + translation, box.lo + mFx.translation) || !same(g.hi + translation, box.hi + mFx.translation))
+        return false;
+    Target& into = *mBound;
+    const Rml::Rectanglei scissor = mScissor;
+    const Blend blend = mBlend;
+    mScissor = Rml::Rectanglei::MakeInvalid();
+    mBlend = kPremultiplied;
+    bind(*mFx.target);
+    // The gradient's own texture coordinates at the picture's corners: the box's, in the element's pixels.
+    if (prepare(kGradient)) {
+        const GradientConstants c = gradient_constants(s, Rml::Matrix4f::Identity(), {});
+        if (const auto gpu = constants(&c, sizeof c)) {
+            gpu_cmd_bind_cb(mCmd, 0, gpu);
+            draw_quad(g.uv_lo.x, g.uv_lo.y, g.uv_hi.x, g.uv_hi.y);
+        }
+    }
+    mScissor = scissor;
+    mBlend = blend;
+    bind(into);
+    return true;
+}
+
+// The picture that waits (mFx), scaled up over its element, as render_effect drew it.
+void RendererImpl::settle_effect() {
+    if (!mFx.target) return;
+    const PendingEffect fx = mFx;
+    mFx = {};
+    if (!mOpen || mBound != fx.into) return;
+    sample(2, *fx.target);
+    if (prepare(kUpscale) && set_common(fx.translation)) draw(*fx.geometry);
 }
 
 // ---- The game's models (docs/112) ----
@@ -2615,6 +2719,7 @@ bool RendererImpl::render_model(const std::string& name, const ModelView& view, 
 
 // From host.cpp, after the context's Render: on the base layer, with no scissor or clip.
 bool RendererImpl::draw_model(const char* name, const ModelView& view) {
+    settle_effect();
     if (!name || !mOpen) return false;
     const Rml::Rectanglei scissor = mScissor;
     const bool clip = mClip;

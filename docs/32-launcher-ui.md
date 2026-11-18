@@ -713,7 +713,14 @@ it, drawn live:
   1440p window, the smoke held a small integrated GPU to 11 fps. So on an
   integrated GPU (the adapter's `integrated`: D3D12's UMA, Vulkan's device
   type), the shader draws into a small picture of the element instead, at most
-  240 rows whatever the window's size. The picture is scaled up over the
+  240 rows whatever the window's size. The fades over the smoke (the black
+  from the top, the ellipse behind the choices) and the vignette, gradients
+  over the same box, are drawn into that picture too (11-17, `join_effect`):
+  each was one more pass over the whole window. The picture waits to be scaled
+  up until something else is drawn (`settle_effect`). On a 2-CU GPU the start
+  screen went from 26.0 to 12.2 ms of GPU time a frame at 2560x1361, and from
+  9.6 to 6.2 ms at 1280x720; the picture moved by at most 2/255. The picture is
+  scaled up over the
   element, with a dither so the gradients don't band on black. The smoke is
   soft, so it looks the same. A dedicated GPU draws it at full size, as
   before. `DES_UI_FX_SMALL=1` or `0` picks either way, to compare.
