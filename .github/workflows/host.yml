@@ -187,18 +187,22 @@ jobs:
       - name: Install Ninja
         run: choco install ninja --version=1.13.2 --allow-downgrade -y --no-progress
 
-      # docs/54 section 5.4 wants CI on the LLVM that players get (22.1.8), failing on any other. Not yet:
-      # the runner's clang-cl is used, as in ci.yml, and another version is a warning (docs/85, open questions).
+      # LLVM's own 22.1.8, first on the path (.github/actions/llvm-windows): the runner's clang-cl is 20.1.8, which
+      # the runner's MSVC C++ library refuses from its 14.52 on.
+      - uses: ./.github/actions/llvm-windows
+
+      # docs/54 section 5.4: CI on the LLVM that players get (22.1.8), failing on any other.
       - name: Show toolchain
         shell: bash
         run: |
           clang-cl --version
-          lld-link --version || echo "(no lld-link on the path: CMake links with link.exe)"
+          lld-link --version
           cmake --version
           ninja --version
           v=$(clang-cl --version | sed -n 's/.*clang version \([0-9][0-9.]*\).*/\1/p' | head -n 1)
           if [ "$v" != "22.1.8" ]; then
-            echo "::warning::clang-cl $v, not the 22.1.8 of the player builds (docs/54 5.4, docs/85)"
+            echo "::error::clang-cl $v, not the 22.1.8 of the player builds (docs/54 5.4)"
+            exit 1
           fi
 
       # The ffmpeg-windows job's DLLs, headers and licence files.
