@@ -28,10 +28,16 @@ public:
     // Drawn as the whole window, as the setup screens are: its scale follows the window's size, so the logo and the
     // choices keep their place in the smoke and the fades, which are drawn as shares of the window. At the display's
     // scale alone (100% on a 1440p display) a maximised window had them small in the middle, in thin fades.
-    bool scales_with_window() const override { return true; }
+    //   Not while a screen it opened covers it (Settings, Trophies, Mods, Seamless co-op): that screen takes the size
+    // it has in the game, so a menu is one size wherever it opens, and UI scale's 50% is the same 50% at both.
+    bool scales_with_window() const override { return !mCovered; }
     // The height its look lays it out for (the sheet's --start-room): a UI scale of 125% or more fills the window with
     // it, so the scale goes no further than the window holds of it, and the choices clear the lines at the foot.
-    float room_height() const override { return mRoomHeight; }
+    float room_height() const override { return mCovered ? 0.f : mRoomHeight; }
+    // Covered, its choices go at once instead of fading (class covered): the scale changes as they go, and they would
+    // shrink as they faded. Uncovered, they fade in at its own scale.
+    void cover() override;
+    void uncover() override;
 
 protected:
     bool handle_nav_command(Rml::Event& event, NavCommand cmd) override;
@@ -53,6 +59,7 @@ private:
     Rml::Element* mPrompts = nullptr;
     std::string mPromptsShown;
     float mRoomHeight = 0.f;  // --start-room, in dp (room_height())
+    bool mCovered = false;    // a screen it opened is over it (cover, uncover)
 };
 
 }  // namespace ui

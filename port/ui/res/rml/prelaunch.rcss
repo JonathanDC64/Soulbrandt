@@ -242,9 +242,11 @@ body.animate-in .intro-item {
 .delay-6 { transition: opacity transform 0.3s 0.8s cubic-in-out; }
 .delay-7 { transition: opacity transform 0.3s 0.9s cubic-in-out; }
 
-/* Without animations (prelaunch.cpp): no fade, no rise. */
+/* Without animations (prelaunch.cpp): no fade, no rise. Covered by a screen it opened (prelaunch.hpp's cover), the
+   choices go at once: the UI's scale changes as they go, and they would shrink as they faded. */
 body.still,
 body.still content,
+body.covered content,
 body.still .intro-item,
 body.still #menu-list button.anim-done {
     transition: none;

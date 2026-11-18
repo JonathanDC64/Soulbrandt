@@ -194,6 +194,18 @@ void Prelaunch::show() {
     mRoot->SetAttribute("open", "");
 }
 
+void Prelaunch::cover() {
+    mCovered = true;
+    mDocument->SetClass("covered", true);
+    Document::cover();
+}
+
+void Prelaunch::uncover() {
+    mCovered = false;
+    mDocument->SetClass("covered", false);
+    Document::uncover();
+}
+
 void Prelaunch::hide(bool close) {
     if (close) {
         if (!mEntranceAnimationStarted || !host::animations_enabled()) {

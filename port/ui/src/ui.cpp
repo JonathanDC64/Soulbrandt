@@ -226,7 +226,8 @@ void update() noexcept {
     }
 
     // Anywhere in the stack, not only on top: Settings or the on-screen keyboard opened over a setup page keep its
-    // scale, so the page behind them is not laid out again when they open and close.
+    // scale, so the page behind them is not laid out again when they open and close. (The start screen lets go while
+    // a screen it opened covers it: prelaunch.hpp.)
     host::set_follow_height(std::any_of(sDocumentStack.begin(), sDocumentStack.end(),
         [](const auto& doc) { return !doc->closed() && doc->scales_with_window(); }));
     // The widest and the tallest an open document is laid out for (Document::room, room_height).

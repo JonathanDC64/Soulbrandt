@@ -208,8 +208,13 @@ before the first change and hands the vblank back to the PS3's 59.94 Hz. A
   The start screen does so (11-17) because its smoke and fades are drawn
   as shares of the window: at the display's scale alone, a maximised
   window on a 1440p display at 100% had the logo and the choices small in
-  the middle, in thin fades. Settings opened from it follows too. `DES_UI_DPI=<n>` tries another
-  display's figure on this PC.
+  the middle, in thin fades. A screen opened from it (Settings, Trophies,
+  Mods, Seamless co-op) has the size it has in the game instead (11-18):
+  while that screen covers the start screen, the start screen lets go of the
+  window's scale (`Prelaunch::cover`), so a menu is one size wherever it
+  opens and UI scale's 50% is the same size at both. Its choices go at once
+  as the screen opens, rather than shrink as they fade. `DES_UI_DPI=<n>`
+  tries another display's figure on this PC.
 - **The menus' width** (11-16). The F1 menu and Settings are laid out for
   1280 dp of width (their sheet's `--menu-room`), more than those 960. While
   one is open, the UI's scale, the UI scale setting's included, is never
