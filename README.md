@@ -97,7 +97,7 @@ Press **F1** (or **L3 + R3** on a controller) at any time to open the menu. Most
 - A setup that builds the game from your copy, with an Original and an Enhanced preset (see [How to play](#how-to-play)).
 - Updates: the game checks for a new version at start and asks before changing anything. Your saves and settings are kept, and you can go back one version. If a save is inside one of the program's own folders, the update stops and says where, so you can move it out first.
 - Two looks for the menus: **DeS UI**, in the style of the game's own pause menu (the default), and the first look, **Alpha UI** (Settings > Interface > Menu look). Their size follows the window, and **UI scale** makes them bigger or smaller. Settings that need a restart ask first, and can restart the game for you.
-- A start screen with the project's logo, rising smoke and a soul flame, on Windows. Each can be turned off in Settings > Interface.
+- A start screen with the project's logo, rising smoke and a soul flame. Each can be turned off in Settings > Interface.
 - In the menu, the Large Sword of Moonlight is the cursor and a crystal lizard dances in the corner. Both can be turned off.
 - Trophies, with pop-ups and a tune from the game. Setup can bring your trophies and save across from RPCS3.
 - A Discord status: your profile shows that you're playing, the area you're in and whether you're online (Settings > Network).
@@ -136,7 +136,7 @@ If RPCS3 is set to run as administrator, setup cannot start it: untick that in `
 
 CI builds the Linux program on every change, and each release includes a Linux download. It needs x86-64 Linux with glibc 2.35 or newer, a Vulkan driver, `tar`, and `curl` or `wget` (or `python3`). Nothing else needs installing. The game renders on Vulkan, and setup prepares its shaders. If Vulkan can't start, the game falls back to its older renderer on vkd3d (DirectX 12 on Vulkan), which compiles shaders as it goes, with long pauses when a new area loads.
 
-Linux is newer and less tested than Windows. Players run it on desktop Linux and on the Steam Deck, on Vulkan ([docs/106](docs/106-setup-on-linux.md)). The start screen's smoke and flame are Windows only for now; on Linux it shows the logo on black.
+Linux is newer and less tested than Windows. Players run it on desktop Linux and on the Steam Deck, on Vulkan ([docs/106](docs/106-setup-on-linux.md)).
 
 macOS is not supported.
 
