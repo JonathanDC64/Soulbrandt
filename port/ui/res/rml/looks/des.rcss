@@ -1162,7 +1162,7 @@ window.modal button.ack-tick tick-value {
     color: var(--des-tan-light);
 }
 
-/* ---- The start screen (prelaunch.cpp), as the game's title menu: the name where the game's logo stands, the choices
+/* ---- The start screen (prelaunch.cpp), as the game's title menu: our logo where the game's logo stands, the choices
    as centred lines with a blood smear behind the chosen one, the hint and the version as the title's small lines, and
    the prompts at the foot. Behind it, on black (the game booting behind shows nothing through, not even its own
    notices), smoke rises and churns, drawn live (fog_shader.hpp's "start"): black at the top over the title, and black
@@ -1191,26 +1191,14 @@ body.prelaunch hero {
     gap: 12dp;
 }
 
-body.prelaunch hero title-text {
-    font-family: Old Standard TT;
-    font-weight: normal;
-    font-size: 60dp;
-    letter-spacing: 1dp;
-    text-transform: none;
-    color: var(--des-tan-light);
-    font-effect: glow(0dp 6dp 0dp 0dp rgba(0, 0, 0, 90%));
+/* The logo as wide as the choices, white as it was drawn: it stands where the game's own white logo does. */
+body.prelaunch hero title-logo {
+    width: 440dp;
+    height: 156dp;
 }
 
 body.prelaunch title-rule {
     display: none;
-}
-
-body.prelaunch eyebrow {
-    font-family: Old Standard TT;
-    font-size: 19dp;
-    letter-spacing: 1.5dp;
-    text-transform: none;
-    color: var(--des-tan);
 }
 
 body.prelaunch menu-list {
@@ -2810,4 +2798,13 @@ body.closing menu-entries {
     transition: transform 0.2s linear-in-out;
 }
 
+}
+
+/* A short screen (UI scale 125% or more in a 16:9 window): a smaller logo on the start screen, so its top isn't cut
+   off. (Still DeS UI only; a block of its own, as RmlUi has no @media inside @media.) */
+@media (theme: des) and (max-height: 640dp) {
+body.prelaunch hero title-logo {
+    width: 300dp;
+    height: 106dp;
+}
 }

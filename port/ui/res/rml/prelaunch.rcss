@@ -68,15 +68,14 @@ hero {
     gap: var(--space-md);
 }
 
-hero title-text {
+/* The name as its logo: white letters on clear, 1320 x 468 (assets/brand/ has the full-size one). Width over height
+   stays 2.82, so the letters keep their shape. 99 dp high, 40 more than the name's line was, so the last choice
+   still clears the hint below. */
+hero title-logo {
     display: block;
-    font-family: var(--font-family-display);
-    font-size: 54dp;
-    line-height: 1.1;
-    letter-spacing: 3dp;
-    text-transform: uppercase;
-    color: var(--color-accent);
-    font-effect: glow(0dp 6dp 0dp 0dp rgba(0, 0, 0, 90%));
+    width: 280dp;
+    height: 99dp;
+    decorator: image(/res/img/soulbrandt-logo.png);
 }
 
 title-rule {
@@ -84,15 +83,6 @@ title-rule {
     width: 460dp;
     height: 1dp;
     decorator: horizontal-gradient(rgba(var(--color-border-rgb), 100%) rgba(var(--color-border-rgb), 0%));
-}
-
-eyebrow {
-    display: block;
-    font-family: var(--font-family-heading);
-    font-size: var(--font-size-lg);
-    letter-spacing: 6dp;
-    text-transform: uppercase;
-    color: var(--color-prelaunch-muted);
 }
 
 menu-list {
