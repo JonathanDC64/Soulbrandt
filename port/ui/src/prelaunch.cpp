@@ -162,6 +162,19 @@ void Prelaunch::build_menu_buttons() {
     mMenuButtons.push_back(std::make_unique<Button>(menuList, "Quit"));
     mMenuButtons.back()->on_pressed([] { request_quit_confirm(false); });
     apply_intro_animation(mMenuButtons.back()->root(), "delay-5");
+
+    // The pointer over a choice picks it, as Up and Down do, so the chosen one (its blood smear in DeS UI) follows the
+    // mouse and there is only ever one. Only a real move of the pointer (input::hover_moved), so a key press is never
+    // undone by a pointer resting on another choice; as the menus' entries do.
+    for (const auto& b : mMenuButtons) {
+        Button* button = b.get();
+        button->listen(Rml::EventId::Mousemove, [button](Rml::Event&) {
+            Rml::Element* root = button->root();
+            Rml::Context* context = root->GetContext();
+            if (!input::hover_moved() || (context && context->GetFocusElement() == root)) return;
+            if (button->focus()) play_sound(kSoundItemFocus);
+        });
+    }
 }
 
 Prelaunch::~Prelaunch() = default;
