@@ -47,7 +47,8 @@ licences in `port/ui/NOTICE.md`.
   the help of the row with the focus on the right: what it does, why it is
   as it is now, when it applies and its variable. Display has the window,
   HDR and the frame rate; Picture the render resolution ("150%
-  (1920 × 1080)"), the filtering and the effects. On a row:
+  (1920 × 1080)"), the filtering and the effects; Interface this menu, the
+  start screen, the cursor and trophies. On a row:
   - Left and Right change the value in place.
   - Enter lists the values beside it (or types it, or opens what the row
     opens). The list opens below the row, or above it when there is no room.
@@ -115,9 +116,11 @@ the file keeps the value chosen.
 | Skip opening movie (Game) | `DES_SKIP_INTRO_MOVIE` (sets `PS3_SAIL_SKIP_FIRST`: the advert's first play only) | 0 / 1 | from the next movie |
 | Continue automatically (Game) | `DES_AUTO_CONTINUE` | 0 / 1 | at once until the first level loads (read at each pad poll); from the file it waits for Play on the start screen |
 | Sound (Game) | `AUDIO_MUTE` (inverted) | 0 / 1 | at once (live knob) |
-| UI scale (Interface) | `ui_scale` | 0 = auto (the display's scale, less on a small window), 75, 100, 125, 150 (% of it) | at once |
+| UI scale (Interface) | `ui_scale` | 0 = auto (what the window holds), 25, 50, 75, 100, 125, 150 (% of it) | at once |
 | Menu height (Interface) | `ui_menu_height` | 0-100 in steps of 10 (default 40): how far Settings' height goes from its 640 dp (0, Compact) to the window's whole height (100) | at once |
 | Start screen (Interface) | `show_start_screen` | 1 / 0 | next start |
+| Start screen smoke (Interface; DeS UI, Windows) | `start_smoke` | 1 / 0 (off: the start screen on plain black, its fades and vignette gone too) | at once |
+| Soul flame (Interface; DeS UI, Windows) | `start_flame` | 1 / 0 (off: the start screen's logo without its flame) | at once |
 | Menu hint (Interface) | `menu_hint` | 1 / 0 | at once |
 | Trophy pop-ups (Interface) | `trophy_popups` | 1 / 0 (off hides the toast; the unlock is still kept) | at once |
 | Trophy sound (Interface) | `trophy_sound` | 1 / 0 (the tune `m777777777` when a trophy is earned, docs/33) | at once |
@@ -186,24 +189,26 @@ before the first change and hands the vblank back to the PS3's 59.94 Hz. A
   area, at the display's scale). The game still draws at 1280x720; each
   frame is scaled with a linear filter into a swap chain the size of the
   window, letterboxed to 16:9. The UI draws over that at the window's size.
-- **UI size by the display, not the window**, as in FFCCEOT-Recomp
-  (Dusklight's rule): 1 dp is the display's scale (the window's DPI / 96)
-  times the UI scale setting. A larger window gives the menus more room
-  around them; their text stays the same size. The window is per-monitor
-  DPI aware, so on a display scaled above 100% it is drawn at the
-  display's resolution (not stretched by Windows) and the menus are as
-  large as other programs' text; moving it to a display of another scale
-  takes the size Windows suggests. (It used to be the window's height /
-  720, which made everything grow with the window.)
-- **Never more than the window holds** (11-04, `host.cpp`'s `base_scale`).
-  The menus and the setup screens always have at least 960 x 720 dp, in
-  quarter steps rounded down, whatever the display says. A tester's Steam
-  Deck needed this: on Linux SDL gives the panel's real density, 215 dpi on
-  the Deck's 7" screen, where Windows gives the scale the player chose. At
-  2.25 x a 1280 x 720 window has 320 dp of height, and the setup page was
-  cut off. Now it has 1 x. The setup screens take exactly what the window
-  holds, as they did for the height. `DES_UI_DPI=<n>` tries another
-  display's figure on this PC.
+- **UI size by the window** (11-18, `host.cpp`'s `base_scale`): 1 dp is
+  what the window holds, 960 x 720 dp at the least, in quarter steps
+  rounded down (1080p 1.5, a maximised 1440p window 1.75, 4K 2.75), times
+  the UI scale setting. It is the same everywhere: the setup screens, the
+  start screen and the menus in the game, so nothing changes size when one
+  closes and another opens. The game's own menus and HUD grow with the
+  window the same way. Text is drawn at whole pixel sizes, so no step blurs
+  it, and a window drag lays the UI out again only every 180 px. The window
+  is per-monitor DPI aware, so it is drawn at the display's resolution
+  (not stretched by Windows); the display's scale itself no longer counts.
+  - Before: the UI was the window's height / 720 at first, then the
+    display's scale (the window's DPI / 96), as for a desktop program,
+    capped at what the window holds (11-04: a Steam Deck says 215 dpi, and
+    2.25 x left a 1280 x 720 window 320 dp of height). The setup screens
+    took what the window holds, and from 11-17 the start screen too: at the
+    display's scale its logo and choices were small in the middle of its
+    smoke on a 1440p display at 100%. The menus in the game kept the
+    display's scale, so one UI scale gave two sizes (1.75 x at the start
+    screen, 1 x in the game, on that display), and the menu hint, shown at
+    Play, shrank as the start screen closed.
 - **The menus' width** (11-16). The F1 menu and Settings are laid out for
   1280 dp of width (their sheet's `--menu-room`), more than those 960. While
   one is open, the UI's scale, the UI scale setting's included, is never
@@ -211,6 +216,15 @@ before the first change and hands the vblank back to the PS3's 59.94 Hz. A
   (`Document::room`, `host::set_room`). A window under 1280 dp wide, or a
   large UI scale, makes the menu smaller instead of cutting it off. At a
   window of 1280 dp or more nothing changes.
+- **The start screen's height** (11-17). The same for the height: the start
+  screen is laid out for 688 dp (its sheet's `--start-room`; 720 dp in DeS UI
+  and 744 dp in Alpha UI with the Update choice shown), and while it is open
+  the UI's scale is never more than the window holds of that
+  (`Document::room_height`, `host::set_room_height`). It already fills the
+  window at 100%, so at 125% and 150% the choices ran into the hint and the
+  version below; now they clear them, at any window size. At 100% in a 16:9
+  window nothing changes, except in Alpha UI with Update shown: its QUIT ran
+  into the hint there, and the screen is now drawn a sixteenth smaller.
 - It opens maximized on the primary display (Start maximized,
   `DES_MAXIMIZED`, on by default; it sets the runtime's `RSX_MAXIMIZED`,
   read once as the window is made, so a change takes effect at the next
@@ -415,8 +429,8 @@ issue text is cut to fit a link (about 6.5 KB encoded); the zip has the rest.
 | `DES_UI_KEYS=<frame>:<KEY>[,...]` | Press keys at presented frames: F1 ESC UP DOWN LEFT RIGHT ENTER PGUP PGDN TAB SPACE SHIFT, and a letter (A-Z). OSK opens the on-screen keyboard as the game would, and a digit (0-9) is typed, for a number field. `<KEY>+` holds a key down and `<KEY>-` lets it go, for Compare and Hide (`300:C+,360:C-`). With DES_UI_SHOT, a test can walk the menus. |
 | `DES_UI_PICK=<folder>[;<folder>...]` | The setup screens' folder dialogs answer in turn with these folders, and none is shown; past the list's end, as if closed without a choice. With DES_UI_KEYS and DES_UI_SHOT, a test can walk the game folder pages. |
 | `DES_UI_NO_ANIM=1` | No transitions. |
+| `DES_UI_FX_SMALL=1` / `0` | The start screen's smoke and the logo's flame drawn small and scaled up, as on an integrated GPU (1), or at full size, as on a dedicated one (0), whatever the GPU, to compare. |
 | `DES_TEST_OLD_CPU=1` | As if the processor had no SSE4.1: the message, then the exit (`port/des_cpu_check.cpp`). |
-| `DES_UI_DPI=<n>` | As if the display said this DPI (96 is 100%). A Steam Deck says 215. |
 | `DES_UI_RENDER=d3d11` | The menus and the crash dialog draw through D3D11On12, as before the D3D12 renderer (Windows; kept for one release, with no settings row). |
 | `DES_UI_RENDER=d3d12` | On the `d3d12` route (the default since 2026-11-02, docs/120), the menus draw through the legacy menu renderer (`render_d3d12.cpp`) instead of on the renderer's own device. |
 | `RSX_OVERLAY_REPAINT=0` | The UI moves only with the game's frames, not at the display's refresh rate (live; "The UI's frame rate" below). |
@@ -661,14 +675,85 @@ documents. Only the style sheets differ.
 
 There are two looks:
 
-- **Alpha UI** (`alpha`), the default and the only one in a release build.
-- **DeS UI** (`des`), offered in developer builds only until it is signed
-  off. It copies the game's own pause menu and its band.
+- **DeS UI** (`des`), the default. It copies the game's own pause menu and
+  its band.
+- **Alpha UI** (`alpha`), the first look, still offered in Interface > Menu
+  look.
+
+The setting is `menu_look`. Before DeS UI was the default it was `ui_look`,
+and every settings file said `alpha`, because a release offered no other
+look. That old line is dropped when the file is read, so everyone starts in
+the default.
+
+Setup keeps its own style in every look: no look's sheet styles its
+elements. Settings opened from setup does follow the look, as does the start
+screen (`body.prelaunch`). `ui_render_compare`'s `des-setup-*` pages draw
+setup in DeS UI, to compare with its `setup-*` pages.
+
+In DeS UI the start screen sits on black, and smoke rises and churns behind
+it, drawn live:
+
+- **How.** RmlUi's `shader` decorator with the value `fog:start`
+  (`fog_shader.hpp`), one pixel shader over the element. The smoke is 3D
+  gradient noise with time as its third axis, so its shapes change instead of
+  sliding, bent by two more noises so it curls. Its numbers were tuned on a
+  preview page that ran the same maths in WebGL 2.
+- **The hash.** The noise's lattice is hashed in integers (PCG3D). A float
+  hash drew straight seams along the cells' edges, because the compiler may
+  reorder its maths.
+- **Where it draws.** Only on the menus' GPU-layer renderer (`render_gpu.cpp`:
+  Windows, D3D12 and Vulkan). The older renderer (`render_d3d12.cpp`, Linux)
+  and the D3D11 fallback draw no fog, so there the start screen is plain
+  black with the same gradients.
+- **Still.** With `DES_UI_NO_ANIM` (the tests' pictures) the smoke stands at
+  its first frame.
+- **Drawn small on an integrated GPU.** Drawn at full size over a maximised
+  1440p window, the smoke held a small integrated GPU to 11 fps. So on an
+  integrated GPU (the adapter's `integrated`: D3D12's UMA, Vulkan's device
+  type), the shader draws into a small picture of the element instead, at most
+  240 rows whatever the window's size. The fades over the smoke (the black
+  from the top, the ellipse behind the choices) and the vignette, gradients
+  over the same box, are drawn into that picture too (11-17, `join_effect`):
+  each was one more pass over the whole window. The picture waits to be scaled
+  up until something else is drawn (`settle_effect`). On a 2-CU GPU the start
+  screen went from 26.0 to 12.2 ms of GPU time a frame at 2560x1361, and from
+  9.6 to 6.2 ms at 1280x720; the picture moved by at most 2/255. The picture is
+  scaled up over the
+  element, with a dither so the gradients don't band on black. The smoke is
+  soft, so it looks the same. A dedicated GPU draws it at full size, as
+  before. `DES_UI_FX_SMALL=1` or `0` picks either way, to compare.
+- **Off.** Settings > Interface > Start screen smoke (on by default) turns it
+  off: the start screen on plain black. Its fades and the vignette only darken
+  the smoke, so they go with it, and nothing of it is drawn.
+
+A cold, pale blue flame rises off the logo's letters, drawn live the same way:
+
+- **How.** A second shader decorator on the logo, `flame:logo`
+  (`flame_shader.hpp`), drawn over the logo's padding box: 60 dp round the
+  letters, and 100 dp more above them for the flame to rise into. Negative
+  margins take that padding back out of the layout. The letters are an image
+  decorator on the content box, drawn over the flame. The logo sets
+  `box-sizing: content-box`, so its width and height stay the letters' own.
+- **The map.** The shader reads one picture, `soulbrandt-logo-map.png`: the
+  letters softened (red) and a wide halo round them (blue), which the flame
+  rises from. `tools/ui/make_logo_map.py` makes it from the logo; run it again
+  when the logo changes. It shares the smoke's noise (`DES_UI_HLSL_NOISE` in
+  `fog_shader.hpp`).
+- **Its numbers** (colour, strength, how tall it rises, how much it wavers,
+  speed, flicker) are in `kLooks`, picked on a preview page that ran the same
+  maths in WebGL 2.
+- **Where it draws, and still pictures:** as for the smoke. Off Windows'
+  GPU-layer renderer the logo shows plain.
+- **Drawn small on an integrated GPU,** as the smoke is: at half the
+  element's size, and at most 376 rows (a pixel per dp). Its thinnest wisps
+  are a touch softer there; a third of the size softened them clearly.
+- **Off.** Settings > Interface > Soul flame (on by default) leaves the letters
+  alone.
 
 How it works:
 
 - **The list.** `looks.hpp` lists the looks. Each look's `id` is three
-  things: its `ui_look` value, its RmlUi theme name, and its sheet's name,
+  things: its `menu_look` value, its RmlUi theme name, and its sheet's name,
   `res/rml/looks/<id>.rcss`.
 - **The sheets.** A look's sheet holds only what it changes. All of it sits
   inside `@media (theme: <id>)`, its `@spritesheet` and `@keyframes` too.
@@ -693,6 +778,9 @@ How it works:
   - `menu-strip`, a line about the entry or the row with the focus;
   - `menu-gauge > menu-fill`, how far a number is along its range (its width
     is a percent, from `rows::Value::fill`);
+  - `menu-swatch`, a colour setting's colour, before its value and before
+    each choice of its list (`RowDesc::swatch`, the glow colour rows; both
+    looks draw it);
   - `menu-heading > menu-bracket`, a line down a section's side, as long as
     its rows (`SettingsPage::update_brackets` sets its height after layout);
   - `menu-aside`, beside the focused row: its notes and a stick's picture
@@ -733,7 +821,9 @@ How it works:
   `kLooks`. The rule: if RCSS can do it, it isn't a trait.
   - `helpPane`: Settings shows the help beside the rows. Without it there's a
     line under the band (`menu-strip`), and Help (H, View, Select) opens the
-    whole help in a box. What the help shows that matters while a value
+    whole help in a box. Enter, or a click, on an info row with nothing to
+    press (About online play, Keyboard and mouse) opens that box too, with a
+    Read prompt. What the help shows that matters while a value
     changes goes beside the focused row instead (`menu-aside`): the row's
     notes (why it is as it is, such as staying offline) and a stick's
     picture for a deadzone.
@@ -752,7 +842,9 @@ How it works:
     `players_page.cpp`, through the shell's `open_over`; Back goes back to
     Settings as it was). A page over another with no tabs of its own
     (Players) shows the tabs of the page under it, and the band's buttons go
-    back to that page and move its tab. Without it they
+    back to that page and move its tab. With no one to list, Players says
+    so in its box (Not online, Asking the online server, No one in the last
+    30 days). Without it they
     open as their own windows, as Alpha UI keeps them. The start screen
     opens them the same way, alone in the frame (`menu::screen_alone`).
 - **Alpha UI** is the documents' own sheets as they are (for the F1 menu and

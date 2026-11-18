@@ -12,9 +12,11 @@
 #include <RmlUi/Core/ElementText.h>
 
 #include <algorithm>
+#include <cstdlib>
 #include <filesystem>
 #include <format>
 #include <ranges>
+#include <string_view>
 #include <utility>
 
 namespace ui {
@@ -223,16 +225,15 @@ void update() noexcept {
         }
     }
 
-    // Anywhere in the stack, not only on top: Settings or the on-screen keyboard opened over a setup page keep its
-    // scale, so the page behind them is not laid out again when they open and close.
-    host::set_follow_height(std::any_of(sDocumentStack.begin(), sDocumentStack.end(),
-        [](const auto& doc) { return !doc->closed() && doc->scales_with_window(); }));
-    // The widest an open document is laid out for (Document::room).
-    float room = 0.f;
+    // The widest and the tallest an open document is laid out for (Document::room, room_height).
+    float room = 0.f, roomHeight = 0.f;
     for (const auto& doc : sDocumentStack) {
-        if (!doc->closed()) room = std::max(room, doc->room());
+        if (doc->closed()) continue;
+        room = std::max(room, doc->room());
+        roomHeight = std::max(roomHeight, doc->room_height());
     }
     host::set_room(room);
+    host::set_room_height(roomHeight);
 
     input::sync_input_block();
 }
@@ -337,6 +338,15 @@ void set_display(Rml::Element* element, Rml::Style::Display display) noexcept {
     }
 }
 
+float dp_property(Rml::Element* element, const Rml::String& name) noexcept {
+    const Rml::Property* property = element ? element->GetProperty(name) : nullptr;
+    if (property == nullptr) return 0.f;
+    const std::string text = property->ToString();
+    char* end = nullptr;
+    const float n = std::strtof(text.c_str(), &end);
+    return end != text.c_str() && std::string_view(end).starts_with("dp") ? n : 0.f;
+}
+
 NavCommand map_nav_event(const Rml::Event& event) noexcept {
     const auto key = static_cast<Rml::Input::KeyIdentifier>(
         event.GetParameter<int>("key_identifier", Rml::Input::KI_UNKNOWN));
@@ -397,7 +407,7 @@ bool consume_menu_notification_request() noexcept {
 }
 
 
-// The UI scale setting: 0 is Auto (the display's scale), otherwise a percentage of it.
+// The UI scale setting: 0 is Auto (what the window holds), otherwise a percentage of it.
 void apply_scale() noexcept {
     const int userScale = settings::get_int("ui_scale");
     host::set_ui_scale(userScale > 0 ? static_cast<float>(userScale) / 100.0f : 0.0f);

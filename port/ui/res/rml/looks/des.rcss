@@ -509,6 +509,18 @@ menu-value icon {
     position: relative;
 }
 
+/* A colour's swatch and its value, together in the middle of the box. */
+menu-value menu-swatch {
+    margin-left: auto;
+    border-color: var(--des-tan-muted);
+    border-radius: 0;
+}
+
+menu-value menu-swatch + menu-text {
+    flex: 0 1 auto;
+    margin-right: auto;
+}
+
 menu-row.modified menu-value menu-text {
     font-weight: normal;
     color: var(--des-tan-light);
@@ -608,7 +620,8 @@ menu-row menu-list {
     left: 764dp;
     right: auto;
     clip: none;
-    width: 240dp;
+    width: auto;  /* (as wide as its longest value, a tag with it; the page keeps it in the window) */
+    min-width: 240dp;
     padding: 5dp 3dp;
     border-width: 0;
     border-radius: 0;
@@ -627,6 +640,11 @@ menu-item {
 menu-item menu-tag {
     font-size: 14dp;
     color: var(--des-tan-muted);
+}
+
+menu-item menu-swatch {
+    border-color: var(--des-tan-muted);
+    border-radius: 0;
 }
 
 menu-item:hover {
@@ -1144,16 +1162,29 @@ window.modal button.ack-tick tick-value {
     color: var(--des-tan-light);
 }
 
-/* ---- The start screen (prelaunch.cpp), as the game's title menu: the name where the game's logo stands, the choices
+/* ---- The start screen (prelaunch.cpp), as the game's title menu: our logo where the game's logo stands, the choices
    as centred lines with a blood smear behind the chosen one, the hint and the version as the title's small lines, and
-   the prompts at the foot. The game booting behind is dimmed far down, so its own notices don't read through. ---- */
+   the prompts at the foot. Behind it, on black (the game booting behind shows nothing through, not even its own
+   notices), smoke rises and churns, drawn live (fog_shader.hpp's "start"): black at the top over the title, and black
+   again behind the choices, fading out around them. The black at the top fades out by 51.4% of the height, just past
+   the logo, so the smoke round the logo stays as dim as it was picked (with the logo 17 dp higher, over a fade to 49%).
+   ---- */
 body.prelaunch prelaunch-gradient {
-    decorator: none;
-    background-color: rgba(0, 0, 0, 84%);
+    background-color: #000;
+    decorator: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0%) 51.4%),
+        radial-gradient(ellipse 420dp 290dp at 50% 50%, #000 0%, rgba(0, 0, 0, 0%) 100%),
+        shader("fog:start");
 }
 
 body.prelaunch prelaunch-vignette {
-    decorator: radial-gradient(farthest-corner at 50% 45%, rgba(0, 0, 0, 0%) 30%, rgba(0, 0, 0, 80%) 100%);
+    decorator: radial-gradient(farthest-corner at 50% 45%, rgba(0, 0, 0, 0%) 30%, rgba(0, 0, 0, 50%) 100%);
+}
+
+/* The smoke off (Settings > Interface > Start screen smoke): plain black. The fades and the vignette darken only the
+   smoke, so they go with it. */
+body.prelaunch.no-smoke prelaunch-gradient,
+body.prelaunch.no-smoke prelaunch-vignette {
+    decorator: none;
 }
 
 body.prelaunch menu {
@@ -1164,31 +1195,44 @@ body.prelaunch menu {
     gap: 30dp;  /* (a little above the middle: room for a seventh choice, Update, above the hint) */
 }
 
+/* (prelaunch.rcss's --start-room: QUIT clears the hint by 5 dp at 688 dp of height. With Update shown, 720 dp: the
+   choices sit at 46% for it, so it fits a 16:9 window at 100% as it did.) */
+body.prelaunch {
+    --start-room: 688dp;
+}
+
+body.prelaunch.update-found {
+    --start-room: 720dp;
+}
+
 body.prelaunch hero {
     align-items: center;
     gap: 12dp;
 }
 
-body.prelaunch hero title-text {
-    font-family: Old Standard TT;
-    font-weight: normal;
-    font-size: 60dp;
-    letter-spacing: 1dp;
-    text-transform: none;
-    color: var(--des-tan-light);
-    font-effect: glow(0dp 6dp 0dp 0dp rgba(0, 0, 0, 90%));
+/* The logo as wide as the choices, white as it was drawn: it stands where the game's own white logo does. A cold flame
+   rises off its letters (flame_shader.hpp's "logo"), a shader over the padding box: 60 dp round the logo (its map's)
+   and 100 dp more above for the flame to rise into. The negative margins take the padding back out of the layout. The
+   letters, an image on the content box, are drawn over the flame, a touch tinted toward its light. Its width and height
+   are the letters' own (content-box: global.rcss makes every box border-box, which would take the padding out of them
+   and leave the letters no room). */
+body.prelaunch hero title-logo {
+    box-sizing: content-box;
+    width: 440dp;
+    height: 156dp;
+    padding: 160dp 60dp 60dp 60dp;
+    margin: -160dp -60dp -60dp -60dp;
+    image-color: #f7fbff;
+    decorator: image(/res/img/soulbrandt-logo.png) content-box, shader("flame:logo") padding-box;
+}
+
+/* The flame off (Settings > Interface > Soul flame): the letters alone. */
+body.prelaunch.no-flame hero title-logo {
+    decorator: image(/res/img/soulbrandt-logo.png) content-box;
 }
 
 body.prelaunch title-rule {
     display: none;
-}
-
-body.prelaunch eyebrow {
-    font-family: Old Standard TT;
-    font-size: 19dp;
-    letter-spacing: 1.5dp;
-    text-transform: none;
-    color: var(--des-tan);
 }
 
 body.prelaunch menu-list {
@@ -1209,7 +1253,10 @@ body.prelaunch #menu-list button {
     letter-spacing: 2.5dp;
     color: var(--des-tan);
     font-effect: glow(0dp 3dp 0dp 0dp rgba(0, 0, 0, 85%));
-    decorator: none;
+    /* The chosen one's smear, fully clear: the same gradient, so the choice change fades it in and out (prelaunch.rcss's
+       transition). RmlUi can't blend a gradient with none or with one of other stops; it skips those frames. */
+    decorator: radial-gradient(ellipse 190dp 12dp at center, rgba(178, 34, 30, 0%) 0%, rgba(150, 24, 22, 0%) 45%,
+        rgba(110, 16, 14, 0%) 100%);
 }
 
 /* A new version: a stone bar at the top right, as the notes over the game, its mark amber and the bar breathing so it
@@ -1264,20 +1311,14 @@ body.prelaunch #menu-list button.update {
     color: var(--des-amber-light);
 }
 
-body.prelaunch #menu-list button:not(:disabled):hover {
-    color: var(--des-tan-light);
-    font-effect: glow(0dp 3dp 0dp 0dp rgba(0, 0, 0, 85%));
-    decorator: radial-gradient(ellipse 190dp 14dp at center, rgba(255, 236, 214, 22%) 0%, rgba(255, 236, 214, 0%) 100%);
-}
-
-/* A choice that can't be taken now: the locked rows' colour, and no smear or glow when the pointer is on it. */
+/* A choice that can't be taken now: the locked rows' colour. The pointer doesn't pick it, so it never has the smear. */
 body.prelaunch #menu-list button:disabled {
     opacity: 1;
     color: var(--des-locked);
-    decorator: none;
 }
 
-/* The chosen one: on the blood smear the game draws behind its choice. */
+/* The chosen one: on the blood smear the game draws behind its choice. The pointer picks a choice as Up and Down do
+   (prelaunch.cpp), so it has no look of its own for the pointer. */
 body.prelaunch #menu-list button:not(:disabled):focus-visible {
     color: #f6ebdc;
     font-effect: glow(0dp 3dp 0dp 0dp rgba(40, 0, 0, 90%));
@@ -2363,8 +2404,14 @@ players-box {
     background-color: rgba(0, 0, 0, 62%);
 }
 
-players-page.none players-box {
+/* No one to list: the box says what and why (players_page.cpp's draw_empty), as Mods' box does with no mods. */
+players-empty {
     display: none;
+}
+
+players-page.none players-empty {
+    display: block;
+    padding: 14dp 14dp 10dp;
 }
 
 player-item {
@@ -2788,4 +2835,16 @@ body.closing menu-entries {
     transition: transform 0.2s linear-in-out;
 }
 
+}
+
+/* A short screen (UI scale 125% or more in a 16:9 window): a smaller logo on the start screen, so its top isn't cut
+   off, and its flame's room scaled with it (300 / 440 of the padding). (Still DeS UI only; a block of its own, as
+   RmlUi has no @media inside @media.) */
+@media (theme: des) and (max-height: 640dp) {
+body.prelaunch hero title-logo {
+    width: 300dp;
+    height: 106dp;
+    padding: 109dp 41dp 41dp 41dp;
+    margin: -109dp -41dp -41dp -41dp;
+}
 }

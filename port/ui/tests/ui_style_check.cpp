@@ -1,7 +1,8 @@
 // The menus' looks on their own (looks.hpp, res/rml/looks): RmlUi with the UI's embedded files, no window, no
 // renderer. It checks that:
 // - every look in kLooks has its sheet, and every sheet in res/rml/looks belongs to a look;
-// - each sheet's rules are all inside @media (theme: <its id>), so a look never changes another one;
+// - each sheet's rules are all inside @media (theme: <its id>), maybe with more conditions after it
+//   ("and (max-height: 640dp)"), so a look never changes another one;
 // - RmlUi reads each sheet without a warning;
 // - a theme switched on and off changes an element's style and changes it back, which is how the looks are switched
 //   (looks::apply).
@@ -109,7 +110,7 @@ std::string without_comments(const std::string& s) {
     return out;
 }
 
-// True when everything in the sheet is inside @media (theme: id) blocks.
+// True when everything in the sheet is inside @media (theme: id) blocks, "and (...)" conditions after it allowed.
 bool all_inside_theme(const std::string& sheet, const std::string& id) {
     const std::string s = without_comments(sheet);
     size_t i = 0;
@@ -126,8 +127,15 @@ bool all_inside_theme(const std::string& sheet, const std::string& id) {
     for (;;) {
         skip_space();
         if (i == s.size()) return blocks > 0;
-        if (!take("@media") || !take("(") || !take("theme") || !take(":") || !take(id) || !take(")") || !take("{"))
+        if (!take("@media") || !take("(") || !take("theme") || !take(":") || !take(id) || !take(")"))
             return false;
+        // More conditions may follow the theme ("@media (theme: des) and (max-height: 640dp)"): still the look's own.
+        while (take("and")) {
+            if (!take("(")) return false;
+            while (i < s.size() && s[i] != ')') i++;
+            if (!take(")")) return false;
+        }
+        if (!take("{")) return false;
         for (int depth = 1; depth > 0; i++) {  // (to the block's closing brace)
             if (i == s.size()) return false;
             depth += s[i] == '{' ? 1 : s[i] == '}' ? -1 : 0;

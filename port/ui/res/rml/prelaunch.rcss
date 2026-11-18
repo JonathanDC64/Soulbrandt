@@ -1,7 +1,11 @@
 /* The start screen. Layout from Dusklight's prelaunch.rcss (CC0) by way of FFCCEOT-Recomp. Adapted for Demon's Souls:
    no background picture (the game boots behind the screen, darkened from the left and at the edges), the title in
    Cinzel over a thin silver rule, and the menu buttons in bone that light up soul-white. Colours from theme.rcss. */
+/* --start-room: the window height the screen is laid out for. The UI's scale is never more than the window holds of it
+   (prelaunch.cpp's room_height()), so at a UI scale of 125% or more the last choice still clears the hint below:
+   5 dp between them at 688 dp, and at 744 dp with a seventh choice (Update). */
 body {
+    --start-room: 688dp;
     --color-prelaunch-muted: rgba(var(--color-text-rgb), 62%);
     --menu-button-decorator: horizontal-gradient(rgba(var(--color-interactive-rgb), 0%) rgba(var(--color-interactive-rgb), 0%));
     --menu-button-decorator-hover: horizontal-gradient(rgba(var(--color-interactive-rgb), 16%) rgba(var(--color-interactive-rgb), 0%));
@@ -19,6 +23,10 @@ body {
 
 body[open] {
     filter: opacity(1);
+}
+
+body.update-found {
+    --start-room: 744dp;
 }
 
 /* The game shows through on the right; the menu side is near black. */
@@ -68,15 +76,14 @@ hero {
     gap: var(--space-md);
 }
 
-hero title-text {
+/* The name as its logo: white letters on clear, 1320 x 468 (assets/brand/ has the full-size one). Width over height
+   stays 2.82, so the letters keep their shape. 99 dp high, 40 more than the name's line was, so the last choice
+   still clears the hint below. */
+hero title-logo {
     display: block;
-    font-family: var(--font-family-display);
-    font-size: 54dp;
-    line-height: 1.1;
-    letter-spacing: 3dp;
-    text-transform: uppercase;
-    color: var(--color-accent);
-    font-effect: glow(0dp 6dp 0dp 0dp rgba(0, 0, 0, 90%));
+    width: 280dp;
+    height: 99dp;
+    decorator: image(/res/img/soulbrandt-logo.png);
 }
 
 title-rule {
@@ -84,15 +91,6 @@ title-rule {
     width: 460dp;
     height: 1dp;
     decorator: horizontal-gradient(rgba(var(--color-border-rgb), 100%) rgba(var(--color-border-rgb), 0%));
-}
-
-eyebrow {
-    display: block;
-    font-family: var(--font-family-heading);
-    font-size: var(--font-size-lg);
-    letter-spacing: 6dp;
-    text-transform: uppercase;
-    color: var(--color-prelaunch-muted);
 }
 
 menu-list {

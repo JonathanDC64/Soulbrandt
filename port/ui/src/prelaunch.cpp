@@ -33,9 +33,8 @@ const Rml::String kDocumentSource = R"RML(
     <content id="root" open>
         <menu>
             <hero class="intro-item delay-0">
-                <title-text>)RML" DES_PRODUCT_NAME R"RML(</title-text>
+                <title-logo />
                 <title-rule />
-                <eyebrow>Demon's Souls on PC</eyebrow>
             </hero>
             <menu-list id="menu-list" />
         </menu>
@@ -163,6 +162,19 @@ void Prelaunch::build_menu_buttons() {
     mMenuButtons.push_back(std::make_unique<Button>(menuList, "Quit"));
     mMenuButtons.back()->on_pressed([] { request_quit_confirm(false); });
     apply_intro_animation(mMenuButtons.back()->root(), "delay-5");
+
+    // The pointer over a choice picks it, as Up and Down do, so the chosen one (its blood smear in DeS UI) follows the
+    // mouse and there is only ever one. Only a real move of the pointer (input::hover_moved), so a key press is never
+    // undone by a pointer resting on another choice; as the menus' entries do.
+    for (const auto& b : mMenuButtons) {
+        Button* button = b.get();
+        button->listen(Rml::EventId::Mousemove, [button](Rml::Event&) {
+            Rml::Element* root = button->root();
+            Rml::Context* context = root->GetContext();
+            if (!input::hover_moved() || (context && context->GetFocusElement() == root)) return;
+            if (button->focus()) play_sound(kSoundItemFocus);
+        });
+    }
 }
 
 Prelaunch::~Prelaunch() = default;
@@ -210,6 +222,7 @@ void Prelaunch::show_update() {
         set_display(button.root(), Rml::Style::Display::None);
     }
     if (Rml::Element* note = mDocument->GetElementById("update-note")) note->SetClass("on", found);
+    mDocument->SetClass("update-found", found);  // (a seventh choice: the sheet's --start-room is taller)
     if (Rml::Element* title = mDocument->GetElementById("update-title"))
         set_text_content(title, found ? "Version " + version + " is out" : std::string());
 }
@@ -222,6 +235,9 @@ void Prelaunch::update() {
         mEntranceAnimationStarted = true;
     }
     show_update();
+    // Settings > Interface: the smoke and the logo's flame (DeS UI draws them) can be off; des.rcss leaves them out.
+    mDocument->SetClass("no-smoke", settings::get_int("start_smoke") == 0);
+    mDocument->SetClass("no-flame", settings::get_int("start_flame") == 0);
     for (const auto& button : mMenuButtons) {
         button->update();
     }
@@ -233,17 +249,18 @@ void Prelaunch::update() {
                                     input::chord_label(settings::get_int("pad_menu_chord")) + " opens the menu.");
     }
     update_prompts();
+    mRoomHeight = dp_property(mDocument, "--start-room");
 
     Document::update();
 }
 
 // The prompts for the keys here, as the menus show theirs (a look that draws them: DeS UI), drawn again only when
-// they change (the device used last).
+// they change (the device used last). The choices are a column, so Select is Up / Down (Move), as in Settings' rows.
 void Prelaunch::update_prompts() {
     if (mPrompts == nullptr) return;
     const prompts::Device device = input::menu_device();
     std::string rml;
-    for (const prompts::Prompt& p : {prompts::Prompt{prompts::Key::Change, "Select"},
+    for (const prompts::Prompt& p : {prompts::Prompt{prompts::Key::Move, "Select"},
                                      prompts::Prompt{prompts::Key::Confirm, "Open"},
                                      prompts::Prompt{prompts::Key::Back, "Quit"}})
         rml += "<menu-prompt data-key=\"" + std::to_string(static_cast<int>(p.key)) + "\">" +

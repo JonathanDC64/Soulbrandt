@@ -70,6 +70,7 @@ constexpr Def kDefs[] = {
     {"DES_STORAGE", "0", Apply::Live},        // des_storage.cpp, each command menu: 1 = Send to Storage under Drop
     {"DES_IDENTITY", "1", Apply::Live},        // des_respec.cpp, each frame: 1 = with DES_APPEARANCE, also Change Name and Change Body
     {"DES_RESPEC", "0", Apply::Live},          // des_respec.cpp, each frame: 1 = the Nexus statue and the Maiden in Black offer a stat respec
+    {"DES_TENDENCY", "0", Apply::Live},        // des_respec.cpp, each frame: 1 = the Nexus statue offers Change Tendency
     {"DES_DOF", "1", Apply::Live},             // des_dof, read each frame
     {"RSX_AA", "0", Apply::Live},              // 0 = none, as on the PS3; 1 = FXAA, 2 = SMAA, before the HUD; per batch
     {"RSX_SCALE", "100", Apply::Live},         // the D3D12 backend remakes its render targets at the next batch
@@ -116,7 +117,7 @@ constexpr Def kDefs[] = {
     {"DES_SEAMLESS_GLOW_COLOR", "", Apply::Live},  // seamless co-op: this player's glow colour, "RRGGBB"; "" = the game's blue
     {"glow_hue_custom", "30", Apply::UiOnly},      // Your glow colour's Custom hue (0-350), kept while a named colour is on
     {"DES_NET_PASSWORD", "", Apply::Live},     // matchmaking password; a hash of it goes to the server; "" = everyone
-    {"DES_NET_TENDENCY", "", Apply::Live},     // des_qwc_local: "" = the server's mixed in (the game's), "own" = yours only
+    {"DES_NET_TENDENCY", "own", Apply::Live},  // des_qwc_local: "own" = yours only, "server" = the server's mixed in (the game's)
     {"DES_NET_RATING_POLL", "", Apply::Live},  // des_net_grade_poll: seconds between rating checks; "" = the game's 300
     {"DES_NET_MESSAGES", "1", Apply::Live},    // des_net_show: 0 hides other players' messages
     {"DES_NET_BLOODSTAINS", "1", Apply::Live}, // des_net_show: 0 hides other players' bloodstains
@@ -124,7 +125,9 @@ constexpr Def kDefs[] = {
     {"DES_NET_SYNC", "", Apply::Live},         // des_net_sync: position packets a second; "" = every 6th frame
     {"DES_DISCORD", "1", Apply::Live},         // discord_presence.cpp: the Discord status; "0" = none
     {"ui_scale", "0", Apply::UiOnly},          // 0 = Auto, else percent
-    {"ui_look", "alpha", Apply::UiOnly},       // the menus' look: a looks.hpp id
+    // The menus' look: a looks.hpp id. Before DeS UI was the default it was ui_look, and every file said alpha (a
+    // release offered no other), so that line is dropped (load_file) and everyone starts in the default.
+    {"menu_look", "des", Apply::UiOnly},
     {"ui_menu_height", "40", Apply::UiOnly},   // menu_shell.cpp: Settings' height, 0 = 640 dp ... 100 = the window's
     {"show_start_screen", "1", Apply::UiOnly},
     {"update_check", "1", Apply::UiOnly},      // updates.hpp: look for a newer release at each start (docs/105)
@@ -139,6 +142,8 @@ constexpr Def kDefs[] = {
     {"DES_CURSOR_SWORD", "moonlight", Apply::Live},  // host.cpp, each frame: which sword (souls_model.hpp's swords())
     {"DES_CURSOR_SIZE", "64", Apply::Live},    // host.cpp, each frame: the sword's length in dp
     {"DES_UI_LIZARD", "1", Apply::Live},       // host.cpp, each frame: 0 = no dancing crystal lizard in the corner
+    {"start_smoke", "1", Apply::UiOnly},       // prelaunch.cpp: 0 = no smoke behind the start screen (DeS UI)
+    {"start_flame", "1", Apply::UiOnly},       // prelaunch.cpp: 0 = no flame off the start screen's logo (DeS UI)
     {"trophies_show_hidden", "0", Apply::UiOnly},  // trophies_window.cpp: hidden trophies listed with their names
     {"pad_menu_chord", "0", Apply::UiOnly},    // 0 = L3 + R3, 1 = Select + Start
     {"PAD_MAP", "", Apply::Live},              // cellPad, gamepad buttons (controls_window.cpp)
@@ -348,11 +353,10 @@ std::string keys_for_pad(const std::string& keys) {
 void apply_env(std::string_view key, const std::string& value) {
     const std::string k(key);
     // (an unset option stays unset; DES_FPS "" is the game's mode, PAD_MAP "" the game's buttons, PAD_KEYS "" the
-    // layout as it is, the two online rows' "" the game's behaviour again, DES_ASPECT's and DES_HUD's "" 16:9 and
+    // layout as it is, the message ratings' "" the game's 5 minutes again, DES_ASPECT's and DES_HUD's "" 16:9 and
     // the HUD in the corners again, and the stick deadzones' "" the default deadzone again)
-    if (value.empty() && key != "DES_FPS" && key != "PAD_MAP" && key != "PAD_KEYS" && key != "DES_NET_TENDENCY" &&
-        key != "DES_NET_RATING_POLL" && key != "DES_ASPECT" && key != "DES_HUD" && key != "PAD_DEADZONE_LEFT" &&
-        key != "PAD_DEADZONE_RIGHT")
+    if (value.empty() && key != "DES_FPS" && key != "PAD_MAP" && key != "PAD_KEYS" && key != "DES_NET_RATING_POLL" &&
+        key != "DES_ASPECT" && key != "DES_HUD" && key != "PAD_DEADZONE_LEFT" && key != "PAD_DEADZONE_RIGHT")
         return;
     if (key == "DES_NET_PASSWORD") return;  // (only its hash is used, in PS3_HTTP_HEADER: apply_match_group)
     if (key == "PAD_KEYS") {
@@ -465,6 +469,9 @@ void load_file() {
         const Def* d = find(key);
         if (!d || d->apply == Apply::Session) continue;  // (a per-session value is never read from the file)
         if (key == "keys_layout") layout_line = true;
+        // World tendency's empty value was "With the server's", then the default, so every file has it, picked or not.
+        // Now the default is Yours only and the server's is "server": an empty one reads as the default.
+        if (key == "DES_NET_TENDENCY" && value.empty()) continue;
         if (key == "DES_NET_SERVER" && !net_server(value)) {  // (The Archstones, saved before it was developer-only)
             std::fprintf(stderr, "[ui] settings: server %s is not in this build's list: the default server\n",
                          value.c_str());

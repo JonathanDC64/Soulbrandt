@@ -8,8 +8,8 @@
 #   screens: settings (the default; one shot per tab), menu, trophies, mods,
 #            players, setup
 #   UISHOTS_SCALES    the UI scale setting (ui_scale) per run, in percent
-#                     (default "100 150"; the settings row offers 75 to 150)
-#   UISHOTS_LOOKS     the menu looks (ui_look, a looks.hpp id) per run, e.g.
+#                     (default "100 150"; the settings row offers 25 to 150)
+#   UISHOTS_LOOKS     the menu looks (menu_look, a looks.hpp id) per run, e.g.
 #                     "alpha des" (default: none set, so the default look). A
 #                     look the build doesn't offer draws as the default, so one
 #                     not released yet needs a developer build (DES_DEV).
@@ -18,8 +18,8 @@
 #   DES_EXE           the build (default port/build/des_boot.exe), as desrun.sh
 # Shots go to $DES_SCRATCH/uishots/<tag>/<screen>_[<look>_]<scale>[_tabN].png
 # (BMP when Python has no PIL; <look>_ only with UISHOTS_LOOKS). The window is
-# the game's 1280x720, so a run can't try other window shapes or DPIs
-# (DES_UI_DPI only counts in a bigger window).
+# the game's 1280x720, so a run can't try other window shapes (the UI's size is
+# what the window holds: 1 x there).
 # Each run uses a scratch settings file and data folder, so the player's
 # settings, saves and trophies are never read or written.
 #
@@ -60,7 +60,7 @@ shoot() {
   run="$DES_SCRATCH/uishots_run/$name"
   rm -rf "$run"; mkdir -p "$run/data" "$run/saves"
   printf 'ui_scale=%s\n' "$scale" > "$run/settings.ini"
-  [ -n "$look" ] && printf 'ui_look=%s\n' "$look" >> "$run/settings.ini"
+  [ -n "$look" ] && printf 'menu_look=%s\n' "$look" >> "$run/settings.ini"
   if [ "$screen" = settings ]; then
     for ((i = 0; i < TABS; i++)); do
       f=$((240 + i * 40))

@@ -25,6 +25,9 @@ public:
     bool focus() override;
     bool visible() const override;
     bool obscures_game() const override { return true; }
+    // The height its look lays it out for (the sheet's --start-room): a UI scale of 125% or more fills the window with
+    // it, so the scale goes no further than the window holds of it, and the choices clear the lines at the foot.
+    float room_height() const override { return mRoomHeight; }
 
 protected:
     bool handle_nav_command(Rml::Event& event, NavCommand cmd) override;
@@ -45,6 +48,7 @@ private:
     Rml::Element* mHint = nullptr;
     Rml::Element* mPrompts = nullptr;
     std::string mPromptsShown;
+    float mRoomHeight = 0.f;  // --start-room, in dp (room_height())
 };
 
 }  // namespace ui

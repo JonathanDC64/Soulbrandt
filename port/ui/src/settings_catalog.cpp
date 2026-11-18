@@ -290,6 +290,10 @@ std::vector<TabDesc> make_tabs() {
                 "Needs Change appearance in the Nexus. The statue also offers Change Name and Change Body. A new "
                 "body takes off worn armour made only for the other body (it stays in the inventory), then opens "
                 "Edit Appearance."),
+            toggle("Change tendency in the Nexus", "DES_TENDENCY",
+                "Press Cross facing the statue in front of where you wake in the Nexus and pick Change Tendency to "
+                "set a world's tendency or your character's, from Pure White to Pure Black. Some events only happen "
+                "at a tendency, and what has already happened stays."),
         }},
         {"HUD", {
             action("Edit HUD", Opens::HudEditor, "Move, resize, hide or show each part of the HUD on the game screen."),
@@ -465,7 +469,7 @@ std::vector<TabDesc> make_tabs() {
                 .kind = TextRow{32, [](const std::string& v) { s::set("DES_NET_PASSWORD", s::trim_spaces(v)); }},
                 .help = "Summon signs and invasions only between players with the same password. Messages, "
                         "bloodstains and ghosts stay shared. Empty plays with everyone."},
-            choice("World tendency", "DES_NET_TENDENCY", {{"", "With the server's"}, {"own", "Yours only"}},
+            choice("World tendency", "DES_NET_TENDENCY", {{"server", "With the server's"}, {"own", "Yours only"}},
                 "Online, the game mixes other players' world tendency into yours. Yours only changes it by what you "
                 "do alone. Applies from the next load."),
             choice("Message ratings", "DES_NET_RATING_POLL", {{"", "Every 5 minutes"}, {"30", "Every 30 seconds"}},
@@ -497,12 +501,14 @@ std::vector<TabDesc> make_tabs() {
                             {"Teal"}}),
                     .custom = ChoiceRow::Custom{"Custom", [] { return s::hue_hex(s::glow_hue()); }}},
                 .help = "The colour of your phantom glow while you are in a host's world. The other players see it, "
-                        "and so do you. Each player picks its own. A change counts at once."},
+                        "and so do you. Each player picks its own. A change counts at once.",
+                .swatch = s::glow_swatch},
             {.label = "Custom glow colour", .key = "DES_SEAMLESS_GLOW_COLOR",
                 .kind = NumberRow{.min = 0, .max = 350, .step = 10, .get = s::glow_hue, .set = s::set_glow_hue,
                     .format = [](int v) { return "Hue " + std::to_string(v); }, .modified = s::glow_is_custom},
                 .help = "Your own glow colour, by hue: 0 red, 60 yellow, 120 green, 180 cyan, 240 blue, 300 magenta. "
-                        "Setting it picks Custom in Your glow colour."},
+                        "Setting it picks Custom in Your glow colour.",
+                .swatch = [](const std::string&) { return s::hue_hex(s::glow_hue()); }},
         }},
         {"In your world", {
             toggle("Messages", "DES_NET_MESSAGES", "Messages from other players. Off hides all of them, yours too."),
@@ -548,42 +554,66 @@ std::vector<TabDesc> make_tabs() {
     std::vector<Choice> looks;
     for (const looks::Look& look : looks::kLooks)
         if (looks::offered(look)) looks.push_back({std::string(look.id), std::string(look.label)});
-    tabs.push_back({"Interface", {{"", {
-        own_setting({.label = "UI scale", .key = "ui_scale",
-            .kind = ChoiceRow{
-                .choices = {{"0", "Auto"}, {"75", "75%"}, {"100", "100%"}, {"125", "125%"}, {"150", "150%"}},
-                .changed = hooks::apply_scale},
-            .help = "The size of these menus. Auto follows the display's scale, and shrinks to fit a small window."}),
-        // (shown once this build offers more than one look)
-        only([] { return looks::offered_count() > 1; },
-            own_setting({.label = "Menu look", .key = "ui_look",
-                .kind = ChoiceRow{.choices = std::move(looks), .changed = hooks::apply_look},
-                .help = "How these menus look. Every look has the same menus and rows."})),
-        // (shown in a look whose frame it sizes)
-        only(hooks::menu_height_used, own_setting({.label = "Menu height", .key = "ui_menu_height",
-            .kind = NumberRow{.min = 0, .max = 100, .step = 10,
-                .get = [] { return std::clamp(s::get_int("ui_menu_height"), 0, 100); },
-                .set = [](int v) { s::set("ui_menu_height", std::to_string(v)); },
-                .format = [](int v) {
-                    return v == 0 ? std::string("Compact") : v == 100 ? std::string("Whole window") : std::to_string(v) + "%";
-                }},
-            .help = "How tall Settings is in a large window: from Compact, its height in a 720p window, to the "
-                    "window's whole height. Taller shows more rows before they scroll."})),
-        own_setting(toggle("Start screen", "show_start_screen",
-            "Shows Play, Settings and Quit when the game starts. Off goes straight to the game.")),
-        own_setting(toggle("Menu hint", "menu_hint", "After Play, a note says how to open this menu.")),
-        own_setting(toggle("Trophy pop-ups", "trophy_popups", "Shows a note when you earn a trophy. Off only hides the note.")),
-        own_setting(toggle("Trophy sound", "trophy_sound", "Plays a short tune from the game when you earn a trophy.")),
-        own_setting(toggle("Sword cursor", "DES_CURSOR3D",
-            "The cursor in these menus is a sword from the game. Off uses the usual arrow.")),
-        own_setting(choice("Cursor sword", "DES_CURSOR_SWORD", std::move(swords), "Which of the game's swords the cursor is.")),
-        own_setting(choice("Cursor size", "DES_CURSOR_SIZE",
-            {{"48", "Small"}, {"64", "Normal"}, {"96", "Large"}, {"128", "Very large"}, {"192", "Huge"}},
-            "How long the sword is.")),
-        own_setting(toggle("Crystal lizard", "DES_UI_LIZARD", "A crystal lizard dances in the corner of these menus.")),
-        own_setting(choice("Gamepad menu buttons", "pad_menu_chord", {{"0", "L3 + R3"}, {"1", "Select + Start"}},
-            "The gamepad buttons that open this menu, pressed together. Select + Start also opens the game's menu.")),
-    }}}});
+    tabs.push_back({"Interface", {
+        {"This menu", {
+            own_setting({.label = "UI scale", .key = "ui_scale",
+                .kind = ChoiceRow{
+                    .choices = {{"0", "Auto"}, {"25", "25%"}, {"50", "50%"}, {"75", "75%"}, {"100", "100%"},
+                                {"125", "125%"}, {"150", "150%"}},
+                    .changed = hooks::apply_scale},
+                .help = "The size of these menus. Auto fits them to the window."}),
+            // (shown once this build offers more than one look)
+            only([] { return looks::offered_count() > 1; },
+                own_setting({.label = "Menu look", .key = "menu_look",
+                    .kind = ChoiceRow{.choices = std::move(looks), .changed = hooks::apply_look},
+                    .help = "How these menus look. Every look has the same menus and rows."})),
+            // (shown in a look whose frame it sizes)
+            only(hooks::menu_height_used, own_setting({.label = "Menu height", .key = "ui_menu_height",
+                .kind = NumberRow{.min = 0, .max = 100, .step = 10,
+                    .get = [] { return std::clamp(s::get_int("ui_menu_height"), 0, 100); },
+                    .set = [](int v) { s::set("ui_menu_height", std::to_string(v)); },
+                    .format = [](int v) {
+                        return v == 0 ? std::string("Compact")
+                             : v == 100 ? std::string("Whole window")
+                                        : std::to_string(v) + "%";
+                    }},
+                .help = "How tall Settings is in a large window: from Compact, its height in a 720p window, to the "
+                        "window's whole height. Taller shows more rows before they scroll."})),
+            own_setting(choice("Gamepad menu buttons", "pad_menu_chord", {{"0", "L3 + R3"}, {"1", "Select + Start"}},
+                "The gamepad buttons that open this menu, pressed together. Select + Start also opens the game's "
+                "menu.")),
+            own_setting(toggle("Menu hint", "menu_hint", "After Play, a note says how to open this menu.")),
+            own_setting(toggle("Crystal lizard", "DES_UI_LIZARD",
+                "A crystal lizard dances in the corner of these menus.")),
+        }},
+        {"Start screen", {
+            own_setting(toggle("Start screen", "show_start_screen",
+                "Shows Play, Settings and Quit when the game starts. Off goes straight to the game.")),
+#ifdef _WIN32
+            // (the look that draws them, on the renderer that does: Windows')
+            only(hooks::start_effects_used, own_setting(toggle("Start screen smoke", "start_smoke",
+                "Smoke rises behind the start screen. Off saves a little graphics work, most on integrated "
+                "graphics."))),
+            only(hooks::start_effects_used, own_setting(toggle("Soul flame", "start_flame",
+                "A pale flame rises off the logo on the start screen. Off saves a little graphics work."))),
+#endif
+        }},
+        {"Cursor", {
+            own_setting(toggle("Sword cursor", "DES_CURSOR3D",
+                "The cursor in these menus is a sword from the game. Off uses the usual arrow.")),
+            own_setting(choice("Cursor sword", "DES_CURSOR_SWORD", std::move(swords),
+                "Which of the game's swords the cursor is.")),
+            own_setting(choice("Cursor size", "DES_CURSOR_SIZE",
+                {{"48", "Small"}, {"64", "Normal"}, {"96", "Large"}, {"128", "Very large"}, {"192", "Huge"}},
+                "How long the sword is.")),
+        }},
+        {"Trophies", {
+            own_setting(toggle("Trophy pop-ups", "trophy_popups",
+                "Shows a note when you earn a trophy. Off only hides the note.")),
+            own_setting(toggle("Trophy sound", "trophy_sound",
+                "Plays a short tune from the game when you earn a trophy.")),
+        }},
+    }});
 
 #if DES_DEV
     // Developer builds only (cmake -DDES_DEV=ON; docs/55, des_dev.cpp). The rows are live and never saved. des_dev_boot

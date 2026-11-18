@@ -222,7 +222,10 @@ strangers out; it is not a secret against someone who knows it.
 
 ### World tendency
 
-The Network tab's **World tendency** (DES_NET_TENDENCY): "With the server's" (the default) or "Yours only".
+The Network tab's **World tendency** (DES_NET_TENDENCY): "Yours only" (`own`, the default since 2026-11-18) or "With
+the server's" (`server`, the game's own behaviour). Anything but `server`, an unset variable too, is Yours only.
+Settings files from before had an empty value there, written as the old default whether or not it was picked; it now
+reads as the new default.
 Addresses are from the EBOOT (static analysis, 2026-10-20):
 - The game's QWC object (`*(*0x01B4EF9C + 0x24)`) keeps the player's own value per area at +0x48 + 8 * (area - 1),
   two floats (white/black, left/right).

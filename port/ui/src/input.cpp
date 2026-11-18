@@ -43,6 +43,9 @@ int sCapturedWheel = 0;
 unsigned sReleases = 0;
 int sDevice = 0;      // what the menus were last used with (PAD_GLYPH_*: 1 the keyboard or mouse, 2-4 a pad; 0 none yet)
 int sGameDevice = 0;  // what the game was, as update_pad last saw it (PadState::glyph)
+int sPointerX = 0, sPointerY = 0;  // where the last pointer move was
+bool sPointerKnown = false;        // (not after a reset: the first move after it only records its place)
+bool sHoverMoved = false;          // a move that really moved is being handed to RmlUi now
 
 double now_seconds() noexcept {
     using namespace std::chrono;
@@ -81,6 +84,22 @@ void reset_input_state() noexcept {
     sPadKeys = {};
     sPrimed = false;
     sReleases++;
+    sPointerKnown = false;
+}
+
+void begin_pointer_move(int x, int y) noexcept {
+    sHoverMoved = sPointerKnown && (x != sPointerX || y != sPointerY);
+    sPointerX = x;
+    sPointerY = y;
+    sPointerKnown = true;
+}
+
+void end_pointer_move() noexcept {
+    sHoverMoved = false;
+}
+
+bool hover_moved() noexcept {
+    return sHoverMoved;
 }
 
 unsigned release_count() noexcept {

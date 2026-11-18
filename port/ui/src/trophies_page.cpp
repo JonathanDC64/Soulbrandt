@@ -4,6 +4,7 @@
 #include "trophies_page.hpp"
 
 #include "event.hpp"
+#include "input.hpp"
 #include "menu_pages.hpp"
 #include "portable.hpp"
 #include "settings.hpp"
@@ -109,12 +110,16 @@ void TrophiesPage::build() {
         mRows.push_back(row);
         const int index = static_cast<int>(i);
         mListeners.push_back(std::make_unique<ScopedEventListener>(row, Rml::EventId::Click, [this, index](Rml::Event&) {
-            if (index != mFocus) {
+            if (index != mFocus) {  // (a click picks the row and does what Enter does, in one)
                 mFocus = index;
                 play_sound(kSoundItemFocus);
-            } else {
-                confirm();
             }
+            confirm();
+        }));
+        mListeners.push_back(std::make_unique<ScopedEventListener>(row, Rml::EventId::Mousemove, [this, index](Rml::Event&) {
+            if (!input::hover_moved() || index == mFocus) return;  // (a real move of the pointer: input.hpp)
+            mFocus = index;
+            play_sound(kSoundItemFocus);
         }));
     }
     mFocus = std::clamp(mFocus, 0, std::max(0, static_cast<int>(mRows.size()) - 1));
