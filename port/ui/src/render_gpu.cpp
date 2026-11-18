@@ -3,6 +3,8 @@
 // of the layer's backends. The same shaders (on D3D12 compiled by the layer's compile service with today's FXC call,
 // so the bytecode is the same), layers, filters, clip mask, HDR pass and the game's two models (docs/112), and the same
 // command for each D3D12 call render_d3d12.cpp makes: on D3D12 it draws today's pixels (ui_render_compare checks it).
+// The shaders are kept compiled between starts (shader_cache.hpp); when the cache has none, the smoke's and the flame's
+// compile in the background while the start screen draws without them.
 // Built with PS3RECOMP_RSX_HAL (port/CMakeLists.txt's route switch); without it this file is empty.
 //
 // As in render_d3d12.cpp: the UI is drawn into a layer, a multisampled target, all of them sharing one stencil buffer.
@@ -25,7 +27,9 @@
 #include "flame_shader.hpp"
 #include "fog_shader.hpp"
 #include "renderer.hpp"
+#include "shader_cache.hpp"
 #include "souls_model.hpp"
+#include "version.hpp"
 
 #include "gpu.h"
 #include "gpu_shader.h"
@@ -40,6 +44,7 @@
 #include <stb_image.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -47,8 +52,11 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <filesystem>
 #include <map>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -308,6 +316,21 @@ const char* const kProgramName[kProgramCount] = {"color",       "texture",      
                                                  "blur",        "drop shadow",  "hdr out",    "model",
                                                  "model blend"};
 static_assert(kProgramCount <= 16, "the pipeline key keeps a program in 4 bits");
+const char* const kVsSource[3] = {kVsMain, kVsQuad, kVsModel};
+const char* const kVsName[3] = {"main", "quad", "model"};
+
+// What the menu's shaders did at a start (init's line): from the cache, compiled, or compiling in the background, and
+// why a cache file was not used.
+struct ShaderTally {
+    int used = 0, compiled = 0, late = 0;
+    int missing = 0, outdated = 0, damaged = 0, refused = 0, unstored = 0;
+};
+// One the cache had no copy of, compiled in the background (the smoke's and the flame's: RendererImpl::mLate).
+struct LateShader {
+    int program;
+    std::string text, input;
+    std::filesystem::path file;
+};
 
 enum Blend { kPremultiplied, kReplace, kFactor, kNoColor };
 enum Stencil { kStencilOff, kStencilTest, kStencilSet, kStencilIntersect, kStencilAuto };
@@ -616,6 +639,17 @@ private:
     unsigned char hdr_to_byte(const uint8_t* half, bool alpha) const;
     gpu_pipeline pipeline(Program p, Blend b, Stencil s, const Target& t);
 
+    // The menu's shaders, kept compiled between starts (shader_cache.hpp)
+    std::string shader_input(const std::string& text, gpu_sc_stage stage, const char* name) const;
+    std::filesystem::path shader_file(gpu_sc_stage stage, const char* name) const;
+    bool compile_shader(const std::string& text, gpu_sc_stage stage, const char* name, std::vector<uint8_t>& out) const;
+    gpu_shader make_shader(const std::vector<uint8_t>& code, uint32_t kind);
+    gpu_shader load_shader(const char* source, gpu_sc_stage stage, uint32_t kind, const char* name, int program,
+                           bool& cached, ShaderTally& tally, std::vector<LateShader>* late);
+    bool renew_shader(gpu_shader& slot, bool& cached, const char* source, gpu_sc_stage stage, uint32_t kind,
+                      const char* name);
+    void take_late();
+
     // Recording and the GPU's progress
     bool open();
     bool begin_recording(gpu_cmd* c);
@@ -683,6 +717,22 @@ private:
     gpu_layout mLayout{};
     gpu_shader mVs[3] = {};       // main, quad, model
     gpu_shader mPs[kProgramCount] = {};
+    // What the shaders are compiled for and with (shader_input), and the cache's folder (empty: compiled at every
+    // start). Whether each came from the cache: a pipeline that fails with one is made again with it compiled anew
+    // (pipeline), and the one it replaced is kept to the end, as pipelines made with it may still draw.
+    bool mSpv = false;
+    gpu_layout_desc mLayoutDesc{};
+    std::string mInputHead;
+    std::string mCacheDir;
+    bool mVsCached[3] = {};
+    bool mPsCached[kProgramCount] = {};
+    std::vector<gpu_shader> mReplaced;
+    // The smoke's and the flame's pixel shaders, when the cache had no copy: compiled on mLate while the start screen
+    // draws without them, made into shaders at the next frame after (take_late).
+    std::thread mLate;
+    std::mutex mLateLock;
+    std::vector<std::pair<int, std::vector<uint8_t>>> mLateDone;
+    std::atomic<bool> mLateReady{false};
     std::map<uint64_t, gpu_pipeline> mPipelines;
     gpu_table_pool mPool{};
     Slots mSrv{kSrvCapacity};
@@ -765,6 +815,124 @@ std::string vk_inputs(const char* source) {
     return s;
 }
 
+// ---- The menu's shaders, kept compiled between starts (shader_cache.hpp) ----
+
+// Everything a shader's bytecode is made from, as text: its cache file is used only when it was made from exactly this.
+// mInputHead (init) has what all of them share: this program's build, which holds this code and the compile service's
+// (glslang and the text edits too), the versions, the target and its flags, the compiler (FXC's file), the spv target's
+// options (the device's) and the layout. Then each one's profile, name and the very text the compiler gets.
+std::string RendererImpl::shader_input(const std::string& text, gpu_sc_stage stage, const char* name) const {
+    const char* profile = gpu_sc_profile(mSpv ? GPU_SC_SPV : GPU_SC_DXBC, stage);
+    return mInputHead + "profile " + (profile ? profile : "none") + "\nname " + name + "\ntext " +
+           std::to_string(text.size()) + "\n" + text;
+}
+
+// <cache>/ui/<target>_<stage>_<name>.bin; empty when there is no cache.
+std::filesystem::path RendererImpl::shader_file(gpu_sc_stage stage, const char* name) const {
+    return shader_cache::file(mCacheDir, std::string(mSpv ? "spv_" : "dxbc_") + (stage == GPU_SC_VS ? "vs_" : "ps_") + name);
+}
+
+// The compile service, with no cache of its own (GPU_SC_NO_CACHE): today's call. Any thread (mLate's too).
+bool RendererImpl::compile_shader(const std::string& text, gpu_sc_stage stage, const char* name,
+                                  std::vector<uint8_t>& out) const {
+    gpu_sc_blob blob{};
+    char log[2048];
+    log[0] = 0;
+    const int r = gpu_sc_compile_layout(mSpv ? GPU_SC_SPV : GPU_SC_DXBC, stage, text.c_str(), text.size(), name, nullptr,
+                                        &mLayoutDesc, GPU_SC_NO_CACHE, &blob, log, sizeof log);
+    if (r != GPU_SC_OK || !blob.data || !blob.size) {
+        std::fprintf(stderr, "[ui] the menu's %s shader did not compile (%d)%s%s\n", name, r, *log ? ": " : "", log);
+        gpu_sc_blob_release(&blob);
+        return false;
+    }
+    const auto* p = static_cast<const uint8_t*>(blob.data);
+    out.assign(p, p + blob.size);
+    gpu_sc_blob_release(&blob);
+    return true;
+}
+
+gpu_shader RendererImpl::make_shader(const std::vector<uint8_t>& code, uint32_t kind) {
+    gpu_shader_desc sd;
+    std::memset(&sd, 0, sizeof sd);
+    sd.stage = kind;
+    sd.code = mSpv ? GPU_CODE_SPIRV : GPU_CODE_DXBC;
+    sd.bytes = code.data();
+    sd.size = code.size();
+    return gpu_shader_create(mDev, &sd);
+}
+
+// A shader from the cache if it holds this one's bytecode for today's input and the device takes it, else compiled
+// (and stored): or, with late, left to mLate (the shader stays empty until take_late). cached says which.
+gpu_shader RendererImpl::load_shader(const char* source, gpu_sc_stage stage, uint32_t kind, const char* name, int program,
+                                     bool& cached, ShaderTally& tally, std::vector<LateShader>* late) {
+    cached = false;
+    const std::string text = mSpv ? vk_inputs(source) : std::string(source);
+    const std::filesystem::path file = shader_file(stage, name);
+    const std::string input = file.empty() ? std::string() : shader_input(text, stage, name);
+    std::vector<uint8_t> code;
+    if (!file.empty()) {
+        switch (shader_cache::load(file, input, mSpv ? shader_cache::Code::Spirv : shader_cache::Code::Dxbc, code)) {
+        case shader_cache::Miss::Used: {
+            const gpu_shader s = make_shader(code, kind);
+            if (GPU_VALID(s)) {
+                cached = true;
+                tally.used++;
+                return s;
+            }
+            tally.refused++;  // (compiled below, and the file written anew)
+            break;
+        }
+        case shader_cache::Miss::Missing: tally.missing++; break;
+        case shader_cache::Miss::Outdated: tally.outdated++; break;
+        case shader_cache::Miss::Damaged: tally.damaged++; break;
+        }
+    }
+    if (late) {
+        late->push_back({program, text, input, file});
+        tally.late++;
+        return {};
+    }
+    if (!compile_shader(text, stage, name, code)) return {};
+    tally.compiled++;
+    if (!file.empty() && !shader_cache::store(file, input, code.data(), code.size())) tally.unstored++;
+    return make_shader(code, kind);
+}
+
+// One from the cache in a pipeline the device would not make: compiled anew (and its file written again), so the
+// pipeline can be tried once more. False if it was not from the cache, or did not compile.
+bool RendererImpl::renew_shader(gpu_shader& slot, bool& cached, const char* source, gpu_sc_stage stage, uint32_t kind,
+                                const char* name) {
+    if (!cached) return false;
+    cached = false;
+    const std::string text = mSpv ? vk_inputs(source) : std::string(source);
+    const std::filesystem::path file = shader_file(stage, name);
+    shader_cache::forget(file);
+    std::vector<uint8_t> code;
+    if (!compile_shader(text, stage, name, code)) return false;
+    const gpu_shader s = make_shader(code, kind);
+    if (!GPU_VALID(s)) return false;
+    shader_cache::store(file, shader_input(text, stage, name), code.data(), code.size());
+    mReplaced.push_back(slot);
+    slot = s;
+    std::fprintf(stderr, "[ui] the menu's %s shader from the cache did not make a pipeline: compiled again\n", name);
+    return true;
+}
+
+// The shaders mLate has compiled since, made into shaders (at a frame's start, on the render thread).
+void RendererImpl::take_late() {
+    if (!mLateReady.load(std::memory_order_acquire)) return;
+    std::vector<std::pair<int, std::vector<uint8_t>>> done;
+    {
+        std::lock_guard<std::mutex> lock(mLateLock);
+        done.swap(mLateDone);
+        mLateReady.store(false, std::memory_order_relaxed);
+    }
+    for (const auto& [p, code] : done) {
+        mPs[p] = make_shader(code, GPU_STAGE_PS);
+        std::fprintf(stderr, "[ui] the menu's %s shader is ready (compiled in the background)\n", kProgramName[p]);
+    }
+}
+
 bool RendererImpl::init() {
     if (!mDev) return false;
     for (Frame& f : mFrame) {
@@ -812,37 +980,83 @@ bool RendererImpl::init() {
     }
 
     // The compile service's target for this device: dxbc is today's FXC call (D3DCompile, flags 0, no cache), so the
-    // bytecode is render_d3d12's; Vulkan's spv puts the registers where this layout has them.
-    const bool spv = mDev->caps.api == GPU_API_VULKAN;
-    const auto compile = [&](const char* source, gpu_sc_stage stage, uint32_t kind, const char* name) -> gpu_shader {
-        gpu_sc_blob blob{};
-        char log[2048];
-        const std::string text = spv ? vk_inputs(source) : std::string();
-        const char* const src = spv ? text.c_str() : source;
-        const int r = gpu_sc_compile_layout(spv ? GPU_SC_SPV : GPU_SC_DXBC, stage, src, std::strlen(src), name,
-                                            nullptr, &ld, GPU_SC_NO_CACHE, &blob, log, sizeof log);
-        if (r != GPU_SC_OK) {
-            std::fprintf(stderr, "[ui] the menu's %s shader did not compile (%d)%s%s\n", name, r, *log ? ": " : "", log);
-            return {};
+    // bytecode is render_d3d12's; Vulkan's spv puts the registers where this layout has them. What an earlier start
+    // compiled comes from the cache, when it was made from exactly today's input (shader_cache.hpp, shader_input).
+    mSpv = mDev->caps.api == GPU_API_VULKAN;
+    mLayoutDesc = ld;
+    const char* no_cache = nullptr;
+    {
+        const char* dir = gpu_sc_cache_dir();
+        mCacheDir = dir ? dir : "";
+        const std::string program = shader_cache::program_identity();
+        // FXC is a library of the system's, named by its file; glslang and the text edits are built into this program.
+        const std::string compiler =
+            mSpv ? std::string("glslang, built in") : shader_cache::library_identity("d3dcompiler_47.dll");
+        if (!shader_cache::enabled()) no_cache = "DES_UI_SHADER_CACHE=0";
+        else if (mCacheDir.empty()) no_cache = "the shader cache is off";
+        else if (program.empty()) no_cache = "this program's build could not be read";
+        else if (compiler.empty()) no_cache = "the compiler could not be named";
+        if (no_cache) mCacheDir.clear();
+        char hex[3];
+        std::string layout;
+        for (size_t i = 0; i < sizeof ld; i++) {
+            std::snprintf(hex, sizeof hex, "%02x", reinterpret_cast<const uint8_t*>(&ld)[i]);
+            layout += hex;
         }
-        gpu_shader_desc sd;
-        std::memset(&sd, 0, sizeof sd);
-        sd.stage = kind;
-        sd.code = spv ? GPU_CODE_SPIRV : GPU_CODE_DXBC;
-        sd.bytes = blob.data;
-        sd.size = blob.size;
-        const gpu_shader s = gpu_shader_create(mDev, &sd);
-        gpu_sc_blob_release(&blob);
-        return s;
-    };
-    mVs[0] = compile(kVsMain, GPU_SC_VS, GPU_STAGE_VS, "main");
-    mVs[1] = compile(kVsQuad, GPU_SC_VS, GPU_STAGE_VS, "quad");
-    mVs[2] = compile(kVsModel, GPU_SC_VS, GPU_STAGE_VS, "model");
-    for (int p = 0; p < kProgramCount; p++) mPs[p] = compile(kProgramPs[p], GPU_SC_PS, GPU_STAGE_PS, kProgramName[p]);
+        mInputHead = "the menu's shader, input 1\nprogram " + program + "\nversion " + kVersion + ", ps3recomp " +
+                     kPs3recompVersion + "\ntarget " + (mSpv ? "spv" : "dxbc") + ", entry main, flags no-cache\n" +
+                     "compiler " + compiler + "\n";
+        if (mSpv) mInputHead += "spv options " + std::to_string(gpu_sc_spv_options()) + "\n";
+        mInputHead += "layout " + layout + "\n";
+    }
+    ShaderTally tally;
+    std::vector<LateShader> late;
+    // With the animations off (DES_UI_NO_ANIM: the tests' pictures) every shader is there from the first frame.
+    static const bool still = std::getenv("DES_UI_NO_ANIM") != nullptr;
+    for (int i = 0; i < 3; i++)
+        mVs[i] = load_shader(kVsSource[i], GPU_SC_VS, GPU_STAGE_VS, kVsName[i], -1, mVsCached[i], tally, nullptr);
+    for (int p = 0; p < kProgramCount; p++) {
+        // The smoke's and the flame's, by far the slowest to compile (FXC: ~0.25 s and ~0.08 s): the start screen draws
+        // without them until they are.
+        const bool wait = !still && (p == kFog || p == kFlame);
+        mPs[p] = load_shader(kProgramPs[p], GPU_SC_PS, GPU_STAGE_PS, kProgramName[p], p, mPsCached[p], tally,
+                             wait ? &late : nullptr);
+    }
+    {
+        std::string line = "[ui] the menu's shaders: " + std::to_string(tally.used) + " from the cache, " +
+                           std::to_string(tally.compiled) + " compiled";
+        if (tally.late) line += ", " + std::to_string(tally.late) + " compiling in the background";
+        if (no_cache) {
+            line += std::string(" (no cache: ") + no_cache + ")";
+        } else {
+            std::string why;
+            const auto add = [&why](int n, const char* what) {
+                if (n) why += (why.empty() ? "" : ", ") + std::to_string(n) + " " + what;
+            };
+            add(tally.missing, "not there yet");
+            add(tally.outdated, "made from another input");
+            add(tally.damaged, "damaged");
+            add(tally.refused, "refused by the device");
+            add(tally.unstored, "could not be stored");
+            if (!why.empty()) line += " (cache: " + why + ")";
+        }
+        std::fprintf(stderr, "%s\n", line.c_str());
+    }
     // What the menu cannot do without; the effects only fall away if theirs are missing.
     if (!GPU_VALID(mVs[0]) || !GPU_VALID(mVs[1]) || !GPU_VALID(mPs[kColor]) || !GPU_VALID(mPs[kTexture]) ||
         !GPU_VALID(mPs[kPassthrough]))
         return false;
+    if (!late.empty())
+        mLate = std::thread([this, late = std::move(late)] {
+            for (const LateShader& s : late) {
+                std::vector<uint8_t> code;
+                if (!compile_shader(s.text, GPU_SC_PS, kProgramName[s.program], code)) continue;
+                shader_cache::store(s.file, s.input, code.data(), code.size());
+                std::lock_guard<std::mutex> lock(mLateLock);
+                mLateDone.emplace_back(s.program, std::move(code));
+                mLateReady.store(true, std::memory_order_release);
+            }
+        });
 
     if (!(gpu_format_support(mDev, kStencilFormat, 1) & GPU_FMT_DS)) mStencilFormat = kStencilFormat32;
     // RmlUi's two samples to a pixel (smooth edges for rounded and turned shapes), if the device has them.
@@ -864,6 +1078,7 @@ bool RendererImpl::init() {
 }
 
 RendererImpl::~RendererImpl() {
+    if (mLate.joinable()) mLate.join();  // (it uses this renderer's members)
     if (!mDev) return;
     finish();
     reclaim(true);
@@ -888,6 +1103,8 @@ RendererImpl::~RendererImpl() {
     for (const gpu_shader s : mVs)
         if (GPU_VALID(s)) gpu_shader_destroy(mDev, s);
     for (const gpu_shader s : mPs)
+        if (GPU_VALID(s)) gpu_shader_destroy(mDev, s);
+    for (const gpu_shader s : mReplaced)
         if (GPU_VALID(s)) gpu_shader_destroy(mDev, s);
     for (Frame& f : mFrame)
         if (GPU_VALID(f.ring)) gpu_buffer_destroy(mDev, f.ring, 0);
@@ -1179,7 +1396,18 @@ gpu_pipeline RendererImpl::pipeline(Program p, Blend b, Stencil s, const Target&
     d.rt_format[0] = t.format;
     d.ds_format = t.layer ? mStencilFormat : GPU_FORMAT_UNKNOWN;
     d.samples = t.samples;
-    const gpu_pipeline pso = gpu_pipeline_create(mDev, &d, 0, nullptr);
+    gpu_pipeline pso = gpu_pipeline_create(mDev, &d, 0, nullptr);
+    if (!pso.v) {
+        // A shader from the cache in it: compiled anew, and the pipeline tried once more.
+        const int v = model ? 2 : p < kPassthrough ? 0 : 1;
+        const bool vs = renew_shader(mVs[v], mVsCached[v], kVsSource[v], GPU_SC_VS, GPU_STAGE_VS, kVsName[v]);
+        const bool ps = renew_shader(mPs[p], mPsCached[p], kProgramPs[p], GPU_SC_PS, GPU_STAGE_PS, kProgramName[p]);
+        if (vs || ps) {
+            d.vs = mVs[v];
+            d.ps = mPs[p];
+            pso = gpu_pipeline_create(mDev, &d, 0, nullptr);
+        }
+    }
     if (!pso.v) std::fprintf(stderr, "[ui] the menu's %s pipeline failed\n", kProgramName[p]);
     mPipelines[key] = pso;
     return pso;
@@ -1453,6 +1681,7 @@ bool RendererImpl::begin_frame(void* back_buffer, unsigned index, int width, int
     width = std::max(width, 1);
     height = std::max(height, 1);
     mFx = {};  // (one left from a frame that never ended: its picture is not this frame's)
+    take_late();
     if (!open()) return true;
     if (width != mWidth || height != mHeight) resize(width, height);
     mProjection = Rml::Matrix4f::ProjectOrtho(0, float(width), float(height), 0, -10000, 10000);

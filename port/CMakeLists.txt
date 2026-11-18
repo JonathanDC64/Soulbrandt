@@ -455,6 +455,10 @@ else()
     endif()
     target_link_libraries(des_boot PRIVATE Threads::Threads ${CMAKE_DL_LIBS} m)
     target_link_options(des_boot PRIVATE "-Wl,-Map=des_boot.map")
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        # A build id, which lld writes only when asked: the menus' shader cache knows the build by it (ui/src/shader_cache.cpp).
+        target_link_options(des_boot PRIVATE "-Wl,--build-id=sha1")
+    endif()
     # The window and the rendering: ps3recomp's D3D12 backend on vkd3d (Wine's D3D12 on Vulkan), which the
     # runtime must be built with (-DPS3RECOMP_RSX_D3D12_VKD3D=ON; docs/76). Off, the game runs headless on
     # the null backend.
@@ -766,6 +770,10 @@ if(DES_SPLIT)
         "${DES_FORCE_INCLUDE}${PS3RECOMP_DIR}/include/ps3emu/game_split.h")
     target_link_libraries(des_host PRIVATE ps3recomp_runtime_split ${_des_boot_LINK_LIBRARIES})
     target_link_options(des_host PRIVATE "${_des_map}des_host.map")
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        # A build id, which lld writes only when asked: the menus' shader cache knows the build by it (ui/src/shader_cache.cpp).
+        target_link_options(des_host PRIVATE "-Wl,--build-id=sha1")
+    endif()
     if(DES_DEBUG_INFO AND WIN32)
         target_link_options(des_host PRIVATE /DEBUG /OPT:REF /OPT:ICF)
     endif()
