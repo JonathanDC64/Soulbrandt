@@ -52,7 +52,7 @@ Press **F1** (or **L3 + R3** on a controller) at any time to open the menu. Most
 - Change which buttons and keys do what.
 - The game's button prompts show the buttons of the controller you're using, a Steam Deck's among them, or your keys (Settings > Game > Button icons).
 - Keys 1 to 5 switch straight to the item in each of the five item slots, without using it (Settings > Controls > Change Buttons, Keyboard and mouse).
-- The forward attack (the kick) can go on a key of its own, so attacking never kicks by accident (Settings > Controls > Forward attack). Off by default, and keyboard only for now.
+- The forward attack (the kick) can go on a key or a controller button of its own, so attacking never kicks by accident (Settings > Controls > Forward attack, off by default; the button is the Kick row in Change Buttons > Gamepad). A controller's back buttons, paddles or Share button can kick, when the controller reports them to the game; on Windows, Xbox controllers don't.
 - A deadzone for each stick, set as how far you tilt it, with a live picture of the stick (Settings > Controls).
 - Mouse sensitivity, inverted axes, and switching lock-on targets with a flick of the mouse.
 - **Roll in any direction while locked on**: the roll goes where the stick points. It's on by default; turn off **Roll toward the stick** in Settings > Controls for the original's four directions.
