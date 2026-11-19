@@ -6,7 +6,7 @@
 // and Preview (□ and △); Help opens "Good to know". With no mods yet, the page says how to add one, over the buttons.
 // While the list differs from what this session runs with, the summary's note says to restart, with Restart now under
 // it (menu_pages.hpp's restart_for_mods). Right takes the focus from the list to the buttons beside it (Up and Down
-// between them), Left or Back takes it back.
+// between them), Left or Back takes it back; while Restart now shows, the prompts say so ("→ Restart now").
 //
 // Its elements, the same in every look (how they look is the look's sheet):
 //   mods-page(.empty) > mods-box > mods-list > mods-section, mod-row(.focused .on .off .problem .fixable .pending)

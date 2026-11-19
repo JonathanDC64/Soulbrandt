@@ -37,11 +37,13 @@ std::unique_ptr<Document> screen_alone(const std::string& entry);
 Question quit_question(bool played = true);  // played: the game was played (not the start screen)
 
 // What waits for a restart: "KEY=value" for each restart-only setting changed since the game started
-// (settings::restart_pending), in that order. Empty when nothing does.
+// (settings::restart_pending), in that order, then "mods=" and the mods on ("|" between them) when a Mods screen left
+// the list other than this session runs with (mods_state.hpp's waiting). Empty when nothing does.
 std::vector<std::string> waiting_for_restart();
 
 // Asked as the F1 menu closes while something waits for a restart: Restart now starts the game again with the
-// settings as they are now; Later runs `later`, and they wait for the next start.
+// settings and the mods as they are now; Later runs `later`, and they wait for the next start. One question names
+// all that waits (menu_model.hpp's restart_body), and in seamless co-op it says what happens to the session.
 Question restart_question(std::function<void()> later);
 
 // Restart now on the Mods screens (mods_page.cpp, mods_window.cpp): the game starts again with the mods as the list

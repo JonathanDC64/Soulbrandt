@@ -124,11 +124,18 @@ is the same restart as Settings' (`menu_pages.cpp`'s `restart_now`), so a second
 - **In the game:** it asks first ("Restart the game now?", Restart now or Later, Later chosen first), as Settings does
   when the menu closes with a restart-only setting changed. The new game skips the start screen.
 - **On the start screen:** nothing has been played yet, so it restarts at once, and the start screen comes back.
+- **Closing the F1 menu** with the list changed (and not restarted) asks the same question, as for a restart-only
+  setting: one question names both when a setting waits too ("Your mod changes and Renderer take effect after a
+  restart."). Later keeps it for the next start, and the menu asks again only when what waits changes.
 - **In seamless co-op:** it always asks, and says what happens: a host's friends go back to their own worlds and the
-  invite code changes; a guest's game leaves the host's world, then joins it again.
+  invite code changes; a guest's game leaves the host's world, then joins it again. When the mods on at the next start
+  are another set than this session's (order alone doesn't count), co-op's mods warning comes first, as at Host or
+  Join (Back: no restart), and the new game is told what was accepted (`DES_SEAMLESS_MODS_OK`), not the old set; with
+  every mod off, nothing is. A restart for a setting does the same (`coop_window.hpp`'s `before_restart`).
 - **Where it is:** DeS UI shows it under the note in the summary box; Right moves the focus from the list to it (Up
-  and Down then reach the two buttons under it), and Left or Back goes back to the list. Alpha UI shows it first
-  among the buttons at the top of the list.
+  and Down then reach the two buttons under it), and Left or Back goes back to the list. While it shows, the prompts
+  under the page say so ("→ Restart now", the pad's or the keyboard's Right) while the list has the focus. Alpha UI
+  shows it first among the buttons at the top of the list.
 - **Not shown** when the mods were set when the game started (`DES_MODS` from the environment or pinned in
   `settings.ini`), as nothing can be changed then.
 

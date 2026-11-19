@@ -64,8 +64,14 @@ ModsRestart mods_restart(bool startScreen, bool coop);
 // This game's part in a seamless co-op session that has started (des_seamless.h).
 enum class Coop { None, Host, Guest };
 
-// The question's text: what takes effect (the mods, then the restart-only settings that wait, by their labels), and
-// what the restart does to a co-op session.
-std::string mods_restart_body(const std::vector<std::string>& settings, Coop coop);
+// The text of a question about a restart (the F1 menu's as it closes, the Mods screens' Restart now): what takes
+// effect (the mods when they changed, then the restart-only settings that wait, by their labels), and what the restart
+// does to a co-op session.
+std::string restart_body(const std::vector<std::string>& settings, bool mods, Coop coop);
+
+// A restart that keeps this game in seamless co-op asks co-op's mods warning again (coop_window.hpp's before_restart,
+// as Host and Join ask it) when the mods on at the next start are another set than this session's. Their order alone
+// is not another set.
+bool other_mods(std::vector<std::string> session, std::vector<std::string> next);
 
 }  // namespace ui::menu

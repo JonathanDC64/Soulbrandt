@@ -10,6 +10,7 @@
 #include "menu_model.hpp"
 #include "menu_shell.hpp"
 #include "mods_page.hpp"
+#include "mods_state.hpp"
 #include "mods_window.hpp"
 #include "report_ack.hpp"
 #include "settings.hpp"
@@ -36,24 +37,35 @@ namespace menu {
 namespace {
 
 // The game starts again with the settings and the mods as they are now: past the start screen (play: they were
-// playing), or to it. `why` is for the log. Once only: a second press before this game has closed would start a second
-// game on the same save.
+// playing), or to it. `why` is for the log. In seamless co-op with another set of mods on, co-op's mods warning comes
+// first (coop_window.hpp's before_restart), and the new game is told what was accepted. Once only: a second press
+// before this game has closed would start a second game on the same save.
 void restart_now(bool play, const char* why) {
-    static bool restarting = false;  // (the UI thread's only)
-    if (restarting) return;
-    if (!crash_report::start_again({}, play)) {
-        push_toast({
-            .type = "warning",
-            .title = "Restart",
-            .content = "<toast-message-text>The game could not start again. Close it and start it again by "
-                       "hand.</toast-message-text>",
-            .duration = std::chrono::seconds(6),
-        });
-        return;
-    }
-    restarting = true;
-    std::fprintf(stderr, "[ui] the game starts again for its %s%s\n", why, play ? "" : ", to the start screen");
-    if (app().quit) app().quit();
+    coop::before_restart([play, why](const std::vector<std::string>& set) {
+        static bool restarting = false;  // (the UI thread's only)
+        if (restarting) return;
+        if (!crash_report::start_again(set, play)) {
+            push_toast({
+                .type = "warning",
+                .title = "Restart",
+                .content = "<toast-message-text>The game could not start again. Close it and start it again by "
+                           "hand.</toast-message-text>",
+                .duration = std::chrono::seconds(6),
+            });
+            return;
+        }
+        restarting = true;
+        std::fprintf(stderr, "[ui] the game starts again for its %s%s\n", why, play ? "" : ", to the start screen");
+        if (app().quit) app().quit();
+    });
+}
+
+// This game's part in a seamless co-op session that has started.
+Coop coop_now() {
+    namespace co = des::seamless;
+    const co::Status s = co::status();
+    if (!s.started) return Coop::None;
+    return s.mode == co::Mode::Host ? Coop::Host : s.mode == co::Mode::Join ? Coop::Guest : Coop::None;
 }
 
 // The restart-only settings that wait for the next start, by their labels ("Renderer").
@@ -148,26 +160,26 @@ Question quit_question(bool played) {
 std::vector<std::string> waiting_for_restart() {
     std::vector<std::string> waiting;
     for (const std::string& key : settings::restart_pending()) waiting.push_back(key + "=" + settings::get(key));
+    if (std::string on; ModsState::waiting(&on)) waiting.push_back("mods=" + on);
     return waiting;
 }
 
 Question restart_question(std::function<void()> later) {
     const std::vector<std::string> named = waiting_named();
+    const bool mods = ModsState::waiting(nullptr);
+    const Coop coop = coop_now();
+    const char* why = !mods ? "settings" : named.empty() ? "mods" : "mods and settings";
     return {
         .title = "Restart the game now?",
-        .body = and_list(named) + (named.size() == 1 ? " takes" : " take") + " effect after a restart.",
-        .answers = {{"Restart now", [] { restart_now(true, "settings"); }}, {"Later", std::move(later)}},
+        .body = restart_body(named, mods, coop),
+        .answers = {{"Restart now", [why] { restart_now(true, why); }}, {"Later", std::move(later)}},
         .safe = 1,
+        .danger = coop != Coop::None,
     };
 }
 
 void restart_for_mods() {
-    namespace co = des::seamless;
-    const co::Status s = co::status();
-    const Coop coop = !s.started                  ? Coop::None
-                      : s.mode == co::Mode::Host ? Coop::Host
-                      : s.mode == co::Mode::Join ? Coop::Guest
-                                                 : Coop::None;
+    const Coop coop = coop_now();
     const ModsRestart r = mods_restart(is_prelaunch_open(), coop != Coop::None);
     if (!r.ask) {
         restart_now(r.play, "mods");
@@ -175,7 +187,7 @@ void restart_for_mods() {
     }
     ask({
         .title = "Restart the game now?",
-        .body = mods_restart_body(waiting_named(), coop),
+        .body = restart_body(waiting_named(), true, coop),
         .answers = {{"Restart now", [play = r.play] { restart_now(play, "mods"); }}, {"Later", {}}},
         .safe = 1,
         .danger = coop != Coop::None,

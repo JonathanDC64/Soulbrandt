@@ -415,6 +415,8 @@ std::vector<prompts::Prompt> ModsPage::prompts(const std::string& backLabel) con
                 out.push_back({Key::Confirm, "Fix it"});
             }
         }
+        // (Right takes the focus to it: the pads' and keys' way there, which the page shows nowhere else)
+        if (shown(kRestart)) out.push_back({Key::Right, "Restart now"});
     }
     if (!mState.dir.empty()) out.push_back({Key::Compare, "Open the mods folder"});
     out.push_back({Key::Preview, "Refresh the list"});
