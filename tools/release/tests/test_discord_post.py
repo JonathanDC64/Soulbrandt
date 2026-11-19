@@ -105,6 +105,23 @@ class Split(unittest.TestCase):
         pieces = d.split_text("word " * 3000, 1000)
         self.assertTrue(all(len(p) <= 1000 for p in pieces))
 
+    def test_heading_moves_with_its_section(self):
+        # The first section nearly fills a piece: the second one's heading would fit, its list wouldn't.
+        text = "**One**\n\n" + "x" * 900 + "\n\n**Two**\n\n" + "\n".join(f"• item {j}" for j in range(20))
+        pieces = d.split_text(text, 1000)
+        self.assertEqual(len(pieces), 2)
+        self.assertFalse(pieces[0].endswith("**Two**"))
+        self.assertTrue(pieces[1].startswith("**Two**\n\n• item 0"))
+        self.assertEqual("".join(text.split()), "".join("".join(pieces).split()))
+
+    def test_heading_moves_before_a_long_list(self):
+        # The next section is longer than a piece, so it is split by lines; its heading still leads.
+        text = "x" * 950 + "\n\n**Two**\n\n" + "\n".join(f"• item {j} " + "y" * 40 for j in range(40))
+        pieces = d.split_text(text, 1000)
+        self.assertTrue(all(len(p) <= 1000 for p in pieces))
+        self.assertTrue(all(not p.endswith("**Two**") for p in pieces))
+        self.assertTrue(pieces[1].startswith("**Two**\n\n• item 0"))
+
 
 class Messages(unittest.TestCase):
     def check_limits(self, msgs):
