@@ -1226,6 +1226,15 @@ des::seamless::Status standin_host(bool open = true) {
     return s;
 }
 
+// Mods from the stand-in folder (its mods on, none in this run: a restart waits), the focus on Restart now (a page's),
+// and with ask its question as in the game; host: as the host of a co-op session.
+void open_mods_restart(bool ask, bool host) {
+    if (host) des::seamless::set_test_status(standin_host());
+    open_mods(true, "", false);
+    if (auto* page = dynamic_cast<ui::ModsPage*>(menu_shell().page())) page->focus_restart();
+    if (ask) ui::menu::restart_for_mods();
+}
+
 // A made-up guest, connected (or its connection lost); or still connecting, its network and the host's in the way.
 des::seamless::Status standin_guest(bool lost, bool connecting = false) {
     des::seamless::Status s;
@@ -1595,6 +1604,7 @@ int main(int argc, char** argv) {
     // Trophies and Mods, as Alpha UI shows them (their windows).
     pages.push_back({"trophies", 1280, 720, false, 1.f, false, [] { open_trophies(true, 1); }, {}});
     pages.push_back({"mods", 1280, 720, false, 1.f, false, [] { open_mods(true, "", false); }, {}});
+    pages.push_back({"mods-restart", 1280, 720, false, 1.f, false, [] { open_mods_restart(true, false); }, {}});
     // Change Buttons as Alpha UI shows it (its window).
     pages.push_back({"controls", 1280, 720, false, 1.f, false, [] { open_controls(false, 0, 0, false, false); }, {}});
     // Notes over the game: a warning, a trophy, and the menu hint.
@@ -1687,6 +1697,13 @@ int main(int argc, char** argv) {
                          in_band([] { open_mods(true, "Texture pack 2", false); }), {}});
         pages.push_back({"des-mods-help", 1280, 720, false, 1.f, false, in_band([] { open_mods(true, "", true); }), {}});
         pages.push_back({"des-mods-empty", 1280, 720, false, 1.f, false, in_band([] { open_mods(false, "", false); }), {}});
+        // Restart now with the focus, its question, and the question as the host of a co-op session.
+        pages.push_back({"des-mods-restart", 1280, 720, false, 1.f, false,
+                         in_band([] { open_mods_restart(false, false); }), {}});
+        pages.push_back({"des-mods-restart-ask", 1280, 720, false, 1.f, false,
+                         in_band([] { open_mods_restart(true, false); }), {}});
+        pages.push_back({"des-mods-restart-host", 1280, 720, false, 1.f, false,
+                         in_band([] { open_mods_restart(true, true); }), {}});
         // Change Buttons as a page over Settings: the gamepad, the keys (the second box of Attack chosen), the keys
         // waiting for Lock on's first input, Help, and Restore at the end of the gamepad's rows.
         pages.push_back({"des-controls", 1280, 720, false, 1.f, false,
