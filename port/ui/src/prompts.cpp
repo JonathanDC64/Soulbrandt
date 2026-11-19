@@ -11,7 +11,7 @@ constexpr int kKeys = static_cast<int>(Key::Count);
 constexpr Art button(std::string_view name) { return {Art::Is::Button, name, 0}; }
 constexpr Art dpad(int ways) { return {Art::Is::Dpad, {}, ways}; }
 constexpr Art key(int vk, std::string_view cap = {}) { return {Art::Is::Key, cap, vk}; }
-constexpr int kUpDown = 1 | 4, kLeftRight = 2 | 8;   // the D-pad's ways (Art::code)
+constexpr int kUpDown = 1 | 4, kLeftRight = 2 | 8, kRight = 2;   // the D-pad's ways (Art::code)
 
 // The virtual-key codes of the menus' keys (menu_input.cpp's map: the same keys on every platform).
 constexpr int kVkEnter = 0x0D, kVkShift = 0x10, kVkEsc = 0x1B;
@@ -25,29 +25,30 @@ constexpr Glyph kGlyphs[][kKeys] = {
      {"← →", "arrows left-right", {key(kVkLeft), key(kVkRight)}},
      {"Enter", "key", {key(kVkEnter, "Enter")}}, {"Esc", "key", {key(kVkEsc, "Esc")}},
      {"P", "key", {key('P', "P")}}, {"H", "key", {key('H', "H")}}, {"C", "key", {key('C', "C")}},
-     {"Shift", "key", {key(kVkShift, "Shift")}}, {"Q", "key", {key('Q', "Q")}}, {"E", "key", {key('E', "E")}}},
+     {"Shift", "key", {key(kVkShift, "Shift")}}, {"Q", "key", {key('Q', "Q")}}, {"E", "key", {key('E', "E")}},
+     {"→", "arrows right", {key(kVkRight)}}},
     // PlayStation
     {{"↑ ↓", "arrows up-down", {dpad(kUpDown)}}, {"← →", "arrows left-right", {dpad(kLeftRight)}},
      {"✕", "face ps-cross", {button("cross")}}, {"○", "face ps-circle", {button("circle")}},
      {"△", "face ps-triangle", {button("triangle")}}, {"SELECT", "system", {button("select")}},
      {"□", "face ps-square", {button("square")}}, {"R3", "stick", {button("r3")}},
-     {"L1", "shoulder", {button("l1")}}, {"R1", "shoulder", {button("r1")}}},
+     {"L1", "shoulder", {button("l1")}}, {"R1", "shoulder", {button("r1")}}, {"→", "arrows right", {dpad(kRight)}}},
     // Xbox
     {{"↑ ↓", "arrows up-down", {dpad(kUpDown)}}, {"← →", "arrows left-right", {dpad(kLeftRight)}},
      {"A", "face xbox-a", {button("cross")}}, {"B", "face xbox-b", {button("circle")}},
      {"Y", "face xbox-y", {button("triangle")}}, {"View", "system", {button("select")}},
      {"X", "face xbox-x", {button("square")}}, {"RS", "stick", {button("r3")}},
-     {"LB", "shoulder", {button("l1")}}, {"RB", "shoulder", {button("r1")}}},
+     {"LB", "shoulder", {button("l1")}}, {"RB", "shoulder", {button("r1")}}, {"→", "arrows right", {dpad(kRight)}}},
     // Nintendo
     {{"↑ ↓", "arrows up-down", {dpad(kUpDown)}}, {"← →", "arrows left-right", {dpad(kLeftRight)}},
      {"A", "face", {button("cross")}}, {"B", "face", {button("circle")}}, {"Y", "face", {button("triangle")}},
      {"−", "system", {button("select")}}, {"X", "face", {button("square")}}, {"RS", "stick", {button("r3")}},
-     {"L", "shoulder", {button("l1")}}, {"R", "shoulder", {button("r1")}}},
+     {"L", "shoulder", {button("l1")}}, {"R", "shoulder", {button("r1")}}, {"→", "arrows right", {dpad(kRight)}}},
     // Steam Deck
     {{"↑ ↓", "arrows up-down", {dpad(kUpDown)}}, {"← →", "arrows left-right", {dpad(kLeftRight)}},
      {"A", "face", {button("cross")}}, {"B", "face", {button("circle")}}, {"Y", "face", {button("triangle")}},
      {"View", "system", {button("select")}}, {"X", "face", {button("square")}}, {"R3", "stick", {button("r3")}},
-     {"L1", "shoulder", {button("l1")}}, {"R1", "shoulder", {button("r1")}}},
+     {"L1", "shoulder", {button("l1")}}, {"R1", "shoulder", {button("r1")}}, {"→", "arrows right", {dpad(kRight)}}},
 };
 static_assert(std::size(kGlyphs) == static_cast<size_t>(Device::SteamDeck) + 1, "a row per device");
 

@@ -6,6 +6,7 @@
 
 #include "modal.hpp"
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -25,6 +26,12 @@ void open_host();
 // The warning before Host or Join while mods are on (names: as the Mods screens show them); then runs on "Play with
 // mods" (or at once when the player ticked it away for these mods before). For the Co-op window, and its test pages.
 void open_mods_warning(const std::vector<std::string>& names, void (*then)());
+// Before a restart from the Mods or Settings screens (menu_pages.cpp): in seamless co-op, when the mods on at the next
+// start are another set than this session's, the same warning first (Back: no restart), so a guest doesn't rejoin
+// and a host doesn't host again on what was accepted for the old set. `restart` then gets what to set for the new
+// game (DES_SEAMLESS_MODS_OK: the mods accepted, or none); at once, with nothing to set, out of co-op or with the
+// same set.
+void before_restart(std::function<void(const std::vector<std::string>&)> restart);
 void open_join();
 void copy_code();
 bool no_code();

@@ -225,6 +225,17 @@ std::vector<TabDesc> make_tabs() {
                 "motion, and moves the frame rate to one your display fits (60 becomes 72 at 144 Hz). G-Sync / "
                 "FreeSync needs a display with it, turned on in your graphics driver too. Off can tear, but shows more "
                 "fps than the refresh rate."),
+            // (drawn by this UI over the game: perf_overlay.hpp)
+            own_setting(choice("Frame rate counter", "fps_counter",
+                {{"0", "Off"}, {"1", "Frame rate"}, {"2", "Frame rate and frame times"}},
+                "Shows the game's frame rate at the top of the screen, to see how a mod or a setting runs. Frame times "
+                "adds a graph of the last 120 frames, with a line at the frame time Frame rate allows (with Unlocked, "
+                "a typical frame's); a frame that came late shows in amber. The 1% low is the frame rate of the "
+                "slowest 1% of the frames of the last 10 seconds, so a load shows in it for a while.")),
+            own_setting(choice("Counter position", "fps_counter_at",
+                {{"", "Top right"}, {"centre", "Top centre"}, {"left", "Top left"}},
+                "Where the frame rate counter sits. Top right is above the area name; Top left covers the HUD's bars "
+                "unless you moved them. If it covers a part of the HUD, try Top centre.")),
         }},
     }});
 

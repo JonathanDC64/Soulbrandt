@@ -434,6 +434,22 @@ Pacing pacing_for(int fps, int cut, Sync sync)
 
 Pacing s_paced;   /* as applied (the backend's and the clock's defaults to start) */
 
+/* The frame rate the pacing aims at, in mHz, for the frame rate counter's line (des_frame_target_mhz): 60 mode flips
+ * at most once a vblank, 30 mode (the game's own) once every two. 0 when nothing caps it (unlocked: a 1 kHz vblank). */
+std::atomic<int> s_target_mhz{kPs3VblankMhz / 2};
+
+int pacing_target_mhz(const Pacing& p)
+{
+    static const int start = [] {   /* the vblank with none set: VBLANK_MHZ given at start, else the PS3's */
+        const char* v = getenv("VBLANK_MHZ");
+        const int mhz = v ? atoi(v) : 0;
+        return mhz > 0 ? mhz : kPs3VblankMhz;
+    }();
+    const int vblank = p.vblank_mhz > 0 ? p.vblank_mhz : start;
+    if (vblank >= kFpsUnlocked * 1000) return 0;
+    return p.mode60 == 1 ? vblank : vblank / 2;
+}
+
 void pacing_apply(const Pacing& p, uint32_t obj, Sync sync)
 {
     if (p.mode60 >= 0 && p.mode60 != s_paced.mode60) vm_write8(obj + kFlipMode60, uint8_t(p.mode60));
@@ -502,7 +518,9 @@ void fps_on_flip_request()
     const Sync sync = sync_wanted();
     const uint32_t obj = vm_read32(DES_AT(kFlipModeObj));
     if (!obj) {
-        pacing_apply(pacing_for(0, 0, sync), obj, sync);
+        const Pacing p = pacing_for(0, 0, sync);
+        pacing_apply(p, obj, sync);
+        s_target_mhz.store(pacing_target_mhz(p), std::memory_order_relaxed);
         return;
     }
     /* A change of DES_FPS takes effect at the next flip request: the mode
@@ -549,6 +567,7 @@ void fps_on_flip_request()
     }
     const Pacing p = pacing_for(s_fps, cut, sync);
     pacing_apply(p, obj, sync);
+    s_target_mhz.store(pacing_target_mhz(p), std::memory_order_relaxed);
     vrr_note(sync);
     if (!s_fps) return;
     /* Under even frames a frame is shown n refreshes after the last, or 2n
@@ -733,10 +752,28 @@ void frame_log()
  * camera's updates by them. */
 std::atomic<unsigned> s_flips{0};
 
+/* The game's frames for the frame rate counter (port/ui/src/perf_overlay.cpp): when each flip request came, in
+ * microseconds on the steady clock, the last kFrameTimes of them. The time between two is the frame's time, as the
+ * game's frame step measures it (fps_on_flip_request). The flipping thread writes them; other threads take them
+ * with des_frame_count and des_frame_at_us. */
+constexpr uint64_t kFrameTimes = 4096;
+std::atomic<uint64_t> s_frame_at[kFrameTimes];
+std::atomic<uint64_t> s_frame_count{0};
+
+void note_frame()
+{
+    const auto now = std::chrono::steady_clock::now().time_since_epoch();
+    const uint64_t n = s_frame_count.load(std::memory_order_relaxed);
+    s_frame_at[n % kFrameTimes].store(uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(now).count()),
+                                      std::memory_order_relaxed);
+    s_frame_count.store(n + 1, std::memory_order_release);
+}
+
 void preview_turn_rate();
 
 void on_flip_request()
 {
+    note_frame();
     des_report_flip_hook();   /* (a test knob: DES_HANG_AT_FRAME) */
     des_aspect_poll();        /* DES_ASPECT, DES_HUD changed while playing */
     s_flips.fetch_add(1, std::memory_order_relaxed);
@@ -1131,6 +1168,20 @@ extern "C" float des_frame_step(void)
 }
 
 extern "C" int des_cutscene_playing(void) { return cutscene_playing() ? 1 : 0; }
+
+/* For the frame rate counter (port/ui/src/perf_overlay.cpp), on any thread: the game's frames so far (its flip
+ * requests); when frame n came, in microseconds on the steady clock (0 for one not come yet, or one too old to be
+ * kept); and the frame rate the pacing aims at, in mHz (0: none, unlocked). */
+extern "C" uint64_t des_frame_count(void) { return s_frame_count.load(std::memory_order_acquire); }
+
+extern "C" uint64_t des_frame_at_us(uint64_t n)
+{
+    const uint64_t have = s_frame_count.load(std::memory_order_acquire);
+    if (n >= have || have - n > kFrameTimes - 64) return 0;   /* (a margin: the slot may be about to be reused) */
+    return s_frame_at[n % kFrameTimes].load(std::memory_order_relaxed);
+}
+
+extern "C" int des_frame_target_mhz(void) { return s_target_mhz.load(std::memory_order_relaxed); }
 
 /* For des_route.cpp's continue step: DES_AUTO_CONTINUE's presses again, from
  * the title back into the last save, until the next level's script opens. */

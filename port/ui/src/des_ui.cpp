@@ -32,6 +32,7 @@
 #include "net_notices.hpp"
 #include "osk_window.hpp"
 #include "overlay.hpp"
+#include "perf_overlay.hpp"
 #include "platform.hpp"
 #include "portable.hpp"
 #include "prelaunch.hpp"
@@ -42,6 +43,7 @@
 #include "report.hpp"
 #include "settings.hpp"
 #include "setup_engine.hpp"
+#include "setup_folder.hpp"
 #include "setup_screens.hpp"
 #include "setup_window.hpp"
 #include "players_window.hpp"
@@ -61,6 +63,7 @@
 #include <atomic>
 #include <cctype>
 #include <chrono>
+#include <ctime>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -1134,7 +1137,8 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
 
     // A menu of the game with the pointer over it (game_menu.cpp) keeps the UI running too.
     const bool gameMenu = ui::game_menu::poll();
-    // Fast path: nothing showing, nothing queued (input, a trophy pop-up), no chord pressed.
+    // Fast path: nothing showing, nothing queued (input, a trophy pop-up), no chord pressed, and the frame rate counter
+    // off.
     const unsigned mask = sChordMask;
     const bool chordDown = (g_pad0_buttons & mask) == mask;
     const bool chordEdge = chordDown && !sChordWasDown;
@@ -1150,7 +1154,7 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
         !sOskPending.load(std::memory_order_acquire) && !ui::trophies::pending() && !ui::net_notices::pending() &&
         !sHangNotice.load(std::memory_order_relaxed) &&
         !sCustomServerNotice.load(std::memory_order_relaxed) && !sModsNotice.load(std::memory_order_relaxed) &&
-        !ui::report::saved_notice_pending()) {
+        !ui::report::saved_notice_pending() && ui::perf::mode() == ui::perf::Mode::Off) {
         return;
     }
 
@@ -1476,6 +1480,28 @@ void work_in_exe_folder() {
                          (cwd / "gamedata").string().c_str());
 }
 
+// The game folder whose saves this start uses, noted in the player's data folder (setup_folder.hpp's game-folders.txt,
+// docs/164 section 5), so that a later version unpacked into another folder can offer to copy these saves. Only a
+// player's start, whose saves are the program folder's own gamedata (work_in_exe_folder): not a test run with a save
+// root or a working folder of its own, nor one that keeps no data folder. Nothing else is written; a failure is only
+// logged.
+void note_game_folder() {
+    const std::filesystem::path data = ui::report::data_dir();
+    if (data.empty() || std::getenv("PS3_SAVEDATA_ROOT") || std::getenv("PS3_HDD0_ROOT") || env_on("DES_KEEP_CWD"))
+        return;
+    std::error_code ec;
+    const std::filesystem::path here = std::filesystem::current_path(ec);
+    if (ec || !ui::setup::same_folder(here, ui::report::program_dir())) return;
+    const std::time_t now = std::time(nullptr);
+    char when[32] = "";
+    if (const std::tm* t = std::gmtime(&now)) std::strftime(when, sizeof when, "%Y-%m-%dT%H:%M:%SZ", t);
+    std::string why;
+    if (ui::setup::remember_game_folder(data, here, when, why))
+        std::fprintf(stderr, "[setup] launch: this game folder is noted in %s\n", ui::setup::kGameFoldersFile);
+    else
+        std::fprintf(stderr, "[setup] launch: this game folder is not noted (%s)\n", why.c_str());
+}
+
 }  // namespace
 
 extern "C" int des_ui_launch(int* argc, char*** argv) {
@@ -1498,6 +1524,7 @@ extern "C" int des_ui_launch(int* argc, char*** argv) {
         return -2;
     }
     work_in_exe_folder();
+    note_game_folder();
     // What setup found of the disc copy, and whether the player went on anyway (tools/setup/des_setup/disc.py): a copy
     // that lacks files the game reads crashes later, far from the cause (issue #418).
     {

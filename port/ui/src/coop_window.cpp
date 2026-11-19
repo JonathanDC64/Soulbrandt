@@ -8,6 +8,7 @@
 #include "app.hpp"
 #include "crash_report.hpp"
 #include "event.hpp"
+#include "menu_model.hpp"
 #include "mods.hpp"
 #include "osk_window.hpp"
 #include "platform.hpp"
@@ -22,6 +23,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <functional>
 #include <string>
 
 namespace ui {
@@ -541,6 +543,34 @@ void open_mods_warning(const std::vector<std::string>& names, void (*then)()) {
             std::fprintf(stderr, "[coop] mods on, accepted: %s\n", list.c_str());
             if (then) then();
         });
+}
+
+// The restart, for after the warning: the UI thread's only, one at a time (the warning is modal).
+static std::function<void(const std::vector<std::string>&)> sRestart;
+
+void before_restart(std::function<void(const std::vector<std::string>&)> restart) {
+    if (co::mode() == co::Mode::Off) {
+        restart({});
+        return;
+    }
+    std::vector<std::string> session;
+    for (const mods::Mod& m : mods::in_use()) session.push_back(m.name);
+    const std::vector<std::string> next = mods_on_next();
+    if (!menu::other_mods(session, next)) {
+        restart({});  // (what was accepted still holds)
+        return;
+    }
+    if (next.empty()) {
+        restart({"DES_SEAMLESS_MODS_OK="});
+        return;
+    }
+    ui::sModsOk.clear();
+    sRestart = std::move(restart);
+    open_mods_warning(next, [] {
+        const auto go = std::move(sRestart);
+        sRestart = {};
+        if (go) go({"DES_SEAMLESS_MODS_OK=" + ui::sModsOk});
+    });
 }
 
 void open_join() {

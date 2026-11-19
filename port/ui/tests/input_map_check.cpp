@@ -212,6 +212,10 @@ void check_prompts() {
           "A is where Cross is, on an Xbox pad and a Nintendo pad");
     check(art(Device::PlayStation, Key::Change, 0).is == Art::Is::Dpad && art(Device::PlayStation, Key::Change, 0).code == 10,
           "Change: the D-pad's left and right");
+    const Art padRight = art(Device::Xbox, Key::Right, 0), keyRight = art(Device::Keyboard, Key::Right, 0);
+    check(padRight.is == Art::Is::Dpad && padRight.code == 2 && keyRight.is == Art::Is::Key && keyRight.code == 0x27 &&
+              art(Device::Keyboard, Key::Right, 1).is == Art::Is::None,
+          "Right: the D-pad's right alone, the right arrow key alone");
 
     // The device: the Button icons row first, then what was used last (PAD_GLYPH_*).
     check(ui::prompts::resolve("xbox", 1) == Device::Xbox, "Button icons: Xbox, whatever was used");

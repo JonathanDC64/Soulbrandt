@@ -13,6 +13,13 @@
 #include <utility>
 
 namespace ui {
+namespace {
+
+// The mods on as a Mods screen last left the list (ModsState::waiting), once one has read it. The UI thread's only.
+std::vector<std::string> sListedOn;
+bool sListed = false;
+
+}  // namespace
 
 std::vector<std::string> mods_good_to_know() {
     // (the keyboard's: Page Up and Page Down move a mod on both screens; Q and E only on a look's page)
@@ -34,6 +41,15 @@ std::vector<std::string> mods_good_to_know() {
 
 bool ModsState::fixed() {
     return settings::pinned("DES_MODS") || mods::from_environment();
+}
+
+bool ModsState::waiting(std::string* on) {
+    if (!sListed || fixed()) return false;
+    std::vector<std::string> used;
+    for (const mods::Mod& m : mods::in_use()) used.push_back(m.name);
+    if (sListedOn == used) return false;
+    if (on) *on = mods::join(sListedOn, "|");
+    return true;
 }
 
 bool ModsState::in_use(const std::string& name) {
@@ -65,6 +81,9 @@ void ModsState::refresh_overlaps() {
         if (m.usable() && m.enabled) on.push_back(m);
     overlaps = on.size() > 1 ? mods::overlaps(on) : std::vector<mods::Overlap>{};
     generation++;
+    sListedOn.clear();  // (every change comes here: what the F1 menu's closing compares)
+    for (const mods::Mod& m : on) sListedOn.push_back(m.name);
+    sListed = true;
 }
 
 std::size_t ModsState::usable() const {

@@ -250,6 +250,106 @@ game-glow[open] {
     opacity: 1;
 }
 
+/* The game's picture in the window (perf_overlay.cpp sets its place): the frame rate counter keeps to the picture's
+   corner, by the HUD, when the window has another shape than the picture. */
+perf-area {
+    position: absolute;
+    display: block;
+}
+
+/* The frame rate counter (perf_overlay.hpp): a small dark box in the picture's top right corner, above the HUD's area
+   name. With frame times (perf.times) the 1% low goes under the rate, and the graph of the last 120 frames and the
+   frame time at its line beside them. The graph draws its line in its colour, its columns in the same, fainter, and
+   the part of a late frame's column above the line in its image-color. */
+perf {
+    position: absolute;
+    top: 8dp;
+    right: 12dp;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 10dp;
+    padding: 4dp 9dp;
+    border-width: 1dp;
+    border-color: rgba(var(--color-border-rgb), 35%);
+    border-radius: var(--radius-small);
+    background-color: rgba(var(--color-surface-rgb), 82%);
+    font-family: var(--font-family-body);
+    font-weight: normal;
+    color: var(--color-text);
+}
+
+perf.off {
+    display: none;
+}
+
+/* (Settings' Counter position: the middle or the left of the top edge) */
+perf.centre {
+    right: auto;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+perf.left {
+    right: auto;
+    left: 12dp;
+}
+
+perf-numbers {
+    display: block;
+    text-align: right;
+    white-space: nowrap;
+}
+
+perf-rate {
+    display: block;
+    font-size: 14dp;
+    line-height: 24dp;
+}
+
+perf-fps {
+    font-size: 21dp;
+}
+
+perf-unit {
+    margin-left: 4dp;
+    color: rgba(var(--color-text-rgb), 70%);
+}
+
+perf-low,
+perf-scale {
+    display: none;
+    font-size: 14dp;
+    line-height: 16dp;
+    white-space: nowrap;
+    color: rgba(var(--color-text-rgb), 70%);
+}
+
+frame-graph {
+    display: none;
+    width: 180dp;
+    height: 36dp;
+    border-bottom-width: 1dp;
+    border-bottom-color: rgba(var(--color-border-rgb), 35%);
+    color: rgba(var(--color-accent-rgb), 75%);
+    image-color: var(--color-warning);
+}
+
+perf.times perf-low,
+perf.times perf-scale,
+perf.times frame-graph {
+    display: block;
+}
+
+/* (room for "1% low" and three figures, and for "33.4 ms", so the graph holds still as the figures change) */
+perf.times perf-numbers {
+    min-width: 74dp;
+}
+
+perf.times perf-scale {
+    min-width: 48dp;
+}
+
 @media (max-height: 640dp) {
     toast {
         top: 20dp;

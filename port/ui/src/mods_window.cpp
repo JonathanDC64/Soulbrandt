@@ -1,15 +1,17 @@
 // The Mods window (mods.hpp, docs/143). Laid out like the Trophies window (Dusklight's windows, CC0, by way of
 // FFCCEOT-Recomp): one tab, a summary over one list. Everything is in that list, so Up and Down (or the mouse) reach
-// it all: the two buttons, a card per mod, the folders that need attention, then a few lines worth knowing. Pressing
+// it all: the buttons, a card per mod, the folders that need attention, then a few lines worth knowing. Pressing
 // a mod's card (Cross, Enter or a click) turns it on or off; pressing a card whose files only need moving moves them.
 // A card's arrows (or L1 and R1, Page Up and Page Down) move the mod up or down the list: the higher one wins when two
 // change the same file. Both go to the mods folder's order file at once (mods.hpp). The mods folder is read when the
-// window opens and on "Refresh the list". Alpha UI's; the mods folder is kept in ModsState (mods_state.hpp), as for the
-// DeS UI page (mods_page.cpp).
+// window opens and on "Refresh the list". While the list differs from what this session runs with, Restart now comes
+// first among the buttons (menu_pages.hpp's restart_for_mods). Alpha UI's; the mods folder is kept in ModsState
+// (mods_state.hpp), as for the DeS UI page (mods_page.cpp).
 #include "mods_window.hpp"
 
 #include "app.hpp"
 #include "button.hpp"
+#include "menu_pages.hpp"
 #include "mods.hpp"
 #include "mods_state.hpp"
 #include "pane.hpp"
@@ -158,7 +160,8 @@ private:
     unsigned mRendered = 0;
 };
 
-// Buttons side by side; Left and Right move between them.
+// Buttons side by side; Left and Right move between them (past one that is off: Restart now with nothing to restart
+// for).
 class ModsActions : public FluentComponent<ModsActions> {
 public:
     explicit ModsActions(Rml::Element* parent) : FluentComponent(append(parent, "mods-actions")) {
@@ -187,14 +190,20 @@ ModsWindow::ModsWindow()
 }
 
 void ModsWindow::build_tab(Rml::Element* content) {
+    mRestart = nullptr;  // (the last tab's went with it)
     mSummary = append(content, "mods-summary");
-    render_summary();
 
     auto& list = add_child<Pane>(content, Pane::Type::Uncontrolled);
     const auto state = mState;
     state->cards.assign(state->all.size(), nullptr);
 
     auto& actions = list.add_child<ModsActions>();
+    mRestart = &actions.add("Restart now").on_pressed([] {
+        play_sound(kSoundClick);
+        menu::restart_for_mods();
+    });
+    mRestart->root()->SetClass("restart", true);
+    render_summary();
     if (!state->dir.empty()) {
         actions.add("Open the mods folder").on_pressed([state] {
             play_sound(kSoundClick);
@@ -216,7 +225,7 @@ void ModsWindow::build_tab(Rml::Element* content) {
                            "<empty-step>1. Download a mod and unpack it if it is a .zip, .rar or .7z file.</empty-step>"
                            "<empty-step>2. Press \"Open the mods folder\" and put the mod there, in a folder of its "
                            "own.</empty-step>"
-                           "<empty-step>3. Press \"Refresh the list\", turn the mod on, and restart the game."
+                           "<empty-step>3. Press \"Refresh the list\", turn the mod on, then press \"Restart now\"."
                            "</empty-step></mods-empty>");
     }
 
@@ -251,6 +260,11 @@ void ModsWindow::render_summary() {
     }
     rml += "</summary-text>";
     mSummary->SetInnerRML(rml);
+    if (mRestart) {  // (shown with the note; off, too, so Up, Down, Left and Right pass it)
+        const bool restart = !ModsState::fixed() && s.restart_needed();
+        mRestart->set_disabled(!restart);
+        mRestart->root()->SetClass("none", !restart);
+    }
 }
 
 void ModsWindow::update() {

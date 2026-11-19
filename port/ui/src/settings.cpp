@@ -60,6 +60,8 @@ constexpr Def kDefs[] = {
     {"DES_CUTFPS", "0", Apply::Live},          // des_options.cpp's cutfps_on, read at each flip
     {"DES_MOTION_BLUR", "1", Apply::Live},     // des_motion_blur, read each frame
     {"DES_VSYNC", "1", Apply::Live},           // 1, 0, even, vrr; des_options.cpp sets RSX_VSYNC from it at each flip
+    {"fps_counter", "0", Apply::UiOnly},       // perf_overlay.cpp: 1 = the frame rate in a corner, 2 = with frame times
+    {"fps_counter_at", "", Apply::UiOnly},     // its place on the top edge: "" = the right, "centre", "left"
     {"DES_SKIP_INTRO", "0", Apply::Live},      // 1 = no logos, 2 = the last logo only; read at each logo update
     {"DES_SKIP_INTRO_MOVIE", "0", Apply::Live},  // PS3_SAIL_SKIP_FIRST, read as each movie opens
     {"DES_AUTO_CONTINUE", "0", Apply::Live},   // read at each pad poll, until the first level loads
