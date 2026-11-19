@@ -18,6 +18,7 @@
 
 #include "app.hpp"
 #include "button_icons.hpp"
+#include "coop_window.hpp"
 #include "crash_report.hpp"
 #include "discord_presence.hpp"
 #include "game_menu.hpp"
@@ -50,6 +51,7 @@
 #include "update_window.hpp"
 #include "version.hpp"
 #include "../../des_rsx_route.h"  // the renderer calls below: through rsx_out in a PS3RECOMP_RSX_HAL build
+#include "../../des_seamless.h"
 
 #ifdef _WIN32
 #include <xinput.h>  // (read_xinput)
@@ -689,9 +691,10 @@ void push_documents() {
     ui::push_document(std::make_unique<ui::MenuShell>(), false);
     if (sStartScreen) ui::push_document(std::make_unique<ui::Prelaunch>());
 
-    // DES_UI_OPEN=menu | settings | trophies | mods | players | coop | privacy | osk | setup | setup-run: open one at
-    // startup
-    // (for screenshots and tests; privacy is the note as Settings > Network shows it).
+    // DES_UI_OPEN=menu | settings | trophies | mods | players | coop | coop-host | coop-join | privacy | osk | setup |
+    // setup-run: open one at startup
+    // (for screenshots and tests; privacy is the note as Settings > Network shows it; coop-host and coop-join are
+    // Seamless co-op with Host's or Join's first question over it, as a press opens it: the notice, the mods warning).
     // setup is setup's start screen over the game (docs/88: its own window comes with the split host), with
     // DES_SETUP_GAME's folders to begin with; setup-run runs the setup engine at once, on those folders.
     if (const char* open = std::getenv("DES_UI_OPEN"); open && *open) {
@@ -704,6 +707,11 @@ void push_documents() {
         else if (!std::strcmp(open, "mods")) ui::push_document(ui::menu::screen_alone("Mods"));
         else if (!std::strcmp(open, "players")) ui::push_document(std::make_unique<ui::PlayersWindow>());
         else if (!std::strcmp(open, "coop")) ui::push_document(ui::menu::screen_alone("Seamless co-op"));
+        else if (!std::strcmp(open, "coop-host") || !std::strcmp(open, "coop-join")) {
+            ui::push_document(ui::menu::screen_alone("Seamless co-op"));
+            if (!std::strcmp(open, "coop-host")) ui::coop::open_host();
+            else ui::coop::open_join();
+        }
         else if (!std::strcmp(open, "privacy"))
             ui::push_document(std::make_unique<ui::PrivacyWindow>(ui::PrivacyWindow::Mode::Read));
         else if (!std::strcmp(open, "osk")) open_test_osk();
@@ -1524,8 +1532,9 @@ extern "C" void des_ui_early_init(void) {
     if (sCrashDialog) crash_dialog_env();
     if (!sSetupOnly && ui::settings::net_custom_held()) sCustomServerNotice.store(true);
     // A gameplay mod (settings.cpp's apply_network left the network knobs unset): the network also stays off when
-    // something sets them later, the environment's or the debug console's included.
-    if (!sSetupOnly && ui::mods::gameplay_in_use()) {
+    // something sets them later, the environment's or the debug console's included. Not in seamless co-op, which
+    // mods don't keep off (settings.cpp's apply_seamless): its game goes only between the friends' games.
+    if (!sSetupOnly && ui::mods::gameplay_in_use() && des::seamless::mode() == des::seamless::Mode::Off) {
         ps3_net_lock_offline();
         if (ui::settings::net_mods_held()) sModsNotice.store(true);
     }

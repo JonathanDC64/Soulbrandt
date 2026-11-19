@@ -1199,27 +1199,47 @@ void open_ask(const std::string& which) {
     }
 }
 
-// A made-up host: its router answered, two of four players in and one waiting; the codes are made up.
-des::seamless::Status standin_host() {
+// A made-up host: the server that introduces players has its room, its router answered, two of four players in and
+// one waiting; the codes are made up. With open false, the router opened nothing: the room code alone, and a friend
+// who found the game but couldn't get through.
+des::seamless::Status standin_host(bool open = true) {
     des::seamless::Status s;
     s.mode = des::seamless::Mode::Host;
     s.started = true;
+    s.room_code = "K7Q2M-9XD0R-TB4HW";
     s.code = "7KQ2-M9XD-0RTB-4HWE";
     s.lan_code = "4H2K-PL7Q-ZZ81-C0DE";
-    s.router = "Your router opened port 3658 for co-op.";
-    s.router_done = s.router_ok = true;
+    s.router = open ? "Your router opened port 3658 for co-op." : "Your router didn't answer.";
+    s.router_done = true;
+    s.router_ok = s.show_direct = open;
+    s.intro = open ? "Friends can join with this code: the server tells your games each other's addresses, and they "
+                     "connect directly."
+                   : "Friends can join with this code: the server tells your games each other's addresses, and they "
+                     "connect directly. If a friend can't get through, open port 3658 (TCP and UDP) on your router, or "
+                     "let that friend host.";
+    if (!open)
+        s.stuck = "A friend's game found yours but couldn't get through. Open port 3658 (TCP and UDP) on your router, "
+                  "or let that friend host.";
     s.port = 3658;
     s.players = 2;
     s.waiting = 1;
     return s;
 }
 
-// A made-up guest, connected (or its connection lost).
-des::seamless::Status standin_guest(bool lost) {
+// A made-up guest, connected (or its connection lost); or still connecting, its network and the host's in the way.
+des::seamless::Status standin_guest(bool lost, bool connecting = false) {
     des::seamless::Status s;
     s.mode = des::seamless::Mode::Join;
     s.started = true;
-    s.link = lost ? des::seamless::Status::Link::Lost : des::seamless::Status::Link::Connected;
+    s.link = connecting ? des::seamless::Status::Link::Connecting
+             : lost     ? des::seamless::Status::Link::Lost
+                        : des::seamless::Status::Link::Connected;
+    if (connecting) {
+        s.join = "The host's game was found, but your two networks block a direct connection. The host can open "
+                 "port 3658 (TCP and UDP), one of you can host instead, or one of you can use another network (a "
+                 "phone hotspot rarely helps). Your game keeps trying.";
+        s.join_warn = true;
+    }
     return s;
 }
 
@@ -1588,9 +1608,18 @@ int main(int argc, char** argv) {
     pages.push_back({"crash", 1024, 640, false, 1.f, false, open_crash, {}});
     // Players as Alpha UI shows it (its window), from the made-up list.
     pages.push_back({"players", 1280, 720, false, 1.f, false, [] { open_players(false, 0); }, {}});
-    // Co-op as Alpha UI shows it (its window): not in co-op, and hosting.
+    // Co-op as Alpha UI shows it (its window): not in co-op, hosting (with the port open, and the room code alone),
+    // and joining while the two networks block a direct connection.
     pages.push_back({"coop", 1280, 720, false, 1.f, false, [] { open_coop({}, 0); }, {}});
     pages.push_back({"coop-host", 1280, 720, false, 1.f, false, [] { open_coop(standin_host(), 0); }, {}});
+    pages.push_back({"coop-room", 1280, 720, false, 1.f, false, [] { open_coop(standin_host(false), 0); }, {}});
+    pages.push_back({"coop-joining", 1280, 720, false, 1.f, false,
+                     [] { open_coop(standin_guest(false, true), 0); }, {}});
+    // The warning before Host or Join while mods are on (four made-up mods: two named, +2 more), over Co-op.
+    pages.push_back({"coop-mods", 1280, 720, false, 1.f, false, [] {
+        open_coop({}, 0);
+        ui::coop::open_mods_warning({"Texture Pack", "Rebalance", "Brighter Torches", "Quiet Menus"}, nullptr);
+    }, {}});
     // A question with named answers: Public address, over the host's Co-op.
     pages.push_back({"coop-address", 1280, 720, false, 1.f, false, [] {
         open_coop(standin_host(), 2);
@@ -1684,10 +1713,19 @@ int main(int argc, char** argv) {
         pages.push_back({"des-players", 1280, 720, false, 1.f, false, in_band([] { open_players(false, 0); }), {}});
         pages.push_back({"des-players-down", 1280, 720, false, 1.f, false, in_band([] { open_players(false, 6); }), {}});
         pages.push_back({"des-players-offline", 1280, 720, false, 1.f, false, in_band([] { open_players(true, 0); }), {}});
-        // Co-op as a page: not in co-op, hosting (the focus on New code), joined (its line in the strip, no box) and
-        // a guest whose connection was lost.
+        // Co-op as a page: not in co-op, hosting (the focus on New code; with the port open, and the room code alone),
+        // joining while the two networks block a direct connection (in the box), joined (its line in the strip, no
+        // box) and a guest whose connection was lost.
         pages.push_back({"des-coop", 1280, 720, false, 1.f, false, in_band([] { open_coop({}, 0); }), {}});
         pages.push_back({"des-coop-host", 1280, 720, false, 1.f, false, in_band([] { open_coop(standin_host(), 1); }), {}});
+        pages.push_back({"des-coop-room", 1280, 720, false, 1.f, false,
+                         in_band([] { open_coop(standin_host(false), 1); }), {}});
+        pages.push_back({"des-coop-joining", 1280, 720, false, 1.f, false,
+                         in_band([] { open_coop(standin_guest(false, true), 0); }), {}});
+        pages.push_back({"des-coop-mods", 1280, 720, false, 1.f, false, in_band([] {
+            open_coop({}, 0);
+            ui::coop::open_mods_warning({"Texture Pack", "Rebalance", "Brighter Torches", "Quiet Menus"}, nullptr);
+        }), {}});
         pages.push_back({"des-coop-join", 1280, 720, false, 1.f, false,
                          in_band([] { open_coop(standin_guest(false), 0); }), {}});
         pages.push_back({"des-coop-lost", 1280, 720, false, 1.f, false,

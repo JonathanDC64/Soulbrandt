@@ -53,7 +53,8 @@ std::vector<Action> actions_for(co::Mode mode) {
 std::string guest_line(const co::Status& s) {
     if (s.mode != co::Mode::Join || !s.started) return "";
     switch (s.link) {
-    case co::Status::Link::Connecting: return "Reaching the host's game...";
+    case co::Status::Link::Connecting:   // (a problem goes in the box: it is more than a line)
+        return s.join_warn ? "" : !s.join.empty() ? s.join : "Reaching the host's game...";
     case co::Status::Link::Connected: return "You're connected to the host's game.";
     case co::Status::Link::Full: return "The host's game is full. You join as soon as a place frees up.";
     default: return "";
@@ -65,12 +66,14 @@ std::string info_rml(const co::Status& s) {
     if (s.mode == co::Mode::Off)
         return "<info-line>One of you hosts. The others join with the host's invite code and follow the host from "
                "area to area.</info-line>"
-               "<info-line>Co-op uses its own characters, kept apart from your normal ones. No online game server is "
-               "used: only your friends' games and yours. A host whose router can't tell its internet address asks "
-               "Google's STUN server for it.</info-line>";
+               "<info-line>Co-op uses its own characters, kept apart from your normal ones. This project's server only "
+               "introduces your games to each other: what you play goes straight between them. A host whose router "
+               "can't tell its internet address asks Google's STUN server for it.</info-line>";
     if (!s.started) return "<info-line class=\"warning\">Co-op did not start: " + escape(s.error) + ".</info-line>";
     if (s.mode == co::Mode::Join) {
         if (!guest_line(s).empty()) return "";
+        if (s.link == co::Status::Link::Connecting)
+            return "<info-line class=\"warning\">" + escape(s.join) + "</info-line>";
         return "<info-line class=\"warning\">The connection to the host's game was lost. Your game takes you back to "
                "your own world and keeps trying.</info-line><info-rule/>"
                "<info-line>If the host hosts again, its code is a new one: leave co-op, then join with the new code."
@@ -80,16 +83,30 @@ std::string info_rml(const co::Status& s) {
     if (s.code_spent)
         b += "<info-line class=\"warning\">Many wrong codes were tried, so your code no longer lets anyone in. Make a "
              "new code and send it to your friends.</info-line><info-rule/>";
-    if (!s.code.empty())
-        b += "<info-label>Your invite code</info-label><info-code>" + escape(s.code) + "</info-code>"
+    if (!s.room_code.empty())
+        b += "<info-head><info-label>Your invite code</info-label>" + coop::copy_button("room") + "</info-head>"
+             "<info-code>" + escape(s.room_code) + "</info-code>"
+             "<info-line>Send it to your friends. Anyone with this code can join you.</info-line>";
+    if (!s.intro.empty())
+        b += std::string(s.intro_trouble ? "<info-line class=\"warning\">" : "<info-line>") + escape(s.intro) +
+             "</info-line>";
+    if (!s.stuck.empty()) b += "<info-line class=\"warning\">" + escape(s.stuck) + "</info-line>";
+    if (!s.room_code.empty() || !s.intro.empty()) b += "<info-rule/>";
+    if (s.show_direct && !s.code.empty())
+        b += std::string("<info-head><info-label>") +
+             (s.room_code.empty() ? "Your invite code" : "Or the direct code") + "</info-label>" +
+             coop::copy_button("direct") + "</info-head><info-code>" + escape(s.code) + "</info-code>"
              "<info-line>Send it to your friends. Don't post it in public: it holds your internet address."
              "</info-line><info-rule/>";
-    b += "<info-line>" + escape(s.router.empty() ? "Asking your router to open the port..." : s.router) +
-         "</info-line>";
-    if (!s.lan_code.empty() && (s.code.empty() || s.lan_code != s.code))
-        b += "<info-line>On your own network: <info-lan>" + escape(s.lan_code) + "</info-lan></info-line>";
-    b += "<info-rule/><info-line>Players: " + std::to_string(s.players > 0 ? s.players : 1) + " of " +
-         std::to_string(s.max_players) + " (Settings &gt; Network).";
+    if (s.show_direct)
+        b += "<info-line>" + escape(s.router.empty() ? "Asking your router to open the port..." : s.router) +
+             "</info-line>";
+    if (!s.lan_code.empty() && (s.code.empty() || s.lan_code != s.code) && s.show_direct)
+        b += "<info-head><info-line>On your own network: <info-lan>" + escape(s.lan_code) + "</info-lan></info-line>" +
+             coop::copy_button("lan") + "</info-head>";
+    b += std::string(s.show_direct ? "<info-rule/>" : "") + "<info-line>Players: " +
+         std::to_string(s.players > 0 ? s.players : 1) + " of " + std::to_string(s.max_players) +
+         " (Settings &gt; Network).";
     if (s.waiting > 0) b += " Waiting to join: " + std::to_string(s.waiting) + ".";
     return b + "</info-line>";
 }
@@ -128,6 +145,9 @@ void CoopPage::build() {
         }));
     }
     mInfo = append(page, "coop-info");
+    mListeners.push_back(std::make_unique<ScopedEventListener>(mInfo, Rml::EventId::Click, [this](Rml::Event& e) {
+        if (coop::copy_pressed(e.GetTargetElement())) mNext = {};  // (a code's Copy button: "Copied" at once)
+    }));
     mInfoShown = "\x01";  // (none shown yet: a guest's "" too sets the box's class)
     mFocus = std::clamp(mFocus, 0, std::max(0, static_cast<int>(mActions.size()) - 1));
     mFocusShown = -1;
@@ -145,6 +165,10 @@ void CoopPage::refresh() {
         mInfoShown = rml;
         mInfo->SetInnerRML(rml);
         set_class(mInfo, "none", rml.empty());
+        // Both codes, the router's line and the one for this network (a public address, or an open port): closer
+        // together, so the box still ends above the prompts.
+        set_class(mInfo, "long",
+                  s.mode == co::Mode::Host && !s.room_code.empty() && s.show_direct && !s.code.empty());
     }
     mLine = guest_line(s);
     const std::vector<Action> list = actions_for(s.mode);

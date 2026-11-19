@@ -7,6 +7,12 @@
 #include "modal.hpp"
 
 #include <memory>
+#include <string>
+#include <vector>
+
+namespace Rml {
+class Element;
+}
 
 namespace ui {
 
@@ -16,12 +22,20 @@ std::unique_ptr<Modal> make_coop_window();
 // or (copy_code) puts the invite code on the clipboard; no_code: there is none to copy yet.
 namespace coop {
 void open_host();
+// The warning before Host or Join while mods are on (names: as the Mods screens show them); then runs on "Play with
+// mods" (or at once when the player ticked it away for these mods before). For the Co-op window, and its test pages.
+void open_mods_warning(const std::vector<std::string>& names, void (*then)());
 void open_join();
 void copy_code();
 bool no_code();
 void open_new_code();
 void open_public_address();
 void open_leave();
+// The small Copy button beside each code shown (kind: "room", "direct" or "lan"), for the window's body and the
+// page's box: its RML, "Copied" for 2 s after a press. copy_pressed takes a click in that body or box: when it landed
+// on one of these buttons, that code goes on the clipboard and it returns true (draw the body or box again).
+std::string copy_button(const char* kind);
+bool copy_pressed(Rml::Element* target);
 }  // namespace coop
 
 }  // namespace ui
