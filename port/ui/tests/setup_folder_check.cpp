@@ -3,7 +3,8 @@
 // <usual>/setup-folder.txt, a portable install's build in the shared folder from before, the usual folder. A choice is
 // kept in full, or relative in a portable install, and goes when the usual folder is chosen again. A folder picked
 // that holds other things gets a folder of setup's own in it, and the program's own folders are refused. And how
-// setup's own files can be missing beside the program (issue #431).
+// setup's own files can be missing beside the program (issue #431). And game-folders.txt, the game folders
+// the game ran from (docs/164 section 5).
 //
 // Each case runs in made-up folders under the system's temporary folder, removed at the end. Prints one line a case
 // and "setup_folder_check: N passed, M failed"; exit 1 on a failure. The same on every platform (CI runs it on Windows
@@ -286,6 +287,65 @@ int main() {
         write(t / "temp" / "x" / "setup" / "tools" / "setup" / "des_setup" / "__init__.py", "\n");
         return all({gone(engine_gone(t / "prog", t / "temp"), EngineGone::Incomplete),
                     gone(engine_gone(t / "temp" / "x", t / "temp"), EngineGone::Incomplete)});
+    });
+
+    // ---- The game folders the game ran from (game-folders.txt, docs/164 section 5) ----
+    run("game_folders_newest_first", [](const fs::path& t) {
+        std::string text = game_folders_text("", t / "Game A", "2026-11-19T10:00:00Z");
+        text = game_folders_text(text, t / "Game B", "2026-11-19T11:00:00Z");
+        const auto got = game_folders(text);
+        if (got.size() != 2) return "2 folders, not " + std::to_string(got.size());
+        if (text.find("2026-11-19T11:00:00Z\t") == std::string::npos) return std::string("no stamp");
+        return all({same("newest", got[0], t / "Game B"), same("older", got[1], t / "Game A")});
+    });
+    run("game_folders_once_each", [](const fs::path& t) {
+        std::string text = game_folders_text("", t / "Game A", "1");
+        text = game_folders_text(text, t / "Game B", "2");
+        text = game_folders_text(text, t / "Game A" / ".", "3");   // (A again, written another way: up to the top)
+        const auto got = game_folders(text);
+        if (got.size() != 2) return "2 folders, not " + std::to_string(got.size());
+        if (text.find("3\t") == std::string::npos || text.find("1\t") != std::string::npos)
+            return std::string("A's old stamp kept");
+        return all({same("newest", got[0], t / "Game A"), same("older", got[1], t / "Game B")});
+    });
+    run("game_folders_kept_at_most", [](const fs::path& t) {
+        std::string text;
+        for (int i = 0; i < kGameFoldersKept + 5; ++i)
+            text = game_folders_text(text, t / ("Game " + std::to_string(i)), "x");
+        const auto got = game_folders(text);
+        if (int(got.size()) != kGameFoldersKept) return "kept " + std::to_string(got.size());
+        return same("newest", got[0], t / ("Game " + std::to_string(kGameFoldersKept + 4)));
+    });
+    run("game_folders_bad_lines_go", [](const fs::path& t) {
+        const std::string old = "# a comment\r\nnot a line\r\n\tno stamp\r\nstamp\trelative/folder\r\n2026\t" +
+                                utf8(t / "Kept") + "\r\n";
+        const auto got = game_folders(game_folders_text(old, t / "New", "now"));
+        if (got.size() != 2) return "2 folders, not " + std::to_string(got.size());
+        return all({same("newest", got[0], t / "New"), same("kept", got[1], t / "Kept")});
+    });
+    run("remember_game_folder_writes_only_its_file", [](const fs::path& t) {
+        const fs::path data = t / "data";
+        write(data / "settings.ini", "x=1\n");
+        std::string why;
+        if (!remember_game_folder(data, t / "Soul Game", "2026-11-19T12:00:00Z", why)) return "refused: " + why;
+        if (!remember_game_folder(data, t / "Other", "2026-11-19T12:05:00Z", why)) return "refused: " + why;
+        if (read(data / "settings.ini") != "x=1\n") return std::string("settings.ini changed");
+        std::error_code ec;
+        int files = 0;
+        for (const auto& e : fs::directory_iterator(data, ec)) (void)e, ++files;
+        if (files != 2) return std::to_string(files) + " files in the data folder, not 2";   // (no .new left)
+        const auto got = game_folders(read(data / kGameFoldersFile));
+        if (got.size() != 2) return "2 folders, not " + std::to_string(got.size());
+        return all({same("newest", got[0], t / "Other"), same("older", got[1], t / "Soul Game")});
+    });
+    run("remember_game_folder_refuses", [](const fs::path& t) {
+        std::string why;
+        if (remember_game_folder({}, t / "Game", "now", why)) return std::string("no data folder taken");
+        if (remember_game_folder(t / "data", "relative", "now", why)) return std::string("a relative folder taken");
+        if (remember_game_folder(t / "data", t / "a\tb", "now", why)) return std::string("a tab taken");
+        if (remember_game_folder(t / "data", t / "Game", "", why)) return std::string("no stamp taken");
+        std::error_code ec;
+        return fs::exists(t / "data" / kGameFoldersFile, ec) ? std::string("a file written") : std::string();
     });
 
     // ---- What differs by platform ----

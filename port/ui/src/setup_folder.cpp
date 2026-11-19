@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <fstream>
 #include <initializer_list>
+#include <sstream>
 #include <system_error>
 
 #ifdef _WIN32
@@ -222,6 +223,101 @@ EngineGone engine_gone(const std::filesystem::path& program, const std::filesyst
             if (p == p.parent_path()) break;
         }
     return EngineGone::NoSetupFolder;
+}
+
+// ---- The game folders the game ran from ----
+
+namespace {
+
+constexpr const char* kGameFoldersHeader =
+    "# The game folders this PC's game ran from, newest first: when (UTC), a tab, the folder. Each one's saves are in\n"
+    "# its gamedata folder. A later version reads this to offer copying old saves into a new install.\n";
+
+struct Noted {
+    std::string when;
+    std::filesystem::path folder;
+};
+
+std::vector<Noted> noted(const std::string& text) {
+    std::vector<Noted> out;
+    std::istringstream in(text);
+    for (std::string line; std::getline(in, line);) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty() || line[0] == '#') continue;
+        const size_t tab = line.find('\t');
+        if (tab == std::string::npos || tab == 0 || tab + 1 >= line.size()) continue;
+        std::filesystem::path folder = from_utf8(line.substr(tab + 1));
+        if (!folder.is_absolute()) continue;
+        out.push_back({line.substr(0, tab), std::move(folder)});
+    }
+    return out;
+}
+
+}  // namespace
+
+std::string game_folders_text(const std::string& old, const std::filesystem::path& folder, const std::string& when) {
+    std::string out = std::string(kGameFoldersHeader) + when + "\t" + utf8(folder) + "\n";
+    std::vector<std::filesystem::path> kept{folder};
+    for (const Noted& n : noted(old)) {
+        if (int(kept.size()) >= kGameFoldersKept) break;
+        bool again = false;
+        for (const auto& k : kept) again = again || same_folder(n.folder, k);
+        if (again) continue;
+        out += n.when + "\t" + utf8(n.folder) + "\n";
+        kept.push_back(n.folder);
+    }
+    return out;
+}
+
+std::vector<std::filesystem::path> game_folders(const std::string& text) {
+    std::vector<std::filesystem::path> out;
+    for (const Noted& n : noted(text)) out.push_back(n.folder);
+    return out;
+}
+
+bool remember_game_folder(const std::filesystem::path& dataDir, const std::filesystem::path& folder,
+                          const std::string& when, std::string& why) {
+    const std::string name = utf8(folder);
+    if (dataDir.empty() || !folder.is_absolute() || name.find_first_of("\t\r\n") != std::string::npos ||
+        when.empty() || when.find_first_of("\t\r\n") != std::string::npos) {
+        why = "no folder to note";
+        return false;
+    }
+    std::error_code ec;
+    std::filesystem::create_directories(dataDir, ec);
+    const std::filesystem::path file = dataDir / kGameFoldersFile;
+    std::string old;
+    if (std::filesystem::exists(file, ec)) {
+        std::ifstream in(file, std::ios::binary);
+        if (!in) {
+            why = utf8(file) + " cannot be read";   // (left as it is: rewriting it would lose its folders)
+            return false;
+        }
+        std::stringstream s;
+        s << in.rdbuf();
+        old = s.str();
+    }
+    std::filesystem::path next = file;
+    next += ".new";
+    {
+        std::ofstream out(next, std::ios::binary | std::ios::trunc);
+        out << game_folders_text(old, folder, when);
+        out.flush();
+        if (!out) {
+            out.close();
+            std::filesystem::remove(next, ec);   // (this function's own file)
+            why = utf8(next) + " cannot be written";
+            return false;
+        }
+    }
+    std::filesystem::rename(next, file, ec);   // (replaces the file: on Windows MoveFileEx's REPLACE_EXISTING)
+    if (ec) {
+        why = utf8(file) + " cannot be replaced: " + ec.message();
+        std::error_code ec2;
+        std::filesystem::remove(next, ec2);
+        return false;
+    }
+    return true;
 }
 
 }  // namespace ui::setup
