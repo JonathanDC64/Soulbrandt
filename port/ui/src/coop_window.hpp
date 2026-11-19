@@ -7,6 +7,8 @@
 #include "modal.hpp"
 
 #include <memory>
+#include <string>
+#include <vector>
 
 namespace ui {
 
@@ -16,6 +18,9 @@ std::unique_ptr<Modal> make_coop_window();
 // or (copy_code) puts the invite code on the clipboard; no_code: there is none to copy yet.
 namespace coop {
 void open_host();
+// The warning before Host or Join while mods are on (names: as the Mods screens show them); then runs on "Play with
+// mods" (or at once when the player ticked it away for these mods before). For the Co-op window, and its test pages.
+void open_mods_warning(const std::vector<std::string>& names, void (*then)());
 void open_join();
 void copy_code();
 bool no_code();

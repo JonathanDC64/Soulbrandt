@@ -50,6 +50,7 @@
 #include "update_window.hpp"
 #include "version.hpp"
 #include "../../des_rsx_route.h"  // the renderer calls below: through rsx_out in a PS3RECOMP_RSX_HAL build
+#include "../../des_seamless.h"
 
 #ifdef _WIN32
 #include <xinput.h>  // (read_xinput)
@@ -1524,8 +1525,9 @@ extern "C" void des_ui_early_init(void) {
     if (sCrashDialog) crash_dialog_env();
     if (!sSetupOnly && ui::settings::net_custom_held()) sCustomServerNotice.store(true);
     // A gameplay mod (settings.cpp's apply_network left the network knobs unset): the network also stays off when
-    // something sets them later, the environment's or the debug console's included.
-    if (!sSetupOnly && ui::mods::gameplay_in_use()) {
+    // something sets them later, the environment's or the debug console's included. Not in seamless co-op, which
+    // mods don't keep off (settings.cpp's apply_seamless): its game goes only between the friends' games.
+    if (!sSetupOnly && ui::mods::gameplay_in_use() && des::seamless::mode() == des::seamless::Mode::Off) {
         ps3_net_lock_offline();
         if (ui::settings::net_mods_held()) sModsNotice.store(true);
     }

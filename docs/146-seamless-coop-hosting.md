@@ -75,6 +75,14 @@ once: after that, co-op has characters of its own.
 host** (2, 3 or 4). A change counts at once, and players already in stay. A friend who comes when the game is full
 waits: Co-op says so, and the friend's game joins as soon as a place frees up.
 
+**Mods.** Co-op works with mods on (online play doesn't, with mods that change how the game plays). **Host** or
+**Join** while any mod is on first shows **Mods are on**: co-op with mods will probably have problems (games that
+don't match, missing enemies or items, crashes), everyone should have the same mods that change how the game plays,
+and when something goes wrong, turn every mod off (Mods, in the menu), restart and try again before reporting it.
+**Play with mods** goes on; **Back** leaves things as they were. It asks each time, unless you tick "Don't ask again
+for these mods": a different set of mods asks again (`coop_mods_ack.txt` in the data folder keeps the answer and the
+set).
+
 **In the game:**
 
 - **Joining needs no sign.** Once the host stands in an area, a friend's game joins by itself, wherever the friend
@@ -233,6 +241,9 @@ holds that player's co-op log: what happened in the session (joins, leaves, load
 each line with its time, so the host's and a friend's reports line up. A report made after restarting the game still
 has the last session's.
 
+With mods on, first turn every mod off, restart and try again: report it only if it still happens. The co-op log
+names the mods that were on.
+
 ## How it works
 
 ```
@@ -273,7 +284,10 @@ has the last session's.
   game's own message that gives a phantom the host's tendency (0x17) doesn't come in seamless co-op (docs/69).
 - **Nothing else is reached,** apart from the endpoint (above) and the STUN request, from a host whose router gives
   no address. No name
-  the game looks up (`c.demons-souls.com` and the rest) resolves, and no sign-in happens. A gameplay mod keeps co-op off, as it keeps online off (docs/143).
+  the game looks up (`c.demons-souls.com` and the rest) resolves, and no sign-in happens.
+- **Mods** don't keep co-op off, as they keep online play off (docs/143): co-op's game goes only between the
+  friends' games, so a mod can't spoil anyone else's. Host or Join warns first while any mod is on (For players,
+  Mods), and the co-op log names the mods that were on (`[coop] mods on, accepted: ...`).
 - **Which discs:** every disc plays with every other. The US and European discs are one program; the Japanese and
   Asian discs' 1.04 program is the same code at other addresses (`port/regions/`), and all four have the same game
   data. Each signs in with its own communication ID (US NPWR00881_00, European NPWR01249_00, Japanese and Asian
@@ -862,6 +876,7 @@ side by their times.
 |---|---|
 | `DES_SEAMLESS=host` / `join` | Co-op mode for this start (the Seamless co-op window sets it when it starts the game again). |
 | `DES_SEAMLESS_CODE=<code>` | The code to join. |
+| `DES_SEAMLESS_MODS_OK=names` | Set by the Seamless co-op window: the mods the player accepted at Host or Join, for the co-op log. Unset with mods on (a test run), the log says no warning was shown. |
 | `DES_SEAMLESS_PORT=n` | The host's port. Default 36100. |
 | `DES_SEAMLESS_UPNP=0` | The host leaves the router alone (the port forwarded by hand). |
 | `DES_SEAMLESS_ADDRESS=ip` | The host's public IPv4 address, for the code, when the router doesn't give it. Co-op's Public address keeps it in settings.ini; a report shows only whether it is set. |

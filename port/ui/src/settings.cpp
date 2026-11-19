@@ -598,18 +598,20 @@ std::string net_options_header() {
 // is set at start (docs/55 section 6). So nothing here checks DES_DEV_SESSION; the Network tab reads it to say why.
 // Seamless co-op (DES_SEAMLESS, des_seamless.h) in place of the rows: the game goes only between the players' games.
 // The one server it uses is the endpoint that introduces them for a room code (DES_SEAMLESS_INTRO): the Server row's
-// server, if it is this project's own or the local test server; none otherwise (the direct code only). Gameplay mods
-// keep co-op off too, as online (docs/143), and it needs an online name.
+// server, if it is this project's own or the local test server; none otherwise (the direct code only). It needs an
+// online name. Mods don't keep it off, as they keep online play off (docs/143): co-op's game goes only between the
+// friends' games, so a mod can't spoil anyone else's. The Co-op window warns before Host or Join while any mod is on
+// (coop_window.cpp), and the co-op log says which mods were on: DES_SEAMLESS_MODS_OK names the ones the player
+// accepted there.
 static void apply_seamless() {
     namespace co = des::seamless;
     const bool host = co::mode() == co::Mode::Host;
-    if (mods::gameplay_in_use()) {
-        sNetModsHeld = true;
-        sNetStatus = "Off: gameplay mods are on";
-        std::fprintf(stderr, "[ui] seamless co-op: off, gameplay mods are on (%s; Settings > Mods)\n",
-                     mods::gameplay_names().c_str());
-        co::held("gameplay mods are on (Settings > Mods)");
-        return;
+    if (!mods::in_use().empty()) {
+        std::vector<std::string> names;
+        for (const mods::Mod& m : mods::in_use()) names.push_back(m.name);
+        const char* ok = std::getenv("DES_SEAMLESS_MODS_OK");
+        std::fprintf(stderr, "[coop] mods on%s: %s\n", ok && *ok ? ", accepted" : " (no warning: not started from "
+                     "the Co-op window)", mods::join(names, ", ").c_str());
     }
     const std::string name = env_set("PS3_NP_ONLINE_ID") ? std::string(std::getenv("PS3_NP_ONLINE_ID"))
                                                          : effective("DES_NET_NAME");

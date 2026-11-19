@@ -17,11 +17,18 @@ struct Ack {
     std::string bodyRml;   // as RML
     std::string tick;      // the tick's line, "I'll ..."
     std::string icon = "question-mark";
+    // A warning to see each time, with the tick to stop it (co-op's mods warning): the first button goes on without
+    // the tick too, and keeps the answer only with it. `go` and `back` name the two buttons.
+    bool tickOptional = false;
+    std::string go = "Continue";
+    std::string back = "Cancel";
+    // The answer counts only for this (which mods are on, say): a different key asks again. The file holds it.
+    std::string key;
 };
 
-// Runs `then` at once when the player has ticked this before on this PC. Otherwise shows the question: Continue waits
-// for the tick, keeps the answer and runs `then`; Cancel runs nothing. With no data folder (a test run) it asks each
-// time and keeps nothing.
+// Runs `then` at once when the player has ticked this before on this PC (with this key). Otherwise shows the
+// question: Continue waits for the tick (unless it is optional), keeps the answer when ticked and runs `then`; Cancel
+// (and Back) runs nothing. With no data folder (a test run) it asks each time and keeps nothing.
 void with_ack(Ack ack, std::function<void()> then);
 
 }  // namespace ui

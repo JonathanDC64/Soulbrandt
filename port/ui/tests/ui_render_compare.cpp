@@ -1615,6 +1615,11 @@ int main(int argc, char** argv) {
     pages.push_back({"coop-room", 1280, 720, false, 1.f, false, [] { open_coop(standin_host(false), 0); }, {}});
     pages.push_back({"coop-joining", 1280, 720, false, 1.f, false,
                      [] { open_coop(standin_guest(false, true), 0); }, {}});
+    // The warning before Host or Join while mods are on (made-up mods), over Co-op.
+    pages.push_back({"coop-mods", 1280, 720, false, 1.f, false, [] {
+        open_coop({}, 0);
+        ui::coop::open_mods_warning({"Texture Pack", "Rebalance"}, nullptr);
+    }, {}});
     // A question with named answers: Public address, over the host's Co-op.
     pages.push_back({"coop-address", 1280, 720, false, 1.f, false, [] {
         open_coop(standin_host(), 2);
@@ -1717,6 +1722,10 @@ int main(int argc, char** argv) {
                          in_band([] { open_coop(standin_host(false), 1); }), {}});
         pages.push_back({"des-coop-joining", 1280, 720, false, 1.f, false,
                          in_band([] { open_coop(standin_guest(false, true), 0); }), {}});
+        pages.push_back({"des-coop-mods", 1280, 720, false, 1.f, false, in_band([] {
+            open_coop({}, 0);
+            ui::coop::open_mods_warning({"Texture Pack", "Rebalance"}, nullptr);
+        }), {}});
         pages.push_back({"des-coop-join", 1280, 720, false, 1.f, false,
                          in_band([] { open_coop(standin_guest(false), 0); }), {}});
         pages.push_back({"des-coop-lost", 1280, 720, false, 1.f, false,

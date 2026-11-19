@@ -6,8 +6,10 @@
 #include "ack.hpp"
 #include "app.hpp"
 #include "crash_report.hpp"
+#include "mods.hpp"
 #include "osk_window.hpp"
 #include "platform.hpp"
+#include "report.hpp"
 #include "settings.hpp"
 #include "sound.hpp"
 #include "ui.hpp"
@@ -16,6 +18,7 @@
 
 #include <RmlUi/Core.h>
 
+#include <algorithm>
 #include <chrono>
 #include <string>
 
@@ -59,8 +62,14 @@ void close_action(Modal& modal) {
     modal.pop();
 }
 
+// The mods the player accepted at Host or Join (with_mods_warning), for the co-op log after the restart
+// (DES_SEAMLESS_MODS_OK). The UI thread's only.
+std::string sModsOk;
+
 // Into co-op: the first time (co-op's save still empty), the player may first bring one of their characters along.
-void start_coop(const std::vector<std::string>& set) {
+void start_coop(const std::vector<std::string>& given) {
+    std::vector<std::string> set = given;
+    set.push_back("DES_SEAMLESS_MODS_OK=" + sModsOk);
     const std::vector<co::Character> chars = co::characters_to_bring();
     if (chars.empty()) {
         play_sound(kSoundPlay);
@@ -170,12 +179,41 @@ void open_join_now() {
     }));
 }
 
+// The mods that are on at the next start, by the names the Mods screens show: the mods folder's order file (what the
+// Mods screens changed since this start included), or the ones a test run gave.
+std::vector<std::string> mods_on_next() {
+    std::vector<std::string> names;
+    if (mods::from_environment()) {
+        for (const mods::Mod& m : mods::in_use()) names.push_back(m.name);
+        return names;
+    }
+    const auto dir = mods::folder(report::data_dir());
+    if (dir.empty()) return names;
+    const auto all = settings::pinned("DES_MODS") ? mods::scan(dir, settings::pinned_value("DES_MODS")) : mods::scan(dir);
+    for (const mods::Mod& m : all)
+        if (m.usable() && m.enabled) names.push_back(m.name);
+    return names;
+}
+
+// Host or Join while mods are on: a warning to accept each time (they will probably cause problems, and every mod off
+// is the first thing to try), until the player ticks it away for this set of mods; a different set asks again. Back
+// leaves co-op as it was.
+void with_mods_warning(void (*then)()) {
+    sModsOk.clear();
+    const std::vector<std::string> names = mods_on_next();
+    if (names.empty()) {
+        then();
+        return;
+    }
+    coop::open_mods_warning(names, then);
+}
+
 void open_host() {
-    with_notice(open_host_now);
+    with_notice([] { with_mods_warning(open_host_now); });
 }
 
 void open_join() {
-    with_notice(open_join_now);
+    with_notice([] { with_mods_warning(open_join_now); });
 }
 
 // The host's public address, for a router that can't say it: kept in settings.ini for the next time.
@@ -272,7 +310,7 @@ void open_new_code() {
 
 void leave_now() {
     play_sound(kSoundWindowClose);
-    restart_with({"DES_SEAMLESS=", "DES_SEAMLESS_CODE="});
+    restart_with({"DES_SEAMLESS=", "DES_SEAMLESS_CODE=", "DES_SEAMLESS_MODS_OK="});
 }
 
 // A guest's leave: its game goes back to its own world and saves there (des_seamless_game.cpp), then starts again.
@@ -454,6 +492,36 @@ std::unique_ptr<Modal> make_coop_window() {
 namespace coop {
 void open_host() {
     ui::open_host();
+}
+
+void open_mods_warning(const std::vector<std::string>& names, void (*then)()) {
+    std::vector<std::string> sorted = names;
+    std::sort(sorted.begin(), sorted.end());
+    const std::string list = mods::join(names, ", ");
+    with_ack(
+        {
+            .file = L"coop_mods_ack.txt",
+            .kept = "The player asked not to be warned again about co-op with these mods on (coop_window.cpp).\n",
+            .title = "Mods are on",
+            .bodyRml = "You have mods on: <b>" + escape(list) +
+                       "</b>.<br/><br/>"
+                       "Co-op with mods will probably have problems: games that don't match, missing enemies or "
+                       "items, crashes. Everyone in the party should have the same mods that change how the game "
+                       "plays.<br/><br/>"
+                       "<modal-warning>If something goes wrong in co-op, turn every mod off in Mods (in the menu, "
+                       "beside Settings), restart, and try again before you report it.</modal-warning>",
+            .tick = "Don't ask again for these mods",
+            .icon = "warning",
+            .tickOptional = true,
+            .go = "Play with mods",
+            .back = "Back",
+            .key = mods::join(sorted, "|"),
+        },
+        [list, then] {
+            ui::sModsOk = list;
+            std::fprintf(stderr, "[coop] mods on, accepted: %s\n", list.c_str());
+            if (then) then();
+        });
 }
 void open_join() {
     ui::open_join();
