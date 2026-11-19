@@ -7,6 +7,7 @@
 
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace ui::setup {
 
@@ -67,5 +68,25 @@ enum class EngineGone {
 };
 // program: the program's folder. temp: the system's temporary folder (empty: not known).
 EngineGone engine_gone(const std::filesystem::path& program, const std::filesystem::path& temp);
+
+// ---- The game folders the game ran from (docs/164 section 5) ----
+
+// In the player's data folder (report::data_dir): the game folders the game ran from, newest first, one a line as
+// "<when>\t<folder>" (UTF-8; when: ISO 8601, UTC). A game folder's saves are in its gamedata folder. Written at each
+// player's start of the game (des_ui.cpp); a later version reads it to offer copying old saves into a new install, so
+// that a player who unpacks it into another folder does not start without them. Nothing else reads it, and deleting it
+// loses only that offer.
+inline constexpr const char* kGameFoldersFile = "game-folders.txt";
+inline constexpr int kGameFoldersKept = 20;
+// `old` (the file's text, or empty) with `folder` first, stamped `when`, then the other folders of `old` in their order:
+// each folder once (same_folder), at most kGameFoldersKept. Lines that are not "<when>\t<absolute folder>" go.
+std::string game_folders_text(const std::string& old, const std::filesystem::path& folder, const std::string& when);
+// The folders in the file's text, newest first.
+std::vector<std::filesystem::path> game_folders(const std::string& text);
+// Notes `folder` in <dataDir>/game-folders.txt: the new text is written beside it first, then put in its place, so the
+// file is never half written. Nothing else is touched. False, with why, when it cannot be read or written (a file there
+// that cannot be read is left as it is).
+bool remember_game_folder(const std::filesystem::path& dataDir, const std::filesystem::path& folder,
+                          const std::string& when, std::string& why);
 
 }  // namespace ui::setup
