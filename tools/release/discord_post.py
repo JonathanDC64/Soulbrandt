@@ -145,8 +145,12 @@ def to_discord(body: str, repo: str, url: str, title: str = "") -> str:
 
 # --- splitting and messages -------------------------------------------------------------------------------------
 
+_BOLD_LINE = re.compile(r"\*\*[^*\n]+\*\*")   # a heading, as to_discord writes it
+
+
 def split_text(text: str, limit: int = DESC_MAX) -> list:
-    """Pieces of at most limit characters: whole paragraphs where they fit, then whole lines, then cut lines."""
+    """Pieces of at most limit characters: whole paragraphs where they fit, then whole lines, then cut lines. A
+    heading never ends a piece: it moves on with what follows it."""
     pieces, cur = [], ""
 
     def put(block: str, sep: str):
@@ -156,8 +160,13 @@ def split_text(text: str, limit: int = DESC_MAX) -> list:
         elif len(cur) + len(sep) + len(block) <= limit:
             cur = cur + sep + block
         else:
-            pieces.append(cur)
-            cur = block
+            head, _, last = cur.rpartition("\n\n")
+            if head and _BOLD_LINE.fullmatch(last) and len(last) + len(sep) + len(block) <= limit:
+                pieces.append(head)
+                cur = last + sep + block
+            else:
+                pieces.append(cur)
+                cur = block
 
     for para in text.split("\n\n"):
         if len(para) <= limit:
