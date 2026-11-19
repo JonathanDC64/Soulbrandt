@@ -170,6 +170,13 @@ body.closed menu-entries {
     display: none;
 }
 
+/* The entries drop in with the band (des-drop, under Motion at the end). Alpha UI's transition on their transform
+   (menu.rcss) is off here: RmlUi starts no animation on a property a transition already moves, so the entries stood
+   in place while the band dropped in under them. (Closing sets its own transition: body.closing.) */
+body.motion menu-entries {
+    transition: none;
+}
+
 menu-entry {
     margin: 9dp 0;
     padding: 0 13dp;
