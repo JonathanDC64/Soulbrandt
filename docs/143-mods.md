@@ -131,6 +131,25 @@ never meet. Mods that only change how the game looks or sounds keep online play.
 navigation, characters (`chr`, except textures), objects (`obj`), scripts (`script`), and any file the list does not
 know, including loose files beside the game's folders.
 
+**Files the game never opens don't count.** The game gets a mod's file only when it opens that path, so a file at a
+path it never opens changes nothing, whatever it holds. Mods often ship such a file: a copy of the game's own file,
+kept to undo the mod (`backup/facegen/facegen.fgbnd` inside a face texture mod). No folder names are listed; the
+game's own files decide (`game_opens` in `mods.cpp`):
+- A file in a folder at the top that the game doesn't have (`backup/...`, `Untouched/...`) is never opened.
+- With the game's folder known (it always is in the game), so is a file at a path the game doesn't have whose name
+  ends in a way none of the game's files does (`gameparamna.parambnd.dcx.bak`).
+- A new file in one of the game's folders, named as the game's files are (`param/gameparam/x.parambnd`), still
+  counts: the game might open it.
+- Files beside the game's folders still count as gameplay, as above.
+
+Such files don't make a mod a gameplay mod and aren't counted in its files. The Mods window names the first few
+("The game never opens one of its files (...), so it changes nothing. Most likely it's a copy of the game's own
+files, kept to undo the mod."), and the log has a `[mods]` line for each mod that has them. A mod with no other files
+can't be turned on ("No game files").
+
+**Loose files with a copy.** When two of a loose mod's files would go to the same place, the message names both and
+says the likely reason: one is a copy of the game's own file, to move out of the mod's folder.
+
 **What happens when a gameplay mod is on:**
 - Online stays off for the session, whatever Settings > Network says, and the runtime's network is locked off (also
   for network settings given in the environment).

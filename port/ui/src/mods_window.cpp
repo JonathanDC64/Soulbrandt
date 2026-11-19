@@ -135,6 +135,8 @@ private:
                 rml += "<mod-line class=\"note\">Some of its changes are replaced by " + quoted(by) +
                        ", which is higher in the list. Move this mod up to use its own.</mod-line>";
             }
+            if (const std::string note = mods::unused_note(m); !note.empty())
+                rml += "<mod-line class=\"note\">" + escape(note) + "</mod-line>";
             rml += "</mod-text><mod-state><state-word>" + std::string(on ? "On" : "Off") + "</state-word>";
             if (pending) rml += "<state-note>after a restart</state-note>";
             rml += "</mod-state>";

@@ -48,7 +48,9 @@ struct Mod {
     Problem why = Problem::None;   // why it can't be turned on
     std::string problem;           // what is wrong, in a sentence or two ("" when it can be used)
     Kind kind = Kind::Look;
-    std::size_t files = 0;              // files below root
+    std::size_t files = 0;              // files below root (not counting unused ones)
+    std::size_t unusedFiles = 0;        // files below root that the game never opens (game_opens): they change nothing
+    std::vector<std::string> unused;    // the first few of them (below root, '/'): "backup/facegen/facegen.fgbnd"
     std::vector<std::string> areas;     // the game's folders it has files in ("menu", "param"), A to Z
     std::vector<std::string> gameplay;  // the first few of its files that make it a gameplay mod (below root, '/')
     std::vector<std::string> locked;    // the first few of its files that are locked as on the PS3 (NPD), unusable
@@ -100,6 +102,16 @@ std::vector<Mod> scan(const std::filesystem::path& modsFolder, const std::string
 // how the game plays. Textures, models, text, sound, movies, effects, menus and lighting do not; the game's parameters,
 // maps' layouts and collision, characters, objects, scripts and anything the list does not know do.
 bool gameplay_file(const std::string& rel);
+
+// Whether the game could ever open a mod's file (below its root, '/'). The runtime gives the game a mod's file only
+// when the game opens that path, so a file at a path the game never opens changes nothing, whatever it holds. No: a
+// file in a folder at the top that the game doesn't have ("backup/facegen/facegen.fgbnd": a copy of the game's own
+// file, kept to undo the mod), and, when the game's own files are known (PS3_VFS_ROOT), a file at a path the game
+// doesn't have whose name ends in a way none of the game's files does ("param/x.parambnd.dcx.bak"). Yes: everything
+// else, files beside the game's folders included (not known). No folder names are listed: the game's own files decide.
+bool game_opens(const std::string& rel);
+// The Mods window's note on a mod's files that the game never opens (Mod::unused); "" when it has none.
+std::string unused_note(const Mod& mod);
 
 // For a loose mod (files with no game folders, as some mods ship: "c0000.anibnd.dcx", "mapstudio\m01_00_00_00.msb"):
 // where each file goes, from the game's own files (PS3_VFS_ROOT's USRDIR). Each file's name, and the folders it is in,

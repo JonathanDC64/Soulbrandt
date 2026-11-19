@@ -171,6 +171,34 @@ int main() {
             expect(m.root == t / "A" / "Other Mod 1.0" / "Modded" / "PS3_GAME" / "USRDIR", "root " + utf8(m.root)),
             expect(m.files == 1, "files " + std::to_string(m.files))});
     });
+    // A look mod that keeps the game's own file in a folder of its own, inside the folder with the game's folders (as
+    // a published face texture mod does): the game never opens that copy, so it is not a gameplay mod.
+    run("copy_inside_root", [](const fs::path& t) {
+        write(t / "A" / "Face Mod" / "facegen" / "facegen.fgbnd");
+        write(t / "A" / "Face Mod" / "backup" / "facegen" / "facegen.fgbnd");
+        write(t / "B" / "Face Mod" / "facegen" / "facegen.fgbnd");
+        write(t / "B" / "Face Mod" / "backup" / "facegen" / "facegen.fgbnd");
+        const Mod m = read(t / "A");
+        Mod b = read(t / "B");
+        b.enabled = true;
+        Mod a2 = m;
+        a2.enabled = true;
+        const std::string note = unused_note(m);
+        return all({expect(m.usable(), "problem: " + m.problem),
+            expect(m.root == t / "A" / "Face Mod", "root " + utf8(m.root)),
+            expect(m.kind == Kind::Look, "gameplay: " + join(m.gameplay, ",")),
+            expect(m.files == 1 && m.unusedFiles == 1, "files " + std::to_string(m.files) + ", unused " +
+                std::to_string(m.unusedFiles)),
+            expect(m.unused == std::vector<std::string>{"backup/facegen/facegen.fgbnd"}, "unused " + join(m.unused, ",")),
+            expect(m.areas == std::vector<std::string>{"facegen"}, "areas " + join(m.areas, ",")),
+            expect(note.find("backup/facegen/facegen.fgbnd") != std::string::npos &&
+                       note.find("one of its files") != std::string::npos,
+                "note: " + note),
+            expect(unused_note(Mod{}).empty(), "a note with nothing unused"),
+            // (both have the copy: not a file they share, as the game never opens it)
+            expect(conflicts({a2, b}) == std::vector<std::string>{"facegen/facegen.fgbnd: A, B"},
+                "conflicts " + join(conflicts({a2, b}), " / "))});
+    });
     run("unicode_name", [](const fs::path& t) {
         const fs::path dir = t / from_utf8("Texturas \xc3\xa9picas \xe6\x97\xa5\xe6\x9c\xac");
         write(dir / "menu" / "m.tpf");
@@ -295,6 +323,54 @@ int main() {
             expect(a2.usable() && a2.root == t / "A" && a2.kind == Kind::Gameplay && a2.files == 1,
                 "A after: " + a2.problem + ", " + std::to_string(a2.files) + " files"),
             expect(b2.usable() && b2.files == 1, "B after: " + b2.problem)});
+    });
+    run("plan_two_to_one", [&game](const fs::path& t) {   // (a copy kept beside the mod's own file, any folder name)
+        game(t);
+        write(t / "game" / "PS3_GAME" / "USRDIR" / "facegen" / "facegen.fgbnd");
+        write(t / "A" / "facegen.fgbnd");
+        write(t / "A" / "Keep" / "facegen.fgbnd");
+        Mod a = read(t / "A");
+        plan(a);
+        const auto has = [&a](const char* s) { return a.problem.find(s) != std::string::npos; };
+        return expect(a.moves.empty() && a.why == Problem::NoGameFiles &&
+                          has("two of its files go to facegen/facegen.fgbnd (") && has("Keep/facegen.fgbnd") &&
+                          has("copy of the game's own file"),
+            "A: " + a.problem);
+    });
+
+    // ---- Files the game never opens: its own files decide, not folder names ----
+    run("game_decides", [&game](const fs::path& t) {
+        game(t);
+        const fs::path usr = t / "game" / "PS3_GAME" / "USRDIR";
+        write(usr / "param" / "gameparam" / "gameparamna.parambnd.dcx");
+        write(usr / "facegen" / "facegen.fgbnd");
+        write(t / "A" / "facegen" / "facegen.fgbnd");
+        write(t / "A" / "Untouched" / "param" / "gameparam" / "gameparamna.parambnd.dcx");   // (no such top folder)
+        write(t / "A" / "param" / "gameparam" / "gameparamna.parambnd.dcx.bak");   // (no game file ends in .bak)
+        write(t / "B" / "param" / "gameparam" / "gameparamna.parambnd.dcx");   // the game's own path
+        write(t / "C" / "param" / "gameparam" / "gameparamna.parambnd");   // a new path, but named as the game's are
+        fs::create_directories(t / "D" / "menu");
+        write(t / "D" / "Old" / "param" / "x.parambnd.dcx");
+        write(t / "E" / "data.json");   // (beside the game's folders: not known, as before)
+        write(t / "E" / "facegen" / "facegen.fgbnd");
+        const Mod a = read(t / "A"), b = read(t / "B"), c = read(t / "C"), d = read(t / "D"), e = read(t / "E");
+        const bool knownNo = !game_opens("Untouched/param/x.parambnd.dcx") && !game_opens("param/x.parambnd.dcx.bak");
+        const bool knownYes = game_opens("param/gameparam/gameparamna.parambnd.dcx") && game_opens("data.json") &&
+                              game_opens("script/new.parambnd");
+        ps3_setenv("PS3_VFS_ROOT", "");   // (no game folder known: only the folders at the top decide)
+        const bool unknown = game_opens("param/x.parambnd.dcx.bak") && !game_opens("backup/facegen/facegen.fgbnd") &&
+                             game_opens("testdata/x.bin");
+        return all({expect(a.usable() && a.kind == Kind::Look && a.files == 1 && a.unusedFiles == 2,
+                        "A: " + a.problem + ", gameplay " + join(a.gameplay, ",") + ", unused " + join(a.unused, ",")),
+            expect(b.kind == Kind::Gameplay && b.unusedFiles == 0, "B not gameplay"),
+            expect(c.kind == Kind::Gameplay && c.unusedFiles == 0, "C not gameplay"),
+            expect(d.why == Problem::NoGameFiles && d.problem.find("never opens") != std::string::npos &&
+                       d.problem.find("Old/param/x.parambnd.dcx") != std::string::npos,
+                "D: " + d.problem),
+            expect(e.kind == Kind::Gameplay && e.gameplay == std::vector<std::string>{"data.json"},
+                "E: " + join(e.gameplay, ",")),
+            expect(knownNo && knownYes, "game_opens with the game's files"),
+            expect(unknown, "game_opens without them")});
     });
 #ifndef _WIN32
     run("bar_in_name", [](const fs::path& t) {   // (Windows names can't have one)
