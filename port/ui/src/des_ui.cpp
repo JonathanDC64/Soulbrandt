@@ -1408,10 +1408,11 @@ bool elf_given(int argc, char** argv) {
     return false;
 }
 
-// Every window's title bar: the game's window is "Soulbrandt - Demon's Souls" (setup's keeps the program's name alone,
-// setup_only_env, before this), never the disc's PARAM.SFO title that the runtime takes by default. The renderer's
-// numbers after it (FPS, draws, picture size: ps3recomp's RSX_TITLE_STATS) are for developers: a developer build keeps
-// them, a player's build leaves them out. A value in the environment wins (tools/des runs set RSX_TITLE_STATS=1).
+// Every window's title bar: the game's window is "<PRODUCT_NAME> - Demon's Souls" (setup's keeps the program's name
+// alone, setup_only_env, before this), never the disc's PARAM.SFO title that the runtime takes by default. The
+// renderer's numbers after it (FPS, draws, picture size: ps3recomp's RSX_TITLE_STATS) are for developers: a developer
+// build keeps them, a player's build leaves them out. A value in the environment wins (tools/des runs set
+// RSX_TITLE_STATS=1).
 void window_title_env() {
     if (!env_on("PS3_TITLE")) ps3_setenv("PS3_TITLE", (std::string(ui::kProductName) + " - Demon's Souls").c_str());
 #if DES_DEV
