@@ -1,11 +1,13 @@
 // The Co-op window (coop_window.hpp). One modal: what co-op is and Host / Join when off; the invite code, the router's
 // answer and the players while hosting; Leave while in a game. The host's part is drawn again each half second (the
-// router answers a few seconds after the start, and players come and go).
+// router answers a few seconds after the start, and players come and go). Each code has a small Copy button beside it,
+// besides the window's Copy code.
 #include "coop_window.hpp"
 
 #include "ack.hpp"
 #include "app.hpp"
 #include "crash_report.hpp"
+#include "event.hpp"
 #include "mods.hpp"
 #include "osk_window.hpp"
 #include "platform.hpp"
@@ -396,20 +398,20 @@ std::string body(const co::Status& s) {
         b += "<b>Many wrong codes were tried</b>, so your code no longer lets anyone in. Choose <b>New code</b> and "
              "send the new one to your friends. Players already here stay.<br/><br/>";
     if (!s.room_code.empty())  // (it holds no address: the server introduces the games)
-        b += "Your invite code:<br/><b>" + escape(s.room_code) + "</b><br/>Send it to your friends. Anyone with this "
-             "code can join you.<br/><br/>";
+        b += "Your invite code:<br/><b>" + escape(s.room_code) + "</b>" + coop::copy_button("room") +
+             "<br/>Send it to your friends. Anyone with this code can join you.<br/><br/>";
     if (!s.intro.empty())
         b += (s.intro_trouble ? "<modal-warning>" + escape(s.intro) + "</modal-warning>" : escape(s.intro)) +
              "<br/><br/>";
     if (!s.stuck.empty()) b += "<modal-warning>" + escape(s.stuck) + "</modal-warning><br/><br/>";
     if (s.show_direct && !s.code.empty()) {
         b += (s.room_code.empty() ? "Your invite code:<br/><b>" : "Or the direct code, for your open port:<br/><b>") +
-             escape(s.code) + "</b><br/>Send it to your friends. Don't post it in public: it holds your internet "
-             "address.<br/><br/>";
+             escape(s.code) + "</b>" + coop::copy_button("direct") +
+             "<br/>Send it to your friends. Don't post it in public: it holds your internet address.<br/><br/>";
     }
     if (s.show_direct) b += escape(s.router.empty() ? "Asking your router to open the port..." : s.router);
     if (!s.lan_code.empty() && (s.code.empty() || s.lan_code != s.code) && s.show_direct)
-        b += "<br/><br/>On your own network: <b>" + escape(s.lan_code) + "</b>";
+        b += "<br/><br/>On your own network: <b>" + escape(s.lan_code) + "</b>" + coop::copy_button("lan");
     b += std::string(s.show_direct ? "<br/><br/>" : "") + "Players: " +
          std::to_string(s.players > 0 ? s.players : 1) + " of " + std::to_string(s.max_players) +
          " (Settings > Network).";
@@ -439,9 +441,18 @@ bool no_code_now() {
     return now.room_code.empty() && now.code.empty() && now.lan_code.empty();
 }
 
+// The code a Copy button copied last, and until when it says "Copied" (coop::copy_button). The UI thread's only.
+std::string sCopiedKind;
+std::chrono::steady_clock::time_point sCopiedUntil{};
+
 class CoopWindow final : public Modal {
 public:
-    explicit CoopWindow(Props props) : Modal(std::move(props)) {}
+    explicit CoopWindow(Props props) : Modal(std::move(props)) {
+        mCopy = std::make_unique<ScopedEventListener>(mDialog->QuerySelector("modal-body"), Rml::EventId::Click,
+                                                      [this](Rml::Event& e) {
+                                                          if (coop::copy_pressed(e.GetTargetElement())) mNext = {};
+                                                      });
+    }
 
     void update() override {
         const auto now = std::chrono::steady_clock::now();
@@ -462,6 +473,7 @@ public:
 private:
     std::chrono::steady_clock::time_point mNext{};
     std::string mShown;
+    std::unique_ptr<ScopedEventListener> mCopy;  // a click on a code's Copy button
 };
 
 }  // namespace
@@ -536,6 +548,31 @@ void open_join() {
 }
 void copy_code() {
     copy_code_now();
+}
+
+std::string copy_button(const char* kind) {
+    const bool done = sCopiedKind == kind && std::chrono::steady_clock::now() < sCopiedUntil;
+    return std::string("<code-copy kind=\"") + kind + (done ? "\" class=\"done\">Copied" : "\">Copy") + "</code-copy>";
+}
+
+bool copy_pressed(Rml::Element* target) {
+    for (Rml::Element* e = target; e; e = e->GetParentNode()) {
+        if (e->GetTagName() != "code-copy") continue;
+        const std::string kind = e->GetAttribute<Rml::String>("kind", "");
+        const co::Status now = co::status();
+        const std::string code = kind == "room"     ? now.room_code
+                                 : kind == "direct" ? now.code
+                                 : kind == "lan"    ? now.lan_code
+                                                    : std::string();
+        if (code.empty()) return false;  // (gone since the box was drawn: the next drawing drops its button)
+        if (auto* sys = Rml::GetSystemInterface()) sys->SetClipboardText(code);
+        play_sound(kSoundItemEnable);
+        std::fprintf(stderr, "[coop] copied the %s code\n", kind.c_str());
+        sCopiedKind = kind;
+        sCopiedUntil = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        return true;
+    }
+    return false;
 }
 bool no_code() {
     return no_code_now();

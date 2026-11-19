@@ -2271,6 +2271,63 @@ coop-info info-rule {
     background-color: #3a3833;
 }
 
+/* Both codes and the router's line (coop_page.cpp's long): closer together, so the box ends above the prompts. */
+coop-info.long info-line {
+    margin-bottom: 6dp;
+}
+
+coop-info.long info-rule {
+    margin: 4dp 0 12dp;
+}
+
+coop-info.long info-code {
+    margin: 0 0 4dp;
+    font-size: 28dp;
+    line-height: 34dp;
+}
+
+/* A code's line with its small Copy button at the right end: a small stone button, as the questions' buttons. */
+coop-info info-head {
+    display: flex;
+    flex-flow: row nowrap;
+    justify-content: space-between;
+    align-items: center;
+}
+
+coop-info info-head info-line,
+coop-info.long info-head info-line {
+    margin: 0;
+}
+
+coop-info code-copy {
+    flex: 0 0 auto;
+    margin-left: 12dp;
+    height: 24dp;
+    padding: 0 12dp;
+    border-top-width: 1dp;
+    border-top-color: #4f4d46;
+    border-bottom-width: 1dp;
+    border-bottom-color: #141414;
+    background-color: #2c2c2b;
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#333331, #262626);
+    font-size: 14dp;
+    line-height: 22dp;
+    letter-spacing: 0.5dp;
+    text-transform: uppercase;
+    color: var(--des-tan);
+    cursor: pointer;
+}
+
+coop-info code-copy:hover {
+    border-top-color: var(--des-hover-edge);
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#4c4a45, #393835);
+    color: var(--des-tan-light);
+}
+
+coop-info code-copy.done {
+    color: var(--des-tan-light);
+}
+
 body.page.motion coop-page {
     animation: 0.17s linear-in-out des-page-in;
 }

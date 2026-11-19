@@ -266,6 +266,30 @@ modal-body modal-warning {
     font-weight: bold;
 }
 
+/* The small Copy button beside each invite code (coop_window.cpp): "Copied" for a moment after a press. */
+modal-body code-copy {
+    display: inline-block;
+    margin-left: var(--space-sm);
+    padding: 0 var(--space-sm);
+    border-radius: var(--radius-control);
+    box-shadow: rgba(var(--color-border-rgb), 40%) 0 0 0 1dp;
+    background-color: var(--button-background);
+    font-size: var(--font-size-sm);
+    font-weight: normal;
+    line-height: 22dp;
+    vertical-align: middle;
+    color: var(--color-text);
+    cursor: pointer;
+}
+
+modal-body code-copy:hover {
+    background-color: var(--button-background-hover);
+}
+
+modal-body code-copy.done {
+    color: var(--color-success);
+}
+
 /* The line a warning leads with, the first thing read (coop_window.cpp's mods warning): on its own, larger, in the
    warning colour. */
 modal-body modal-alert {

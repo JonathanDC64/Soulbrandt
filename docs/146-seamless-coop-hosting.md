@@ -35,7 +35,8 @@ title), so it isn't taken for the game's own co-op with summon signs.
    letters and digits), once this project's server has your room: a second or so. **Copy code** puts it on the
    clipboard. Send it to your friends. When your router opened the port, or you gave a public address, or the
    server can't be reached, Co-op also shows the **direct code** under it, like `7KQ2-M9XD-0RTB-4HWE` (16): it
-   works without the server, but needs the port open.
+   works without the server, but needs the port open. Each code shown (the code for your own network too) has a
+   small **Copy** button beside it, for the mouse; it says "Copied" for 2 s.
 
 **Send the code only to the friends you play with.** Anyone with it can join you. Under the room code, Seamless
 co-op says just that: the room code holds no address. The direct code holds your internet address, so under it the

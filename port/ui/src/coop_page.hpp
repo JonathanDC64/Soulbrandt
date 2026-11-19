@@ -2,12 +2,14 @@
 // as its pages (looks.hpp's pages: DeS UI); Alpha UI keeps the Co-op window (coop_window.hpp). The window's actions
 // and questions (coop_window.hpp's coop namespace) as tall bars: Host and Join when off; Copy code, New code, Public
 // address and Leave co-op while hosting; Leave co-op when joined. Beside them, in a box: what co-op is, or the invite
-// code, the router's answer and the players, read again each half second. A guest's one line on the connection goes
-// in the strip, and the box is left out (class none).
+// code, the router's answer and the players, read again each half second. Each code's line has a small Copy button
+// (coop::copy_button) for the mouse. A guest's one line on the connection goes in the strip, and the box is left out
+// (class none).
 //
 // Its elements, the same in every look (how they look is the look's sheet):
 //   coop-page > coop-box > coop-action(.focused .disabled)
-//               coop-info(.none) > info-label, info-code, info-line(.warning) > info-lan, info-rule
+//               coop-info(.none .long) > info-head > (info-label | info-line), code-copy(.done)
+//                                  info-label, info-code, info-line(.warning) > info-lan, info-rule
 #pragma once
 
 #include "menu_page.hpp"

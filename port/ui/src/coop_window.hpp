@@ -10,6 +10,10 @@
 #include <string>
 #include <vector>
 
+namespace Rml {
+class Element;
+}
+
 namespace ui {
 
 std::unique_ptr<Modal> make_coop_window();
@@ -27,6 +31,11 @@ bool no_code();
 void open_new_code();
 void open_public_address();
 void open_leave();
+// The small Copy button beside each code shown (kind: "room", "direct" or "lan"), for the window's body and the
+// page's box: its RML, "Copied" for 2 s after a press. copy_pressed takes a click in that body or box: when it landed
+// on one of these buttons, that code goes on the clipboard and it returns true (draw the body or box again).
+std::string copy_button(const char* kind);
+bool copy_pressed(Rml::Element* target);
 }  // namespace coop
 
 }  // namespace ui
