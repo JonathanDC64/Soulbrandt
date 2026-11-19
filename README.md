@@ -16,17 +16,18 @@ You need your own copy of the game: the US version, **BLUS30443**, or the Europe
 
 ## Status
 
-**0.1.2, the current release, is an alpha.** Download it from the [Releases](https://github.com/JonathanDC64/Soulbrandt/releases) page.
+**0.2.0, the current release, is an alpha.** Download it from the [Releases](https://github.com/JonathanDC64/Soulbrandt/releases) page.
 
-The game plays from start to finish (a tester has beaten it), but not every part has been tried on every setting, so expect bugs. What [isn't supported yet](#not-supported-yet) is below; please [report](#problems) anything you find. Questions and help: [Discord](https://discord.gg/BzmwDeca8s).
+The game plays from start to finish (a tester has beaten it), but not every part has been tried on every setting, so expect bugs. Seamless co-op is new in 0.2.0 and still being tested. What [isn't supported yet](#not-supported-yet) is below; please [report](#problems) anything you find. Questions and help: [Discord](https://discord.gg/BzmwDeca8s).
 
 ## Highlights
 
 - Up to 240 fps or unlocked, with the game's timing fixed. Up to 4K, ultrawide, 16:10 and HDR.
 - The US, European, Japanese and Asian versions, each with its languages, plus Japanese on the US disc and Japanese, Chinese and Korean on the European disc.
 - Online play on this project's own server: messages, bloodstains, ghosts, co-op, invasions and the Pantheon.
+- Seamless co-op (still being tested): play the whole game with up to three friends in the host's world, joined with a room code. No port forwarding needed.
 - Roll in any direction while locked on, not only forward, back, left or right.
-- A stat respec in the Nexus (optional): get back the souls your levels cost and spend them again.
+- At the Nexus statue (optional): a stat respec that gives back the souls your levels cost, and a new appearance, name, body or world tendency.
 - Keyboard and mouse, Xbox controllers, DualSense and DualShock 4.
 
 ## Features
@@ -40,7 +41,7 @@ Press **F1** (or **L3 + R3** on a controller) at any time to open the menu. Most
 - A frame rate counter, with a graph of frame times if you like, to see how a mod or a setting runs (Settings > Display > Frame rate counter). Off by default.
 - Render resolution from 50% (for handhelds) up to 300% (4K), ultrawide aspect ratios (21:9 and 32:9), and 16:10 for the Steam Deck's screen.
 - Anti-aliasing (FXAA or SMAA), anisotropic filtering up to 16x, texture filtering and a sharp scaling filter.
-- HDR on HDR displays (Windows), with settings for brightness, peak and shadows.
+- HDR on HDR displays, with settings for brightness, peak and shadows. On Linux: a Steam Deck OLED in Game Mode, or a desktop with HDR on for the display (KDE Plasma 6).
 - Turn off the game's depth of field and motion blur.
 - Window, borderless fullscreen, or exclusive fullscreen on Windows (Settings > Display > Display mode). Alt+Enter switches.
 - Two renderers (Settings > Display > Renderer): DirectX 12 and Vulkan. Windows starts on DirectX 12, except with a GeForce GTX 10 series card or older, which starts on Vulkan. Linux starts on Vulkan.
@@ -49,7 +50,9 @@ Press **F1** (or **L3 + R3** on a controller) at any time to open the menu. Most
 - Xbox controllers, DualSense and DualShock 4, over USB or Bluetooth, with vibration. Pick which controller the game uses when several are connected.
 - Keyboard and mouse, laid out like the Souls games on PC. To turn the camera with the mouse, turn on **Mouse look** in Settings > Controls.
 - Change which buttons and keys do what.
-- The game's button prompts show the buttons of the controller you're using, or your keys (Settings > Game > Button icons).
+- The game's button prompts show the buttons of the controller you're using, a Steam Deck's among them, or your keys (Settings > Game > Button icons).
+- Keys 1 to 5 switch straight to the item in each of the five item slots, without using it (Settings > Controls > Change Buttons, Keyboard and mouse).
+- The forward attack (the kick) can go on a key or a controller button of its own, so attacking never kicks by accident (Settings > Controls > Forward attack, off by default; the button is the Kick row in Change Buttons > Gamepad). A controller's back buttons, paddles or Share button can kick, when the controller reports them to the game; on Windows, Xbox controllers don't.
 - A deadzone for each stick, set as how far you tilt it, with a live picture of the stick (Settings > Controls).
 - Mouse sensitivity, inverted axes, and switching lock-on targets with a flick of the mouse.
 - **Roll in any direction while locked on**: the roll goes where the stick points. It's on by default; turn off **Roll toward the stick** in Settings > Controls for the original's four directions.
@@ -64,6 +67,8 @@ Press **F1** (or **L3 + R3** on a controller) at any time to open the menu. Most
 - **Stat respec**: the Maiden in Black, or the statue in front of where you wake in the Nexus, puts your stats back to your class's and gives back the souls your levels cost, to spend again. Off by default: turn on **Stat respec in the Nexus** in Settings > Game.
 - Use several soul items at once, as Drop does. On by default: turn off **Use several souls at once** in Settings > Game for the original's one at a time.
 - **Change Appearance** at the statue in front of where you wake in the Nexus: the game's own Edit Appearance, with your character. Off by default: turn on **Change appearance in the Nexus** in Settings > Game.
+- **Change Name** and **Change Body** at the same statue, with Change appearance on: a new name for your character, or the other body. Armour the new body can't wear comes off and stays in your inventory.
+- **Change Tendency** at the same statue: set any world's tendency, or your character's, from Pure White to Pure Black. A world's new tendency takes effect the next time you enter it. Off by default: turn on **Change tendency in the Nexus** in Settings > Game.
 - Choose the language in Settings > Game > Language. The European disc has English, French, German, Spanish and Italian, plus Japanese, Chinese (Traditional) and Korean; the US disc has English and Japanese; the Asian disc has English, Chinese (Traditional) and Korean. It starts in your PC's language when it can. A change needs a restart.
 
 **Online**
@@ -73,19 +78,33 @@ Press **F1** (or **L3 + R3** on a controller) at any time to open the menu. Most
 - Setup asks for your online name. You can change it, or turn online play off, in Settings > Network.
 - A matchmaking password, so you meet only your friends.
 - Show or hide other players' messages, bloodstains and ghosts.
+- World tendency: **Yours only** (the default) changes only by what you do, or **With the server's** mixes in other players' tendency, as the original does online (Settings > Network).
+- Players behind strict routers can still play together: when a direct connection fails, the session goes through the server, which passes the game's data on and keeps none of it.
+
+**Seamless co-op** (new, still being tested)
+- Play the whole game with up to three friends in the host's world: **Seamless co-op** in the menu, then Host or Join. The host shares a room code (three groups of five characters) and friends type or paste it; there are no summon signs. Anyone with the code can join you and learn your internet address, so only share it with friends.
+- Co-op keeps its own characters, apart from your normal ones, so your normal saves are never touched.
+- Players on every supported version play together. Each keeps their own character and progress: souls, items and key items picked up in the host's world go home with you, bosses you help kill count in your own world too, and every player gets a boss's full souls.
+- No port forwarding: this project's server introduces the games, and they connect to each other directly, through most home routers. The game's data doesn't go through the server. When the host's router lets the game open a port itself (UPnP), or the host gives a public address, the window also shows a direct code, which holds the host's internet address; keep that one private.
+- Mods can be on in co-op. Before Host or Join, the game says how many are on and asks you to accept that they may cause problems.
+- Settings > Network sets how many players you host, and whether the others see your phantom glow, in which colour.
+- Please report what goes wrong: **Report an issue** includes a log of the session. If someone drops out, send a report from their game and from the host's.
 
 **Mods**
 - Put mods in the mods folder (Mods in the menu or on the start screen, then Open the mods folder) and turn each one on or off there. Mods for the PS3 game or RPCS3 that replace the game's files work, and the game's own files are never changed.
 - A mod that changes how the game plays keeps you offline, so you never meet players without it. Mods that only change the look or sound keep online play.
 - When two mods change the same thing, the one higher in the list wins; the arrows on each mod move it. The list is kept in `mods\load_order.txt`, which mod managers can use too (docs/143).
+- After you turn mods on or off, **Restart now** restarts the game with them and goes straight back into your game. Closing the menu with mod changes waiting asks whether to restart.
 
 **The program**
 - A setup that builds the game from your copy, with an Original and an Enhanced preset (see [How to play](#how-to-play)).
-- Updates: the game checks for a new version at start and asks before changing anything. Your saves and settings are kept, and you can go back one version.
+- Updates: the game checks for a new version at start and asks before changing anything. Your saves and settings are kept, and you can go back one version. If a save is inside one of the program's own folders, the update stops and says where, so you can move it out first.
+- Two looks for the menus: **DeS UI**, in the style of the game's own pause menu (the default), and the first look, **Alpha UI** (Settings > Interface > Menu look). Their size follows the window, and **UI scale** makes them bigger or smaller. Settings that need a restart ask first, and can restart the game for you.
+- A start screen with the project's logo, rising smoke and a soul flame. Each can be turned off in Settings > Interface.
 - In the menu, the Large Sword of Moonlight is the cursor and a crystal lizard dances in the corner. Both can be turned off.
 - Trophies, with pop-ups and a tune from the game. Setup can bring your trophies and save across from RPCS3.
 - A Discord status: your profile shows that you're playing, the area you're in and whether you're online (Settings > Network).
-- **Report an issue** in the menu opens a GitHub issue with your PC's details filled in, and a zip to attach that includes your save, so the problem can be seen where it happened. It has no game files. If the game crashes or stops responding, a window offers to do the same.
+- **Report an issue** in the menu opens a GitHub issue with your PC's details filled in, and a zip to attach that includes your save, so the problem can be seen where it happened. It has no game files, and leaves out other players' internet addresses. If the game crashes or stops responding, a window offers to do the same.
 
 ## What you need
 
@@ -93,7 +112,7 @@ Press **F1** (or **L3 + R3** on a controller) at any time to open the menu. Most
 - RPCS3, the free PS3 emulator. Setup has it unlock the game's encrypted files. You don't need the PS3 system software. (Or decrypt the files yourself: see below.)
 - Windows 10 or 11 (64-bit) with a graphics card that supports DirectX 12, or Linux (see [Linux](#linux)).
 - A processor with SSE4.1, which most have since about 2011.
-- An internet connection during setup. Setup downloads a compiler and Python (about 60 MB on Windows, about 130 MB on Linux).
+- An internet connection during setup. Setup downloads a compiler and Python (about 60 MB on Windows, about 130 MB on Linux). If a download fails, setup says why, and gives the file's address and the folder to put your own copy in.
 
 ## How to play
 
@@ -130,7 +149,7 @@ On a Steam Deck the game runs best with **Manual GPU Clock Control** at **800 MH
 
 ### Online play
 
-Online play is on by default and uses this project's own server. Setup asks for your online name; you can change it, or turn online play off, in Settings > Network. Players of every supported version meet on the same server. RPCS3 players use other servers, so you won't meet them. What the server keeps about you is in the [privacy note](PRIVACY.md).
+Online play is on by default and uses this project's own server. Setup asks for your online name; you can change it, or turn online play off, in Settings > Network. Players of every supported version meet on the same server. RPCS3 players use other servers, so you won't meet them. In seamless co-op the server only introduces the games to each other (it learns the host's addresses while hosting); the game's data goes straight between them. What the server keeps about you is in the [privacy note](PRIVACY.md).
 
 ### Not supported yet
 
@@ -213,6 +232,7 @@ This project contains only its own code, scripts and documentation. It has no ga
 - [ps3recomp](https://github.com/sp00nznet/ps3recomp) by sp00nznet and its contributors: the recompiler and runtime this port is built on
 - RPCS3: a reference for how the PS3 behaves (no RPCS3 code is copied)
 - [RmlUi](https://github.com/mikke89/RmlUi) and [FreeType](https://freetype.org) for the menus, adapted from [Dusklight](https://github.com/TwilitRealm/dusklight)'s interface code
+- The [Old Standard TT](https://fonts.google.com/specimen/Old+Standard+TT) font for the DeS UI look's text
 - [SMAA](https://www.iryoku.com/smaa/) for the SMAA setting, [FFmpeg](https://ffmpeg.org) for the movies, and [vkd3d](https://gitlab.winehq.org/wine/vkd3d) and [SDL](https://www.libsdl.org) for Linux
 
 Settings > About and [`port/ui/NOTICE.md`](port/ui/NOTICE.md) list the menus' parts with their licences. The download's `licenses` folder holds the licences of the libraries shipped beside the program. The source of its LGPL libraries, FFmpeg and vkd3d, is on [their own release](https://github.com/JonathanDC64/Soulbrandt/releases/tag/third-party-sources).
