@@ -1282,9 +1282,13 @@ void open_menu(bool quit) {
     if (quit) ui::request_quit_confirm();
 }
 
-// The F1 menu with the question its closing asks while two settings wait for a restart. The question's text is made
-// as it is asked, so the settings go back at once, and the scratch settings.ini as it was (or none), for the next run.
-void open_menu_restart() {
+// The F1 menu with the question its closing asks while two settings wait for a restart, and with mods: a mod change
+// as well (the stand-in list as a Mods screen left it, three mods on that this run doesn't have). The question's text
+// is made as it is asked, so the settings go back at once, and the scratch settings.ini as it was (or none), for the
+// next run.
+void open_menu_restart(bool mods) {
+    standin_mods(mods);
+    ui::ModsState().load();  // (what the F1 menu's closing compares: this page's, whatever ran before it)
     open_menu(false);
     const std::filesystem::path ini = std::filesystem::u8path(ui::settings::path());
     std::ifstream in(ini, std::ios::binary);
@@ -1600,7 +1604,7 @@ int main(int argc, char** argv) {
     }, {}});
     pages.push_back({"menu", 1280, 720, false, 1.f, false, [] { open_menu(false); }, {}});
     pages.push_back({"menu-quit", 1280, 720, false, 1.f, false, [] { open_menu(true); }, {}});
-    pages.push_back({"menu-restart", 1280, 720, false, 1.f, false, open_menu_restart, {}});
+    pages.push_back({"menu-restart", 1280, 720, false, 1.f, false, [] { open_menu_restart(false); }, {}});
     // Trophies and Mods, as Alpha UI shows them (their windows).
     pages.push_back({"trophies", 1280, 720, false, 1.f, false, [] { open_trophies(true, 1); }, {}});
     pages.push_back({"mods", 1280, 720, false, 1.f, false, [] { open_mods(true, "", false); }, {}});
@@ -1678,7 +1682,10 @@ int main(int argc, char** argv) {
         };
         pages.push_back({"des-menu", 1280, 720, false, 1.f, false, in_band([] { open_menu(false); }), {}});
         pages.push_back({"des-quit", 1280, 720, false, 1.f, false, in_band([] { open_menu(true); }), {}});
-        pages.push_back({"des-menu-restart", 1280, 720, false, 1.f, false, in_band(open_menu_restart), {}});
+        pages.push_back({"des-menu-restart", 1280, 720, false, 1.f, false,
+                         in_band([] { open_menu_restart(false); }), {}});
+        pages.push_back({"des-menu-restart-mods", 1280, 720, false, 1.f, false,
+                         in_band([] { open_menu_restart(true); }), {}});
         // Trophies as a page: the top of the list, further down (the list scrolled, its marks above and below), with
         // no set found, and on its own as the start screen opens it.
         pages.push_back({"des-trophies", 1280, 720, false, 1.f, false, in_band([] { open_trophies(true, 1); }), {}});
@@ -1704,6 +1711,17 @@ int main(int argc, char** argv) {
                          in_band([] { open_mods_restart(true, false); }), {}});
         pages.push_back({"des-mods-restart-host", 1280, 720, false, 1.f, false,
                          in_band([] { open_mods_restart(true, true); }), {}});
+        // The fullest prompts (Restart now's among them) in the keys' words, on their own as the start screen opens
+        // them (Close in place of Back), and an Xbox pad's: they fit the band.
+        pages.push_back({"des-mods-keys", 1280, 720, false, 1.f, false, in_band([] {
+            use_setting("DES_GLYPHS", "keyboard");
+            standin_mods(true);
+            ui::push_document(ui::menu::screen_alone("Mods"));
+        }), {}});
+        pages.push_back({"des-mods-xbox", 1280, 720, false, 1.f, false, in_band([] {
+            use_setting("DES_GLYPHS", "xbox");
+            open_mods(true, "Darker nights", false);
+        }), {}});
         // Change Buttons as a page over Settings: the gamepad, the keys (the second box of Attack chosen), the keys
         // waiting for Lock on's first input, Help, and Restore at the end of the gamepad's rows.
         pages.push_back({"des-controls", 1280, 720, false, 1.f, false,
