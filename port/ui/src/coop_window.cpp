@@ -395,9 +395,9 @@ std::string body(const co::Status& s) {
     if (s.code_spent)
         b += "<b>Many wrong codes were tried</b>, so your code no longer lets anyone in. Choose <b>New code</b> and "
              "send the new one to your friends. Players already here stay.<br/><br/>";
-    if (!s.room_code.empty())
-        b += "Your invite code:<br/><b>" + escape(s.room_code) + "</b><br/>Send it to your friends. Don't post it in "
-             "public: anyone with it can join you.<br/><br/>";
+    if (!s.room_code.empty())  // (it holds no address: the server introduces the games)
+        b += "Your invite code:<br/><b>" + escape(s.room_code) + "</b><br/>Send it to your friends. Anyone with this "
+             "code can join you.<br/><br/>";
     if (!s.intro.empty())
         b += (s.intro_trouble ? "<modal-warning>" + escape(s.intro) + "</modal-warning>" : escape(s.intro)) +
              "<br/><br/>";
@@ -428,9 +428,10 @@ void copy_code_now() {
     }
     if (auto* sys = Rml::GetSystemInterface()) sys->SetClipboardText(code);
     play_sound(kSoundItemEnable);
-    toast("info", code == now.lan_code && now.code.empty()
-                      ? "Copied the code for players on your own network: it doesn't work over the internet."
-                      : "Copied. Send it to your friends, not in public.");
+    toast("info", code == now.room_code ? "Copied. Send it to your friends."
+                  : code == now.code     ? "Copied. Send it to your friends, not in public."  // (it holds the address)
+                                         : "Copied the code for players on your own network: it doesn't work over "
+                                           "the internet.");
 }
 
 bool no_code_now() {

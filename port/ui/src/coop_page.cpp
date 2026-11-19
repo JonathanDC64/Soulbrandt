@@ -85,7 +85,7 @@ std::string info_rml(const co::Status& s) {
              "new code and send it to your friends.</info-line><info-rule/>";
     if (!s.room_code.empty())
         b += "<info-label>Your invite code</info-label><info-code>" + escape(s.room_code) + "</info-code>"
-             "<info-line>Send it to your friends. Don't post it in public: anyone with it can join you.</info-line>";
+             "<info-line>Send it to your friends. Anyone with this code can join you.</info-line>";
     if (!s.intro.empty())
         b += std::string(s.intro_trouble ? "<info-line class=\"warning\">" : "<info-line>") + escape(s.intro) +
              "</info-line>";

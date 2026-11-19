@@ -37,8 +37,9 @@ title), so it isn't taken for the game's own co-op with summon signs.
    server can't be reached, Co-op also shows the **direct code** under it, like `7KQ2-M9XD-0RTB-4HWE` (16): it
    works without the server, but needs the port open.
 
-**Don't post the code in public.** Anyone with it can join you and learn your internet address (a direct code holds
-it). Send it only to the friends you play with.
+**Send the code only to the friends you play with.** Anyone with it can join you. Under the room code, Seamless
+co-op says just that: the room code holds no address. The direct code holds your internet address, so under it the
+window adds "Don't post it in public". The code for your own network needs no warning.
 If a code went further than you meant, choose **New code**: the old one stops working, and players already in your
 game stay. The game makes a new code by itself only when someone has tried many wrong ones; Seamless co-op then says
 so.
