@@ -47,6 +47,10 @@ from pathlib import Path
 from . import fetch, journal, pipeline, protocol, signing
 
 NAME = "DemonsSoulsRecomp"
+# The downloads under another name (docs/130): a later release may name them <name>-<version>-windows.zip (Linux:
+# -linux.tar.xz), with <name>-<version>/ inside, and keep the NAME ones beside them for a while, for the versions
+# before this one, which look for NAME's alone. <name>: one word of letters, digits, '.' and '_'.
+OTHER_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._]*")
 REPO = "JonathanDC64/Soulbrandt"
 FEED = f"https://api.github.com/repos/{REPO}/releases?per_page=20"
 STABLE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
@@ -80,10 +84,23 @@ def system() -> str:
     return "windows" if os.name == "nt" else "linux"
 
 
-def player_asset(version) -> str:
+def player_asset(version, name=NAME) -> str:
     """The player's download of `version` for this system (package.py's names): the zip on Windows, the tar.xz
     (--linux-host) on Linux, which keeps the program's execute bit. fetch.unpack takes both."""
-    return f"{NAME}-{version}-windows.zip" if system() == "windows" else f"{NAME}-{version}-linux.tar.xz"
+    return f"{name}-{version}-windows.zip" if system() == "windows" else f"{name}-{version}-linux.tar.xz"
+
+
+def player_asset_in(names, version):
+    """The name of the player's download of `version` for this system among a release's asset names, or None.
+    NAME's first (player_asset); else the one download under another name (OTHER_NAME), and none when there are
+    two of those. The name trusts nothing: _apply takes only a file that the signed SHA256SUMS lists."""
+    own = player_asset(version)
+    if own in names:
+        return own
+    tail = own[len(NAME):]   # "-<version>-windows.zip"
+    found = sorted(n for n in names if isinstance(n, str) and n.endswith(tail) and len(n) > len(tail)
+                   and OTHER_NAME.fullmatch(n[:-len(tail)]))
+    return found[0] if len(found) == 1 else None
 
 
 # ---- the releases list ----
@@ -161,7 +178,7 @@ def stable_releases(feed) -> list:
             continue
         text = ".".join(map(str, v))
         names = {a.get("name") for a in r.get("assets") or [] if isinstance(a, dict)}
-        if player_asset(text) in names and SUMS in names and SIG in names:
+        if player_asset_in(names, text) and SUMS in names and SIG in names:
             out.append((v, text, r))
     return sorted(out, key=lambda x: x[0], reverse=True)
 
@@ -570,7 +587,8 @@ def signed_sums(assets, allow_http, version) -> dict:
 
 
 def _staged_root(unpacked: Path, version) -> Path:
-    """The release's folder in the unpacked zip (DemonsSoulsRecomp-<version>/), checked."""
+    """The release's folder in the unpacked zip (DemonsSoulsRecomp-<version>/, or the one folder there is: a download
+    under another name, OTHER_NAME), checked."""
     root = unpacked / f"{NAME}-{version}"
     if not root.is_dir():
         dirs = [d for d in unpacked.iterdir() if d.is_dir()]
@@ -619,7 +637,7 @@ def _apply(install, data, app, to, emit, timeout) -> int:
         raise UpdateFailed("download", "-", f"Version {to} is not among the releases.")
     _v, text, rel = found[0]
     assets = _assets(rel)
-    zip_asset = assets[player_asset(text)]
+    zip_asset = assets[player_asset_in(set(assets), text)]
     allow_http = bool(_test_feed())
 
     emit.step("download", "start")
