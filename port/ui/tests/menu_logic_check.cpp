@@ -2,7 +2,8 @@
 // a restart and what each row can do are made up here. Closing the menu closes it when nothing waits; while something
 // does, it asks about a restart, until the player answers Later to that very set of changes, and asks again once what
 // waits is different. Back closes one thing at a time: what Settings has open (a list, the typing, the preview), the
-// page (back to the entries), then the menu. The prompts say what the keys do now.
+// page (back to the entries), then the menu. The prompts say what the keys do now. The Mods screens' Restart now asks
+// in the game and in co-op, not on the start screen, and comes back past the start screen only from the game.
 //
 // Prints a line per failure and "menu_logic_check: N checks, M failed"; exit 1 on a failure. Built on demand:
 // cmake --build <build> --target menu_logic_check, then menu_logic_check.
@@ -221,11 +222,61 @@ void settings_page() {
     check(m.focus() == 0 && !m.move(1, {}) && m.enter({}) == Action::None, "a tab with no rows");
 }
 
+// Restart now on the Mods screens: from where it was pressed, whether it asks and where the new game comes back to;
+// what the restart question says (the Mods screens' and the F1 menu's closing, for the mods and the settings); when
+// co-op warns about the mods again before the restart.
+void mods_restart() {
+    using ui::menu::Coop;
+    using ui::menu::mods_restart;
+    using ui::menu::restart_body;
+    check(mods_restart(false, false).ask && mods_restart(false, false).play,
+          "in the game: it asks, and the game comes back past the start screen");
+    check(!mods_restart(true, false).ask && !mods_restart(true, false).play,
+          "on the start screen: at once, and the start screen comes back");
+    check(mods_restart(true, true).ask && !mods_restart(true, true).play,
+          "on the start screen in co-op: it asks all the same, to the start screen");
+    check(mods_restart(false, true).ask && mods_restart(false, true).play, "in the game in co-op: it asks");
+
+    check(ui::menu::and_list({}) == "" && ui::menu::and_list({"A"}) == "A" &&
+              ui::menu::and_list({"A", "B"}) == "A and B" && ui::menu::and_list({"A", "B", "C"}) == "A, B and C",
+          "and_list");
+    check(restart_body({}, true, Coop::None) == "Your mod changes take effect after a restart.", "the mods alone");
+    check(restart_body({"Renderer"}, true, Coop::None) ==
+              "Your mod changes and Renderer take effect after a restart.",
+          "a restart-only setting waits too: named after the mods");
+    check(restart_body({"Renderer"}, false, Coop::None) == "Renderer takes effect after a restart.",
+          "a setting alone: as the F1 menu's closing always asked");
+    check(restart_body({"Renderer", "Language"}, false, Coop::None) ==
+              "Renderer and Language take effect after a restart.",
+          "two settings");
+    check(restart_body({"Renderer", "Language"}, true, Coop::None) ==
+              "Your mod changes, Renderer and Language take effect after a restart.",
+          "the mods and two settings: one question names all three");
+    const std::string host = restart_body({}, true, Coop::Host), guest = restart_body({}, true, Coop::Guest);
+    check(host.find("invite code changes") != std::string::npos && host.find("own worlds") != std::string::npos,
+          "hosting: the friends go home, and the code changes");
+    check(guest.find("leaves the host's world") != std::string::npos &&
+              guest.find("joins it again") != std::string::npos,
+          "a guest: it leaves the host's world, and joins again");
+    check(restart_body({"Renderer"}, false, Coop::Guest).find("joins it again") != std::string::npos,
+          "a setting's restart in co-op says the same");
+
+    using ui::menu::other_mods;
+    check(!other_mods({}, {}), "no mods, before and after: no warning again");
+    check(!other_mods({"A", "B"}, {"A", "B"}), "the same mods: what was accepted holds");
+    check(!other_mods({"A", "B"}, {"B", "A"}), "only their order changed: the same set, no warning again");
+    check(other_mods({"A"}, {"A", "B"}), "one more mod: the warning again");
+    check(other_mods({"A", "B"}, {"A"}), "one mod fewer: another set");
+    check(other_mods({}, {"A"}), "the first mod on: the warning");
+    check(other_mods({"A"}, {}), "every mod off: another set (nothing to warn about, the accepted ones go)");
+}
+
 }  // namespace
 
 int main() {
     levels();
     settings_page();
+    mods_restart();
 
     using ui::menu::Model;
     using Waiting = std::vector<std::string>;
@@ -248,6 +299,17 @@ int main() {
     check(m.close(vulkan) == ask, "one of them changed back: what waits is new, it asks");
     m.later(none);
     check(m.close(vulkan) == ask, "Later with nothing waiting forgets the earlier answer");
+
+    // A mod change waits as one more entry (menu_pages.cpp's waiting_for_restart: "mods=" and the mods on).
+    const Waiting mods{"mods=A|B"}, modsOther{"mods=B|A"}, both{"RSX_BACKEND=vulkan", "mods=A|B"};
+    Model n;
+    check(n.close(mods) == ask, "only a mod change waits: it asks");
+    n.later(mods);
+    check(n.close(mods) == now, "Later to it: the menu closes");
+    check(n.close(modsOther) == ask, "the mods' order changed again: it asks");
+    check(n.close(both) == ask, "a setting waits as well: one question for both");
+    n.later(both);
+    check(n.close(both) == now, "Later to both: the menu closes");
 
     std::printf("menu_logic_check: %d checks, %d failed\n", g_checks, g_fail);
     return g_fail ? 1 : 0;

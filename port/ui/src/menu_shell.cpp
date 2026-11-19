@@ -58,6 +58,7 @@ menu::Command command_of(prompts::Key key) {
     case Key::Help: return menu::Command::Help;
     case Key::PrevTab: return menu::Command::PrevTab;
     case Key::NextTab: return menu::Command::NextTab;
+    case Key::Right: return menu::Command::Right;
     default: return menu::Command::None;
     }
 }

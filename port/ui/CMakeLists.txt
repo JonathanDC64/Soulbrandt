@@ -34,6 +34,7 @@ FetchContent_Declare(RmlUi
   GIT_TAG ba95ffe8bfb6370efb2cdcca927eaad4710c5413   # 6.3
   EXCLUDE_FROM_ALL)
 FetchContent_MakeAvailable(RmlUi)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/rmlui_fixes.cmake)   # (fixes to its sources, made at configure time)
 
 if(WIN32)
   # RmlUi's Win32 platform helpers (the system interface) and its D3D11 renderer (the fallback) are sources in its tree.
@@ -291,6 +292,20 @@ add_executable(report_addresses_check EXCLUDE_FROM_ALL tests/report_addresses_ch
 target_include_directories(report_addresses_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 if(MSVC)
   target_compile_options(report_addresses_check PRIVATE /EHsc /W3)
+endif()
+
+# shader_cache.cpp on its own (tests/shader_cache_check.cpp): the menus' shaders kept compiled between starts. A stored
+# one comes back only for exactly the input it was made from, and only whole: every byte of a file changed in turn,
+# cut short at every length, another input, another format, the other kind of bytecode. CI runs it on both (host.yml).
+# Built on demand:
+#   cmake --build <build> --target shader_cache_check, then shader_cache_check
+add_executable(shader_cache_check EXCLUDE_FROM_ALL tests/shader_cache_check.cpp src/shader_cache.cpp)
+target_include_directories(shader_cache_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+if(MSVC)
+  target_compile_options(shader_cache_check PRIVATE /EHsc /W3)
+endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_link_options(shader_cache_check PRIVATE "-Wl,--build-id=sha1")  # (as des_host: the build is known by it)
 endif()
 
 # The F1 menu's rules on their own (tests/menu_logic_check.cpp): menu_model.cpp and settings_model.cpp with no RmlUi

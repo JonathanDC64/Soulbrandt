@@ -18,6 +18,7 @@
 
 #include "app.hpp"
 #include "button_icons.hpp"
+#include "coop_window.hpp"
 #include "crash_report.hpp"
 #include "discord_presence.hpp"
 #include "game_menu.hpp"
@@ -31,6 +32,7 @@
 #include "net_notices.hpp"
 #include "osk_window.hpp"
 #include "overlay.hpp"
+#include "perf_overlay.hpp"
 #include "platform.hpp"
 #include "portable.hpp"
 #include "prelaunch.hpp"
@@ -41,6 +43,7 @@
 #include "report.hpp"
 #include "settings.hpp"
 #include "setup_engine.hpp"
+#include "setup_folder.hpp"
 #include "setup_screens.hpp"
 #include "setup_window.hpp"
 #include "players_window.hpp"
@@ -50,6 +53,7 @@
 #include "update_window.hpp"
 #include "version.hpp"
 #include "../../des_rsx_route.h"  // the renderer calls below: through rsx_out in a PS3RECOMP_RSX_HAL build
+#include "../../des_seamless.h"
 
 #ifdef _WIN32
 #include <xinput.h>  // (read_xinput)
@@ -59,6 +63,7 @@
 #include <atomic>
 #include <cctype>
 #include <chrono>
+#include <ctime>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -102,8 +107,10 @@ typedef struct {  // as pad_hid_sony.h has it, field for field: the poll fills a
     unsigned char lx, ly, rx, ry;  // 0-255, centre 128, up = 0
     unsigned char l2, r2;
     unsigned char slot;        // the pad, for its vibration
+    float raw[4];              // its sticks as it reports them (Windows)
 } PadHidSonyState;
-static_assert(sizeof(PadHidSonyState) == 10, "pad_hid_sony.h's PadHidSonyState");
+// (The runtime writes whole entries of its own size: an array of a smaller copy overflows with a second pad.)
+static_assert(sizeof(PadHidSonyState) == 28, "pad_hid_sony.h's PadHidSonyState");
 int pad_hid_sony_poll(PadHidSonyState* out, int max);
 int cellPad_host_pads_on(void);  // cellPad.h: 0 while the game ignores the pads (PAD_FOCUS_ONLY in the background)
 int cellPad_host_glyph_device(void);  // cellPad.h: what the game was last used with (PAD_GLYPH_*, pad_glyph.h)
@@ -162,6 +169,7 @@ std::atomic<int> sBufferW{1280}, sBufferH{720};
 
 bool sStartScreen = false;
 bool sSetupOnly = false;  // setup's screens alone, no game (des_ui_launch)
+bool sCrashDialog = false;  // off Windows, the crash dialog's process: setup's window alone, the dialog's window in it
 std::atomic<bool> sStartUp{false};
 // The window's close button (and Alt+F4) asks first, as Quit does; a test run's window closes at once.
 bool sCloseAsks = false;
@@ -616,10 +624,13 @@ void open_test_osk() {
 }
 
 // Play on setup alone: the game in a new process of this program (crash_report::start_again: with the environment
-// this one started with, so the game reads what setup stored in settings.ini), then this one closes.
+// this one started with, so the game reads what setup stored in settings.ini), then this one closes. Not past the
+// start screen: it comes next, as at every later start.
 void play_from_setup() {
-    if (!ui::crash_report::start_again()) std::fprintf(stderr, "[setup] play: the game could not be started\n");
-    else std::fprintf(stderr, "[setup] play: the game starts in a new process\n");
+    if (!ui::crash_report::start_again({}, false))
+        std::fprintf(stderr, "[setup] play: the game could not be started\n");
+    else
+        std::fprintf(stderr, "[setup] play: the game starts in a new process\n");
     ui::app().quit();
 }
 
@@ -646,6 +657,17 @@ void push_setup(const char* open) {
     }
 }
 
+// Off Windows, the crash dialog's process (crash_report.hpp's dialog_process: DES_UI_OPEN=crash-dialog, started by
+// crash_report_posix.cpp): setup's window-only start, with the dialog's window in place of setup's screens. Windows'
+// dialog has a window of its own (crash_dialog.cpp).
+bool crash_dialog_process() {
+#ifdef _WIN32
+    return false;
+#else
+    return ui::crash_report::dialog_process();
+#endif
+}
+
 // DES_UI_OPEN's values that open setup's screens alone (des_ui_launch): no game below them.
 bool setup_only_open(const char* open) {
     return open && (!std::strcmp(open, "setup") || !std::strcmp(open, "setup-run") ||
@@ -656,6 +678,12 @@ void push_documents() {
     if (sDocumentsPushed) return;
     sDocumentsPushed = true;
     ui::push_document(std::make_unique<ui::Overlay>(), true, true);
+#ifndef _WIN32
+    if (sCrashDialog) {  // (no update check either: the dialog has nothing to show it on)
+        ui::crash_report::push_dialog();
+        return;
+    }
+#endif
     // The update check (updates.hpp), off this thread: what it finds shows on the start screens and in Settings, About.
     ui::updates::set_over_game(!sSetupOnly);
     if (const char* open = std::getenv("DES_UI_OPEN");
@@ -668,9 +696,10 @@ void push_documents() {
     ui::push_document(std::make_unique<ui::MenuShell>(), false);
     if (sStartScreen) ui::push_document(std::make_unique<ui::Prelaunch>());
 
-    // DES_UI_OPEN=menu | settings | trophies | mods | players | coop | privacy | osk | setup | setup-run: open one at
-    // startup
-    // (for screenshots and tests; privacy is the note as Settings > Network shows it).
+    // DES_UI_OPEN=menu | settings | trophies | mods | players | coop | coop-host | coop-join | privacy | osk | setup |
+    // setup-run: open one at startup
+    // (for screenshots and tests; privacy is the note as Settings > Network shows it; coop-host and coop-join are
+    // Seamless co-op with Host's or Join's first question over it, as a press opens it: the notice, the mods warning).
     // setup is setup's start screen over the game (docs/88: its own window comes with the split host), with
     // DES_SETUP_GAME's folders to begin with; setup-run runs the setup engine at once, on those folders.
     if (const char* open = std::getenv("DES_UI_OPEN"); open && *open) {
@@ -683,6 +712,11 @@ void push_documents() {
         else if (!std::strcmp(open, "mods")) ui::push_document(ui::menu::screen_alone("Mods"));
         else if (!std::strcmp(open, "players")) ui::push_document(std::make_unique<ui::PlayersWindow>());
         else if (!std::strcmp(open, "coop")) ui::push_document(ui::menu::screen_alone("Seamless co-op"));
+        else if (!std::strcmp(open, "coop-host") || !std::strcmp(open, "coop-join")) {
+            ui::push_document(ui::menu::screen_alone("Seamless co-op"));
+            if (!std::strcmp(open, "coop-host")) ui::coop::open_host();
+            else ui::coop::open_join();
+        }
         else if (!std::strcmp(open, "privacy"))
             ui::push_document(std::make_unique<ui::PrivacyWindow>(ui::PrivacyWindow::Mode::Read));
         else if (!std::strcmp(open, "osk")) open_test_osk();
@@ -1080,9 +1114,10 @@ void sync_fullscreen() {
 void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned height) {
     ++sFrame;
     sFramesRun.fetch_add(1, std::memory_order_relaxed);
-    sync_fullscreen();
+    // (the crash dialog stays a window, and has the game's environment: its test knobs are the game's, not its own)
+    if (!sCrashDialog) sync_fullscreen();
     ui::mouse::on_frame();  // (mouse look: is the game's camera taking the mouse?)
-    if (ui::report::frame_hook(sFrame)) sReportCountdown = 4;  // DES_REPORT_AT_FRAME (and the crash test knobs)
+    if (!sCrashDialog && ui::report::frame_hook(sFrame)) sReportCountdown = 4;  // DES_REPORT_AT_FRAME (and the crash test knobs)
     const bool script = !sScriptKeys.empty();
     std::string shotNow;  // DES_UI_SHOT_NOW's, for this frame
     {
@@ -1098,7 +1133,8 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
 
     // A menu of the game with the pointer over it (game_menu.cpp) keeps the UI running too.
     const bool gameMenu = ui::game_menu::poll();
-    // Fast path: nothing showing, nothing queued (input, a trophy pop-up), no chord pressed.
+    // Fast path: nothing showing, nothing queued (input, a trophy pop-up), no chord pressed, and the frame rate counter
+    // off.
     const unsigned mask = sChordMask;
     const bool chordDown = (g_pad0_buttons & mask) == mask;
     const bool chordEdge = chordDown && !sChordWasDown;
@@ -1114,7 +1150,7 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
         !sOskPending.load(std::memory_order_acquire) && !ui::trophies::pending() && !ui::net_notices::pending() &&
         !sHangNotice.load(std::memory_order_relaxed) &&
         !sCustomServerNotice.load(std::memory_order_relaxed) && !sModsNotice.load(std::memory_order_relaxed) &&
-        !ui::report::saved_notice_pending()) {
+        !ui::report::saved_notice_pending() && ui::perf::mode() == ui::perf::Mode::Off) {
         return;
     }
 
@@ -1332,12 +1368,7 @@ bool env_on(const char* name) {
 
 }  // namespace
 
-namespace ui {
-App& app() {
-    static App s;
-    return s;
-}
-}  // namespace ui
+// (ui::app() is app.cpp's. This file had a second copy, which linked only while nothing reached app.cpp first.)
 
 // For des_options.cpp: the start screen is up (or about to be), so DES_AUTO_CONTINUE waits for Play.
 extern "C" int des_ui_start_screen_up(void) { return sStartUp.load() ? 1 : 0; }
@@ -1383,6 +1414,20 @@ bool elf_given(int argc, char** argv) {
     return false;
 }
 
+// Every window's title bar: the game's window is "<PRODUCT_NAME> - Demon's Souls" (setup's keeps the program's name
+// alone, setup_only_env, before this), never the disc's PARAM.SFO title that the runtime takes by default. The
+// renderer's numbers after it (FPS, draws, picture size: ps3recomp's RSX_TITLE_STATS) are for developers: a developer
+// build keeps them, a player's build leaves them out. A value in the environment wins (tools/des runs set
+// RSX_TITLE_STATS=1).
+void window_title_env() {
+    if (!env_on("PS3_TITLE")) ps3_setenv("PS3_TITLE", (std::string(ui::kProductName) + " - Demon's Souls").c_str());
+#if DES_DEV
+    if (!std::getenv("RSX_TITLE_STATS")) ps3_setenv("RSX_TITLE_STATS", "1");
+#else
+    if (!std::getenv("RSX_TITLE_STATS")) ps3_setenv("RSX_TITLE_STATS", "0");
+#endif
+}
+
 // Setup alone: each pass of the window's thread presents, so V-sync paces it; the last build's pipeline library stays
 // shut (its threads would compete with the compile); and the title bar has the program's name (no PARAM.SFO is read;
 // the game's own window has the game's title from it).
@@ -1394,6 +1439,17 @@ void setup_only_env() {
     // beside the screens (docs/53 section 16). Play starts the game in a new process, with the environment this one
     // started with.
     if (!std::getenv("RSX_VP_BUFFERS")) ps3_setenv("RSX_VP_BUFFERS", "0");
+}
+
+// The crash dialog's process, on top of setup_only_env: no mark of its renderer's start (RSX_STATE_DIR: a start of
+// the dialog's that never finished is not the game's), and crash_dialog.hpp's DES_CRASH_DIALOG_SHOT=<file.bmp> as a
+// DES_UI_SHOT, at frame 40 (DES_CRASH_DIALOG_SHOT_FRAME=<n>: at frame n).
+void crash_dialog_env() {
+    ps3_setenv("RSX_STATE_DIR", "");
+    if (const char* shot = std::getenv("DES_CRASH_DIALOG_SHOT"); shot && *shot) {
+        const char* at = std::getenv("DES_CRASH_DIALOG_SHOT_FRAME");
+        sShots.push_back({shot, at && *at ? std::strtoull(at, nullptr, 10) : 40});
+    }
 }
 
 // A player's start keeps the saves where a double-click puts them. They are the PS3 file system's gamedata/dev_hdd0
@@ -1420,10 +1476,34 @@ void work_in_exe_folder() {
                          (cwd / "gamedata").string().c_str());
 }
 
+// The game folder whose saves this start uses, noted in the player's data folder (setup_folder.hpp's game-folders.txt,
+// docs/164 section 5), so that a later version unpacked into another folder can offer to copy these saves. Only a
+// player's start, whose saves are the program folder's own gamedata (work_in_exe_folder): not a test run with a save
+// root or a working folder of its own, nor one that keeps no data folder. Nothing else is written; a failure is only
+// logged.
+void note_game_folder() {
+    const std::filesystem::path data = ui::report::data_dir();
+    if (data.empty() || std::getenv("PS3_SAVEDATA_ROOT") || std::getenv("PS3_HDD0_ROOT") || env_on("DES_KEEP_CWD"))
+        return;
+    std::error_code ec;
+    const std::filesystem::path here = std::filesystem::current_path(ec);
+    if (ec || !ui::setup::same_folder(here, ui::report::program_dir())) return;
+    const std::time_t now = std::time(nullptr);
+    char when[32] = "";
+    if (const std::tm* t = std::gmtime(&now)) std::strftime(when, sizeof when, "%Y-%m-%dT%H:%M:%SZ", t);
+    std::string why;
+    if (ui::setup::remember_game_folder(data, here, when, why))
+        std::fprintf(stderr, "[setup] launch: this game folder is noted in %s\n", ui::setup::kGameFoldersFile);
+    else
+        std::fprintf(stderr, "[setup] launch: this game folder is not noted (%s)\n", why.c_str());
+}
+
 }  // namespace
 
 extern "C" int des_ui_launch(int* argc, char*** argv) {
     if (const char* v = std::getenv("DES_UI"); v && !std::strcmp(v, "0")) return -1;
+    // The crash dialog's process: the window alone, before anything here touches the program's files.
+    if (crash_dialog_process()) return -2;
     ui::updates::drop_old_program();
     // An update's swap cut short (updates.hpp): undone, then the program that is in place now starts.
     if (ui::updates::recover_swap() && ui::crash_report::start_again({}, false)) return 0;
@@ -1440,6 +1520,7 @@ extern "C" int des_ui_launch(int* argc, char*** argv) {
         return -2;
     }
     work_in_exe_folder();
+    note_game_folder();
     // What setup found of the disc copy, and whether the player went on anyway (tools/setup/des_setup/disc.py): a copy
     // that lacks files the game reads crashes later, far from the cause (issue #418).
     {
@@ -1490,14 +1571,18 @@ extern "C" void des_ui_early_init(void) {
     }
     ui::settings::load_and_apply_env();
     if (sSetupOnly) setup_only_env();
+    sCrashDialog = sSetupOnly && crash_dialog_process();
+    if (sCrashDialog) crash_dialog_env();
+    window_title_env();
     if (!sSetupOnly && ui::settings::net_custom_held()) sCustomServerNotice.store(true);
     // A gameplay mod (settings.cpp's apply_network left the network knobs unset): the network also stays off when
-    // something sets them later, the environment's or the debug console's included.
-    if (!sSetupOnly && ui::mods::gameplay_in_use()) {
+    // something sets them later, the environment's or the debug console's included. Not in seamless co-op, which
+    // mods don't keep off (settings.cpp's apply_seamless): its game goes only between the friends' games.
+    if (!sSetupOnly && ui::mods::gameplay_in_use() && des::seamless::mode() == des::seamless::Mode::Off) {
         ps3_net_lock_offline();
         if (ui::settings::net_mods_held()) sModsNotice.store(true);
     }
-    parse_debug_knobs();
+    if (!sCrashDialog) parse_debug_knobs();  // (the dialog's are crash_dialog_env's: these are the game's)
     sOpenPending = sSetupOnly || env_on("DES_UI_OPEN");
     sChordMask = ui::input::chord_mask(ui::settings::get_int("pad_menu_chord"));
 

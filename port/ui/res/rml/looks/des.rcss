@@ -170,6 +170,13 @@ body.closed menu-entries {
     display: none;
 }
 
+/* The entries drop in with the band (des-drop, under Motion at the end). Alpha UI's transition on their transform
+   (menu.rcss) is off here: RmlUi starts no animation on a property a transition already moves, so the entries stood
+   in place while the band dropped in under them. (Closing sets its own transition: body.closing.) */
+body.motion menu-entries {
+    transition: none;
+}
+
 menu-entry {
     margin: 9dp 0;
     padding: 0 13dp;
@@ -331,7 +338,10 @@ menu-rows scrollbarvertical sliderbar:active {
     background-color: var(--des-tan);
 }
 
-body.entries menu-page {
+/* (closing too: the menu leaves in the F1 menu's shape. The page, empty by then, would take the frame's height and put
+   the prompts at the window's bottom, where they would ride up over the game.) */
+body.entries menu-page,
+body.closing menu-page {
     display: none;
 }
 
@@ -818,7 +828,8 @@ body.motion menu-prompts {
     transition: opacity 0.1s linear-in-out;
 }
 
-body.entries menu-prompts {
+body.entries menu-prompts,
+body.closing menu-prompts {
     flex-basis: 40dp;
     height: 40dp;
     border-top-width: 3dp;
@@ -1020,6 +1031,17 @@ window.modal modal-body {
 window.modal modal-body modal-warning {
     font-weight: normal;
     color: var(--des-tan-light);
+}
+
+/* The line a warning leads with, the first thing read (the co-op mods warning): on its own, larger, in the warning's
+   amber. */
+window.modal modal-body modal-alert {
+    display: block;
+    margin: 0 0 12dp;
+    font-size: 21dp;
+    line-height: 29dp;
+    font-weight: bold;
+    color: var(--des-warn);
 }
 
 window.modal modal-actions {
@@ -1712,8 +1734,9 @@ body.page.motion trophy-page {
     animation: 0.17s linear-in-out des-page-in;
 }
 
-/* ---- Mods (mods_page.hpp): the mods in a framed box at the column's left; the summary, the focused mod's whole note
-   and the two buttons at its right. With no mods yet, how to add one, the buttons under it. ---- */
+/* ---- Mods (mods_page.hpp): the mods in a framed box at the column's left; the summary (with Restart now under its
+   note while a change waits), the focused mod's whole note and the two buttons at its right. With no mods yet, how to
+   add one, the buttons under it. ---- */
 mods-page {
     display: flex;
     flex: 1 1 0dp;
@@ -2030,6 +2053,10 @@ summary-note.offline icon {
     color: var(--des-warn);
 }
 
+summary-head {
+    display: block;
+}
+
 mods-detail {
     display: block;
     margin: 14dp 0 0;
@@ -2039,6 +2066,16 @@ mods-detail {
     font-size: 16dp;
     line-height: 24dp;
     letter-spacing: 0.4dp;
+}
+
+/* Restart now, under the note that asks for it: a button as the two under the box */
+mods-summary mods-button.restart {
+    margin: 14dp 0 0;
+}
+
+mods-button.none,
+mods-detail.none {
+    display: none;
 }
 
 mods-buttons {
@@ -2258,6 +2295,63 @@ coop-info info-rule {
     height: 1dp;
     margin: 10dp 0 20dp;
     background-color: #3a3833;
+}
+
+/* Both codes and the router's line (coop_page.cpp's long): closer together, so the box ends above the prompts. */
+coop-info.long info-line {
+    margin-bottom: 6dp;
+}
+
+coop-info.long info-rule {
+    margin: 4dp 0 12dp;
+}
+
+coop-info.long info-code {
+    margin: 0 0 4dp;
+    font-size: 28dp;
+    line-height: 34dp;
+}
+
+/* A code's line with its small Copy button at the right end: a small stone button, as the questions' buttons. */
+coop-info info-head {
+    display: flex;
+    flex-flow: row nowrap;
+    justify-content: space-between;
+    align-items: center;
+}
+
+coop-info info-head info-line,
+coop-info.long info-head info-line {
+    margin: 0;
+}
+
+coop-info code-copy {
+    flex: 0 0 auto;
+    margin-left: 12dp;
+    height: 24dp;
+    padding: 0 12dp;
+    border-top-width: 1dp;
+    border-top-color: #4f4d46;
+    border-bottom-width: 1dp;
+    border-bottom-color: #141414;
+    background-color: #2c2c2b;
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#333331, #262626);
+    font-size: 14dp;
+    line-height: 22dp;
+    letter-spacing: 0.5dp;
+    text-transform: uppercase;
+    color: var(--des-tan);
+    cursor: pointer;
+}
+
+coop-info code-copy:hover {
+    border-top-color: var(--des-hover-edge);
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#4c4a45, #393835);
+    color: var(--des-tan-light);
+}
+
+coop-info code-copy.done {
+    color: var(--des-tan-light);
 }
 
 body.page.motion coop-page {
@@ -2815,9 +2909,44 @@ toast.menu-notification b {
     color: var(--des-tan-light);
 }
 
+/* ---- The frame rate counter (overlay.rcss): the game's value box, near black inside a one-pixel warm edge, square;
+   tan figures, the graph's line in light tan and its columns in tan, a frame past the line amber (status). ---- */
+perf {
+    border-color: #3f3f3a;
+    border-radius: 0;
+    background-color: rgba(3, 3, 3, 82%);
+    font-family: Old Standard TT;
+    color: var(--des-tan);
+}
+
+perf-unit,
+perf-low,
+perf-scale {
+    color: var(--des-tan-muted);
+}
+
+/* (Old Standard TT's figures sit high in their line, which keeps room below the baseline for descenders: lowered by
+   about an eighth of their size, so they are in the middle of the box) */
+perf-rate {
+    position: relative;
+    top: 2.5dp;
+}
+
+perf-low {
+    position: relative;
+    top: 1.5dp;
+}
+
+frame-graph {
+    border-bottom-color: #3f3f3a;
+    color: rgba(232, 214, 192, 80%);
+    image-color: var(--des-warn);
+}
+
 /* ---- Motion (body.motion), the game's: the band and its lines drop in from the top edge when the menu opens (once:
    opening a page keeps them), a page slides in from the left, and on closing the band and its lines go back up the
-   same way, in the F1 menu's shape (the page is already closed). ---- */
+   same way, in the F1 menu's shape (the page is already closed; body.closing in menu-page's and menu-prompts' rules).
+   ---- */
 body.entries.motion menu-frame,
 body.page.motion menu-frame,
 body.entries.motion menu-entries {

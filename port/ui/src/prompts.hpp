@@ -11,8 +11,9 @@ namespace ui::prompts {
 
 enum class Device { Keyboard, PlayStation, Xbox, Nintendo, SteamDeck };
 
-// What a prompt asks for. Compare and Hide are held.
-enum class Key { Move, Change, Confirm, Back, Preview, Help, Compare, Hide, PrevTab, NextTab, Count };
+// What a prompt asks for. Compare and Hide are held. Right is the right arrow alone (a page's hint for where it goes:
+// Mods' Restart now).
+enum class Key { Move, Change, Confirm, Back, Preview, Help, Compare, Hide, PrevTab, NextTab, Right, Count };
 
 // A button's picture, drawn the way the game's prompts look (button_art.hpp): one of a pad's buttons by its cellPad
 // name (button_pages::kPadNames: "cross", "r1"), the D-pad with some of its ways lit, or a key.

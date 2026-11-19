@@ -172,6 +172,7 @@ std::vector<TabDesc> make_tabs() {
                 "resolution to keep a wide picture sharp.")),
         }},
         {"HDR", {
+#ifdef _WIN32
             preview(choice("HDR", "RSX_HDR", {{"0", "Off", true}, {"1", "On"}},
                 "Brighter lights and sky on an HDR display. Turn on HDR in Windows first. Turn off RTX HDR and Auto "
                 "HDR for the game when this is on.")),
@@ -183,6 +184,22 @@ std::vector<TabDesc> make_tabs() {
                 {{"0", "The display's"}, {"400", "400 nits"}, {"600", "600 nits"}, {"1000", "1000 nits"},
                     {"1500", "1500 nits"}},
                 "The brightest the highlights get with HDR on. The display's own figure suits most.")),
+#else  // (the window's own HDR: a Wayland desktop's, or gamescope's on a Steam Deck; docs/104 section 8)
+            preview(choice("HDR", "RSX_HDR", {{"0", "Off", true}, {"1", "On"}},
+                "Brighter lights and sky on an HDR display. Turn on HDR for the display in your desktop's settings "
+                "first, or play in Game Mode on a Steam Deck OLED. On a desktop, restart the game after turning "
+                "this on.")),
+            preview(choice("HDR brightness", "RSX_HDR_WHITE",
+                {{"0", "Automatic"}, {"100", "100 nits"}, {"150", "150 nits"}, {"200", "200 nits"},
+                    {"250", "250 nits"}, {"300", "300 nits"}, {"400", "400 nits"}},
+                "How bright white is with HDR on. Automatic is the desktop's white, or 200 nits in Game Mode. "
+                "Lower leaves more room for the highlights.")),
+            preview(choice("HDR peak", "RSX_HDR_PEAK",
+                {{"0", "Automatic"}, {"400", "400 nits"}, {"600", "600 nits"}, {"1000", "1000 nits"},
+                    {"1500", "1500 nits"}},
+                "The brightest the highlights get with HDR on. Automatic is 1000 nits; pick your display's own "
+                "figure if you know it.")),
+#endif
             preview(choice("HDR shadows", "RSX_HDR_GAMMA", {{"0", "Gamma 2.2 (darker)"}, {"1", "sRGB (lighter)"}},
                 "How dark areas look with HDR on. Gamma 2.2 matches a TV.")),
         }},
@@ -208,6 +225,17 @@ std::vector<TabDesc> make_tabs() {
                 "motion, and moves the frame rate to one your display fits (60 becomes 72 at 144 Hz). G-Sync / "
                 "FreeSync needs a display with it, turned on in your graphics driver too. Off can tear, but shows more "
                 "fps than the refresh rate."),
+            // (drawn by this UI over the game: perf_overlay.hpp)
+            own_setting(choice("Frame rate counter", "fps_counter",
+                {{"0", "Off"}, {"1", "Frame rate"}, {"2", "Frame rate and frame times"}},
+                "Shows the game's frame rate at the top of the screen, to see how a mod or a setting runs. Frame times "
+                "adds a graph of the last 120 frames, with a line at the frame time Frame rate allows (with Unlocked, "
+                "a typical frame's); a frame that came late shows in amber. The 1% low is the frame rate of the "
+                "slowest 1% of the frames of the last 10 seconds, so a load shows in it for a while.")),
+            own_setting(choice("Counter position", "fps_counter_at",
+                {{"", "Top right"}, {"centre", "Top centre"}, {"left", "Top left"}},
+                "Where the frame rate counter sits. Top right is above the area name; Top left covers the HUD's bars "
+                "unless you moved them. If it covers a part of the HUD, try Top centre.")),
         }},
     }});
 
@@ -587,14 +615,12 @@ std::vector<TabDesc> make_tabs() {
         {"Start screen", {
             own_setting(toggle("Start screen", "show_start_screen",
                 "Shows Play, Settings and Quit when the game starts. Off goes straight to the game.")),
-#ifdef _WIN32
-            // (the look that draws them, on the renderer that does: Windows')
+            // (the look that draws them: render_gpu.cpp, the menus' renderer on D3D12 and Vulkan, Linux's included)
             only(hooks::start_effects_used, own_setting(toggle("Start screen smoke", "start_smoke",
                 "Smoke rises behind the start screen. Off saves a little graphics work, most on integrated "
                 "graphics."))),
             only(hooks::start_effects_used, own_setting(toggle("Soul flame", "start_flame",
                 "A pale flame rises off the logo on the start screen. Off saves a little graphics work."))),
-#endif
         }},
         {"Cursor", {
             own_setting(toggle("Sword cursor", "DES_CURSOR3D",

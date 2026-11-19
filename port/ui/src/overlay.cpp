@@ -219,6 +219,7 @@ void Overlay::update() {
     }
     update_ticker();
     update_glow();
+    mPerf.update(mDocument, any_document_visible());  // (under a menu it waits)
 }
 
 void Overlay::update_glow() {
@@ -314,10 +315,10 @@ void Overlay::update_ticker() {
     }
 }
 
-// Something is on screen, or still animating away.
+// Something is on screen, or still animating away. The frame rate counter, while it is on, is always.
 bool Overlay::busy() const {
     return mCurrentToast != nullptr || mMenuNotification != nullptr || !get_toasts().empty() || mTicker != nullptr ||
-           !get_tickers().empty() || mGlow != nullptr;
+           !get_tickers().empty() || mGlow != nullptr || perf::mode() != perf::Mode::Off;
 }
 
 bool Overlay::handle_nav_command(Rml::Event&, NavCommand) {

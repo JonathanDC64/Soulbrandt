@@ -1,11 +1,17 @@
 // The crash dialog: a small window in the menu's style (RmlUi) that tells the player the game crashed and offers to
-// restart it or report the problem. Runs in a second process started by crash_report.cpp, so it needs nothing from the
-// crashed one. Adapted for Demon's Souls from FFCCEOT-Recomp's crash_dialog.hpp: drawn with the same host as the
-// in-game menu (D3D11On12), here on a D3D12 device and swap chain of its own.
+// restart it or report the problem. Runs in a second process started by crash_report.cpp (crash_report_posix.cpp off
+// Windows), so it needs nothing from the crashed one. Adapted for Demon's Souls from FFCCEOT-Recomp's
+// crash_dialog.hpp: drawn with the same host as the in-game menu. On Windows show() gives it a window, a D3D12 device
+// and a swap chain of its own (crash_dialog.cpp); off Windows the second process is setup's window-only start, which
+// draws push_window() (crash_dialog_window.cpp) as it draws setup's screens.
 #pragma once
 
 #include <functional>
 #include <string>
+
+namespace ui {
+class Modal;
+}
 
 namespace ui::crash_dialog {
 
@@ -34,8 +40,11 @@ struct Actions {
 // that long.
 bool show(const Content& content, const Actions& actions);
 
-// The dialog's window over whatever shows (show's, and ui_render_compare's): the crash's, the hang's or the lost
-// device's, its focus on Report on GitHub. `closed` when it closes the dialog; content and actions must outlive it.
+// The dialog's window over whatever shows (show's, the window-only start's off Windows, and ui_render_compare's): the
+// crash's, the hang's or the lost device's, its focus on Report on GitHub. `closed` when it closes the dialog; content
+// and actions must outlive it.
 void push_window(const Content& content, const Actions& actions, std::function<void()> closed);
+// Show details (the stack, or a hang's threads) over `modal`, the dialog's window, as its button does.
+void show_details(const Content& content, Modal& modal);
 
 }  // namespace ui::crash_dialog

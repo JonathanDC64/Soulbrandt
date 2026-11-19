@@ -25,7 +25,8 @@ namespace ui {
 namespace {
 
 // The settings "A few choices" sets, in its order (the online name last: it shows only while online play is on). HDR
-// is Windows only, as the game's HDR is.
+// is Windows only here: off Windows only the game's own window can tell whether the desktop gives it HDR, so the row
+// is in Settings alone there.
 const char* const kChoiceKeys[] = {"DES_FULLSCREEN", "DES_FPS", "RSX_SCALE", "DES_ASPECT",
 #ifdef _WIN32
                                    "RSX_HDR",

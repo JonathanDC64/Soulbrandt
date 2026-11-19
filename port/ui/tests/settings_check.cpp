@@ -7,7 +7,10 @@
 // gpu-out-* cases are not. And a restart-only setting changed in the menu waits for the next start (restart_pending):
 // not a live one, not one in effect already, not one pinned by the environment. And the Keyboard page's item slot keys
 // (keys_for_pad): DES_ITEM_KEYS from the layout and PAD_KEYS's changes, without wheel notches and without an input a
-// cellPad row has too, and none of the item rows in the PAD_KEYS cellPad reads.
+// cellPad row has too, and none of the item rows in the PAD_KEYS cellPad reads. And seamless co-op's servers
+// (TEST_SEAMLESS=host stands in for a hosting start): the endpoint for room codes (DES_SEAMLESS_INTRO) from the Server
+// row, settings.ini's or the environment's value winning, and off in a test run; settings.ini's DES_SEAMLESS_STUN. And
+// a gameplay mod (a made-up one with game parameters): it keeps online play off, and not seamless co-op.
 //
 //   settings_check --row      a build with the row (DES_RSX_VULKAN: port/CMakeLists.txt found the Vulkan route)
 //   settings_check --no-row   a build without it: nothing of it, and settings.ini's RSX_BACKEND is not applied
@@ -15,6 +18,7 @@
 // Each case runs in a process of its own (the settings are read once a process), in a folder under the system's
 // temporary folder that it removes. Prints one line a case and "settings_check: N passed, M failed"; exit 1 on a
 // failure. Built on demand: cmake --build <build> --target settings_check.
+#include "mods.hpp"
 #include "settings.hpp"
 #include "../../des_seamless.h"
 
@@ -88,10 +92,13 @@ int version() { return 1; }
 void set_needed(bool) {}
 }  // namespace ui::privacy
 
-// What settings.cpp needs of seamless co-op (des_seamless.cpp): off.
+// What settings.cpp needs of seamless co-op (des_seamless.cpp): off, or hosting with TEST_SEAMLESS=host.
 namespace des::seamless {
-Mode mode() { return Mode::Off; }
-bool start(const std::string&, std::string*) { return false; }
+Mode mode() {
+    const char* v = std::getenv("TEST_SEAMLESS");
+    return v && !std::strcmp(v, "host") ? Mode::Host : Mode::Off;
+}
+bool start(const std::string&, std::string*) { return mode() == Mode::Host; }
 void held(const std::string&) {}
 }  // namespace des::seamless
 
@@ -125,6 +132,13 @@ std::string read_text(const std::filesystem::path& p) {
 // has one, and set the environment).
 int run_case(const std::string& name) {
     const std::string data = env("TEST_DATA_DIR");
+    if (name == "coop-mods" || name == "online-mods") {   // a gameplay mod on: its game parameters
+        const auto mods = std::filesystem::path(data) / "mods";
+        std::filesystem::create_directories(mods / "Rebalance" / "param" / "gameparam");
+        std::ofstream(mods / "Rebalance" / "param" / "gameparam" / "gameparamna.parambnd.dcx") << "made up";
+        ps3_setenv("DES_MODS_DIR", mods.string().c_str());
+        ps3_setenv("DES_MODS", "Rebalance");
+    }
     settings::load_and_apply_env();
     const bool has = settings::find("RSX_BACKEND") != nullptr;
     check(has == g_row, std::string("the Renderer row is ") + (has ? "there" : "not there"));
@@ -217,6 +231,26 @@ int run_case(const std::string& name) {
                                                         : ",2,3,4,6";        // keys-changed: slot 1 none, slot 5 on 6
         check(env("DES_ITEM_KEYS") == want, "DES_ITEM_KEYS " + want + ": " + env("DES_ITEM_KEYS"));
         if (name == "keys-taken") check(pad.find("l2=1|lctrl") != std::string::npos, "L2 keeps 1: " + pad);
+    } else if (name == "coop-mods") {  // a gameplay mod doesn't keep seamless co-op off
+        check(ui::mods::gameplay_in_use(), "the mod counts as gameplay");
+        check(!settings::net_mods_held(), "not held by the mod");
+        check(settings::net_status() == "Seamless co-op: hosting", "co-op started: " + settings::net_status());
+        check(!env("PS3_NET_P2P_PORT").empty() && !env("DES_SEAMLESS_INTRO").empty(),
+              "co-op's knobs set: PS3_NET_P2P_PORT=" + env("PS3_NET_P2P_PORT"));
+    } else if (name == "online-mods") {  // and it still keeps online play off
+        check(ui::mods::gameplay_in_use(), "the mod counts as gameplay");
+        check(settings::net_mods_held(), "online held by the mod");
+        check(env("PSNR_SERVER").empty() && env("PS3_NET_ONLINE").empty(),
+              "no network knobs: PSNR_SERVER=" + env("PSNR_SERVER") + " PS3_NET_ONLINE=" + env("PS3_NET_ONLINE"));
+    } else if (name.rfind("coop-", 0) == 0) {  // a seamless co-op host: its servers
+        const std::string want = name == "coop-project"   ? std::string(settings::kNetProjectHost) + ":36100"
+                                 : name == "coop-local"   ? "127.0.0.1:36100"
+                                 : name == "coop-env"     ? "127.0.0.1:36200"
+                                 : name == "coop-ini-own" ? "192.168.1.20:36100"
+                                                          : "0";  // coop-off, coop-test-run
+        check(env("DES_SEAMLESS_INTRO") == want, "DES_SEAMLESS_INTRO " + want + ": " + env("DES_SEAMLESS_INTRO"));
+        check(env("DES_SEAMLESS_STUN") == (name == "coop-off" ? "0" : ""), "DES_SEAMLESS_STUN: " +
+                                                                               env("DES_SEAMLESS_STUN"));
     } else if (name == "set-saves") {  // the row changed in the menu: kept for the next start, not applied now
         settings::set("RSX_BACKEND", "vulkan");
         check(env("RSX_BACKEND").empty(), "not applied before a restart: " + env("RSX_BACKEND"));
@@ -267,6 +301,15 @@ const Case kCases[] = {
     {"gpu-in-1070-noini", nullptr, {{"DES_RENDERER_GPU_ID", "10de:1b81"}}},
     {"gpu-out-2080ti-noini", nullptr, {{"DES_RENDERER_GPU_ID", "10de:1e04"}}},
     {"gpu-in-1070-envwins", nullptr, {{"DES_RENDERER_GPU_ID", "10de:1b81"}, {"RSX_BACKEND", "d3d12"}}},
+    {"coop-project", "DES_NET_NAME = tester\n", {{"TEST_SEAMLESS", "host"}}},
+    {"coop-local", "DES_NET_NAME = tester\nDES_NET_SERVER = local\n", {{"TEST_SEAMLESS", "host"}}},
+    {"coop-off", "DES_NET_NAME = tester\nDES_SEAMLESS_INTRO = 0\nDES_SEAMLESS_STUN = 0\n", {{"TEST_SEAMLESS", "host"}}},
+    {"coop-ini-own", "DES_NET_NAME = tester\nDES_SEAMLESS_INTRO = 192.168.1.20:36100\n", {{"TEST_SEAMLESS", "host"}}},
+    {"coop-env", "DES_NET_NAME = tester\nDES_SEAMLESS_INTRO = 0\n",
+     {{"TEST_SEAMLESS", "host"}, {"DES_SEAMLESS_INTRO", "127.0.0.1:36200"}}},
+    {"coop-test-run", "DES_NET_NAME = tester\n", {{"TEST_SEAMLESS", "host"}, {"PS3_PIDFILE", "test.pid"}}},
+    {"coop-mods", "DES_NET_NAME = tester\n", {{"TEST_SEAMLESS", "host"}}},
+    {"online-mods", "DES_NET_NAME = tester\n", {}},
 };
 
 }  // namespace
@@ -288,7 +331,9 @@ int main(int argc, char** argv) {
         if (c.ini) std::ofstream(dir / "settings.ini") << c.ini;
         for (const char* k :
             {"RSX_BACKEND", "RSX_STATE_DIR", "DES_SETTINGS", "DES_DATA_DIR", "PS3_PIDFILE", "DES_LANGUAGE", "PAD_KEYS",
-             "DES_ITEM_KEYS"})
+             "DES_ITEM_KEYS", "TEST_SEAMLESS", "DES_SEAMLESS_INTRO", "DES_SEAMLESS_STUN", "PS3_NP_ONLINE_ID",
+             "DES_KIND", "DES_MODS", "DES_MODS_DIR", "PS3_VFS_MODS", "PSNR_SERVER", "PS3_NET_ONLINE",
+             "PS3_NET_P2P_PORT"})
             ps3_setenv(k, "");
         ps3_setenv("DES_RENDERER_GPU", "Test GPU");  // (not this PC's: a case gives the rule's GPU itself)
         ps3_setenv("DES_RENDERER_GPU_ID", "");

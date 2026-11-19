@@ -60,6 +60,8 @@ constexpr Def kDefs[] = {
     {"DES_CUTFPS", "0", Apply::Live},          // des_options.cpp's cutfps_on, read at each flip
     {"DES_MOTION_BLUR", "1", Apply::Live},     // des_motion_blur, read each frame
     {"DES_VSYNC", "1", Apply::Live},           // 1, 0, even, vrr; des_options.cpp sets RSX_VSYNC from it at each flip
+    {"fps_counter", "0", Apply::UiOnly},       // perf_overlay.cpp: 1 = the frame rate in a corner, 2 = with frame times
+    {"fps_counter_at", "", Apply::UiOnly},     // its place on the top edge: "" = the right, "centre", "left"
     {"DES_SKIP_INTRO", "0", Apply::Live},      // 1 = no logos, 2 = the last logo only; read at each logo update
     {"DES_SKIP_INTRO_MOVIE", "0", Apply::Live},  // PS3_SAIL_SKIP_FIRST, read as each movie opens
     {"DES_AUTO_CONTINUE", "0", Apply::Live},   // read at each pad poll, until the first level loads
@@ -74,8 +76,8 @@ constexpr Def kDefs[] = {
     {"RSX_AA", "0", Apply::Live},              // 0 = none, as on the PS3; 1 = FXAA, 2 = SMAA, before the HUD; per batch
     {"RSX_SCALE", "100", Apply::Live},         // the D3D12 backend remakes its render targets at the next batch
     {"RSX_OUTFILTER", "0", Apply::Live},       // 0 = bilinear, as before; 1 = area down, bicubic up; next present
-    {"RSX_HDR", "0", Apply::Live},             // 1 = HDR output while Windows has HDR on for the display; next frame
-    {"RSX_HDR_WHITE", "0", Apply::Live},       // HDR paper white, nits; 0 = Windows' SDR white level
+    {"RSX_HDR", "0", Apply::Live},             // 1 = HDR output while the display has HDR on; next frame
+    {"RSX_HDR_WHITE", "0", Apply::Live},       // HDR paper white, nits; 0 = Windows' or the desktop's
     {"RSX_HDR_PEAK", "0", Apply::Live},        // HDR peak, nits; 0 = the display's
     {"RSX_HDR_GAMMA", "0", Apply::Live},       // HDR decode: 0 = gamma 2.2, 1 = the sRGB curve
     {"RSX_TEXFILTER", "0", Apply::Live},       // 0 = the game's filters; the backend's sampler key, per draw
@@ -111,6 +113,10 @@ constexpr Def kDefs[] = {
     {"DES_NET_NAME", "", Apply::Restart},      // the online name (PS3_NP_ONLINE_ID); "" = no NP identity
     {"DES_NET_P2P_PORT", "3658", Apply::Restart},  // PS3_NET_P2P_PORT, 1024-65535
     {"DES_SEAMLESS_ADDRESS", "", Apply::Restart},  // seamless co-op host's public IPv4 (the Co-op window); "" = router's
+    // Seamless co-op's two servers, by hand in settings.ini only (PRIVACY.md says how): "0" turns off the endpoint that
+    // introduces players for room codes ("" = the Server row's), and the STUN lookup ("" = Google's).
+    {"DES_SEAMLESS_INTRO", "", Apply::Restart},
+    {"DES_SEAMLESS_STUN", "", Apply::Restart},
     {"DES_SEAMLESS_PLAYERS", "4", Apply::Live},    // the most players a seamless co-op host takes, itself included: 2-4
     {"DES_SEAMLESS_GLOW", "1", Apply::Live},       // seamless co-op: "0" = the other players see this one without its phantom glow
     {"DES_SEAMLESS_GLOW_COLOR", "", Apply::Live},  // seamless co-op: this player's glow colour, "RRGGBB"; "" = the game's blue
@@ -592,18 +598,22 @@ std::string net_options_header() {
 // A developer build's cheat session wins over this: des_dev_boot runs after des_ui_early_init (which calls
 // load_and_apply_env) in ps3_title_options_init, and clears PS3_NET_ONLINE, PSNR_SERVER and PS3_NET_HOSTS when a cheat
 // is set at start (docs/55 section 6). So nothing here checks DES_DEV_SESSION; the Network tab reads it to say why.
-// Seamless co-op (DES_SEAMLESS, des_seamless.h) in place of the rows: no server of this project or anyone else's,
-// only the host's game. Gameplay mods keep it off too, as online (docs/143), and it needs an online name.
+// Seamless co-op (DES_SEAMLESS, des_seamless.h) in place of the rows: the game goes only between the players' games.
+// The one server it uses is the endpoint that introduces them for a room code (DES_SEAMLESS_INTRO): the Server row's
+// server, if it is this project's own or the local test server; none otherwise (the direct code only). It needs an
+// online name. Mods don't keep it off, as they keep online play off (docs/143): co-op's game goes only between the
+// friends' games, so a mod can't spoil anyone else's. The Co-op window warns before Host or Join while any mod is on
+// (coop_window.cpp), and the co-op log says which mods were on: DES_SEAMLESS_MODS_OK names the ones the player
+// accepted there.
 static void apply_seamless() {
     namespace co = des::seamless;
     const bool host = co::mode() == co::Mode::Host;
-    if (mods::gameplay_in_use()) {
-        sNetModsHeld = true;
-        sNetStatus = "Off: gameplay mods are on";
-        std::fprintf(stderr, "[ui] seamless co-op: off, gameplay mods are on (%s; Settings > Mods)\n",
-                     mods::gameplay_names().c_str());
-        co::held("gameplay mods are on (Settings > Mods)");
-        return;
+    if (!mods::in_use().empty()) {
+        std::vector<std::string> names;
+        for (const mods::Mod& m : mods::in_use()) names.push_back(m.name);
+        const char* ok = std::getenv("DES_SEAMLESS_MODS_OK");
+        std::fprintf(stderr, "[coop] mods on%s: %s\n", ok && *ok ? ", accepted" : " (no warning: not started from "
+                     "the Co-op window)", mods::join(names, ", ").c_str());
     }
     const std::string name = env_set("PS3_NP_ONLINE_ID") ? std::string(std::getenv("PS3_NP_ONLINE_ID"))
                                                          : effective("DES_NET_NAME");
@@ -618,6 +628,22 @@ static void apply_seamless() {
     int port = std::atoi(effective("DES_NET_P2P_PORT").c_str());
     if (port < kNetP2pPortMin || port > kNetP2pPortMax) port = kNetP2pPortDefault;
     set_net_knob("PS3_NET_P2P_PORT", std::to_string(port));
+    // The endpoint: settings.ini's (or the environment's) when it names one or says 0, else the Server row's. A test
+    // run never reaches the project's server unless it says so, as for online.
+    std::string intro = trim(effective("DES_SEAMLESS_INTRO"));
+    if (intro.empty() && harness_run()) {
+        intro = "0";
+        std::fprintf(stderr, "[ui] seamless co-op: no room code in a test run unless DES_SEAMLESS_INTRO is given\n");
+    }
+    if (intro.empty()) {
+        const NetServer* s = net_server(effective("DES_NET_SERVER"));
+        const bool ours = s && *s->address &&
+                          (s->key == std::string_view("project") || s->key == std::string_view("local"));
+        intro = ours ? std::string(s->address) + ":" + std::to_string(kNetPsnrPort) : "0";
+    }
+    set_net_knob("DES_SEAMLESS_INTRO", intro);
+    if (const std::string stun = trim(effective("DES_SEAMLESS_STUN")); !stun.empty())
+        set_net_knob("DES_SEAMLESS_STUN", stun);
     std::string why;
     if (!co::start(name, &why)) {
         sNetStatus = "Off: co-op did not start (" + why + ")";

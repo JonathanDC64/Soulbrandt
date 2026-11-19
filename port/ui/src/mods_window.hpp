@@ -1,7 +1,8 @@
 // The Mods window (docs/143), opened from the menu bar and the start screen. Made for players who have never used a
 // mod: a summary on top (how many are on, whether a restart is needed, whether this session is offline), two buttons
-// (open the mods folder, refresh the list), then one card per mod with a big check box and a sentence that says what
-// it changes. Folders the game can't use are listed after them under "Needs attention", each saying why and what to
+// (open the mods folder, refresh the list) and, while a change waits for a restart, Restart now before them
+// (menu_pages.hpp's restart_for_mods), then one card per mod with a big check box and a sentence that says what it
+// changes. Folders the game can't use are listed after them under "Needs attention", each saying why and what to
 // do in plain words; a mod whose files only need moving is fixed by selecting it.
 #pragma once
 
@@ -10,6 +11,8 @@
 #include <memory>
 
 namespace ui {
+
+class Button;
 
 class ModsWindow : public Window {
 public:
@@ -25,6 +28,7 @@ private:
 
     std::shared_ptr<State> mState;
     Rml::Element* mSummary = nullptr;
+    Button* mRestart = nullptr;  // Restart now, shown while the list differs from this session
     unsigned mSummaryShown = 0;
 };
 

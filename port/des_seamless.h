@@ -1,18 +1,29 @@
 // Written for Demon's Souls. Seamless co-op (docs/146): one player's game hosts, and friends join it with an invite
-// code. No outside server is used.
+// code. The game itself goes only between the players' games.
+//
+// Two kinds of code (docs/162). A room code (15 characters) names a room the host's game registers with the server
+// that introduces players (the endpoint, on this project's server): it tells the two games each other's addresses,
+// and they punch through their routers, so the host needs no open port. A direct code (16 characters) holds the
+// host's address itself and needs its port open, as before; it needs no server.
 //
 //   DES_SEAMLESS=host         this game runs the room server (ps3recomp's psnr_host) on DES_SEAMLESS_PORT (36100),
-//                             asks the router to forward that port (UPnP), and makes the invite code from the
-//                             router's public address, the port and a new key.
-//   DES_SEAMLESS=join         this game joins the host named by DES_SEAMLESS_CODE.
+//                             asks the router to forward that port (UPnP), makes the direct code from the router's
+//                             public address, the port and a new key, and registers a room for the room code.
+//   DES_SEAMLESS=join         this game joins the host named by DES_SEAMLESS_CODE, either kind. It keeps trying
+//                             until it gets in (10 s, 30 s, then every 60 s).
+//   DES_SEAMLESS_INTRO=host[:port]  the endpoint (port 36100 by default). settings.cpp sets it from the Network tab's
+//                             Server row: this project's server, or 127.0.0.1 for the local test server. 0 (or unset)
+//                             turns it off: no room code, the direct code only, and nothing goes to the server.
 //   DES_SEAMLESS_UPNP=0       the host leaves the router alone (the port forwarded by hand).
 //   DES_SEAMLESS_ADDRESS=ip   the host's public IPv4 address, for the code, when the router doesn't give it (the Co-op
 //                             window's Public address keeps it in settings.ini).
 //   DES_SEAMLESS_PLAYERS=n    the host takes at most n players, itself included: 2 to 4, 4 by default (Settings >
 //                             Network). One more stays connected and waits (the host answers FULL), and joins when
 //                             a place frees.
-//   DES_SEAMLESS_CODE_FILE    tests: the host writes its codes there (public, then local), and a joining game with no
-//                             DES_SEAMLESS_CODE waits for the file and takes the code from it.
+//   DES_SEAMLESS_CODE_FILE    tests: the host writes its codes there (public, local, then the room code once the
+//                             endpoint has the room), and a joining game with no DES_SEAMLESS_CODE waits for the file
+//                             and takes the code from it: the public one, else the local one, or with
+//                             DES_SEAMLESS_CODE_PICK=room the room code.
 //
 // Either way, the game's own online server (sign-in, messages, signs, ghosts: its HTTP requests) is answered inside
 // this process, with nothing in it: no messages, no signs, no ghosts, and a neutral world tendency. No name the game
@@ -57,6 +68,18 @@ struct Status {
     enum class Link { Connecting, Connected, Lost, Full };
     Link link = Link::Connecting;  // join: the connection to the host's game (Lost: it was there, and is gone; Full:
                                    // the host has all the players it takes, and this one waits for a place)
+    // Host, with the endpoint on (DES_SEAMLESS_INTRO): the room code, once the endpoint has the room ("" before, and
+    // with it off), and the endpoint's answer in plain words ("" with it off).
+    std::string room_code;
+    std::string intro;
+    bool intro_trouble = false;  // the endpoint can't be reached or has no place: friends need the direct code
+    std::string stuck;           // a friend's game found this one but couldn't get through ("" when none), in words
+    bool show_direct = true;     // the direct code (code) and the router's answer are worth showing: the endpoint is
+                                 // off or in trouble, the port is open on a public address, or the player gave one
+    // Join, while connecting: how the join goes, in plain words ("" when there is nothing to add to "Reaching the
+    // host's game..."); join_warn: it is a problem to tell the player.
+    std::string join;
+    bool join_warn = false;
 };
 Status status();
 
@@ -75,12 +98,13 @@ Status::Link guest_link();
 // "" when taken (the address, tidied, in *clean), else why not, in plain words.
 std::string set_public_address(const std::string& text, std::string* clean);
 
-// Host: a new invite code (a new key): the old one lets no one else in, and players already in stay. For a code
-// that went further than meant, or once it is spent (Status::code_spent). "" when done, else why not.
+// Host: new invite codes (a new key, and a new room number for the room code): the old ones let no one else in, and
+// players already in stay. For a code that went further than meant, or once it is spent (Status::code_spent). ""
+// when done, else why not.
 std::string new_code();
 
-// A code the player typed or pasted: "" if it reads as a code (normalised into *clean as XXXX-XXXX-XXXX-XXXX), else
-// why not, in plain words.
+// A code the player typed or pasted, either kind: "" if it reads as one (normalised into *clean, as
+// XXXXX-XXXXX-XXXXX or XXXX-XXXX-XXXX-XXXX), else why not, in plain words.
 std::string check_code(const std::string& text, std::string* clean);
 
 // Cheap, for the game side (des_seamless_game.cpp, every frame): co-op started, as the host or as a guest.

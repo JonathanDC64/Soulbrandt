@@ -1013,7 +1013,10 @@ Image draw(const Page& page, const std::vector<uint8_t>& base, const Spec& spec,
     cv.w = W;
     cv.h = H;
     cv.px.assign(size_t(W) * size_t(H) * 4, 0);
-    // The game's page, premultiplied, enlarged (bilinear), so whatever else is on it stays as it was.
+    // The game's page, premultiplied, enlarged (bilinear), so whatever else is on it stays as it was. The filter
+    // blends the texels either side of every edge, the HUD's pieces' among them; the renderer's sprite-edge clamp
+    // keeps samples clear of that on an enlarged image (ps3recomp rsx_texture_override.h), else each piece shows a
+    // faint line along its edges at render scale 200% and up.
     if (base.size() == size_t(page.width) * page.height * 4) {
         const int bw = int(page.width), bh = int(page.height);
         const auto at = [&](int x, int y, int ch) {

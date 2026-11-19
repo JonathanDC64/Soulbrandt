@@ -8,6 +8,8 @@ the start screen's Mods button. It is made for players who have never used a mod
 
 - **A summary:** how many mods are on, "Restart the game to use your changes" when the list differs from what this
   session runs with, and "Playing offline" when a gameplay mod is on.
+- **Restart now,** while the list differs from what this session runs with (section 2b): the game starts again with
+  the mods as the list has them.
 - **Two buttons:** Open the mods folder, and Refresh the list (after you add, remove or rename a mod's folder).
 - **Your mods:** one card per mod, in their order, with arrows to move it, a big check box, its name, a sentence on
   what it changes ("Changes how the game looks or sounds", or "Changes how the game plays. You play offline while
@@ -64,7 +66,7 @@ Everything is in one list, so Up and Down reach it all with a pad.
 
 - **New mods are off,** at the bottom of the list. Turning one on, or moving it, takes effect the next time the game
   starts. A card that differs from this session says "after a restart" until then, and the summary says to restart
-  (also when only the order changed).
+  (also when only the order changed), with **Restart now** (section 2b).
 - **The order file:** `mods\load_order.txt` holds the order and which mods are on (section 2a). The Mods window writes
   it at every change; the game reads it at start.
 - **The order:** the file's, then the folders it doesn't name, A to Z. When two mods that are on have the same file,
@@ -113,6 +115,30 @@ alone. The game never writes anywhere else for mods, and never changes a mod's f
 - **Not read:** a manager's manifest or any other file in the mods folder (other than mod folders and the order
   file).
 
+## 2b. Restart now
+
+While the list differs from what this session runs with, **Restart now** shows with the summary's note: the game
+closes and starts again by itself, with the mods as the list has them (and any setting that waits for a restart). It
+is the same restart as Settings' (`menu_pages.cpp`'s `restart_now`), so a second press can't start two games.
+
+- **In the game:** it asks first ("Restart the game now?", Restart now or Later, Later chosen first), as Settings does
+  when the menu closes with a restart-only setting changed. The new game skips the start screen.
+- **On the start screen:** nothing has been played yet, so it restarts at once, and the start screen comes back.
+- **Closing the F1 menu** with the list changed (and not restarted) asks the same question, as for a restart-only
+  setting: one question names both when a setting waits too ("Your mod changes and Renderer take effect after a
+  restart."). Later keeps it for the next start, and the menu asks again only when what waits changes.
+- **In seamless co-op:** it always asks, and says what happens: a host's friends go back to their own worlds and the
+  invite code changes; a guest's game leaves the host's world, then joins it again. When the mods on at the next start
+  are another set than this session's (order alone doesn't count), co-op's mods warning comes first, as at Host or
+  Join (Back: no restart), and the new game is told what was accepted (`DES_SEAMLESS_MODS_OK`), not the old set; with
+  every mod off, nothing is. A restart for a setting does the same (`coop_window.hpp`'s `before_restart`).
+- **Where it is:** DeS UI shows it under the note in the summary box; Right moves the focus from the list to it (Up
+  and Down then reach the two buttons under it), and Left or Back goes back to the list. While it shows, the prompts
+  under the page say so ("→ Restart now", the pad's or the keyboard's Right) while the list has the focus. Alpha UI
+  shows it first among the buttons at the top of the list.
+- **Not shown** when the mods were set when the game started (`DES_MODS` from the environment or pinned in
+  `settings.ini`), as nothing can be changed then.
+
 ## 3. Mods and online play
 
 A mod that changes how the game plays keeps the whole session offline, so that players with and without such mods
@@ -130,6 +156,25 @@ never meet. Mods that only change how the game looks or sounds keep online play.
 **Gameplay:** the game's parameters (`param/gameparam`...), the maps' layouts (`map/mapstudio`), collision and
 navigation, characters (`chr`, except textures), objects (`obj`), scripts (`script`), and any file the list does not
 know, including loose files beside the game's folders.
+
+**Files the game never opens don't count.** The game gets a mod's file only when it opens that path, so a file at a
+path it never opens changes nothing, whatever it holds. Mods often ship such a file: a copy of the game's own file,
+kept to undo the mod (`backup/facegen/facegen.fgbnd` inside a face texture mod). No folder names are listed; the
+game's own files decide (`game_opens` in `mods.cpp`):
+- A file in a folder at the top that the game doesn't have (`backup/...`, `Untouched/...`) is never opened.
+- With the game's folder known (it always is in the game), so is a file at a path the game doesn't have whose name
+  ends in a way none of the game's files does (`gameparamna.parambnd.dcx.bak`).
+- A new file in one of the game's folders, named as the game's files are (`param/gameparam/x.parambnd`), still
+  counts: the game might open it.
+- Files beside the game's folders still count as gameplay, as above.
+
+Such files don't make a mod a gameplay mod and aren't counted in its files. The Mods window names the first few
+("The game never opens one of its files (...), so it changes nothing. Most likely it's a copy of the game's own
+files, kept to undo the mod."), and the log has a `[mods]` line for each mod that has them. A mod with no other files
+can't be turned on ("No game files").
+
+**Loose files with a copy.** When two of a loose mod's files would go to the same place, the message names both and
+says the likely reason: one is a copy of the game's own file, to move out of the mod's folder.
 
 **What happens when a gameplay mod is on:**
 - Online stays off for the session, whatever Settings > Network says, and the runtime's network is locked off (also

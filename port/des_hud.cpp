@@ -281,7 +281,7 @@ void want_read()
      * renderer's sprite-edge clamp keeps the filter inside each sprite; it is
      * on below and above 100% render scale anyway, and RSX_UVCLAMP_1X turns
      * it on at 100% while the HUD is resized. Art drawn 1:1 is not changed by
-     * it. (A HUD drawn larger than its art keeps a faint line there.) */
+     * it; art drawn larger keeps half a texel from its edges. */
     bool resized = w.size != 1.0f;
     for (const Part& p : kParts) resized |= w.part_size[p.group] != 1.0f;
     ps3_setenv("RSX_UVCLAMP_1X", resized ? "1" : "0");

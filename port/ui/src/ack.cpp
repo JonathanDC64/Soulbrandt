@@ -21,19 +21,35 @@ std::filesystem::path marker(const wchar_t* file) {
     return dir.empty() || !file ? std::filesystem::path{} : dir / file;
 }
 
-bool answered(const wchar_t* file) {
-    std::error_code ec;
-    const auto path = marker(file);
-    return !path.empty() && std::filesystem::exists(path, ec);
+// The file's line that holds the key (after what `kept` says).
+std::string key_line(const std::string& key) {
+    return "key: " + key + "\n";
 }
 
-void keep_answer(const wchar_t* file, const char* kept) {
+bool answered(const wchar_t* file, const std::string& key) {
+    std::error_code ec;
+    const auto path = marker(file);
+    if (path.empty() || !std::filesystem::exists(path, ec)) return false;
+    if (key.empty()) return true;
+    std::string text;
+    if (FILE* f = report::open_file(path, "rb")) {
+        char buf[4096];
+        size_t n;
+        while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) text.append(buf, n);
+        std::fclose(f);
+    }
+    const std::string want = key_line(key);
+    return text.size() >= want.size() && text.compare(text.size() - want.size(), want.size(), want) == 0;
+}
+
+void keep_answer(const wchar_t* file, const char* kept, const std::string& key) {
     const auto path = marker(file);
     if (path.empty()) return;
     std::error_code ec;
     std::filesystem::create_directories(path.parent_path(), ec);
     if (FILE* f = report::open_file(path, "wb")) {
         std::fputs(kept, f);
+        if (!key.empty()) std::fputs(key_line(key).c_str(), f);
         std::fclose(f);
     }
 }
@@ -41,31 +57,33 @@ void keep_answer(const wchar_t* file, const char* kept) {
 }  // namespace
 
 void with_ack(Ack ack, std::function<void()> then) {
-    if (answered(ack.file)) {
+    if (answered(ack.file, ack.key)) {
         if (then) then();
         return;
     }
     const auto ticked = std::make_shared<bool>(false);
+    const bool optional = ack.tickOptional;
     Modal::Props props{
         .title = ack.title,
         .bodyRml = ack.bodyRml,
         .actions =
             {
                 ModalAction{
-                    .label = "Continue",
+                    .label = ack.go,
                     .onPressed =
-                        [ticked, file = ack.file, kept = ack.kept, then = std::move(then)](Modal& m) {
-                            if (!*ticked) return;
+                        [ticked, optional, file = ack.file, kept = ack.kept, key = ack.key,
+                         then = std::move(then)](Modal& m) {
+                            if (!*ticked && !optional) return;
                             play_sound(kSoundClick);
-                            keep_answer(file, kept);
+                            if (*ticked) keep_answer(file, kept, key);
                             const auto go = then;  // (the modal and this lambda go with pop)
                             m.pop();
                             if (go) go();
                         },
-                    .isDisabled = [ticked] { return !*ticked; },
+                    .isDisabled = [ticked, optional] { return !*ticked && !optional; },
                 },
                 ModalAction{
-                    .label = "Cancel",
+                    .label = ack.back,
                     .onPressed =
                         [](Modal& m) {
                             play_sound(kSoundWindowClose);

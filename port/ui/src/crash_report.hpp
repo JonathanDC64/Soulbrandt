@@ -1,9 +1,9 @@
 // Crash reports (docs/32): when the game ends on an unhandled exception (an access violation and the like) or an
 // abort, writes crash-<time>.txt (what happened and a symbolized stack), crash-<time>.dmp (a minidump) and
 // crash-<time>.log (the end of the log) in the data folder's crashes folder. Then a second process of this program
-// (des_boot.exe --crash-dialog ...) tells the player: restart the game, or report the problem on GitHub (an issue with
-// the details filled in, and a zip of the report to attach). Adapted for Demon's Souls from FFCCEOT-Recomp's
-// crash_report.hpp.
+// (des_boot.exe --crash-dialog ...; off Windows, dialog_process below) tells the player: restart the game, or report
+// the problem on GitHub (an issue with the details filled in, and a zip of the report to attach). Adapted for Demon's
+// Souls from FFCCEOT-Recomp's crash_report.hpp. (Off Windows: no minidump, and a backtrace in place of the stack.)
 //
 // Only a truly unhandled exception counts: the runtime's vectored handlers (guest memory committed on first touch,
 // its guard pages) run first and keep handling what they handle, and the runtime's own top-level filter and abort
@@ -35,21 +35,29 @@ void report_graphics_lost(const std::string& what);
 // A hang (or lost graphics) dialog report_hang started is still open.
 bool hang_dialog_open();
 
+// Off Windows (crash_report_posix.cpp): the dialog's process is this program started with DES_UI_OPEN=crash-dialog,
+// which is setup's window-only start (des_ui_launch returns -2) with push_dialog's window in place of setup's
+// screens: the report DES_CRASH_REPORT names, for the game DES_CRASH_PID names. Windows' dialog has a window of its
+// own (crash_dialog.cpp's show).
+bool dialog_process();
+void push_dialog();
+
 // Whether install() set up the reports.
 bool reports_on();
 // The game ended itself with an error (des_guest_exit.cpp): the report as for an abort, with `notes` in it, then
 // the dialog. Returns once the report is written and the dialog started; the caller then lets the process end.
 void report_guest_exit(const char* what, const char* notes);
 
-// Play on setup alone (des_ui.cpp): starts this program again as a new process, with the command line and the
-// environment it started with, less DES_UI_OPEN (setup's opener), plus DES_SKIP_UI=1 (setup's Play was the start screen)
-// and DES_LAUNCH_AFTER=<this process's id>: the new one waits for this one to end before it starts its log, so one
-// window shows. The environment it started with, not this process's: settings.ini put its values in this one's, and
-// the new one would take them as set from outside, over what setup stored since. False if it could not start.
-// The update (updates.hpp) passes `set`, NAME=value variables for the new one in place of DES_SKIP_UI=1 (what its setup
-// screens open: DES_UI_OPEN=update-run or setup-run), and `play` false; any variable named there is dropped from the
-// environment first. On Windows the new one is the program at the path this one started from, which an update has
-// just filled with the new version's program.
-bool start_again(const std::vector<std::string>& set = {}, bool play = true);
+// Starts this program again as a new process, with the command line and the environment it started with, less
+// DES_UI_OPEN (setup's opener), plus DES_LAUNCH_AFTER=<this process's id>: the new one waits for this one to end before
+// it starts its log, so one window shows. The environment it started with, not this process's: settings.ini put its
+// values in this one's, and the new one would take them as set from outside, over what setup stored since.
+// `play` adds DES_SKIP_UI=1, past the start screen: the restart for a setting (menu_pages.cpp), as they were playing.
+// Setup's Play (des_ui.cpp) passes false: the start screen comes next, as at every later start.
+// The update (updates.hpp) passes `set`, NAME=value variables for the new one (what its setup screens open:
+// DES_UI_OPEN=update-run or setup-run); any variable named there is dropped from the environment first. On Windows the
+// new one is the program at the path this one started from, which an update has just filled with the new version's
+// program. False if it could not start.
+bool start_again(const std::vector<std::string>& set, bool play);
 
 }  // namespace ui::crash_report

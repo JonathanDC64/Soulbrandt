@@ -46,8 +46,9 @@ ModsPage::~ModsPage() {
 }
 
 // The list in its box: "Your mods" (the usable ones, in their order), then "Needs attention"; or, with no mods, how
-// to add one. The summary, the focused mod's whole note and the buttons beside it.
+// to add one. The summary (with Restart now under its note), the focused mod's whole note and the buttons beside it.
 void ModsPage::build() {
+    const bool hadRows = !mRows.empty();
     mListeners.clear();
     mRows.clear();
     mOrder.clear();
@@ -61,13 +62,21 @@ void ModsPage::build() {
     mMore[1]->SetClass("down", true);
     Rml::Element* side = append(mPage, "mods-side");
     mSummary = append(side, "mods-summary");
+    mSummaryHead = append(mSummary, "summary-head");
+    mButtons[kRestart] = append_text_element(mSummary, "mods-button", "Restart now");
+    mButtons[kRestart]->SetClass("restart", true);
+    mDetail = append(mSummary, "mods-detail");
     Rml::Element* buttons = append(side, "mods-buttons");
-    const char* labels[2] = {"Open the mods folder", "Refresh the list"};
-    for (int b = 0; b < 2; b++) {
-        mButtons[b] = append_text_element(buttons, "mods-button", labels[b]);
+    mButtons[kFolder] = append_text_element(buttons, "mods-button", "Open the mods folder");
+    mButtons[kRefresh] = append_text_element(buttons, "mods-button", "Refresh the list");
+    for (int b = 0; b < kButtons; b++) {
         mListeners.push_back(std::make_unique<ScopedEventListener>(mButtons[b], Rml::EventId::Click, [this, b](Rml::Event&) {
-            if (b == 0) open_folder();
-            else refresh();
+            press(b);
+        }));
+        mListeners.push_back(std::make_unique<ScopedEventListener>(mButtons[b], Rml::EventId::Mousemove, [this, b](Rml::Event&) {
+            if (mHelping || !input::hover_moved() || b == mButton || !shown(b)) return;  // (as a row's)
+            mButton = b;
+            play_sound(kSoundItemFocus);
         }));
     }
     mHelp = append(mPage, "mods-help");
@@ -94,7 +103,7 @@ void ModsPage::build() {
             append_text_element(e, "empty-step",
                                 "2. Press \"Open the mods folder\" and put the mod there, in a folder of its own.");
             append_text_element(e, "empty-step",
-                                "3. Press \"Refresh the list\", turn the mod on, and restart the game.");
+                                "3. Press \"Refresh the list\", turn the mod on, then press \"Restart now\".");
         }
     }
     for (int pass = 0; pass < 2; pass++) {
@@ -110,26 +119,27 @@ void ModsPage::build() {
             mRows.push_back(row);
             mOrder.push_back(i);
             mListeners.push_back(std::make_unique<ScopedEventListener>(row, Rml::EventId::Click, [this, index, row](Rml::Event& e) {
-                if (within(e.GetTargetElement(), row, "move-up")) {
-                    mFocus = index;
-                    move_mod(-1);
-                } else if (within(e.GetTargetElement(), row, "move-down")) {
-                    mFocus = index;
-                    move_mod(1);
-                } else {
-                    mFocus = index;  // (a click picks the row and does what Enter does, in one)
-                    confirm();
-                }
+                mFocus = index;
+                mButton = -1;
+                if (within(e.GetTargetElement(), row, "move-up")) move_mod(-1);
+                else if (within(e.GetTargetElement(), row, "move-down")) move_mod(1);
+                else confirm();  // (a click picks the row and does what Enter does, in one)
             }));
             mListeners.push_back(std::make_unique<ScopedEventListener>(row, Rml::EventId::Mousemove, [this, index](Rml::Event&) {
-                if (mHelping || !input::hover_moved() || index == mFocus) return;  // (a real move of the pointer: input.hpp)
+                // (a real move of the pointer: input.hpp)
+                if (mHelping || !input::hover_moved() || (index == mFocus && mButton < 0)) return;
                 mFocus = index;
+                mButton = -1;
                 play_sound(kSoundItemFocus);
             }));
         }
     }
-    mFocus = std::clamp(mFocus, 0, std::max(0, static_cast<int>(empty ? 2 : mRows.size()) - 1));
+    mFocus = std::clamp(mFocus, 0, std::max(0, static_cast<int>(mRows.size()) - 1));
+    // With no rows a button has the focus; rows that came with Refresh take it (to turn the new mod on).
+    if (empty) mButton = std::max(mButton, static_cast<int>(kFolder));
+    else if (!hadRows) mButton = -1;
     mFocusShown = -1;
+    mButtonShown = -2;
     mScrolledFocus = -1;
     mShown = 0;
 }
@@ -204,9 +214,13 @@ void ModsPage::render_summary() {
                      ", which is higher in the list. Move this mod up to use its own.";
         else if (m.kind == mods::Kind::Gameplay)
             detail = "It changes how the game plays, so you play offline while it's on.";
+        if (const std::string note = mods::unused_note(m); m.usable() && !note.empty())
+            detail += (detail.empty() ? "" : " ") + escape(note);
     }
-    if (!detail.empty()) rml += "<mods-detail>" + detail + "</mods-detail>";
-    mSummary->SetInnerRML(rml);
+    mSummaryHead->SetInnerRML(rml);
+    set_class(mButtons[kRestart], "none", !shown(kRestart));
+    mDetail->SetInnerRML(detail);
+    set_class(mDetail, "none", detail.empty());
 }
 
 void ModsPage::update() {
@@ -215,27 +229,59 @@ void ModsPage::update() {
         mState.load();
         build();
     }
-    if (mFocus != mFocusShown) {
+    const bool moved = mFocus != mFocusShown;
+    if (moved) {
         mFocusShown = mFocus;
         mShown = 0;  // (the summary shows the focused mod's note)
-        for (std::size_t r = 0; r < mRows.size(); r++) set_class(mRows[r], "focused", static_cast<int>(r) == mFocus);
-        for (int b = 0; b < 2; b++) set_class(mButtons[b], "focused", mRows.empty() && b == mFocus);
     }
     if (mShown != mState.generation) {
         mShown = mState.generation;
         render();
         render_summary();
     }
+    if (mButton >= 0 && !shown(mButton)) mButton = mRows.empty() ? kFolder : -1;  // (Restart now gone: the list)
+    if (moved || mButton != mButtonShown) {
+        mButtonShown = mButton;
+        for (std::size_t r = 0; r < mRows.size(); r++)
+            set_class(mRows[r], "focused", mButton < 0 && static_cast<int>(r) == mFocus);
+        for (int b = 0; b < kButtons; b++) set_class(mButtons[b], "focused", b == mButton);
+    }
     scroll_to_focus();
     update_marks();
 }
 
 void ModsPage::move_focus(int by) {
-    const int count = mRows.empty() ? 2 : static_cast<int>(mRows.size());
-    const int to = std::clamp(mFocus + by, 0, count - 1);
+    const int to = std::clamp(mFocus + by, 0, std::max(0, static_cast<int>(mRows.size()) - 1));
     if (to == mFocus) return;
     mFocus = to;
     play_sound(kSoundItemFocus);
+}
+
+bool ModsPage::shown(int button) const {
+    if (button != kRestart) return true;
+    return !mRows.empty() && !ModsState::fixed() && mState.restart_needed();  // (no summary on an empty page)
+}
+
+void ModsPage::move_button(int by) {
+    for (int b = mButton + by; b >= 0 && b < kButtons; b += by) {
+        if (!shown(b)) continue;
+        mButton = b;
+        play_sound(kSoundItemFocus);
+        return;
+    }
+}
+
+void ModsPage::press(int button) {
+    if (!shown(button)) return;
+    mButton = button;  // (a click picks the button and presses it, in one)
+    if (button == kRestart) restart();
+    else if (button == kFolder) open_folder();
+    else refresh();
+}
+
+void ModsPage::restart() {
+    play_sound(kSoundClick);
+    menu::restart_for_mods();
 }
 
 // L1 and R1 (or a row's arrows): the focused mod up or down past the next usable one; the focus goes with it.
@@ -252,11 +298,10 @@ void ModsPage::move_mod(int step) {
         if (mOrder[r] == to) mFocus = static_cast<int>(r);
 }
 
-// Enter: the focused mod on or off, or its loose files put in place; with no mods, the focused button.
+// Enter: the focused mod on or off, or its loose files put in place; or the focused button.
 void ModsPage::confirm() {
-    if (mRows.empty()) {
-        if (mFocus == 0) open_folder();
-        else refresh();
+    if (mButton >= 0) {
+        press(mButton);
         return;
     }
     const int i = focused_mod();
@@ -300,21 +345,31 @@ bool ModsPage::command(menu::Command command, bool down) {
         }
         return true;
     }
+    // The buttons sit in a column beside the list, or in a row under how to add a mod when there are no rows.
+    const bool column = !mRows.empty();
     switch (command) {
     case Command::Up:
-        if (!mRows.empty()) move_focus(-1);
+    case Command::Down: {
+        const int by = command == Command::Up ? -1 : 1;
+        if (mButton < 0) move_focus(by);
+        else if (column) move_button(by);
         return true;
-    case Command::Down:
-        if (!mRows.empty()) move_focus(1);
-        return true;
+    }
     case Command::Left:
-        if (mRows.empty()) move_focus(-1);
+        if (!column) {
+            move_button(-1);
+        } else if (mButton >= 0) {
+            mButton = -1;
+            play_sound(kSoundItemFocus);
+        }
         return true;
     case Command::Right:
-        if (mRows.empty()) move_focus(1);
+        if (!column || mButton < 0) move_button(1);  // (from the list: the first button shown)
         return true;
-    case Command::PrevTab: move_mod(-1); return true;
-    case Command::NextTab: move_mod(1); return true;
+    case Command::PrevTab:
+    case Command::NextTab:
+        if (mButton < 0) move_mod(command == Command::PrevTab ? -1 : 1);
+        return true;
     case Command::Confirm: confirm(); return true;
     case Command::Compare: open_folder(); return true;
     case Command::Preview: refresh(); return true;
@@ -323,10 +378,16 @@ bool ModsPage::command(menu::Command command, bool down) {
     }
 }
 
+// Back closes Good to know, or takes the focus from the buttons back to the list.
 bool ModsPage::back() {
-    if (!mHelping) return false;
-    mHelping = false;
-    play_sound(kSoundWindowClose);
+    if (mHelping) {
+        mHelping = false;
+        play_sound(kSoundWindowClose);
+        return true;
+    }
+    if (mButton < 0 || mRows.empty()) return false;
+    mButton = -1;
+    play_sound(kSoundItemFocus);
     return true;
 }
 
@@ -339,9 +400,9 @@ std::vector<prompts::Prompt> ModsPage::prompts(const std::string& backLabel) con
     using prompts::Key;
     if (mHelping) return {{Key::Confirm, "Close"}, {Key::Back, "Back"}};
     std::vector<prompts::Prompt> out;
-    if (mRows.empty()) {
-        out.push_back({Key::Change, "Select"});
-        out.push_back({Key::Confirm, "Open"});
+    if (mButton >= 0) {
+        out.push_back({mRows.empty() ? Key::Change : Key::Move, "Select"});
+        out.push_back({Key::Confirm, mButton == kRestart ? "Restart now" : mButton == kFolder ? "Open" : "Refresh"});
     } else {
         out.push_back({Key::Move, "Select"});
         if (const int i = focused_mod(); i >= 0) {
@@ -354,11 +415,13 @@ std::vector<prompts::Prompt> ModsPage::prompts(const std::string& backLabel) con
                 out.push_back({Key::Confirm, "Fix it"});
             }
         }
+        // (Right takes the focus to it: the pads' and keys' way there, which the page shows nowhere else)
+        if (shown(kRestart)) out.push_back({Key::Right, "Restart now"});
     }
     if (!mState.dir.empty()) out.push_back({Key::Compare, "Open the mods folder"});
     out.push_back({Key::Preview, "Refresh the list"});
     out.push_back({Key::Help, "Good to know"});
-    out.push_back({Key::Back, backLabel});
+    out.push_back({Key::Back, mButton >= 0 && !mRows.empty() ? std::string("Back") : backLabel});  // (to the list)
     return out;
 }
 
@@ -371,6 +434,12 @@ std::string ModsPage::strip() const {
 void ModsPage::focus_mod(const std::string& name) {
     for (std::size_t r = 0; r < mOrder.size(); r++)
         if (mState.all[mOrder[r]].name == name) mFocus = static_cast<int>(r);
+    update();
+}
+
+void ModsPage::focus_restart() {
+    update();  // (the summary as the list is now: whether Restart now shows)
+    if (shown(kRestart)) mButton = kRestart;
     update();
 }
 
