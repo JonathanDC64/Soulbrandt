@@ -7,7 +7,9 @@
 // gpu-out-* cases are not. And a restart-only setting changed in the menu waits for the next start (restart_pending):
 // not a live one, not one in effect already, not one pinned by the environment. And the Keyboard page's item slot keys
 // (keys_for_pad): DES_ITEM_KEYS from the layout and PAD_KEYS's changes, without wheel notches and without an input a
-// cellPad row has too, and none of the item rows in the PAD_KEYS cellPad reads. And seamless co-op's servers
+// cellPad row has too, and none of the item rows in the PAD_KEYS cellPad reads. And the Gamepad page's Kick row
+// (map_for_pad): with Forward attack at Own key its pad button presses R1 and nothing else, in the PAD_MAP cellPad
+// reads, and DES_KICK_PAD names it; with the original, the row is left out. And seamless co-op's servers
 // (TEST_SEAMLESS=host stands in for a hosting start): the endpoint for room codes (DES_SEAMLESS_INTRO) from the Server
 // row, settings.ini's or the environment's value winning, and off in a test run; settings.ini's DES_SEAMLESS_STUN. And
 // a gameplay mod (a made-up one with game parameters): it keeps online play off, and not seamless co-op.
@@ -231,6 +233,27 @@ int run_case(const std::string& name) {
                                                         : ",2,3,4,6";        // keys-changed: slot 1 none, slot 5 on 6
         check(env("DES_ITEM_KEYS") == want, "DES_ITEM_KEYS " + want + ": " + env("DES_ITEM_KEYS"));
         if (name == "keys-taken") check(pad.find("l2=1|lctrl") != std::string::npos, "L2 keeps 1: " + pad);
+    } else if (name.rfind("kickpad-", 0) == 0) {  // the Kick row's pad button
+        const std::string want_map = name == "kickpad-off"      ? "cross=triangle,triangle=cross"
+                                     : name == "kickpad-paddle" ? "r1=r1|paddle1"
+                                     : name == "kickpad-square" ? "r1=l1,l1=r1,r1=l1|square,square=none"
+                                     : name == "kickpad-env"    ? "r1=r1|misc"
+                                                                : "";   // kickpad-unknown, kickpad-live
+        const std::string want_pad = name == "kickpad-paddle"   ? "paddle1"
+                                     : name == "kickpad-square" ? "square"
+                                     : name == "kickpad-env"    ? "misc"
+                                                                : "";
+        check(env("PAD_MAP") == want_map, "PAD_MAP " + want_map + ": " + env("PAD_MAP"));
+        check(env("DES_KICK_PAD") == want_pad, "DES_KICK_PAD " + want_pad + ": " + env("DES_KICK_PAD"));
+        if (name == "kickpad-live") {   // Forward attack changed in the menu: the button follows at once
+            settings::set("DES_KICK", "1");
+            check(env("PAD_MAP") == "r1=r1|paddle2", "Own key: PAD_MAP r1=r1|paddle2: " + env("PAD_MAP"));
+            check(env("DES_KICK_PAD") == "paddle2", "Own key: DES_KICK_PAD paddle2: " + env("DES_KICK_PAD"));
+            settings::set("DES_KICK", "0");
+            check(env("PAD_MAP").empty() && env("DES_KICK_PAD").empty(),
+                  "the original again: PAD_MAP " + env("PAD_MAP") + ", DES_KICK_PAD " + env("DES_KICK_PAD"));
+            check(settings::get("PAD_MAP") == "kick=paddle2", "the row is kept: " + settings::get("PAD_MAP"));
+        }
     } else if (name == "coop-mods") {  // a gameplay mod doesn't keep seamless co-op off
         check(ui::mods::gameplay_in_use(), "the mod counts as gameplay");
         check(!settings::net_mods_held(), "not held by the mod");
@@ -285,6 +308,12 @@ const Case kCases[] = {
     {"keys-default", nullptr, {}},
     {"keys-taken", "keys_layout = souls\nPAD_KEYS = l2=1|lctrl,item3=shift+3|wheelup\n", {}},   // from before the rows
     {"keys-changed", "keys_layout = souls\nPAD_KEYS = item1=none,item5=6\n", {}},
+    {"kickpad-off", "PAD_MAP = cross=triangle,triangle=cross,kick=paddle1\n", {}},   // Forward attack's original
+    {"kickpad-paddle", "DES_KICK = 1\nPAD_MAP = kick=paddle1\n", {}},
+    {"kickpad-square", "PAD_MAP = r1=l1,l1=r1,kick=square\nDES_KICK = 1\n", {}},     // (DES_KICK after PAD_MAP)
+    {"kickpad-env", nullptr, {{"PAD_MAP", "kick=misc"}, {"DES_KICK", "1"}}},
+    {"kickpad-unknown", "DES_KICK = 1\nPAD_MAP = kick=paddle9\n", {}},
+    {"kickpad-live", "PAD_MAP = kick=paddle2\n", {}},
     // 0.1.0's settings.ini ("d3d12" whether picked or not), by GPU
     {"gpu-in-1070-saved", "RSX_BACKEND = d3d12\n", {{"DES_RENDERER_GPU_ID", "10de:1b81"}}},        // GTX 1070 (#205, #372)
     {"gpu-in-1060-saved", "RSX_BACKEND = d3d12\n", {{"DES_RENDERER_GPU_ID", "10de:1c03"}}},        // GTX 1060 6GB (#398)
@@ -333,7 +362,7 @@ int main(int argc, char** argv) {
             {"RSX_BACKEND", "RSX_STATE_DIR", "DES_SETTINGS", "DES_DATA_DIR", "PS3_PIDFILE", "DES_LANGUAGE", "PAD_KEYS",
              "DES_ITEM_KEYS", "TEST_SEAMLESS", "DES_SEAMLESS_INTRO", "DES_SEAMLESS_STUN", "PS3_NP_ONLINE_ID",
              "DES_KIND", "DES_MODS", "DES_MODS_DIR", "PS3_VFS_MODS", "PSNR_SERVER", "PS3_NET_ONLINE",
-             "PS3_NET_P2P_PORT"})
+             "PS3_NET_P2P_PORT", "PAD_MAP", "DES_KICK", "DES_KICK_PAD"})
             ps3_setenv(k, "");
         ps3_setenv("DES_RENDERER_GPU", "Test GPU");  // (not this PC's: a case gives the rule's GPU itself)
         ps3_setenv("DES_RENDERER_GPU_ID", "");
