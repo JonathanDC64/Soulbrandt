@@ -250,10 +250,17 @@ game-glow[open] {
     opacity: 1;
 }
 
-/* The frame rate counter (perf_overlay.hpp): a small dark box in the top right corner, above the HUD's area name. With
-   frame times (perf.times) the 1% low goes under the rate, and the graph of the last 120 frames and the frame time at
-   its line beside them. The graph draws its line in its colour, its columns in the same, fainter, and the part of a
-   late frame's column above the line in its image-color. */
+/* The game's picture in the window (perf_overlay.cpp sets its place): the frame rate counter keeps to the picture's
+   corner, by the HUD, when the window has another shape than the picture. */
+perf-area {
+    position: absolute;
+    display: block;
+}
+
+/* The frame rate counter (perf_overlay.hpp): a small dark box in the picture's top right corner, above the HUD's area
+   name. With frame times (perf.times) the 1% low goes under the rate, and the graph of the last 120 frames and the
+   frame time at its line beside them. The graph draws its line in its colour, its columns in the same, fainter, and
+   the part of a late frame's column above the line in its image-color. */
 perf {
     position: absolute;
     top: 8dp;
