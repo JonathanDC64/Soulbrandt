@@ -48,10 +48,9 @@ from the PR because they contain a local save copy and runtime artifacts.
 Existing native Thomas withdrawal evidence shows one Crescent moved from
 Storage 91 to 90 while load changed from `87.9` to `88.0`. A separate local
 deposit record shows inventory `17→16`, Storage `93→94`, and load `87.8→87.7`.
-Synthetic `storage_check` passed 59 checks and `storage_navigation_check`
-passed 92 checks.
+Storage wrapper checks were run on the branch used for #519.
 
-The checked-in `storage_check` harness gives a concrete counterexample to
+The `storage_check` harness on the #519 branch gives a concrete counterexample to
 rollback in the current wrapper. Its native-call stand-in (`native_deposit`,
 lines 47-54 of `port/tests/storage_check.cpp`) is configured for amount 1,
 `deposit_result=1`, `inventory_delta=1`, and `box_delta=0`. Starting from
@@ -72,12 +71,12 @@ remains unproven; the wrapper currently disables later Send calls but does not
 restore the box or inventory. Therefore this change remains observer-only and
 does not add pickup-to-Storage transfer behavior or claim transaction safety.
 
-## Verification
+## Historical verification on the #519 base
 
 Run25's dynamic trace used the isolated Asia build with EXE SHA-256
 `341224E23D8BFC5955D0CBB567942A12BFBB2D49BE199F26039736618AB4F7DB` and DLL
 SHA-256 `D1DE83DB04618E79EE159CD7A4DE1342242E8994093BC3B7CB334CF05A3EC300`.
-That run preceded rebasing this observer commit onto the current #519 head
+That run preceded rebasing this observer onto #519 head
 `941e1ef`. The rebased candidate was then built with `DES_DEV=ON`,
 `DES_SPLIT=ON`, `DES_REQUIRE_PIN=ON`, and the exact ps3recomp pin
 `7d2cd5e92291cae5d93d664c90a7997074e87e20`. Its `des_host.exe` SHA-256 is
@@ -90,3 +89,6 @@ for a second dynamic replay.
 - `storage_check`: 106 checks, 0 failures.
 - `storage_navigation_check`: 92 checks, 0 failures.
 - `git diff --check`: passed.
+
+The upstream PR applies the observer directly to upstream `master`. Its
+runtime pin differs from the #519 candidate used for the builds above.
