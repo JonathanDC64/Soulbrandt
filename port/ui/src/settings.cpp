@@ -111,6 +111,10 @@ constexpr Def kDefs[] = {
     {"DES_NET_NAME", "", Apply::Restart},      // the online name (PS3_NP_ONLINE_ID); "" = no NP identity
     {"DES_NET_P2P_PORT", "3658", Apply::Restart},  // PS3_NET_P2P_PORT, 1024-65535
     {"DES_SEAMLESS_ADDRESS", "", Apply::Restart},  // seamless co-op host's public IPv4 (the Co-op window); "" = router's
+    // Seamless co-op's two servers, by hand in settings.ini only (PRIVACY.md says how): "0" turns off the endpoint that
+    // introduces players for room codes ("" = the Server row's), and the STUN lookup ("" = Google's).
+    {"DES_SEAMLESS_INTRO", "", Apply::Restart},
+    {"DES_SEAMLESS_STUN", "", Apply::Restart},
     {"DES_SEAMLESS_PLAYERS", "4", Apply::Live},    // the most players a seamless co-op host takes, itself included: 2-4
     {"DES_SEAMLESS_GLOW", "1", Apply::Live},       // seamless co-op: "0" = the other players see this one without its phantom glow
     {"DES_SEAMLESS_GLOW_COLOR", "", Apply::Live},  // seamless co-op: this player's glow colour, "RRGGBB"; "" = the game's blue
@@ -592,8 +596,10 @@ std::string net_options_header() {
 // A developer build's cheat session wins over this: des_dev_boot runs after des_ui_early_init (which calls
 // load_and_apply_env) in ps3_title_options_init, and clears PS3_NET_ONLINE, PSNR_SERVER and PS3_NET_HOSTS when a cheat
 // is set at start (docs/55 section 6). So nothing here checks DES_DEV_SESSION; the Network tab reads it to say why.
-// Seamless co-op (DES_SEAMLESS, des_seamless.h) in place of the rows: no server of this project or anyone else's,
-// only the host's game. Gameplay mods keep it off too, as online (docs/143), and it needs an online name.
+// Seamless co-op (DES_SEAMLESS, des_seamless.h) in place of the rows: the game goes only between the players' games.
+// The one server it uses is the endpoint that introduces them for a room code (DES_SEAMLESS_INTRO): the Server row's
+// server, if it is this project's own or the local test server; none otherwise (the direct code only). Gameplay mods
+// keep co-op off too, as online (docs/143), and it needs an online name.
 static void apply_seamless() {
     namespace co = des::seamless;
     const bool host = co::mode() == co::Mode::Host;
@@ -618,6 +624,22 @@ static void apply_seamless() {
     int port = std::atoi(effective("DES_NET_P2P_PORT").c_str());
     if (port < kNetP2pPortMin || port > kNetP2pPortMax) port = kNetP2pPortDefault;
     set_net_knob("PS3_NET_P2P_PORT", std::to_string(port));
+    // The endpoint: settings.ini's (or the environment's) when it names one or says 0, else the Server row's. A test
+    // run never reaches the project's server unless it says so, as for online.
+    std::string intro = trim(effective("DES_SEAMLESS_INTRO"));
+    if (intro.empty() && harness_run()) {
+        intro = "0";
+        std::fprintf(stderr, "[ui] seamless co-op: no room code in a test run unless DES_SEAMLESS_INTRO is given\n");
+    }
+    if (intro.empty()) {
+        const NetServer* s = net_server(effective("DES_NET_SERVER"));
+        const bool ours = s && *s->address &&
+                          (s->key == std::string_view("project") || s->key == std::string_view("local"));
+        intro = ours ? std::string(s->address) + ":" + std::to_string(kNetPsnrPort) : "0";
+    }
+    set_net_knob("DES_SEAMLESS_INTRO", intro);
+    if (const std::string stun = trim(effective("DES_SEAMLESS_STUN")); !stun.empty())
+        set_net_knob("DES_SEAMLESS_STUN", stun);
     std::string why;
     if (!co::start(name, &why)) {
         sNetStatus = "Off: co-op did not start (" + why + ")";

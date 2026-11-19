@@ -95,21 +95,24 @@ void start_coop(const std::vector<std::string>& set) {
     }));
 }
 
-// Before a player's first Host or Join on this PC (ack.hpp): co-op is still a test, how to report what goes wrong, and
-// that an invite code holds the host's internet address. Asked once; Cancel leaves co-op as it was.
+// Before a player's first Host or Join on this PC (ack.hpp): co-op is still a test, how to report what goes wrong, that
+// anyone with a code can join and learn the host's internet address, and what the server that introduces players
+// sees. Asked once; Cancel leaves co-op as it was.
 void with_notice(void (*then)()) {
     with_ack(
         {
-            .file = L"coop_notice_ack.txt",
-            .kept = "The player has read co-op's notice: still a test, and invite codes kept private "
-                    "(coop_window.cpp).\n",
+            .file = L"coop_notice_ack_2.txt",  // (_2: the notice since room codes, with the server's line)
+            .kept = "The player has read co-op's notice: still a test, the server that introduces players, and "
+                    "invite codes kept private (coop_window.cpp).\n",
             .title = "Seamless co-op is still being tested",
             .bodyRml = "Expect some problems, like a friend dropping out or a crash. Your normal characters aren't "
                        "affected.<br/><br/>"
                        "If something goes wrong, choose Report an issue in the menu, and ask your friends to report it "
                        "too.<br/><br/>"
-                       "<modal-warning>Invite codes contain the host's IP address. Only share them privately with "
-                       "friends.</modal-warning>",
+                       "To find each other, your games tell this project's server their internet addresses. It "
+                       "keeps them only while you host.<br/><br/>"
+                       "<modal-warning>Anyone with an invite code can join you and learn your internet address. Only "
+                       "share codes privately with friends.</modal-warning>",
             .tick = "I understand",
             .icon = "warning",
         },
@@ -121,8 +124,8 @@ void open_host_now() {
         .title = "Host seamless co-op?",
         .bodyRml = "The game starts again on your co-op characters. Then send your friends the invite code from "
                    "Seamless co-op.<br/><br/>"
-                   "If Windows asks about the network, allow it. Keep the code private: it holds your internet "
-                   "address.",
+                   "If Windows asks about the network, allow it. Keep the code private: anyone with it can join "
+                   "you.",
         .actions = {ModalAction{.label = "Cancel", .onPressed = close_action},
                     ModalAction{.label = "Host",
                                 .onPressed = [](Modal&) { start_coop({"DES_SEAMLESS=host", "DES_SEAMLESS_CODE="}); }}},
@@ -151,7 +154,7 @@ void open_join_now() {
                                     play_sound(kSoundItemChange);
                                     push_document(std::make_unique<OskWindow>(OskWindow::Props{
                                         .prompt = "Your friend's invite code",
-                                        .limit = 19,  // 16 letters and digits, and three dashes
+                                        .limit = 19,  // a direct code: 16 letters and digits, and three dashes
                                         .onDone =
                                             [](bool ok, const std::u16string& typed) {
                                                 if (ok) join_with(utf16_to_utf8(typed), "Type the code first.");
@@ -334,11 +337,13 @@ std::string body(const co::Status& s) {
     if (s.mode == co::Mode::Off)
         return "Play through the game with up to three friends. One of you hosts; the others join with the host's "
                "invite code and follow the host from area to area.<br/><br/>"
-               "Co-op uses its own characters, kept apart from your normal ones. No online game server is used: "
-               "only your friends' games and yours. A host whose router can't tell its internet address asks "
-               "Google's STUN server for it.";
+               "Co-op uses its own characters, kept apart from your normal ones. This project's server only "
+               "introduces your games to each other: what you play goes straight between them. A host whose router "
+               "can't tell its internet address asks Google's STUN server for it.";
     if (!s.started) return "Co-op did not start: " + escape(s.error) + ".";
     if (s.mode == co::Mode::Join) {
+        if (s.link == co::Status::Link::Connecting && !s.join.empty())
+            return s.join_warn ? "<modal-warning>" + escape(s.join) + "</modal-warning>" : escape(s.join);
         if (s.link == co::Status::Link::Connecting) return "Reaching the host's game...";
         if (s.link == co::Status::Link::Connected) return "You're connected to the host's game.";
         if (s.link == co::Status::Link::Full)
@@ -352,37 +357,47 @@ std::string body(const co::Status& s) {
     if (s.code_spent)
         b += "<b>Many wrong codes were tried</b>, so your code no longer lets anyone in. Choose <b>New code</b> and "
              "send the new one to your friends. Players already here stay.<br/><br/>";
-    if (!s.code.empty()) {
-        b += "Your invite code:<br/><b>" + escape(s.code) + "</b><br/>Send it to your friends. Don't post it in "
-             "public: it holds your internet address.<br/><br/>";
+    if (!s.room_code.empty())
+        b += "Your invite code:<br/><b>" + escape(s.room_code) + "</b><br/>Send it to your friends. Don't post it in "
+             "public: anyone with it can join you.<br/><br/>";
+    if (!s.intro.empty())
+        b += (s.intro_trouble ? "<modal-warning>" + escape(s.intro) + "</modal-warning>" : escape(s.intro)) +
+             "<br/><br/>";
+    if (!s.stuck.empty()) b += "<modal-warning>" + escape(s.stuck) + "</modal-warning><br/><br/>";
+    if (s.show_direct && !s.code.empty()) {
+        b += (s.room_code.empty() ? "Your invite code:<br/><b>" : "Or the direct code, for your open port:<br/><b>") +
+             escape(s.code) + "</b><br/>Send it to your friends. Don't post it in public: it holds your internet "
+             "address.<br/><br/>";
     }
-    b += escape(s.router.empty() ? "Asking your router to open the port..." : s.router);
-    if (!s.lan_code.empty() && (s.code.empty() || s.lan_code != s.code))
+    if (s.show_direct) b += escape(s.router.empty() ? "Asking your router to open the port..." : s.router);
+    if (!s.lan_code.empty() && (s.code.empty() || s.lan_code != s.code) && s.show_direct)
         b += "<br/><br/>On your own network: <b>" + escape(s.lan_code) + "</b>";
-    b += "<br/><br/>Players: " + std::to_string(s.players > 0 ? s.players : 1) + " of " +
-         std::to_string(s.max_players) + " (Settings > Network).";
+    b += std::string(s.show_direct ? "<br/><br/>" : "") + "Players: " +
+         std::to_string(s.players > 0 ? s.players : 1) + " of " + std::to_string(s.max_players) +
+         " (Settings > Network).";
     if (s.waiting > 0) b += " Waiting to join: " + std::to_string(s.waiting) + ".";
     return b;
 }
 
-// Copy code: the invite code on the clipboard (the one for the player's own network while the router hasn't answered).
+// Copy code: the invite code on the clipboard: the room code, else the direct code, else the one for the player's own
+// network (while the router hasn't answered).
 void copy_code_now() {
     const co::Status now = co::status();
-    const std::string code = !now.code.empty() ? now.code : now.lan_code;
+    const std::string code = !now.room_code.empty() ? now.room_code : !now.code.empty() ? now.code : now.lan_code;
     if (code.empty()) {
         toast("warning", "There is no code yet: the router hasn't answered.");
         return;
     }
     if (auto* sys = Rml::GetSystemInterface()) sys->SetClipboardText(code);
     play_sound(kSoundItemEnable);
-    toast("info", now.code.empty() ? "Copied the code for players on your own network: it doesn't work over the "
-                                     "internet."
-                                   : "Copied. Send it to your friends, not in public.");
+    toast("info", code == now.lan_code && now.code.empty()
+                      ? "Copied the code for players on your own network: it doesn't work over the internet."
+                      : "Copied. Send it to your friends, not in public.");
 }
 
 bool no_code_now() {
     const co::Status now = co::status();
-    return now.code.empty() && now.lan_code.empty();
+    return now.room_code.empty() && now.code.empty() && now.lan_code.empty();
 }
 
 class CoopWindow final : public Modal {

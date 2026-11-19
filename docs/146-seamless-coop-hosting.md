@@ -1,8 +1,9 @@
 # 146. Seamless co-op: hosting and joining
 
 Seamless co-op lets friends play through the game together. One player's game hosts; the others join it with an
-invite code. **No online server is used**: not this project's, and not anyone else's. Only the friends' games talk
-to each other.
+invite code. **The game goes only between the friends' games.** The one server involved is this project's, and only
+to introduce them: for a room code it tells the two games each other's addresses, so they can connect without an open
+port (docs/162). With it off (`DES_SEAMLESS_INTRO=0`), the direct code needs no server at all.
 
 This page covers three parts:
 - **Part 1, connecting:** how a game hosts, how a friend joins, and what each game does with the network.
@@ -14,10 +15,13 @@ This page covers three parts:
 ## For players
 
 **Seamless co-op is still being tested.** The first time a player chooses **Host** or **Join** on a PC, a
-notice says so: expect some problems, report them with **Report an issue** (friends too), and share invite codes
-only privately, because they contain the host's IP address. The player ticks "I understand" and chooses
-**Continue**; **Cancel** leaves things as they were. The answer is kept in the data folder (`coop_notice_ack.txt`,
-as Report's own first question keeps `report_zip_ack.txt`), so the notice shows once per PC.
+notice says so: expect some problems, report them with **Report an issue** (friends too). It also says that the
+games tell this project's server their internet addresses to find each other, and that anyone with an invite code can
+join and learn the host's internet address, so codes are shared only privately. The player ticks "I understand" and
+chooses **Continue**; **Cancel** leaves things as they were. The answer is kept in the data folder
+(`coop_notice_ack_2.txt`, as Report's own first question keeps `report_zip_ack.txt`), so the notice shows once per PC.
+(`coop_notice_ack.txt` was the answer to the notice before room codes, which didn't mention the server: a player who
+ticked that one is asked again.)
 
 **The name in the menus** is **Seamless co-op** (the start screen's button, the F1 menu's entry and its window's
 title), so it isn't taken for the game's own co-op with summon signs.
@@ -27,10 +31,14 @@ title), so it isn't taken for the game's own co-op with summon signs.
 1. Open **Seamless co-op** (on the start screen, or F1 > Seamless co-op) and choose **Host**. The game starts
    again on your co-op characters.
 2. Windows may ask whether the game may use the network. Choose **Allow**, or your friends can't connect.
-3. Open **Seamless co-op** again. It shows your **invite code**, like `7KQ2-M9XD-0RTB-4HWE`. **Copy code** puts
-   it on the clipboard. Send it to your friends.
+3. Open **Seamless co-op** again. It shows your **invite code**, like `K7Q2M-9XD0R-TB4HW` (the room code, 15
+   letters and digits), once this project's server has your room: a second or so. **Copy code** puts it on the
+   clipboard. Send it to your friends. When your router opened the port, or you gave a public address, or the
+   server can't be reached, Co-op also shows the **direct code** under it, like `7KQ2-M9XD-0RTB-4HWE` (16): it
+   works without the server, but needs the port open.
 
-**Don't post the code in public.** It holds your internet address. Send it only to the friends you play with.
+**Don't post the code in public.** Anyone with it can join you and learn your internet address (a direct code holds
+it). Send it only to the friends you play with.
 If a code went further than you meant, choose **New code**: the old one stops working, and players already in your
 game stay. The game makes a new code by itself only when someone has tried many wrong ones; Seamless co-op then says
 so.
@@ -39,7 +47,9 @@ so.
 
 1. Copy your friend's invite code.
 2. Open **Seamless co-op**, choose **Join**, then **Paste and join**, or **Type code** to type it (with a keyboard or
-   the controller). The game starts again on your co-op characters.
+   the controller). Either kind of code works. The game starts again on your co-op characters.
+3. Until it gets in, Co-op says how the join goes ("Finding the host's game...", or what is in the way, below), and
+   the game keeps trying: after 10 s, 30 s, then every minute.
 
 **To leave:** **Seamless co-op** > **Leave co-op**. A friend's game first takes them back to their own world, where
 it saves what the group did; the host's leave sends its friends back to theirs. Then the game starts again on your
@@ -48,9 +58,10 @@ normal characters.
 **If the host's game closes,** a friend sees the game's own "The session has ended." about 13 s later and goes back
 to their own world. **Seamless co-op** then says the connection was lost. The friend's game keeps trying to reach the
 host's: after a network drop, with the host still hosting, it connects again, goes home as the game ends the session, and
-joins again by itself from there. If the host starts hosting again, its invite code is a new one. The friend's
-game then says "The host's game did not accept this invite code. Ask the host for it again." and stops trying:
-**Leave co-op**, then join with the new code.
+joins again by itself from there. If the host starts hosting again, its invite codes are new ones. With a room code,
+the friend's game then says "No game is hosting with this code. Ask the host for its code again." and stops trying
+after 2 minutes; with a direct code, "The host's game did not accept this invite code. Ask the host for it again." at
+once. **Leave co-op**, then join with the new code.
 
 **Co-op characters** are kept in their own save folder (`savedata-coop`, beside the normal one). Co-op never writes
 your normal characters.
@@ -172,7 +183,20 @@ waits: Co-op says so, and the friend's game joins as soon as a place frees up.
 
 ### If your friends can't connect
 
-The host's router has to let friends in on one port (36100, TCP and UDP).
+**With the room code** most friends get in with no open port: the server tells the two games each other's addresses,
+both send to each other at once, and each router then lets the other's packets in. It can't when both routers are
+strict (a router that gives each connection a new port, as some mobile networks and shared provider addresses do, on
+one side, and one that only lets in what it sent to, or another such router, on the other). Co-op then says so:
+- the host's: "A friend's game found yours but couldn't get through. Open port 36100 (TCP and UDP) on your router, or
+  let that friend host.";
+- the friend's: "The host's game was found, but your two networks block a direct connection. ..." with the same ways
+  out. The friend's game keeps trying.
+
+When the server can't be reached, or has no place, the host's Co-op says so and shows the direct code; the friend's
+says "Can't reach the server that finds the host's game. If the host's port is open, ask for its direct code."
+
+**With the direct code**, or a room code that can't get through, the host's router has to let friends in on one port
+(36100, TCP and UDP).
 
 - The game asks the router to open it (UPnP). Co-op shows whether that worked.
 - **The router's forward lasts an hour** and the game renews it every 30 minutes while it hosts. Closing the game
@@ -198,7 +222,9 @@ The host's router has to let friends in on one port (36100, TCP and UDP).
   - Or forward port 36100 (TCP and UDP) on the outer router to the first router's internet-side address. The code
     has the outer address from the STUN server.
   - With carrier-grade NAT, ask the provider for a public address.
-- **Players on the same network** can use the **local code** that Co-op shows below the invite code.
+- **Players on the same network** can use the room code too: the server sees both games come from one internet
+  address and sends the friend's game to the host's address at home. With the direct code shown, Co-op also shows a
+  **local code** below it.
 
 ### Reporting a co-op problem
 
@@ -224,7 +250,17 @@ has the last session's.
   thread of the host's game, and speaks the same protocol as a psnr server, so the game's matchmaking code is the
   same as online. The host's own game connects to it at 127.0.0.1; friends connect to the address in the code.
 - **One open port.** Every player's game traffic goes through the room server's port, so friends need no open port
-  and only the host's router is involved.
+  and only the host's router is involved. With a room code, that port is the one the two games punched open in the
+  routers (below), not one forwarded.
+- **The room code** (docs/162). While it hosts, the host's game registers a room with the endpoint on this project's
+  server (psnr's UDP listener, port 36100), from its room server's own UDP port, and again every 20 s. A friend's game
+  looks the room up there and gets the host's addresses (the one the endpoint sees, and the one at home); the
+  endpoint sends the host's game the friend's. Both then send to each other over UDP (a cookie first, so nothing is
+  answered for an address that didn't ask), and the friend's game tries TCP to the host's port at the same time: the
+  first that opens carries the `HELLO`, the other is closed. Over UDP the room session runs on ps3recomp's
+  `psnr_rudp` (in order, resent, kept alive), and the game's P2P traffic goes through the host as with a direct code.
+  The endpoint keeps nothing on disk, logs only counts, and never sees the key or the game. A host the endpoint
+  introduced to a friend who then never connected (15 s) shows the "couldn't get through" line above.
 - **The key.** Each time a game hosts, it draws a new key. The code carries it, and the room server turns away any
   game without it. An address that sends wrong keys is ignored for a minute after five.
 - **The game's own online server** (messages, signs, ghosts, world tendency, login) is answered inside each game, by
@@ -235,7 +271,8 @@ has the last session's.
   on each such trip (0.8 to 0.4 in a test). In co-op the game now skips the server's values (`des_qwc_local`, the
   Network tab's "Yours only", docs/69). Each game still plays the shared area with its own player's tendency: the
   game's own message that gives a phantom the host's tendency (0x17) doesn't come in seamless co-op (docs/69).
-- **Nothing else is reached,** apart from the STUN request above, from a host whose router gives no address. No name
+- **Nothing else is reached,** apart from the endpoint (above) and the STUN request, from a host whose router gives
+  no address. No name
   the game looks up (`c.demons-souls.com` and the rest) resolves, and no sign-in happens. A gameplay mod keeps co-op off, as it keeps online off (docs/143).
 - **Which discs:** every disc plays with every other. The US and European discs are one program; the Japanese and
   Asian discs' 1.04 program is the same code at other addresses (`port/regions/`), and all four have the same game
@@ -248,13 +285,19 @@ has the last session's.
     warp to the Nexus, and the Japanese friend's death and respawn;
   - a US host with an Asian friend: the join.
 
-### The invite code
+### The invite codes
 
-16 letters and digits in groups of four, from Crockford's base 32: no I, L, O or U, so no two characters look alike.
-Reading a code back ignores case, dashes and spaces, and takes O as 0 and I or L as 1.
+Both kinds are letters and digits from Crockford's base 32: no I, L, O or U, so no two characters look alike. Reading
+a code back ignores case, dashes and spaces, and takes O as 0 and I or L as 1. Its length tells which kind it is.
 
-It holds 80 bits: the host's IPv4 address (32), the port (16), the key (28) and a check (4). The check catches most
-typos ("That code has a typo").
+**The room code:** 15 characters in groups of five, 75 bits: the room number (40), the key (28) and a check (7). The
+room number names the room at the endpoint; the key goes only to the host's game, in the `HELLO`. The check caught
+459 of the 465 one-character typos of a test code.
+
+**The direct code:** 16 characters in groups of four, 80 bits: the host's IPv4 address (32), the port (16), the key
+(28) and a check (4). The check catches most typos ("That code has a typo").
+
+A friend's game rejects anything else with "That isn't an invite code: it has 15 or 16 letters and digits."
 
 **Who can join.** The room server (ps3recomp's `psnr_host`) is the only thing the router opens. The game's own
 online server runs on this PC's loopback only. Every connection must say `HELLO` with the key, as a 32-byte blob
@@ -825,12 +868,16 @@ side by their times.
 | `DES_SEAMLESS_PLAYERS=n` | The most players a host takes, itself included: 2 to 4 (4 when unset). Settings > Network keeps it in settings.ini. One more connects but waits: the host answers its ask for the room with FULL, and it joins once the host answers with the room again (the room server also refuses a join past the limit, `max_players`). |
 | `DES_SEAMLESS_GLOW=0` | The other players (and this one) see this player without its blue phantom glow in a session. Settings > Network > Your glow keeps it in settings.ini; a change counts within 2 s (GLOW). |
 | `DES_SEAMLESS_GLOW_COLOR=RRGGBB` | This player's glow colour in a session, for the others and itself (unset: the game's blue). Settings > Network > Your glow colour keeps it in settings.ini; a change counts within 2 s (GLOW). |
-| `DES_SEAMLESS_STUN` | Unset: a host whose router gives no public address asks Google's STUN server (`stun.l.google.com:19302`) for it. `0`: never. `host:port`: that server instead. |
-| `DES_SEAMLESS_CODE_FILE=path` | Tests: the host writes its codes there (public, then local); a joining game with no `DES_SEAMLESS_CODE` waits for the file and takes the code from it. |
+| `DES_SEAMLESS_STUN` | Unset: a host whose router gives no public address asks Google's STUN server (`stun.l.google.com:19302`) for it. `0`: never. `host:port`: that server instead. settings.ini can set it too. |
+| `DES_SEAMLESS_INTRO=host[:port]` | The endpoint that introduces players for room codes (port 36100 by default). Settings sets it from the Network tab's Server row: this project's server, or 127.0.0.1 for the local test server; any other row, `0`. A value in settings.ini (or the environment) wins. `0`: no room code, the direct code only, and nothing goes to the server; a room code can't be joined. |
+| `DES_SEAMLESS_CODE_FILE=path` | Tests: the host writes its codes there (public, local, then the room code once the endpoint has the room); a joining game with no `DES_SEAMLESS_CODE` waits for the file and takes the code from it: the public one, else the local one. |
+| `DES_SEAMLESS_CODE_PICK=room` | Tests: that joining game waits for the room code in the file instead, and joins with it. |
 
 The runtime's knobs that co-op sets: `PS3_NET_ONLINE=1`, `PS3_NP_ONLINE_ID`, `PS3_NET_P2P_PORT`, `PSNR_SERVER`,
 `PSNR_KEY`, `PS3_HTTP_LOCAL` (the in-process server's port), `PS3_NET_HOSTS=localhost=127.0.0.1` (so no other name
-resolves) and `PS3_SAVEDATA_ROOT` (the co-op save). A value set in the environment wins, as for the Network rows.
+resolves) and `PS3_SAVEDATA_ROOT` (the co-op save). A friend's game sets `PSNR_BACKGROUND=1` (the join runs in a
+thread and keeps trying), and for a room code `PSNR_ROOM`, `PSNR_VERSION` (co-op's protocol version, 1) and
+`PSNR_SERVER` (the endpoint). A value set in the environment wins, as for the Network rows.
 
 **A friend's leave** does what the friend's game does when the host's room is gone (`global_event.lua`'s
 `OnRoomDisappeared`, then `OnLeave_Limit`), through the same natives:
@@ -932,6 +979,9 @@ the newer generation, and saves as usual.
 
 ## Not done yet
 
+- Room codes (docs/162) are tested on this PC only: the NAT matrix of ps3recomp's `test_psnr_punch` (virtual
+  routers of six kinds, both ways), and two copies of the game through a local endpoint. Not yet across two real
+  networks, and not against the project's server.
 - Checked by hand so far: a boss kill with a friend, each taking the boss's soul, the friend's Leave, and its rejoin.
   Scripted: a progress flag that a friend from the Nexus set in the host's 1-1 through the game's own setter (flag 201,
   new to the friend) was in the friend's save, among its flags for the Boletarian Palace, after it went home, saved and started

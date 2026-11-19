@@ -231,12 +231,12 @@ int check_row(const catalog::TabDesc& tab, const catalog::RowDesc& row) {
 
 // The restart question names what waits for a restart by its row: "Start maximized (Off)". Every restart-only setting
 // has a row to name it by, but those never changed from Settings: the mods (the Mods window's own file now), the
-// co-op host's address (the Co-op window applies it at once) and, outside developer builds, Custom's address (its row,
-// the only way to change it, is in developer builds only). A toggle and a number read as their rows show them, and a
-// change waits for a restart until it is changed back.
+// co-op host's address (the Co-op window applies it at once), co-op's two servers (by hand in settings.ini only)
+// and, outside developer builds, Custom's address (its row, the only way to change it, is in developer builds only).
+// A toggle and a number read as their rows show them, and a change waits for a restart until it is changed back.
 void check_restart_names() {
     g_where = "restart question";
-    std::set<std::string> elsewhere = {"DES_MODS", "DES_SEAMLESS_ADDRESS"};
+    std::set<std::string> elsewhere = {"DES_MODS", "DES_SEAMLESS_ADDRESS", "DES_SEAMLESS_INTRO", "DES_SEAMLESS_STUN"};
 #if !DES_DEV
     elsewhere.insert("DES_NET_CUSTOM");
 #endif

@@ -1,6 +1,6 @@
 # Privacy note
 
-Version 2, 9 November 2026
+Version 3, 19 November 2026
 
 This note covers this project's online server, the one the game uses when Settings > Network > Server is
 "Soulbrandt". The project's maintainer runs it, on a DigitalOcean server in New York, United States. Offline play
@@ -72,10 +72,14 @@ may not be able to tell that the name is yours.
 - **The update check** asks GitHub for the newest release at each start, so GitHub sees your IP address. Turn it off
   in Settings > About.
 - **Crash and problem reports** are saved on your PC. Nothing is sent unless you send it yourself.
-- **Hosting seamless co-op** (the Seamless co-op window): your invite code holds your IP address, so send it only to
-  friends. If your router can't tell the game your internet address, the game asks Google's STUN server
-  (`stun.l.google.com`) for it, so Google sees your IP address. To stop this, set `DES_SEAMLESS_STUN=0` in
-  settings.ini and use Public address in the Seamless co-op window instead.
+- **Seamless co-op:** while your game hosts, it tells this project's server its internet and home-network
+  addresses, and the server keeps them only while you host. When a friend uses your room code, the server gives
+  each of your two games the other's addresses, so they can connect directly; no game traffic goes through it.
+  Anyone with your code can join you and learn your internet address, so send it only to friends. A direct code
+  holds your IP address itself. If your router can't tell the game your internet address, the game asks Google's
+  STUN server (`stun.l.google.com`) for it, so Google sees your IP address. To stop these, set
+  `DES_SEAMLESS_INTRO=0` in settings.ini (friends then need the direct code and an open port), or
+  `DES_SEAMLESS_STUN=0` (then use Public address in the Seamless co-op window).
 
 ## Changes
 
