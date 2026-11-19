@@ -25,7 +25,7 @@ The game plays from start to finish (a tester has beaten it), but not every part
 - Up to 240 fps or unlocked, with the game's timing fixed. Up to 4K, ultrawide, 16:10 and HDR.
 - The US, European, Japanese and Asian versions, each with its languages, plus Japanese on the US disc and Japanese, Chinese and Korean on the European disc.
 - Online play on this project's own server: messages, bloodstains, ghosts, co-op, invasions and the Pantheon.
-- Seamless co-op (still being tested): play the whole game with up to three friends in the host's world, joined with an invite code.
+- Seamless co-op (still being tested): play the whole game with up to three friends in the host's world, joined with a room code. No port forwarding needed.
 - Roll in any direction while locked on, not only forward, back, left or right.
 - At the Nexus statue (optional): a stat respec that gives back the souls your levels cost, and a new appearance, name, body or world tendency.
 - Keyboard and mouse, Xbox controllers, DualSense and DualShock 4.
@@ -82,10 +82,11 @@ Press **F1** (or **L3 + R3** on a controller) at any time to open the menu. Most
 - Players behind strict routers can still play together: when a direct connection fails, the session goes through the server, which passes the game's data on and keeps none of it.
 
 **Seamless co-op** (new, still being tested)
-- Play the whole game with up to three friends in the host's world: **Seamless co-op** in the menu, then Host or Join. The host sends an invite code and friends paste it; there are no summon signs. An invite code contains the host's IP address, so only share it with friends.
+- Play the whole game with up to three friends in the host's world: **Seamless co-op** in the menu, then Host or Join. The host shares a room code (three groups of five characters) and friends type or paste it; there are no summon signs. Anyone with the code can join you and learn your internet address, so only share it with friends.
 - Co-op keeps its own characters, apart from your normal ones, so your normal saves are never touched.
 - Players on every supported version play together. Each keeps their own character and progress: souls, items and key items picked up in the host's world go home with you, bosses you help kill count in your own world too, and every player gets a boss's full souls.
-- Where the host's router allows it (UPnP), the game opens it for the session; where it doesn't, the Seamless co-op window says what to do.
+- No port forwarding: this project's server introduces the games, and they connect to each other directly, through most home routers. The game's data doesn't go through the server. When the host's router lets the game open a port itself (UPnP), or the host gives a public address, the window also shows a direct code, which holds the host's internet address; keep that one private.
+- Mods can be on in co-op. Before Host or Join, the game says how many are on and asks you to accept that they may cause problems.
 - Settings > Network sets how many players you host, and whether the others see your phantom glow, in which colour.
 - Please report what goes wrong: **Report an issue** includes a log of the session. If someone drops out, send a report from their game and from the host's.
 
@@ -93,6 +94,7 @@ Press **F1** (or **L3 + R3** on a controller) at any time to open the menu. Most
 - Put mods in the mods folder (Mods in the menu or on the start screen, then Open the mods folder) and turn each one on or off there. Mods for the PS3 game or RPCS3 that replace the game's files work, and the game's own files are never changed.
 - A mod that changes how the game plays keeps you offline, so you never meet players without it. Mods that only change the look or sound keep online play.
 - When two mods change the same thing, the one higher in the list wins; the arrows on each mod move it. The list is kept in `mods\load_order.txt`, which mod managers can use too (docs/143).
+- After you turn mods on or off, **Restart now** restarts the game with them and goes straight back into your game. Closing the menu with mod changes waiting asks whether to restart.
 
 **The program**
 - A setup that builds the game from your copy, with an Original and an Enhanced preset (see [How to play](#how-to-play)).
@@ -147,7 +149,7 @@ On a Steam Deck the game runs best with **Manual GPU Clock Control** at **800 MH
 
 ### Online play
 
-Online play is on by default and uses this project's own server. Setup asks for your online name; you can change it, or turn online play off, in Settings > Network. Players of every supported version meet on the same server. RPCS3 players use other servers, so you won't meet them. Seamless co-op doesn't use the server: your friends' games connect straight to the host's. What the server keeps about you is in the [privacy note](PRIVACY.md).
+Online play is on by default and uses this project's own server. Setup asks for your online name; you can change it, or turn online play off, in Settings > Network. Players of every supported version meet on the same server. RPCS3 players use other servers, so you won't meet them. In seamless co-op the server only introduces the games to each other (it learns the host's addresses while hosting); the game's data goes straight between them. What the server keeps about you is in the [privacy note](PRIVACY.md).
 
 ### Not supported yet
 
