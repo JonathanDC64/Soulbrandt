@@ -1313,7 +1313,7 @@ void platform_facts(std::ostringstream& o, bool game_process) {
             XINPUT_STATE st{};
             if (XInputGetState(i, &st) == ERROR_SUCCESS) xinput++;
         }
-        uint8_t hid[4][16];
+        alignas(8) uint8_t hid[4][64];  // (room for 4 of pad_hid_sony.h's PadHidSonyState, 28 bytes each)
         const int sony = pad_hid_sony_poll(hid, 4);
         char layout[KL_NAMELENGTH] = "";
         GetKeyboardLayoutNameA(layout);

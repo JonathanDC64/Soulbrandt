@@ -104,8 +104,10 @@ typedef struct {  // as pad_hid_sony.h has it, field for field: the poll fills a
     unsigned char lx, ly, rx, ry;  // 0-255, centre 128, up = 0
     unsigned char l2, r2;
     unsigned char slot;        // the pad, for its vibration
+    float raw[4];              // its sticks as it reports them (Windows)
 } PadHidSonyState;
-static_assert(sizeof(PadHidSonyState) == 10, "pad_hid_sony.h's PadHidSonyState");
+// (The runtime writes whole entries of its own size: an array of a smaller copy overflows with a second pad.)
+static_assert(sizeof(PadHidSonyState) == 28, "pad_hid_sony.h's PadHidSonyState");
 int pad_hid_sony_poll(PadHidSonyState* out, int max);
 int cellPad_host_pads_on(void);  // cellPad.h: 0 while the game ignores the pads (PAD_FOCUS_ONLY in the background)
 int cellPad_host_glyph_device(void);  // cellPad.h: what the game was last used with (PAD_GLYPH_*, pad_glyph.h)
