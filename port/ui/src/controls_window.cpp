@@ -1,12 +1,13 @@
 // Adapted from FFCCEOT-Recomp's controls_window.cpp, itself after Dusklight's controller_config.cpp (CC0): the same
 // layout (pages on the left, the bindings on the right, a binding is changed by pressing its row and then the button or
 // key wanted). Adapted for Demon's Souls: the gamepad page is cellPad's PAD_MAP (the game's button = the pad button
-// that presses it). The keyboard and mouse page is its PAD_KEYS, kept as changes to the Souls-style layout
+// that presses it), and the port's Kick row. The keyboard and mouse page is its PAD_KEYS, kept as changes to the Souls-style layout
 // (settings.cpp, kKeysLayout): two rows an action, each a key, a mouse button, a wheel notch or one of those with
 // Shift, Ctrl or Alt held (a chord). Both are kept in settings.ini. What the rows change, and how a row's new input is
 // caught, are controls_model.hpp's, which DeS UI's page shares (controls_page.hpp).
 #include "controls_window.hpp"
 
+#include "input.hpp"
 #include "keys.hpp"
 #include "modal.hpp"
 #include "pane.hpp"
@@ -139,16 +140,32 @@ void ControlsWindow::render_pad_page(Pane& pane) {
                                        [this, i]() -> Rml::String {
                                            if (mCapture.active() && mCapture.pad() && mCapture.target() == i)
                                                return mCapture.pending_label();
-                                           return kPadLabels[pad_map()[i]];
+                                           return pad_value_label(i, input::menu_device());
                                        },
-                                   .isModified = [i] { return pad_modified(i); },
+                                   .isModified = [i] { return pad_modified(i) || kick_takes(i); },
                                })
             .on_pressed([this, i] {
                 play_sound(kSoundClick);
                 mCapture.start(i, true, 0);
             });
     }
-    pane.add_rml("<br/>Choose a row, then press the button for it. Esc cancels.<br/><br/>(PAD_MAP)");
+    pane.add_section("Forward attack");
+    pane.add_select_button({
+                               .key = kKickLabel,
+                               .getValue =
+                                   [this]() -> Rml::String {
+                                       if (mCapture.active() && mCapture.pad() && mCapture.target() == kKickTarget)
+                                           return mCapture.pending_label();
+                                       return kick_label(input::menu_device());
+                                   },
+                               .isModified = [] { return pad_kick() >= 0; },
+                           })
+        .on_pressed([this] {
+            play_sound(kSoundClick);
+            mCapture.start(kKickTarget, true, 0);
+        });
+    pane.add_rml("<br/>Choose a row, then press the button for it. Esc cancels.<br/><br/>Kick: " +
+                 std::string(kKickAbout) + "<br/><br/>(PAD_MAP)");
 }
 
 void ControlsWindow::render_key_page(Pane& pane) {

@@ -104,6 +104,7 @@ typedef struct {  // as pad_hid_sony.h has it, field for field: the poll fills a
     unsigned char lx, ly, rx, ry;  // 0-255, centre 128, up = 0
     unsigned char l2, r2;
     unsigned char slot;        // the pad, for its vibration
+    unsigned char extra;       // its buttons beyond the PS3's (pad_map.h's PAD_EXTRA_*: back buttons, Fn, mute)
     float raw[4];              // its sticks as it reports them (Windows)
 } PadHidSonyState;
 // (The runtime writes whole entries of its own size: an array of a smaller copy overflows with a second pad.)
@@ -541,10 +542,12 @@ ui::input::PadState read_pads(bool& neutral) {
         if (hid[i].l2 > 100) b |= kL2;
         if (hid[i].r2 > 100) b |= kR2;
         pad.buttons |= b;
+        pad.extra |= hid[i].extra;  // (XInput has none)
         pad.lx = pick(pad.lx, (hid[i].lx - 128) / 127.0f);
         pad.ly = pick(pad.ly, (hid[i].ly - 128) / 127.0f);
         const auto off = [](unsigned char v) { return std::abs(int(v) - 128) > 32; };
-        if (b || hid[i].l2 > 30 || hid[i].r2 > 30 || off(hid[i].lx) || off(hid[i].ly) || off(hid[i].rx) || off(hid[i].ry))
+        if (b || hid[i].extra || hid[i].l2 > 30 || hid[i].r2 > 30 || off(hid[i].lx) || off(hid[i].ly) || off(hid[i].rx) ||
+            off(hid[i].ry))
             neutral = false;
     }
     if (ui::stick_preview_takes_left()) pad.lx = pad.ly = 0.f;  // (being tried out in Settings: the D-pad moves the menu)
@@ -588,9 +591,10 @@ std::string held_inputs() {
     PadHidSonyState hid[4];
     const int n = pad_hid_sony_poll(hid, 4);
     for (int i = 0; i < n; i++) {
-        std::snprintf(b, sizeof b, "HID pad %u: buttons 0x%04X, triggers %u %u, sticks %u %u %u %u", unsigned(hid[i].slot),
-                      unsigned(hid[i].buttons), unsigned(hid[i].l2), unsigned(hid[i].r2), unsigned(hid[i].lx),
-                      unsigned(hid[i].ly), unsigned(hid[i].rx), unsigned(hid[i].ry));
+        std::snprintf(b, sizeof b, "HID pad %u: buttons 0x%04X, extra 0x%02X, triggers %u %u, sticks %u %u %u %u",
+                      unsigned(hid[i].slot), unsigned(hid[i].buttons), unsigned(hid[i].extra), unsigned(hid[i].l2),
+                      unsigned(hid[i].r2), unsigned(hid[i].lx), unsigned(hid[i].ly), unsigned(hid[i].rx),
+                      unsigned(hid[i].ry));
         add(b);
     }
     return s.empty() ? "nothing now" : s;

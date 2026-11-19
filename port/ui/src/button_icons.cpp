@@ -269,14 +269,16 @@ bp::Spec make_spec(int device) {
     const int percent = std::atoi(value("RSX_SCALE").c_str());
     s.scale = std::clamp((percent + 99) / 100, 1, 4);
     for (int i = 0; i < 16; i++) s.pad_map[i] = i;
-    // PAD_MAP: "game=pad" pairs, as cellPad reads them.
+    // PAD_MAP: "game=pad" pairs, as cellPad reads them. A pad side naming more than one ("r1=r1|square", the Kick's
+    // button added to R1: settings.cpp's map_for_pad) shows the first, the game button's own.
     const std::string map = value("PAD_MAP");
     for (size_t at = 0; at < map.size();) {
         size_t end = map.find_first_of(", ;", at);
         if (end == std::string::npos) end = map.size();
         const std::string pair = map.substr(at, end - at);
         if (const size_t eq = pair.find('='); eq != std::string::npos) {
-            const int game = pad_index(pair.substr(0, eq)), pad = pad_index(pair.substr(eq + 1));
+            const std::string pad_side = pair.substr(eq + 1);
+            const int game = pad_index(pair.substr(0, eq)), pad = pad_index(pad_side.substr(0, pad_side.find('|')));
             if (game >= 0 && pad >= 0) s.pad_map[game] = pad;
         }
         at = end + 1;

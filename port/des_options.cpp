@@ -2607,7 +2607,8 @@ extern "C" void des_roll_tie(ppu_context* ctx, uint32_t)
 }
 
 /* DES_KICK=1 (0, the original, is the default): attacking never kicks, and
- * the Kick key does (Settings > Controls > Kick). The game kicks when the
+ * the Kick key or button does (Change Buttons' Kick rows; Settings > Controls
+ * > Forward attack is this knob). The game kicks when the
  * attack (R1) goes down while the left stick has just been pushed forward.
  * The pad manipulator's update (0x003103F8) keeps that push at +0x184:
  * 0x0030D9E8 passes the stick's forward axis there only for the first 0.06 s
@@ -2620,8 +2621,12 @@ extern "C" void des_roll_tie(ppu_context* ctx, uint32_t)
  * 0's store at 0x00310AA8, r17 bit 0 = down, set on every frame of a press:
  * a 3-frame press gives 3; r31 = the manipulator) this
  * reads whether a Kick binding is held (DES_KICK_KEYS; settings.cpp adds them
- * to R1's keys as well), and function 212's answer (r10 at 0x00300BAC, r29 =
- * the controller) is that, for the player alone. So the Kick key does what a
+ * to R1's keys as well) or the Kick's pad button (DES_KICK_PAD, PAD_MAP's
+ * name for it, "paddle1"; settings.cpp gives it to R1 alone, in PAD_MAP), on
+ * port 0's pad as the last poll read it (cellPad_host_pad_raw: before
+ * PAD_MAP, so it is that button and not R1's own), and function 212's answer
+ * (r10 at 0x00300BAC, r29 = the controller) is that, for the player alone. So
+ * the Kick key or button does what a
  * fresh push forward with an attack did, after the script's earlier choices
  * as before (a backstab, a running, rolling or backstep attack), and the
  * attack button never kicks. Other characters, and the other players'
@@ -2629,7 +2634,9 @@ extern "C" void des_roll_tie(ppu_context* ctx, uint32_t)
  * each frame the attack is down, and, in either mode, the game's own answer
  * each time the script asks;
  * with PS3_NO_USER_INPUT (a scripted run) DES_KICK_TEST=1 stands for a held
- * Kick key. */
+ * Kick key, and cellPad's PAD_HOST_HELD holds a pad's buttons. */
+extern "C" unsigned cellPad_host_pad_raw(int port);            /* cellPad.c: a pad's buttons before PAD_MAP */
+extern "C" unsigned cellPad_host_button_bit(const char* name);  /* cellPad.c: a PAD_MAP name's bit in that */
 namespace {
 bool kick_held(const DesKeys& k)
 {
@@ -2642,25 +2649,30 @@ extern "C" void des_kick(ppu_context* ctx, uint32_t addr)
 {
     static int mode = 0, log = 0;
     static DesKeys keys{};
-    static bool kick = false;   /* the player's last R1 press was the Kick key's */
+    static unsigned pad = 0;    /* the Kick's pad button (cellPad_host_pad_raw's bit), 0 none */
+    static bool kick = false;   /* the player's last R1 press was the Kick key's or button's */
     PS3_KNOB(mode, ps3_env_int("DES_KICK", 0));
     PS3_KNOB(log, env_on("DES_KICKLOG"));
     PS3_KNOB(keys, des_keys_parse(std::getenv("DES_KICK_KEYS"), nullptr));
+    PS3_KNOB(pad, cellPad_host_button_bit(std::getenv("DES_KICK_PAD")));
     if (mode != 1) kick = false;
     if (mode != 1 && !log) return;
     const uint32_t ctrl = player_controller();
     if (!ctrl) return;
     if (addr == 0x00310AA8u) {   /* stb r17, 0x84(r31): slot 0, R1 down this frame */
         if (mode != 1 || !(ctx->gpr[17] & 1) || (uint32_t)ctx->gpr[31] != vm_read32(ctrl + 0x174)) return;
-        kick = kick_held(keys);
-        if (log) fprintf(stderr, "[kicklog] attack down: %s\n", kick ? "Kick key held, a kick" : "no kick");
+        const bool button = pad && (cellPad_host_pad_raw(0) & pad);
+        kick = button || kick_held(keys);
+        if (log)
+            fprintf(stderr, "[kicklog] attack down: %s\n",
+                    button ? "Kick button held, a kick" : kick ? "Kick key held, a kick" : "no kick");
         return;
     }
     /* 0x00300BAC (lwz r0, -0x7F84(r30)): function 212's answer is in r10, both paths */
     if ((uint32_t)ctx->gpr[29] != ctrl) return;
     if (log)
         fprintf(stderr, "[kicklog] the script asks \"stick just pushed forward?\": the game says %s%s\n",
-                ctx->gpr[10] ? "yes" : "no", mode != 1 ? "" : kick ? ", the Kick key says yes" : ", the Kick key says no");
+                ctx->gpr[10] ? "yes" : "no", mode != 1 ? "" : kick ? ", the Kick says yes" : ", the Kick says no");
     if (mode == 1) ctx->gpr[10] = kick ? 1 : 0;
 }
 

@@ -1,13 +1,16 @@
 // Written for Demon's Souls. What Change Buttons changes, for both its screens (the Controls window,
 // controls_window.hpp, and DeS UI's page, controls_page.hpp); moved out of controls_window.cpp, whose header says where
 // it comes from.
-//   The gamepad: cellPad's PAD_MAP, each game button and the pad button that presses it.
+//   The gamepad: cellPad's PAD_MAP, each game button and the pad button that presses it, and the port's own Kick row
+//   (kept in PAD_MAP as "kick=": settings.cpp's map_for_pad makes it R1's for cellPad, des_kick in des_options.cpp).
 //   The keyboard and mouse: its PAD_KEYS, kept as changes to the Souls-style layout (settings.cpp, kKeysLayout): two
 //   inputs an action, each a key, a mouse button, a wheel notch or one of those with Shift, Ctrl or Alt held (a chord).
 // Both are kept in settings.ini. A Capture takes the next button or key pressed as a row's new input: the pads are
 // polled (input.hpp), so a button is caught from the polled state; keys and mouse buttons from the key state
 // (keys.hpp), and wheel notches from the UI's events.
 #pragma once
+
+#include "prompts.hpp"
 
 #include <array>
 #include <string>
@@ -34,6 +37,30 @@ void save_pad_map(const PadMap& m);
 // button presses two game buttons.
 void assign(PadMap& m, int button, int value);
 bool pad_modified(int button);
+
+// The Kick row: a pad button that kicks (R1 as a kick, with Settings > Controls > Forward attack at Own key) and then
+// does nothing else. Its pad button is one of the 16 (kPadNames) or one some pads have beyond them (the extra ones,
+// pad_map.h in the runtime: paddle1 to paddle4, misc, touchpad), an index into both: 0-15, then 16 on. kKickTarget is
+// its Capture target.
+constexpr int kPadExtraCount = 6;
+constexpr int kPadHostCount = kPadCount + kPadExtraCount;
+constexpr int kKickTarget = kPadCount;
+extern const char* const kPadExtraNames[kPadExtraCount];
+const char* pad_host_name(int host);
+// A pad button's name as the pad in use calls it: "Square", "P1", "Right back", "R4", "Share".
+std::string pad_host_label(int host, prompts::Device device);
+int pad_kick();  // -1: none
+void set_pad_kick(int host);
+// Forward attack is Own key: the Kick row's button kicks.
+bool kick_on();
+// Game button `button`'s pad button is the Kick's, with the Kick on: nothing presses that game button.
+bool kick_takes(int button);
+// What a row shows: game button `button`'s pad button ("None (Kick)" when kick_takes), the Kick's ("None" for none).
+std::string pad_value_label(int button, prompts::Device device);
+std::string kick_label(prompts::Device device);
+// The Kick row's name and its line on what it does.
+extern const char* const kKickLabel;
+extern const char* const kKickAbout;
 
 // ---- The keyboard and mouse ----
 
@@ -87,7 +114,8 @@ class Capture {
 public:
     ~Capture() { cancel(); }
 
-    // Waits for the input for game button `target` (pad) or action `target`'s input `slot` (keys).
+    // Waits for the input for game button `target` (pad; kKickTarget: the Kick row) or action `target`'s input `slot`
+    // (keys).
     void start(int target, bool pad, int slot);
     void cancel();
     // Once a frame: takes the input once nothing is held any more (the press that started it would be taken

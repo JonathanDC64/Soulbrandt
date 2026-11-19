@@ -3,7 +3,8 @@
 // (controls_window.hpp).
 // What the rows change, and how a row's new input is caught, are controls_model.hpp's, the window's too.
 //   Gamepad: a row for each of the game's buttons, in sections (face buttons, shoulders, sticks, Start and Select,
-//   D-pad), its value the pad button that presses it, as a picture of it.
+//   D-pad), its value the pad button that presses it, as a picture of it; then the Kick row (Forward attack), whose
+//   pad button can also be one beyond the PS3's (a back button, a paddle), shown by its name.
 //   Keyboard and mouse: a row for each action, its two inputs in two boxes side by side; Left and Right choose one.
 // Under the rows, Restore default buttons. Enter waits for the input (Esc cancels; on the keys, Delete clears it); H
 // opens the whole help in a box; the tabs change with the band's buttons (L1 and R1, Q and E) or a click.
@@ -13,7 +14,7 @@
 //   menu-body > menu-rows(.pad .keys) > menu-heading > menu-bracket
 //                                       menu-row(.focused .locked .modified .waiting)
 //                                         > menu-label > menu-mark, menu-name
-//                                           menu-value(.slot .on .wait .modified) > controls-fill, icon.lock,
+//                                           menu-value(.slot .on .wait .modified .named) > controls-fill, icon.lock,
 //                                             controls-art > menu-art (the gamepad's), menu-text(.none)
 //                                       controls-restore(.focused .locked)
 //   menu-body > menu-help > menu-helpbox > h3, menu-helptext, menu-facts (while Help has it open: body.helping)
@@ -80,7 +81,7 @@ private:
     void set_tab(bool keys);
     bool locked() const;      // set when the game started (PAD_MAP, PAD_KEYS), so the rows can't change it
     int row_count() const;    // the rows, without Restore
-    int target(int row) const;  // the row's game button (kPadNames) or action (kTargets)
+    int target(int row) const;  // the row's game button (kPadNames; kKickTarget the Kick row) or action (kTargets)
     void listen(Rml::Element* element, std::function<void(Rml::Event&)> callback);
 
     Rml::Element* mHost;

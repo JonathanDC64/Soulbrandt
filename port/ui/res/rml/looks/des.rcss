@@ -2407,6 +2407,11 @@ menu-rows.pad menu-value.wait controls-art {
     display: none;
 }
 
+/* A pad button with no picture (the Kick's back buttons and paddles, or none): its name. */
+menu-rows.pad menu-value.named menu-text {
+    display: block;
+}
+
 controls-restore {
     display: block;
     width: 300dp;
