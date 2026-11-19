@@ -271,16 +271,25 @@ des_running() {
 # des_wait_own <secs>: wait, at most <secs>, for the des_boot processes of the
 # pid file that still run to end. Setup's Play (the launch hook, docs/88
 # section 7) starts the game as a new process of the same exe and ends the
-# first, so a run goes on past the process it started.
+# first, so a run goes on past the process it started. So does a restart
+# (Settings' and the Mods page's Restart now: crash_report::start_again), as
+# many times as the player likes: the game writes the new one's pid in the file
+# before it quits, so the file is read again after each wait, until none of its
+# games runs. (Reading it once, desrun.sh's des_kill_own ended the game of a
+# second restart in its first second.)
 des_wait_own() {
-  local pid ids=""
+  local pid ids left end
   [ "${1:-0}" -gt 0 ] && [ -f "$DES_PIDFILE" ] || return 0
-  while read -r pid; do pid="${pid//[!0-9]/}"
-    [ -n "$pid" ] && tasklist //FI "PID eq $pid" //FO CSV //NH 2>/dev/null | grep -qi 'des_boot' && ids="${ids:+$ids,}$pid"
-  done < "$DES_PIDFILE"
-  [ -n "$ids" ] || return 0
-  powershell -NoProfile -Command "Wait-Process -Id $ids -Timeout $1 -ErrorAction SilentlyContinue" > /dev/null 2>&1
-  return 0
+  end=$((SECONDS + $1))
+  while :; do
+    ids=""
+    while read -r pid; do pid="${pid//[!0-9]/}"
+      [ -n "$pid" ] && tasklist //FI "PID eq $pid" //FO CSV //NH 2>/dev/null | grep -qi 'des_boot' && ids="${ids:+$ids,}$pid"
+    done < "$DES_PIDFILE"
+    left=$((end - SECONDS))
+    [ -n "$ids" ] && [ "$left" -gt 0 ] || return 0
+    powershell -NoProfile -Command "Wait-Process -Id $ids -Timeout $left -ErrorAction SilentlyContinue" > /dev/null 2>&1
+  done
 }
 
 # des_console <cmdfile-base> <command> [cap-secs]: send one debug-console
