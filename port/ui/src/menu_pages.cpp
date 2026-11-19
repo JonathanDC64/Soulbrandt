@@ -7,6 +7,7 @@
 #include "coop_window.hpp"
 #include "crash_report.hpp"
 #include "looks.hpp"
+#include "menu_model.hpp"
 #include "menu_shell.hpp"
 #include "mods_page.hpp"
 #include "mods_window.hpp"
@@ -16,6 +17,8 @@
 #include "trophies_page.hpp"
 #include "trophies_window.hpp"
 #include "ui.hpp"
+
+#include "../../des_seamless.h"
 
 #include <chrono>
 #include <cstdio>
@@ -32,22 +35,13 @@ void request_quit_confirm(bool played) {
 namespace menu {
 namespace {
 
-// "A", "A and B", "A, B and C".
-std::string and_list(const std::vector<std::string>& items) {
-    std::string out;
-    for (size_t i = 0; i < items.size(); i++) {
-        if (i > 0) out += i + 1 == items.size() ? " and " : ", ";
-        out += items[i];
-    }
-    return out;
-}
-
-// The game starts again with the settings as they are now, past the start screen (they were playing). Once only: a
-// second press before this game has closed would start a second game on the same save.
-void restart_now() {
+// The game starts again with the settings and the mods as they are now: past the start screen (play: they were
+// playing), or to it. `why` is for the log. Once only: a second press before this game has closed would start a second
+// game on the same save.
+void restart_now(bool play, const char* why) {
     static bool restarting = false;  // (the UI thread's only)
     if (restarting) return;
-    if (!crash_report::start_again({}, true)) {
+    if (!crash_report::start_again({}, play)) {
         push_toast({
             .type = "warning",
             .title = "Restart",
@@ -58,8 +52,18 @@ void restart_now() {
         return;
     }
     restarting = true;
-    std::fprintf(stderr, "[ui] the game starts again for its settings\n");
+    std::fprintf(stderr, "[ui] the game starts again for its %s%s\n", why, play ? "" : ", to the start screen");
     if (app().quit) app().quit();
+}
+
+// The restart-only settings that wait for the next start, by their labels ("Renderer").
+std::vector<std::string> waiting_named() {
+    std::vector<std::string> named;
+    for (const std::string& key : settings::restart_pending()) {
+        const std::optional<catalog::Shown> s = catalog::shown(key);
+        named.push_back(s ? s->label : key);
+    }
+    return named;
 }
 
 std::unique_ptr<Page> make_trophies_page(Rml::Element* host, PageHost& shell) {
@@ -148,17 +152,34 @@ std::vector<std::string> waiting_for_restart() {
 }
 
 Question restart_question(std::function<void()> later) {
-    std::vector<std::string> named;  // "Renderer"
-    for (const std::string& key : settings::restart_pending()) {
-        const std::optional<catalog::Shown> s = catalog::shown(key);
-        named.push_back(s ? s->label : key);
-    }
+    const std::vector<std::string> named = waiting_named();
     return {
         .title = "Restart the game now?",
         .body = and_list(named) + (named.size() == 1 ? " takes" : " take") + " effect after a restart.",
-        .answers = {{"Restart now", restart_now}, {"Later", std::move(later)}},
+        .answers = {{"Restart now", [] { restart_now(true, "settings"); }}, {"Later", std::move(later)}},
         .safe = 1,
     };
+}
+
+void restart_for_mods() {
+    namespace co = des::seamless;
+    const co::Status s = co::status();
+    const Coop coop = !s.started                  ? Coop::None
+                      : s.mode == co::Mode::Host ? Coop::Host
+                      : s.mode == co::Mode::Join ? Coop::Guest
+                                                 : Coop::None;
+    const ModsRestart r = mods_restart(is_prelaunch_open(), coop != Coop::None);
+    if (!r.ask) {
+        restart_now(r.play, "mods");
+        return;
+    }
+    ask({
+        .title = "Restart the game now?",
+        .body = mods_restart_body(waiting_named(), coop),
+        .answers = {{"Restart now", [play = r.play] { restart_now(play, "mods"); }}, {"Later", {}}},
+        .safe = 1,
+        .danger = coop != Coop::None,
+    });
 }
 
 }  // namespace menu

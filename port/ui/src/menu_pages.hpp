@@ -44,4 +44,10 @@ std::vector<std::string> waiting_for_restart();
 // settings as they are now; Later runs `later`, and they wait for the next start.
 Question restart_question(std::function<void()> later);
 
+// Restart now on the Mods screens (mods_page.cpp, mods_window.cpp): the game starts again with the mods as the list
+// has them (and the settings as they are). In the game it asks first, as the restart for a setting does, and the new
+// game comes back past the start screen; from the start screen it starts again at once, to the start screen. In a
+// seamless co-op session it asks, and says what happens to the session (menu_model.hpp's mods_restart).
+void restart_for_mods();
+
 }  // namespace ui::menu

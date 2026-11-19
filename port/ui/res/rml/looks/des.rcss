@@ -1723,8 +1723,9 @@ body.page.motion trophy-page {
     animation: 0.17s linear-in-out des-page-in;
 }
 
-/* ---- Mods (mods_page.hpp): the mods in a framed box at the column's left; the summary, the focused mod's whole note
-   and the two buttons at its right. With no mods yet, how to add one, the buttons under it. ---- */
+/* ---- Mods (mods_page.hpp): the mods in a framed box at the column's left; the summary (with Restart now under its
+   note while a change waits), the focused mod's whole note and the two buttons at its right. With no mods yet, how to
+   add one, the buttons under it. ---- */
 mods-page {
     display: flex;
     flex: 1 1 0dp;
@@ -2041,6 +2042,10 @@ summary-note.offline icon {
     color: var(--des-warn);
 }
 
+summary-head {
+    display: block;
+}
+
 mods-detail {
     display: block;
     margin: 14dp 0 0;
@@ -2050,6 +2055,16 @@ mods-detail {
     font-size: 16dp;
     line-height: 24dp;
     letter-spacing: 0.4dp;
+}
+
+/* Restart now, under the note that asks for it: a button as the two under the box */
+mods-summary mods-button.restart {
+    margin: 14dp 0 0;
+}
+
+mods-button.none,
+mods-detail.none {
+    display: none;
 }
 
 mods-buttons {
