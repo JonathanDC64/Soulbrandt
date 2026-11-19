@@ -1,8 +1,10 @@
 // Adapted from Dusklight (CC0), src/dusk/ui/overlay.hpp, by way of FFCCEOT-Recomp; adapted for Demon's Souls. Only its toasts and the "open the menu" hint are kept (the
-// FPS counter, shader progress, speedrun timer and mods list belong to Dusklight's own features).
+// FPS counter, shader progress, speedrun timer and mods list belong to Dusklight's own features). The frame rate
+// counter here is the port's own (perf_overlay.hpp).
 #pragma once
 
 #include "document.hpp"
+#include "perf_overlay.hpp"
 
 #include <chrono>
 
@@ -41,6 +43,8 @@ private:
     // The glow round the part of a menu of the game under the pointer (game_menu.hpp).
     Rml::Element* mGlow = nullptr;
     clock::time_point mGlowGone;  // when it lost its part (it fades, then goes)
+
+    perf::Counter mPerf;  // the frame rate counter
 };
 
 }  // namespace ui

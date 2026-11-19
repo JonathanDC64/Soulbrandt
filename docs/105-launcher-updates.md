@@ -69,6 +69,11 @@ screen does not offer it straight back.
   this system (`DemonsSoulsRecomp-X.Y.Z-windows.zip`, or on Linux `DemonsSoulsRecomp-X.Y.Z-linux.tar.xz`),
   `SHA256SUMS` and `SHA256SUMS.sig`. So `llvm-22.1.8-1`, setup's compiler release,
   never counts, though GitHub marks it Latest today.
+- **Another name** (from 0.2.0, for a later rename of the downloads, docs/130): with no download under the name above,
+  the one named `<name>-X.Y.Z-windows.zip` (Linux `-linux.tar.xz`) counts, `<name>` one word of letters, digits,
+  `.` and `_`, and its one folder is the release's. Two such names and none counts. The versions before 0.2.0 look for
+  `DemonsSoulsRecomp-` alone, so a renamed release keeps that copy beside the new one while players may still
+  update from them.
 - **Signed:** for the newest newer release the check downloads `SHA256SUMS` and `SHA256SUMS.sig` (a few hundred
   bytes) and checks the signature (section 7). One that fails is passed over with a `note version X is not offered:
   <why>` line, and the next newer one is tried, at most 3.

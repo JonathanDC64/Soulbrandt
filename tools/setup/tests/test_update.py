@@ -72,6 +72,22 @@ class FeedTest(unittest.TestCase):
         self.assertIsNone(update.newer(feed, "0.3.0"))
         self.assertIsNone(update.newer(feed, "0.1.0-dev.4+g123456789"))  # a developer's build compares nothing
 
+    def test_renamed_downloads(self):
+        # docs/130: a later release may name its downloads <name>-<version>-..., beside the old names or alone.
+        def named(tag, *names):
+            rel = release(tag, assets=("sums", "sig"))
+            rel["assets"] += [{"name": n, "size": 0, "browser_download_url": f"http://127.0.0.1:1/{n}"} for n in names]
+            return rel
+        own, ext = update.player_asset("0.2.1"), "windows.zip" if PLAYER == "windows" else "linux.tar.xz"
+        new = f"NewName-0.2.1-{ext}"
+        self.assertEqual(update.player_asset_in({own, new}, "0.2.1"), own)   # both: the old name's
+        self.assertEqual(update.player_asset_in({new, "SHA256SUMS"}, "0.2.1"), new)
+        for names in ({"NewName-0.2.1-source.zip"}, {f"NewName-0.2.0-{ext}"}, {f"-0.2.1-{ext}"},
+                      {f"New Name-0.2.1-{ext}"}, {f"a/b-0.2.1-{ext}"}, {new, f"Other-0.2.1-{ext}"}):
+            self.assertIsNone(update.player_asset_in(names, "0.2.1"), names)
+        self.assertEqual(update.newer([named("v0.2.1", new), release("v0.2.0")], "0.2.0")[0], "0.2.1")
+        self.assertIsNone(update.newer([named("v0.2.1", "NewName-0.2.1-source.zip")], "0.2.0"))
+
     def test_check_lines(self):
         with tempfile.TemporaryDirectory() as tmp:
             feed = Path(tmp) / "feed.json"
@@ -151,10 +167,10 @@ class CertificateTest(unittest.TestCase):
             srv.server_close()
 
 
-def make_package(version, files) -> bytes:
-    """This system's player's download as package.py writes it, DemonsSoulsRecomp-<version>/ with release-files.txt:
+def make_package(version, files, name="DemonsSoulsRecomp") -> bytes:
+    """This system's player's download as package.py writes it, <name>-<version>/ with release-files.txt:
     a zip on Windows, a tar.xz on Linux (the program executable)."""
-    top = f"DemonsSoulsRecomp-{version}/"
+    top = f"{name}-{version}/"
     entries = [(top + k, 0o755 if k == EXE else 0o644, v) for k, v in files.items()]
     entries.append(package.manifest(entries, top))
     buf = io.BytesIO()
@@ -225,18 +241,20 @@ class ApplyTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def serve(self, version, files, sums_for=None, seed=SEED, more=()):
+    def serve(self, version, files, sums_for=None, seed=SEED, more=(), renamed=None):
         """The feed: `version`'s release, its SHA256SUMS signed with `seed`'s key, then `more`'s ((version, files,
-        seed) each), every release's files under <version>/ on the test server."""
+        seed) each), every release's files under <version>/ on the test server. renamed: `version`'s download and
+        its folder under that name in place of DemonsSoulsRecomp (docs/130)."""
         _Server.files, feed = {}, []
         for v, f, key, of in [(version, files, seed, sums_for)] + [(m[0], m[1], m[2], None) for m in more]:
-            z = make_package(v, f)
-            name = update.player_asset(v)
+            top = renamed if renamed and v == version else update.NAME
+            z = make_package(v, f, top)
+            name = update.player_asset(v, top)
             sums = f"{hashlib.sha256(of if of is not None else z).hexdigest()}  {name}\n".encode()
             _Server.files.update({f"{v}/{name}": z, f"{v}/SHA256SUMS": sums,
                                   f"{v}/SHA256SUMS.sig": signing.sign(key, sums).encode()})
             rel = release(f"v{v}", base=f"{self.base}/{v}")
-            rel["assets"][0]["size"] = len(z)
+            rel["assets"][0].update(name=name, size=len(z), browser_download_url=f"{self.base}/{v}/{name}")
             feed.append(rel)
         self.feed.write_text(json.dumps(feed))
 
@@ -294,6 +312,16 @@ class ApplyTest(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in (self.install / update.PREVIOUS).iterdir()), ["0.2.0"])
         # The journal's link made 0.2.0's module, which is aside now: a build of 0.2.0 again links again.
         self.assertFalse(journal.Journal(self.data / "setup" / "journal.json").is_done("link", "fp-0.2.0"))
+
+    def test_apply_a_renamed_download(self):
+        # A later release's download under another name, with its folder under it too (docs/130).
+        self.serve("0.2.0", program("0.2.0", {"docs/new.md": b"new"}), renamed="NewName")
+        rc, out = self.run_cmd(update.apply, "0.1.0", "0.2.0")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(out[-1], "@done ok")
+        self.assertEqual((self.install / EXE).read_bytes(), b"exe 0.2.0")
+        self.assertTrue((self.install / "docs/new.md").is_file())
+        self.player_files_kept()
 
     def test_bad_checksum_changes_nothing(self):
         self.serve("0.2.0", program("0.2.0"), sums_for=b"something else")

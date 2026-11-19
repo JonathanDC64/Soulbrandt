@@ -32,6 +32,7 @@
 #include "net_notices.hpp"
 #include "osk_window.hpp"
 #include "overlay.hpp"
+#include "perf_overlay.hpp"
 #include "platform.hpp"
 #include "portable.hpp"
 #include "prelaunch.hpp"
@@ -104,8 +105,10 @@ typedef struct {  // as pad_hid_sony.h has it, field for field: the poll fills a
     unsigned char lx, ly, rx, ry;  // 0-255, centre 128, up = 0
     unsigned char l2, r2;
     unsigned char slot;        // the pad, for its vibration
+    float raw[4];              // its sticks as it reports them (Windows)
 } PadHidSonyState;
-static_assert(sizeof(PadHidSonyState) == 10, "pad_hid_sony.h's PadHidSonyState");
+// (The runtime writes whole entries of its own size: an array of a smaller copy overflows with a second pad.)
+static_assert(sizeof(PadHidSonyState) == 28, "pad_hid_sony.h's PadHidSonyState");
 int pad_hid_sony_poll(PadHidSonyState* out, int max);
 int cellPad_host_pads_on(void);  // cellPad.h: 0 while the game ignores the pads (PAD_FOCUS_ONLY in the background)
 int cellPad_host_glyph_device(void);  // cellPad.h: what the game was last used with (PAD_GLYPH_*, pad_glyph.h)
@@ -1128,7 +1131,8 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
 
     // A menu of the game with the pointer over it (game_menu.cpp) keeps the UI running too.
     const bool gameMenu = ui::game_menu::poll();
-    // Fast path: nothing showing, nothing queued (input, a trophy pop-up), no chord pressed.
+    // Fast path: nothing showing, nothing queued (input, a trophy pop-up), no chord pressed, and the frame rate counter
+    // off.
     const unsigned mask = sChordMask;
     const bool chordDown = (g_pad0_buttons & mask) == mask;
     const bool chordEdge = chordDown && !sChordWasDown;
@@ -1144,7 +1148,7 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
         !sOskPending.load(std::memory_order_acquire) && !ui::trophies::pending() && !ui::net_notices::pending() &&
         !sHangNotice.load(std::memory_order_relaxed) &&
         !sCustomServerNotice.load(std::memory_order_relaxed) && !sModsNotice.load(std::memory_order_relaxed) &&
-        !ui::report::saved_notice_pending()) {
+        !ui::report::saved_notice_pending() && ui::perf::mode() == ui::perf::Mode::Off) {
         return;
     }
 
@@ -1408,6 +1412,20 @@ bool elf_given(int argc, char** argv) {
     return false;
 }
 
+// Every window's title bar: the game's window is "<PRODUCT_NAME> - Demon's Souls" (setup's keeps the program's name
+// alone, setup_only_env, before this), never the disc's PARAM.SFO title that the runtime takes by default. The
+// renderer's numbers after it (FPS, draws, picture size: ps3recomp's RSX_TITLE_STATS) are for developers: a developer
+// build keeps them, a player's build leaves them out. A value in the environment wins (tools/des runs set
+// RSX_TITLE_STATS=1).
+void window_title_env() {
+    if (!env_on("PS3_TITLE")) ps3_setenv("PS3_TITLE", (std::string(ui::kProductName) + " - Demon's Souls").c_str());
+#if DES_DEV
+    if (!std::getenv("RSX_TITLE_STATS")) ps3_setenv("RSX_TITLE_STATS", "1");
+#else
+    if (!std::getenv("RSX_TITLE_STATS")) ps3_setenv("RSX_TITLE_STATS", "0");
+#endif
+}
+
 // Setup alone: each pass of the window's thread presents, so V-sync paces it; the last build's pipeline library stays
 // shut (its threads would compete with the compile); and the title bar has the program's name (no PARAM.SFO is read;
 // the game's own window has the game's title from it).
@@ -1530,6 +1548,7 @@ extern "C" void des_ui_early_init(void) {
     if (sSetupOnly) setup_only_env();
     sCrashDialog = sSetupOnly && crash_dialog_process();
     if (sCrashDialog) crash_dialog_env();
+    window_title_env();
     if (!sSetupOnly && ui::settings::net_custom_held()) sCustomServerNotice.store(true);
     // A gameplay mod (settings.cpp's apply_network left the network knobs unset): the network also stays off when
     // something sets them later, the environment's or the debug console's included. Not in seamless co-op, which
