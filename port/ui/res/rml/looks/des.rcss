@@ -331,7 +331,10 @@ menu-rows scrollbarvertical sliderbar:active {
     background-color: var(--des-tan);
 }
 
-body.entries menu-page {
+/* (closing too: the menu leaves in the F1 menu's shape. The page, empty by then, would take the frame's height and put
+   the prompts at the window's bottom, where they would ride up over the game.) */
+body.entries menu-page,
+body.closing menu-page {
     display: none;
 }
 
@@ -818,7 +821,8 @@ body.motion menu-prompts {
     transition: opacity 0.1s linear-in-out;
 }
 
-body.entries menu-prompts {
+body.entries menu-prompts,
+body.closing menu-prompts {
     flex-basis: 40dp;
     height: 40dp;
     border-top-width: 3dp;
@@ -2885,7 +2889,8 @@ toast.menu-notification b {
 
 /* ---- Motion (body.motion), the game's: the band and its lines drop in from the top edge when the menu opens (once:
    opening a page keeps them), a page slides in from the left, and on closing the band and its lines go back up the
-   same way, in the F1 menu's shape (the page is already closed). ---- */
+   same way, in the F1 menu's shape (the page is already closed; body.closing in menu-page's and menu-prompts' rules).
+   ---- */
 body.entries.motion menu-frame,
 body.page.motion menu-frame,
 body.entries.motion menu-entries {
