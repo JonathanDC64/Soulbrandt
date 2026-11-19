@@ -1408,6 +1408,20 @@ bool elf_given(int argc, char** argv) {
     return false;
 }
 
+// Every window's title bar: the game's window is "<PRODUCT_NAME> - Demon's Souls" (setup's keeps the program's name
+// alone, setup_only_env, before this), never the disc's PARAM.SFO title that the runtime takes by default. The
+// renderer's numbers after it (FPS, draws, picture size: ps3recomp's RSX_TITLE_STATS) are for developers: a developer
+// build keeps them, a player's build leaves them out. A value in the environment wins (tools/des runs set
+// RSX_TITLE_STATS=1).
+void window_title_env() {
+    if (!env_on("PS3_TITLE")) ps3_setenv("PS3_TITLE", (std::string(ui::kProductName) + " - Demon's Souls").c_str());
+#if DES_DEV
+    if (!std::getenv("RSX_TITLE_STATS")) ps3_setenv("RSX_TITLE_STATS", "1");
+#else
+    if (!std::getenv("RSX_TITLE_STATS")) ps3_setenv("RSX_TITLE_STATS", "0");
+#endif
+}
+
 // Setup alone: each pass of the window's thread presents, so V-sync paces it; the last build's pipeline library stays
 // shut (its threads would compete with the compile); and the title bar has the program's name (no PARAM.SFO is read;
 // the game's own window has the game's title from it).
@@ -1530,6 +1544,7 @@ extern "C" void des_ui_early_init(void) {
     if (sSetupOnly) setup_only_env();
     sCrashDialog = sSetupOnly && crash_dialog_process();
     if (sCrashDialog) crash_dialog_env();
+    window_title_env();
     if (!sSetupOnly && ui::settings::net_custom_held()) sCustomServerNotice.store(true);
     // A gameplay mod (settings.cpp's apply_network left the network knobs unset): the network also stays off when
     // something sets them later, the environment's or the debug console's included. Not in seamless co-op, which

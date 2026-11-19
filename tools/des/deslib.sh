@@ -127,6 +127,9 @@ des_env_defaults() {
   # (play.sh too) turn them on (ps3recomp's RSX_DEV_HOTKEYS; docs/28).
   # RSX_DEV_HOTKEYS=0 to see what a player gets.
   export RSX_DEV_HOTKEYS="${RSX_DEV_HOTKEYS:-1}"
+  # The renderer's numbers in the title bar (FPS, draws, picture size): a player's build leaves them out
+  # (des_ui.cpp's window_title_env), these runs keep them. RSX_TITLE_STATS=0 to see what a player gets.
+  export RSX_TITLE_STATS="${RSX_TITLE_STATS:-1}"
   export PROF_DIR="${PROF_DIR:-$(cygpath -m "$DES_SCRATCH/prof" 2>/dev/null || echo "$DES_SCRATCH/prof")}"
 }
 
