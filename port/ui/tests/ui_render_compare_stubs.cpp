@@ -26,6 +26,12 @@ void ps3_diag_report(FILE* out, unsigned sample_sec) {
 }
 unsigned ppu_boot_frames_presented(void) { return 0; }
 long long ps3_ms_since_frame(void) { return -1; }
+uint64_t des_frame_count(void) { return 0; }  // (des_options.cpp: the frame rate counter's frames)
+uint64_t des_frame_at_us(uint64_t n) {
+    (void)n;
+    return 0;
+}
+int des_frame_target_mhz(void) { return 0; }
 
 int des_hud_edit_view(float view[4]) {
     (void)view;

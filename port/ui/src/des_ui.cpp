@@ -32,6 +32,7 @@
 #include "net_notices.hpp"
 #include "osk_window.hpp"
 #include "overlay.hpp"
+#include "perf_overlay.hpp"
 #include "platform.hpp"
 #include "portable.hpp"
 #include "prelaunch.hpp"
@@ -1128,7 +1129,8 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
 
     // A menu of the game with the pointer over it (game_menu.cpp) keeps the UI running too.
     const bool gameMenu = ui::game_menu::poll();
-    // Fast path: nothing showing, nothing queued (input, a trophy pop-up), no chord pressed.
+    // Fast path: nothing showing, nothing queued (input, a trophy pop-up), no chord pressed, and the frame rate counter
+    // off.
     const unsigned mask = sChordMask;
     const bool chordDown = (g_pad0_buttons & mask) == mask;
     const bool chordEdge = chordDown && !sChordWasDown;
@@ -1144,7 +1146,7 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
         !sOskPending.load(std::memory_order_acquire) && !ui::trophies::pending() && !ui::net_notices::pending() &&
         !sHangNotice.load(std::memory_order_relaxed) &&
         !sCustomServerNotice.load(std::memory_order_relaxed) && !sModsNotice.load(std::memory_order_relaxed) &&
-        !ui::report::saved_notice_pending()) {
+        !ui::report::saved_notice_pending() && ui::perf::mode() == ui::perf::Mode::Off) {
         return;
     }
 

@@ -2887,6 +2887,28 @@ toast.menu-notification b {
     color: var(--des-tan-light);
 }
 
+/* ---- The frame rate counter (overlay.rcss): the game's value box, near black inside a one-pixel warm edge, square;
+   tan figures, the graph's line in light tan and its columns in tan, a frame past the line amber (status). ---- */
+perf {
+    border-color: #3f3f3a;
+    border-radius: 0;
+    background-color: rgba(3, 3, 3, 82%);
+    font-family: Old Standard TT;
+    color: var(--des-tan);
+}
+
+perf-unit,
+perf-low,
+perf-scale {
+    color: var(--des-tan-muted);
+}
+
+frame-graph {
+    border-bottom-color: #3f3f3a;
+    color: rgba(232, 214, 192, 80%);
+    image-color: var(--des-warn);
+}
+
 /* ---- Motion (body.motion), the game's: the band and its lines drop in from the top edge when the menu opens (once:
    opening a page keeps them), a page slides in from the left, and on closing the band and its lines go back up the
    same way, in the F1 menu's shape (the page is already closed; body.closing in menu-page's and menu-prompts' rules).
