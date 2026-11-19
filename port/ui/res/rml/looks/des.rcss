@@ -2925,6 +2925,18 @@ perf-scale {
     color: var(--des-tan-muted);
 }
 
+/* (Old Standard TT's figures sit high in their line, which keeps room below the baseline for descenders: lowered by
+   about an eighth of their size, so they are in the middle of the box) */
+perf-rate {
+    position: relative;
+    top: 2.5dp;
+}
+
+perf-low {
+    position: relative;
+    top: 1.5dp;
+}
+
 frame-graph {
     border-bottom-color: #3f3f3a;
     color: rgba(232, 214, 192, 80%);

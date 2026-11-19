@@ -39,17 +39,20 @@ private:
     static constexpr size_t kKept = 4096;  // the game's frames kept here, the newest last (a power of two)
 
     void build(Rml::Element* parent);
+    void place_area(Rml::Element* parent);
     void take_frames();
     void update_text(Mode mode, uint64_t nowUs);
     void update_graph();
     uint64_t at(uint64_t n) const { return mAt[n & (kKept - 1)]; }
 
+    Rml::Element* mArea = nullptr;  // the picture's part of the window, which holds mBox
     Rml::Element* mBox = nullptr;
     Rml::Element* mFps = nullptr;
     Rml::Element* mLow = nullptr;
     Rml::Element* mScale = nullptr;  // the line's frame time, beside it
     FrameGraph* mGraph = nullptr;
 
+    std::array<float, 4> mPicture{};  // perf-area's place (px: left, top, right, bottom)
     std::array<uint64_t, kKept> mAt{};  // when the game's frame n came (µs, steady clock), at mAt[n % kKept]
     uint64_t mFirst = 0;                // the first frame kept
     uint64_t mSeen = 0;                 // frames read so far (the next to read)

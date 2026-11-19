@@ -1,10 +1,12 @@
 // Written for Demon's Souls. The frame rate counter (perf_overlay.hpp).
 #include "perf_overlay.hpp"
 
+#include "hud_editor.hpp"
 #include "settings.hpp"
 #include "ui.hpp"
 
 #include <RmlUi/Core/ComputedValues.h>
+#include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/ElementInstancer.h>
@@ -165,13 +167,16 @@ const Wanted& wanted() {
 
 Mode mode() { return wanted().mode; }
 
-// perf > (perf-numbers > (perf-rate > (perf-fps, perf-unit), perf-low), frame-graph, perf-scale). Its sheet shows the
-// graph, the 1% low and the scale only with the class times. The first of the overlay's elements, so its notes draw
-// over it.
+// perf-area > perf > (perf-numbers > (perf-rate > (perf-fps, perf-unit), perf-low), frame-graph, perf-scale). Its
+// sheet shows the graph, the 1% low and the scale only with the class times. perf-area is the game's picture in the
+// window (place_area), so that the counter keeps to the picture's top edge, by the HUD, in a window of another shape
+// than the picture (black bars beside or above it). The first of the overlay's elements, so its notes draw over it.
 void Counter::build(Rml::Element* parent) {
     Rml::ElementDocument* doc = parent != nullptr ? parent->GetOwnerDocument() : nullptr;
     if (doc == nullptr) return;
-    mBox = parent->InsertBefore(doc->CreateElement("perf"), parent->GetFirstChild());
+    mArea = parent->InsertBefore(doc->CreateElement("perf-area"), parent->GetFirstChild());
+    if (mArea == nullptr) return;
+    mBox = append(mArea, "perf");
     if (mBox == nullptr) return;
     Rml::Element* numbers = append(mBox, "perf-numbers");
     Rml::Element* rate = append(numbers, "perf-rate");
@@ -189,6 +194,7 @@ void Counter::update(Rml::Element* parent, bool hidden) {
         build(parent);
         if (mBox == nullptr) return;
     }
+    if (m != Mode::Off && !hidden) place_area(parent);
     if (const Place place = wanted().place; place != mShownPlace) {
         mShownPlace = place;
         mBox->SetClass("centre", place == Place::Centre);
@@ -214,6 +220,24 @@ void Counter::update(Rml::Element* parent, bool hidden) {
         mGraphAt = now + kGraphEvery;
         update_graph();
     }
+}
+
+// perf-area on the picture: where the backend shows it in the window (picture_rect_of), set again when it moves (the
+// window's size, its shape).
+void Counter::place_area(Rml::Element* parent) {
+    Rml::Context* context = parent->GetContext();
+    if (context == nullptr || mArea == nullptr) return;
+    const Rml::Vector2i d = context->GetDimensions();
+    std::array<float, 4> pic{};
+    picture_rect_of(float(d.x), float(d.y), pic.data());
+    for (float& v : pic) v = std::round(v);
+    if (pic == mPicture) return;
+    mPicture = pic;
+    auto px = [](float v) { return Rml::Property(v, Rml::Unit::PX); };
+    mArea->SetProperty(Rml::PropertyId::Left, px(pic[0]));
+    mArea->SetProperty(Rml::PropertyId::Top, px(pic[1]));
+    mArea->SetProperty(Rml::PropertyId::Width, px(pic[2] - pic[0]));
+    mArea->SetProperty(Rml::PropertyId::Height, px(pic[3] - pic[1]));
 }
 
 // The game's new frames, into mAt. After a pause (the counter off or under a menu) only the newest are read.
