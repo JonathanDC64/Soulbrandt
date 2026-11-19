@@ -61,11 +61,17 @@ mods-actions {
     display: flex;
     gap: var(--space-md);
     margin-bottom: var(--space-sm);
+    focus: none;   /* (a button in it takes the focus, not the row: Up from the first card lands on a button) */
 }
 
 mods-actions button {
     flex: 1 1 0;
     font-size: var(--font-size-lg);
+}
+
+/* Restart now, only while a change waits for a restart */
+mods-actions button.none {
+    display: none;
 }
 
 /* One mod: the check box, its name and what it changes, then On or Off */

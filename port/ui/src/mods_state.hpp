@@ -21,6 +21,10 @@ struct ModsState {
 
     // The mods were given when the game started (a test run): they can't be changed here.
     static bool fixed();
+    // Whether the list, as a Mods screen last left it this session, differs from what this session runs with (the
+    // F1 menu's closing asks about a restart then: menu_pages.hpp's waiting_for_restart). *on: the mods on in it, in
+    // their order, "|" between them. False when no Mods screen has read the list yet, or the mods are fixed.
+    static bool waiting(std::string* on);
     // Whether this session runs with the mod of that name.
     static bool in_use(const std::string& name);
 
