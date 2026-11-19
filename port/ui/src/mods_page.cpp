@@ -204,6 +204,8 @@ void ModsPage::render_summary() {
                      ", which is higher in the list. Move this mod up to use its own.";
         else if (m.kind == mods::Kind::Gameplay)
             detail = "It changes how the game plays, so you play offline while it's on.";
+        if (const std::string note = mods::unused_note(m); m.usable() && !note.empty())
+            detail += (detail.empty() ? "" : " ") + escape(note);
     }
     if (!detail.empty()) rml += "<mods-detail>" + detail + "</mods-detail>";
     mSummary->SetInnerRML(rml);
