@@ -8,7 +8,8 @@
 //   (looks::apply);
 // - the F1 menu's bar, which slides by a transform in dp, sits right after a new dp ratio (UI scale). This needs
 //   port/ui/cmake/rmlui_fixes.cmake's fix 1 in RmlUi;
-// - in each look, the F1 menu leaves in the shape it had open, and nothing of it is left in the window.
+// - in each look, the F1 menu leaves in the shape it had open, and nothing of it is left in the window;
+// - in each look, the F1 menu opens without a warning from RmlUi, and its entries move with its frame.
 //
 // Prints a line per look, a line per failure and "ui_style_check: N looks, M failed"; exit 1 on a failure. Built on
 // demand: cmake --build <build> --target ui_style_check, then ui_style_check.
@@ -95,6 +96,10 @@ public:
     void ReleaseTexture(Rml::TextureHandle) override {}
     void EnableScissorRegion(bool) override {}
     void SetScissorRegion(Rml::Rectanglei) override {}
+    // (the shaders of the looks' gradients: without them RmlUi warns that it cannot make those decorators)
+    Rml::CompiledShaderHandle CompileShader(const Rml::String&, const Rml::Dictionary&) override { return 1; }
+    void RenderShader(Rml::CompiledShaderHandle, Rml::CompiledGeometryHandle, Rml::Vector2f, Rml::TextureHandle) override {}
+    void ReleaseShader(Rml::CompiledShaderHandle) override {}
 };
 
 std::string text_of(const ui::Asset& a) {
@@ -320,7 +325,7 @@ int main() {
                                           : nullptr;
     check(shell != nullptr, "the menu's whole document did not load");
     if (shell) {
-        // (RmlUi warns about what this check can't draw: text without fonts, decorators without a renderer)
+        // (RmlUi warns about what this check can't draw: an icon without its font, the Alpha UI close button's)
         g_quiet = true;
         use_sheets(shell);
         shell->Show();
@@ -372,6 +377,67 @@ int main() {
         }
         shell->Close();
         g_quiet = false;
+    }
+
+    // The F1 menu opening, in each look, at dp ratios 1 and 2: the body's classes from "closed motion" to
+    // "entries motion", as MenuShell::draw writes them. The document is menu_shell.cpp's, without text or icons (the
+    // check loads no fonts). Each frame of the opening:
+    // - RmlUi warns about nothing: it starts every animation and transition the sheets ask for;
+    // - where the frame shows in the F1 menu (DeS UI's band), the entries on it move as the frame does.
+    //
+    // DeS UI's entries stood in place while the band dropped in under them. Alpha UI's transition on their transform
+    // (menu.rcss) already moved that property, and RmlUi starts no animation on it then ("Could not animate property").
+    Rml::ElementDocument* opening = context ? context->LoadDocumentFromMemory(R"(<rml><head>
+        <link type="text/rcss" href="res/rml/theme.rcss" />
+        <link type="text/rcss" href="res/rml/controls.rcss" />
+        <link type="text/rcss" href="res/rml/menu.rcss" />
+        </head><body>
+        <menu-entries id="entries"><menu-end /><menu-entry class="on" /><menu-entry /><menu-end /></menu-entries>
+        <menu-frame id="frame">
+            <menu-slot id="slot"><menu-title /><menu-slot-entry class="on" /></menu-slot>
+            <menu-strip id="strip" />
+            <menu-page id="page" />
+            <menu-prompts id="prompts"><menu-prompt /></menu-prompts>
+        </menu-frame>
+        <menu-badge id="badge" />
+        </body></rml>)")
+                                            : nullptr;
+    check(opening != nullptr, "the opening menu's document did not load");
+    if (opening) {
+        use_sheets(opening);
+        opening->Show();
+        Rml::Element* entries = opening->GetElementById("entries");
+        Rml::Element* band = opening->GetElementById("frame");
+        // How far an element's transform (its own and its parents') moves it down, in px.
+        const auto moved = [](Rml::Element* e) {
+            Rml::Vector2f p(0.f, 0.f);  // (Project takes (0, 0) to minus the transform's translation)
+            e->Project(p);
+            return -p.y;
+        };
+        for (const ui::looks::Look& own : ui::looks::kLooks) {
+            for (const ui::looks::Look& look : ui::looks::kLooks)
+                context->ActivateTheme(std::string(look.id), look.id == own.id);
+            for (const float ratio : {1.0f, 2.0f}) {
+                set_ratio(opening, ratio);
+                go(opening, "closed motion");
+                const std::string at = std::string(own.id) + " at dp ratio " + std::to_string(ratio);
+                const int before = g_warnings;
+                opening->SetClassNames("entries motion");
+                bool told = false;
+                for (int f = 0; f < 15; f++) {  // (0.3 s in 20 ms frames, past the opening's 0.2 s)
+                    if (f) g_now += 0.02;
+                    frame();
+                    if (told || !band->IsVisible(true)) continue;
+                    const float bar = moved(entries), drop = moved(band);
+                    if (std::fabs(bar - drop) < 0.5f) continue;
+                    told = true;
+                    check(false, at + ", opening: the entries are moved " + std::to_string(bar) + " px, the frame " +
+                                     std::to_string(drop) + " px (" + std::to_string(f * 20) + " ms in)");
+                }
+                check(g_warnings == before, at + ": RmlUi warned as the F1 menu opened");
+            }
+        }
+        opening->Close();
     }
 
     Rml::Shutdown();
