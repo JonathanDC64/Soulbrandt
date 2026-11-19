@@ -1022,6 +1022,17 @@ window.modal modal-body modal-warning {
     color: var(--des-tan-light);
 }
 
+/* The line a warning leads with, the first thing read (the co-op mods warning): on its own, larger, in the warning's
+   amber. */
+window.modal modal-body modal-alert {
+    display: block;
+    margin: 0 0 12dp;
+    font-size: 21dp;
+    line-height: 29dp;
+    font-weight: bold;
+    color: var(--des-warn);
+}
+
 window.modal modal-actions {
     justify-content: center;
     gap: 18dp;

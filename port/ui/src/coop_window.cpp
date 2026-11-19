@@ -494,6 +494,13 @@ void open_host() {
     ui::open_host();
 }
 
+// The mods' names for the warning: up to three, else the first two and how many more (a long list would push the
+// warning's main line out of sight).
+static std::string mods_named(const std::vector<std::string>& names) {
+    if (names.size() <= 3) return mods::join(names, ", ");
+    return mods::join({names[0], names[1]}, ", ") + ", +" + std::to_string(names.size() - 2) + " more";
+}
+
 void open_mods_warning(const std::vector<std::string>& names, void (*then)()) {
     std::vector<std::string> sorted = names;
     std::sort(sorted.begin(), sorted.end());
@@ -502,14 +509,13 @@ void open_mods_warning(const std::vector<std::string>& names, void (*then)()) {
         {
             .file = L"coop_mods_ack.txt",
             .kept = "The player asked not to be warned again about co-op with these mods on (coop_window.cpp).\n",
-            .title = "Mods are on",
-            .bodyRml = "You have mods on: <b>" + escape(list) +
-                       "</b>.<br/><br/>"
+            .title = names.size() == 1 ? std::string("1 mod is on") : std::to_string(names.size()) + " mods are on",
+            .bodyRml = "<modal-alert>If something goes wrong in co-op, turn every mod off (Mods, in the menu), "
+                       "restart, and try again before you report it.</modal-alert>"
                        "Co-op with mods will probably have problems: games that don't match, missing enemies or "
                        "items, crashes. Everyone in the party should have the same mods that change how the game "
                        "plays.<br/><br/>"
-                       "<modal-warning>If something goes wrong in co-op, turn every mod off in Mods (in the menu, "
-                       "beside Settings), restart, and try again before you report it.</modal-warning>",
+                       "On now: " + escape(mods_named(names)) + ".",
             .tick = "Don't ask again for these mods",
             .icon = "warning",
             .tickOptional = true,
@@ -523,6 +529,7 @@ void open_mods_warning(const std::vector<std::string>& names, void (*then)()) {
             if (then) then();
         });
 }
+
 void open_join() {
     ui::open_join();
 }

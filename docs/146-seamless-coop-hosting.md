@@ -76,10 +76,11 @@ host** (2, 3 or 4). A change counts at once, and players already in stay. A frie
 waits: Co-op says so, and the friend's game joins as soon as a place frees up.
 
 **Mods.** Co-op works with mods on (online play doesn't, with mods that change how the game plays). **Host** or
-**Join** while any mod is on first shows **Mods are on**: co-op with mods will probably have problems (games that
-don't match, missing enemies or items, crashes), everyone should have the same mods that change how the game plays,
-and when something goes wrong, turn every mod off (Mods, in the menu), restart and try again before reporting it.
-**Play with mods** goes on; **Back** leaves things as they were. It asks each time, unless you tick "Don't ask again
+**Join** while any mod is on first shows how many are on ("3 mods are on"). Its first line, larger and in the warning
+colour: when something goes wrong in co-op, turn every mod off (Mods, in the menu), restart and try again before
+reporting it. Then: co-op with mods will probably have problems (games that don't match, missing enemies or items,
+crashes), and everyone should have the same mods that change how the game plays. Last, the mods that are on: up to
+three by name, else two and how many more. **Play with mods** goes on; **Back** leaves things as they were. It asks each time, unless you tick "Don't ask again
 for these mods": a different set of mods asks again (`coop_mods_ack.txt` in the data folder keeps the answer and the
 set).
 

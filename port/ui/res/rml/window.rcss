@@ -266,6 +266,16 @@ modal-body modal-warning {
     font-weight: bold;
 }
 
+/* The line a warning leads with, the first thing read (coop_window.cpp's mods warning): on its own, larger, in the
+   warning colour. */
+modal-body modal-alert {
+    display: block;
+    margin-bottom: var(--space-md);
+    font-size: var(--font-size-4xl);
+    font-weight: bold;
+    color: var(--color-warning);
+}
+
 modal-content {
     display: none;
     width: 100%;
@@ -339,6 +349,10 @@ modal-actions.vertical button.modal-btn {
 
     modal-body {
         font-size: var(--font-size-lg);
+    }
+
+    modal-body modal-alert {
+        font-size: var(--font-size-2xl);
     }
 }
 
