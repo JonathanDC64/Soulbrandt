@@ -205,6 +205,10 @@ needs the friend close by, as in the report.
 The pieces' physics is still dropped once they lie still, as at 30 fps: with the fix, about 6 s after the break solo
 unlocked, and 7 to 9 s in both games in two co-op runs (about 6 s at 30 fps).
 
+Another object that breaks into pieces, 1-1's small explosive barrel (1141), unlocked: with the fix its pieces fell
+and kept their physics 10.5 s. With the fix off they fell too (9.2 s, 8.4 s), because the explosion throws
+them, so they are never still before their first step.
+
 ## Arrows stuck in a character (2026-10-27)
 
 Above 30 fps, arrows stuck in the player jittered.
