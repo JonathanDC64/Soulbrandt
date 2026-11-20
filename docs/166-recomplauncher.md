@@ -136,29 +136,33 @@ own update replaces it with the program.
 - **The download's new name** for 0.2.1 (`Soulbrandt-X.Y.Z-windows.zip`, with the old name kept beside it) puts two
   Windows zips in one release (question 7.2).
 
-## 6. Decisions for the maintainer
+## 6. Decisions
 
-1. **Two updaters.** Our own update check runs in any player's install, so in the launcher's too. Each works alone:
-   after the launcher unpacks a new version over the folder, setup shows "This version needs a rebuild" and rebuilds
-   (setup_engine's `launch_state`: Outdated). Used together, the launcher's idea of the installed version goes wrong
-   after our update or our Go back, and a launcher update leaves the files an older version had and the new one
-   dropped. Recommended: in 0.2.1, when `RECOMPLAUNCHER=1` is set, skip our check and say in Settings > About that
-   updates come from RecompLauncher. A small change in `updates::wanted`, not in this branch.
-2. **Downloads from our releases.** That is how the launcher installs: straight from GitHub, the same files a player
-   downloads by hand, checked by GitHub's SHA-256. Recommended: yes.
-3. **Game files and keys.** The file asks for no copy, no key and no setup step, so the launcher never touches the
-   game's files; setup asks for the player's own copy as before. The check fails on any new field until it is
-   reviewed. Recommended: keep it so until setup can take a copy from the launcher (section 8).
-4. **Where the file lives.** At the root, like `.recomp.json`, and at the top of both downloads, where the launcher
-   looks first. Recommended: both, as built. The other way is to send it to the launcher's catalog only, which then
-   needs them for every change.
-5. **Linux.** The guide takes an AppImage or a `.tar.gz`; our Linux download is a `.tar.xz`, the name our update looks
-   for. Recommended: keep the Linux parts of the file, ask the launcher's team (7.3), and add a second Linux file only
-   if they need one.
+Settled 2026-11-20 unless marked open.
+
+1. **Two updaters (open).** The launcher updates the game too: it installs the latest full release, and each release
+   reaches players the next time it checks. It unpacks the new version over the folder (read: the guide's "Releases
+   that install cleanly").
+   - Our own update check runs in any player's install, so in the launcher's too. Each works alone: after the launcher
+     unpacks a new version, setup shows "This version needs a rebuild" and rebuilds (setup_engine's `launch_state`:
+     Outdated).
+   - Used together, the launcher's idea of the installed version goes wrong after our update or our Go back. A
+     launcher update also leaves the files an older version had and the new one dropped.
+   - Proposed: when `RECOMPLAUNCHER=1` is set, skip our check and say in Settings > About that updates come from
+     RecompLauncher. A small change in `updates::wanted`.
+2. **Downloads from our releases: yes.** That is how the launcher installs: straight from GitHub, the same files a
+   player downloads by hand, checked by GitHub's SHA-256.
+3. **Game files and keys: none, by design.** The file asks for no copy, no key and no setup step. Setup asks for the
+   player's own copy as before. The check fails on any new field until it is reviewed.
+4. **Where the file lives: both places, as built.** At the root, like `.recomp.json`, and at the top of both
+   downloads, where the launcher looks first.
+5. **The downloads stay as they are.** The guide asks for the processor in the name (`-windows-x64.zip`) and names an
+   AppImage or a `.tar.gz` for Linux. Ours are `-windows.zip` and `-linux.tar.xz`. They are the only file for each
+   system, so they should be taken. Questions 7.1 and 7.3 confirm it. Nothing changes unless the answer is no.
 6. **Security.**
-   - The launcher checks GitHub's SHA-256, not our release signature (docs/105 section 7). A release published from a
-     stolen account would reach launcher players, where our update refuses it. Releases stay drafts until they are
-     signed, so this is the same risk as a download by hand. Recommended: accept it.
+   - **Accepted:** the launcher checks GitHub's SHA-256, not our release signature (docs/105 section 7). A release
+     published from a stolen account would reach launcher players, where our update refuses it. Releases stay drafts
+     until they are signed, so this is the same risk as a download by hand.
    - `saves` names the save folder, so the launcher's copies and its account uploads take only the saves. Without it
      the launcher would guess from what the game writes, and could take `online-key.bin`, the key that owns the
      player's online name. Recommended: keep `saves`.
