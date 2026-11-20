@@ -8,6 +8,8 @@ read it from there, so a rename is that one line. This fails, with each place na
   - when one still has a former shown name (FORMER below; a rename adds the old name to it);
   - when the README's title, PRIVACY.md's server name or .recomp.json's project (the recomp.fyi listing) is not the
     name. Those three are written by hand, so this is what catches a rename that missed them.
+recomplauncher.json (RecompLauncher's file, docs/166) has the name and the program's file name written out too;
+tools/release/recomplauncher.py checks both against PRODUCT_NAME, so it is left out here.
 The technical name DemonsSoulsRecomp (the downloads, the folders, the signature) is a different thing and is not
 looked for, and neither is the repository's address (JonathanDC64/<repository>, in links and the update feed),
 which has its own name.
@@ -26,7 +28,8 @@ FORMER = ["Demon's Souls Recomp", "Demon’s Souls Recomp"]
 # PRIVACY.md are checked on their own below). .recomp.json, which recomp.fyi reads from the repository as it is, so it
 # cannot read PRODUCT_NAME (checked below too). And this file, which lists the former names.
 SKIP = (re.compile(r"^docs/"), re.compile(r"^\.trail/"), re.compile(r"\.md$"), re.compile(r"^PRODUCT_NAME$"),
-        re.compile(r"^\.recomp\.json$"), re.compile(r"^tools/ci/check_product_name\.py$"))
+        re.compile(r"^\.recomp\.json$"), re.compile(r"^recomplauncher\.json$"),
+        re.compile(r"^tools/ci/check_product_name\.py$"))
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 '.:-]*$")   # (as port/cmake/DesVersion.cmake takes it)
 REPOSITORY_RE = re.compile(r"JonathanDC64/[A-Za-z0-9._-]+")   # (a repository's address, left out of the lines)
 

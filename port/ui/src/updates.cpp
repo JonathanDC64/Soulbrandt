@@ -20,6 +20,9 @@ namespace ui::updates {
 namespace {
 
 constexpr const char* kInfo = "setup/release-info.txt";  // a player's install's (tools/release/package.py, update.py)
+// Left in a player's install the first time RecompLauncher starts it (from_launcher). The launcher's updates unpack over
+// the folder and keep it, so a start from the exe itself leaves the updates to the launcher too.
+constexpr const char* kLauncherMark = "setup/recomplauncher.txt";
 
 std::string utf8(const std::filesystem::path& p) {
     const std::u8string s = p.u8string();
@@ -131,8 +134,29 @@ bool possible() {
     return !setup::python().empty() && !setup::engine_script().empty() && !setup::data_dir().empty();
 }
 
+bool from_launcher() {
+    static const bool from = [] {
+        // The launcher sets it for each game it starts (docs/166); the program's own restarts keep it.
+        const bool started = env_set("RECOMPLAUNCHER");
+        const auto dir = install_dir();
+        if (dir.empty()) return started;
+        std::error_code ec;
+        const auto mark = dir / kLauncherMark;
+        if (std::filesystem::is_regular_file(mark, ec)) return true;
+        if (started && std::filesystem::is_regular_file(dir / kInfo, ec)) {
+            std::ofstream out(mark, std::ios::binary);
+            out << "RecompLauncher installed this copy and brings each new version, so the game does not look for "
+                   "updates. Delete this file, and start the game without RecompLauncher, to have it look itself.\n";
+            std::fprintf(stderr, "[update] RecompLauncher started this copy: it brings the updates (%s %s)\n",
+                         kLauncherMark, out ? "left" : "not written");
+        }
+        return started;
+    }();
+    return from;
+}
+
 bool wanted() {
-    return settings::get_int("update_check") != 0 && possible();
+    return !from_launcher() && settings::get_int("update_check") != 0 && possible();  // (first: it leaves the mark)
 }
 
 namespace {
@@ -149,7 +173,7 @@ bool over_game() {
 
 void start_check() {
     Check& c = check();
-    if (c.running || !possible()) return;
+    if (c.running || !possible() || from_launcher()) return;
     c.status = {};
     if (!c.engine.start_command({"update-check", "--app", this_version(), "--data", utf8(setup::data_dir())})) {
         c.state = State::Failed;
@@ -222,6 +246,7 @@ std::string status_line() {
     switch (state()) {
     case State::Off:
         if (!plain_version(this_version())) return "This build is not a release, so it does not look for updates.";
+        if (from_launcher()) return "RecompLauncher brings each new version.";
         if (!possible()) return "Updates start once setup has run.";
         return settings::get_int("update_check") ? "Not checked yet." : "Off. Check now looks once.";
     case State::Checking:

@@ -692,6 +692,11 @@ std::vector<TabDesc> make_tabs() {
                 "Looks for a newer version each time the game starts. It asks before it changes anything.")),
             {.label = "Updates", .kind = InfoRow{hooks::update_status, true},
                 .help = [] {
+                    if (hooks::update_from_launcher())
+                        return escape(hooks::update_status()) +
+                               "<br/><br/>RecompLauncher installed this copy, so the game leaves the updates to it. "
+                               "It remembers that in setup/recomplauncher.txt in the game's folder. Delete that file, "
+                               "and start the game without RecompLauncher, to have it look for updates itself.";
                     return escape(hooks::update_status()) +
                            "<br/><br/>An update keeps your saves and settings. The version before it is kept, so you "
                            "can go back to it.";

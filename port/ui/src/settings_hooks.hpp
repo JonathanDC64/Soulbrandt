@@ -44,6 +44,7 @@ void party_size_changed();  // Players when you host: a host takes the new size 
 // About
 std::string update_status();
 bool update_possible();
+bool update_from_launcher();        // RecompLauncher brings the updates (updates::from_launcher)
 bool update_checking();
 void update_check();
 std::string update_found_version();  // "" when no newer release was found
