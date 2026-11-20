@@ -19,6 +19,8 @@
 //   - a boss fight is marked from the boss's health bar to its clearing (for the watch above);
 //   - the boss rooms' party walls drop as in solo play;
 //   - a guest doesn't play the warp-out pose at a boss's death;
+//   - the poses a player's script plays on it (an Archstone's touch and the trip home after it, a sword pulled out)
+//     show in the other players' games too (poses_for_watchers);
 //   - the Archstones: the host may use them in a session (the guests then follow it, des_seamless_game.cpp); a guest
 //     still gets "You can't return during multiplayer.", at the Nexus's stones too (they had no session check);
 //   - a boss's soul: a blue phantom may take its own, as the host takes its own;
@@ -1104,6 +1106,58 @@ bool final_area_for_all(std::string& t, const std::string& nl)
     return true;
 }
 
+// The poses a player's own script plays on that player (PlayAnimation(10000 or LOCAL_PLAYER, <pose>)): the touch of an
+// Archstone (8283), the trip home after it (8284) and a sword pulled out (8290: the Nexus's last one, Stormbringer, and
+// three more). The other players' games never played them on that player's character: no phantom was there when a
+// player used an Archstone in the original, and a pull runs in the puller's game only (its handler's
+// IsNetMessage() == false branch). The game's own pose sync (Luafunc_PlaySynchroAnimation, as through
+// LuaCall(4013, 1)) plays the pose in the sender's game too, a second time, under the script's own OnChrAnimEnd watch
+// of it, so the edit sends one of its own after the call: LuaCallStartPlus(4013, <area's key>, <pose>). It isn't sent
+// when the handler runs for another player's message. The call's network send doesn't depend on NotNetMessage_begin
+// (that is proxy+0x64; the send checks proxy+0x65), so it goes out from inside those blocks too. Each area's
+// SEAMLESS_Pose (LuaCall(4013, <area's key>), registered as the area starts) then plays the pose on the sender's
+// character in the other games (GetPlayID() + 10001, the game's own pose sync's) and does nothing in the sender's.
+// The key is the area's (7600 + 10 x world + block; the game's own call uses 1), as a pose sent just before a trip
+// reaches a friend after its follow has loaded the next area: the trip home's (8284) came 2 s after the friend's game
+// had loaded 1-1, where its handler played it on the host's character as the host arrived (two copies, 11-20). There
+// no handler takes the old area's key. Not the calls in a comment, such as the warp-out pose edit_area takes away.
+// Returns the number of edits.
+int poses_for_watchers(std::string& t)
+{
+    const std::regex init("(\\nfunction Initialize_m(\\d\\d)_(\\d\\d)_\\d\\d_\\d\\d\\s*\\([^)]*\\)[^\\n]*\\n)");
+    const std::regex pose("proxy:PlayAnimation\\(\\s*(?:10000|LOCAL_PLAYER)\\s*,\\s*(8283|8284|8290)\\s*\\)\\s*;");
+    const std::regex sig("^function \\w+\\s*\\(\\s*proxy\\s*,\\s*param\\s*\\)");
+    std::smatch m;
+    if (!std::regex_search(t, m, init)) return 0;
+    const std::string key = std::to_string(7600 + 10 * std::stoi(m[2].str()) + std::stoi(m[3].str()));
+    const std::string nl = t.find("\r\n") != std::string::npos ? "\r\n" : "\n";
+    std::vector<std::pair<size_t, std::string>> at;   // after each call: its pose
+    for (auto it = std::sregex_iterator(t.begin(), t.end(), pose); it != std::sregex_iterator(); ++it) {
+        const size_t p = (size_t)it->position(0);
+        const size_t line = t.rfind('\n', p);
+        const size_t ls = line == std::string::npos ? 0 : line + 1;
+        if (t.substr(ls, p - ls).find("--") != std::string::npos) continue;   // a line comment
+        const size_t bo = t.rfind("--[[", p), bc = t.rfind("]]", p);
+        if (bo != std::string::npos && (bc == std::string::npos || bc < bo)) continue;   // a block comment
+        const size_t fn = t.rfind("\nfunction ", p);
+        if (fn == std::string::npos || !std::regex_search(t.substr(fn + 1, t.find('\n', fn + 1) - fn - 1), sig))
+            continue;   // not in a handler with the event's param
+        at.emplace_back(p + (size_t)it->length(0), (*it)[1].str());
+    }
+    if (at.empty()) return 0;
+    for (auto r = at.rbegin(); r != at.rend(); ++r)
+        t.insert(r->first, " if param:IsNetMessage() == false then proxy:LuaCallStartPlus( 4013 , " + key + " , " +
+                               r->second + " ); end --SEAMLESS: the others see it too ");
+    std::regex_search(t, m, init);
+    t.insert((size_t)m.position(0) + (size_t)m.length(0), "\tproxy:LuaCall( 4013 , " + key +
+                                                               " , \"SEAMLESS_Pose\" , everytime ); --SEAMLESS: "
+                                                               "another player's pose in this area" + nl);
+    t += nl + "--SEAMLESS: a pose another player's script played on that player (poses_for_watchers)" + nl +
+         "function SEAMLESS_Pose(proxy, param)" + nl + "\tif param:IsNetMessage() == false then return; end" + nl +
+         "\tproxy:PlayAnimation( param:GetPlayID() + 10001 , param:GetParam3() );" + nl + "end" + nl;
+    return (int)at.size() + 2;
+}
+
 // An area's script: the party walls, the warp-out pose and the Archstones. Returns the number of edits.
 int edit_area(std::string& t, bool nexus)
 {
@@ -1121,6 +1175,9 @@ int edit_area(std::string& t, bool nexus)
     // The warp-out pose a phantom plays at a boss kill, on its way home (some areas name the player 10000)
     sub(std::regex("(IsClient\\(\\) == true then\\s*\\r?\\n\\s*)proxy:PlayAnimation\\(\\s*(LOCAL_PLAYER|10000)\\s*,\\s*8284\\s*\\);"),
         "$1--SEAMLESS proxy:PlayAnimation( $2 , 8284 );");
+    // The poses a player's script plays on it (an Archstone's touch and trip home, a sword pulled out), in the other
+    // players' games too (poses_for_watchers; after the warp-out pose's edit, which takes that one away)
+    n += poses_for_watchers(t);
     // No room lock. LockSession (here as a player walks into a boss room, and in global_event.lua's BlockClear2 at a
     // kill) sets the session's lock (sm+0x2CA), which stays until the host's game leaves its room (UnLockSession is
     // empty): the original ends the session after a boss. A locked host kicks every new join (the member handler at
@@ -1140,6 +1197,9 @@ int edit_area(std::string& t, bool nexus)
         // no session check: no phantom reaches the Nexus in the original game. A guest's own touch took it out of the
         // session and to the area alone, where its rejoin then stalled. A guest in a session gets the levels' answer
         // at the stone instead ("You can't return during multiplayer.", 10010720); the host's travel takes it along.
+        // A touch is a network event, so its handler ran in every player's game: when the host touched a stone, a
+        // friend's game showed that message too (two copies, 11-20), and a friend's touch ran the host's handler. A
+        // handler now ignores another player's touch (param:IsNetMessage(), as the levels' stones do).
         const std::regex stone("OnDistanceAction\\(\\s*(\\d+)\\s*,\\s*10000\\s*,\\s*(\\d+)\\s*,\\s*\"OnEvent_(\\d+)\"\\s*,"
                                "\\s*WarpGimmickDist_A");
         std::map<std::string, std::string> stones;   // its handler's event ID -> the stone (where the dialog shows)
@@ -1147,6 +1207,7 @@ int edit_area(std::string& t, bool nexus)
             if ((*it)[1].str() == (*it)[3].str()) stones[(*it)[1].str()] = (*it)[2].str();
         for (const auto& [id, obj] : stones) {
             const std::string guard =
+                "\tif param:IsNetMessage() == true then return; end --SEAMLESS: another player's touch\n"
                 "\tif proxy:IsSession() == true and proxy:IsClient() == true then --SEAMLESS: a guest doesn't travel alone\n"
                 "\t\tproxy:RepeatMessage_begin(); proxy:NotNetMessage_begin();\n"
                 "\t\tproxy:OnSelectMenu( SYSTEM_GENDIALOG, \"MenuClose\", 10010720, 0, 6, " + obj +
