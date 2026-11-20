@@ -75,6 +75,7 @@ DES_REGION_ADDR(0x001D17A0, 0x001CF800)  /* call */
 DES_REGION_ADDR(0x001D1E64, 0x001CFEC4)  /* hook des_phys_rate */
 DES_REGION_ADDR(0x001D35D8, 0x001D1638)  /* call */
 DES_REGION_ADDR(0x001DF83C, 0x001DD89C)  /* hook des_phys_kf */
+DES_REGION_ADDR(0x001E2E00, 0x001E0E60)  /* hook des_rest_gate */
 DES_REGION_ADDR(0x001EF6D0, 0x001ED730)  /* hook des_phys_kf */
 DES_REGION_ADDR(0x001FEAF4, 0x001FCB54)  /* hook des_slide_rate */
 DES_REGION_ADDR(0x001FED50, 0x001FCDB0)  /* hook des_slide_rate */

@@ -1548,6 +1548,7 @@ static std::atomic<bool> s_phys_capped{false};  /* this frame is under the cap *
 static std::atomic<bool> s_phys_ride{false};    /* this frame steps uncapped: the player rides a moving body */
 static std::atomic<double> s_phys_world_now{0.0}; /* under the cap: the world's time that matches the game's */
 static std::atomic<double> s_phys_left{0.0};      /* under the cap: game time the world has not stepped yet */
+static std::atomic<bool> s_phys_rest{true};       /* des_rest_gate: broken pieces may be tested for rest */
 
 /* The cap and moving bodies. An elevator, a lift, a paternoster or a turning
  * bridge is a keyframed body, moved by the world step, so under the cap it
@@ -1616,7 +1617,7 @@ static uint32_t player_moving_body(uint32_t world)
     return 0;
 }
 
-extern "C" void des_phys_rate(ppu_context* ctx, uint32_t)
+static void phys_rate(ppu_context* ctx)
 {
     static int ride_on = 1, ride_log = 0;
     PS3_KNOB(ride_on, ps3_env_int("DES_PHYS_RIDE", 1));
@@ -1675,6 +1676,46 @@ extern "C" void des_phys_rate(ppu_context* ctx, uint32_t)
     if (acc >= h) acc = 0.0;
     s_phys_world_now.store(wt + step + acc);
     s_phys_left.store(acc);
+}
+extern "C" void des_phys_rate(ppu_context* ctx, uint32_t)
+{
+    phys_rate(ctx);
+    /* for des_rest_gate: the world's steps added up (r28 = 0: it steps this
+     * frame, by f31), and whether 0.75/30 s of them came since the last frame
+     * that let the pieces be tested */
+    static double stepped = 0.0, tested = 0.0;
+    if (ctx->gpr[28] == 0 && ctx->fpr[31] > 0.0) stepped += ctx->fpr[31];
+    const bool rest = stepped - tested >= 0.75 / 30.0;
+    if (rest) tested = stepped;
+    s_phys_rest.store(rest);
+}
+
+/* Broken pieces come to rest (the Stonefang bridge in 2-1). An object that
+ * breaks turns its pieces into rigid bodies, and while it is broken its updates
+ * (0x00245AA8, 0x00247448) call 0x001E2D78 each frame. That takes a piece whose
+ * linear and angular speeds are both under a limit (squared, f31, loaded at
+ * 0x001E2E00) as come to rest, for good; once no piece is still moving, the
+ * object drops the pieces' physics and keeps drawing them where they are. At
+ * 30 fps the world steps before every test, so a new piece has a frame of
+ * falling behind it. Under DES_PHYS_HZ's cap the world steps every few frames,
+ * and a piece tested before its first step has no speed at all: the bridge's
+ * pieces stayed in the air in the shape of the bridge, with nothing to stand
+ * on, so it looked whole and the player fell through. Now des_phys_rate
+ * decides each frame, whether anything is tested or not, if the pieces may be:
+ * only when the world's steps since the last frame that allowed it add up to
+ * 0.75/30 s. On the other frames the hook sets the limit to -1, so no piece is
+ * taken as at rest and the live ones are counted as moving. At 30 fps every
+ * frame steps about 1/30 s and allows it, as before; under the cap only the
+ * frames that step 1/30 s do, so a piece is tested with the speed of a full
+ * step, as at 30 fps. While the world steps every frame above 30 fps
+ * (DES_PHYS_HZ=0, or riding a lift), the tests are 1/30 s apart, and a new
+ * piece has had a step by then: the physics update adds it (0x001E80F8)
+ * before it steps. DES_BREAKFIX=0 turns it off live. */
+extern "C" void des_rest_gate(ppu_context* ctx, uint32_t)
+{
+    static int on = 1;
+    PS3_KNOB(on, ps3_env_int("DES_BREAKFIX", 1) != 0);
+    if (on && !s_phys_rest.load()) ctx->fpr[31] = -1.0;
 }
 
 /* With DES_PHYS_HZ: the passes that drive a character's bodies to its
