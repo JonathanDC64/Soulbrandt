@@ -14,7 +14,7 @@
 // (TEST_SEAMLESS=host stands in for a hosting start): the endpoint for room codes (DES_SEAMLESS_INTRO) from the Server
 // row, settings.ini's or the environment's value winning, and off in a test run; settings.ini's DES_SEAMLESS_STUN. And
 // a gameplay mod (a made-up one with game parameters): it keeps online play off, and not seamless co-op. And the
-// cursor's sword: the Soulbrandt with no settings.ini, the one a file names, the moonlight (the default until 0.2.0)
+// cursor's sword: soulbrandt with no settings.ini, the one a file names, the moonlight (the default until 0.2.0)
 // from a file that names none.
 //
 //   settings_check --row      a build with the row (DES_RSX_VULKAN: port/CMakeLists.txt found the Vulkan route)
@@ -295,7 +295,7 @@ int run_case(const std::string& name) {
         check(env("DES_SEAMLESS_INTRO") == want, "DES_SEAMLESS_INTRO " + want + ": " + env("DES_SEAMLESS_INTRO"));
         check(env("DES_SEAMLESS_STUN") == (name == "coop-off" ? "0" : ""), "DES_SEAMLESS_STUN: " +
                                                                                env("DES_SEAMLESS_STUN"));
-    } else if (name.rfind("sword-", 0) == 0) {  // the cursor's sword: a new player's Soulbrandt, a player's kept
+    } else if (name.rfind("sword-", 0) == 0) {  // the cursor's sword: a new player's soulbrandt, a player's kept
         const std::string want = name == "sword-new" ? "soulbrandt" : name == "sword-picked" ? "regalia" : "moonlight";
         check(settings::get("DES_CURSOR_SWORD") == want, "the sword " + want + ": " + settings::get("DES_CURSOR_SWORD"));
         settings::store("setup_preset", "balanced");  // (as setup does: settings.ini written, every key in it)

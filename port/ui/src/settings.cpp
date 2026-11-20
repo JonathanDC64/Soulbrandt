@@ -565,7 +565,7 @@ void load_file() {
         sValues["PAD_KEYS"] = "";
     }
     // The cursor's sword was the moonlight until 0.2.0, and a settings.ini a setup wrote says so (save() writes every
-    // key), so a player keeps theirs and only a new one gets the Soulbrandt. A file with no sword in it (from before
+    // key), so a player keeps theirs and only a new one gets the new default. A file with no sword in it (from before
     // the row, or edited) is a player's too: the moonlight as well.
     if (!sword_line) sValues["DES_CURSOR_SWORD"] = "moonlight";
 }

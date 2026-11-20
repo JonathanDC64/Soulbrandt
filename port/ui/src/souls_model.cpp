@@ -905,7 +905,7 @@ struct SwordInfo {
     bool whole;
 };
 const SwordInfo kSwords[] = {
-    {"soulbrandt", "Soulbrandt", "0251", 2.6f, {0.72f, 0.84f, 1.0f}, 0.75f, true},  // (the sword the port is named for)
+    {"soulbrandt", "Soulbrandt", "0251", 2.6f, {0.72f, 0.84f, 1.0f}, 0.75f, true},  // (the game's sword)
     {"moonlight", "Large Sword of Moonlight", "0258", 1.0f, {0.55f, 0.78f, 1.0f}, 0.85f, false},
     {"demonbrandt", "Demonbrandt", "0254", 1.0f, {0.95f, 0.25f, 0.12f}, 0.55f, true},
     {"regalia", "Northern Regalia", "0253", 1.7f, {0.8f, 0.88f, 1.0f}, 0.55f, true},
