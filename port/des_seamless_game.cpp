@@ -221,11 +221,14 @@ bool is_player(uint32_t chr)
     return false;
 }
 
-// A visitor's game sets up each NPC whose param row has byte 0xE8 set (an NPC's setup, 0x002999C8, and its
-// controller's, 0x002C2588 and 0x002C3018) in a mode of its own, with type 4. A friend keeps that mode, as the game's
-// own co-op does. (Set up as a body's game sets them up instead, they were the friend's own: in 1-1, Ostrava died in
-// the friend's copy of the world, and his death reached the host's.)
-// Type 4 draws them as white phantoms: the draw update (0x002DD920) reads the type four times, for the phantom
+// A visitor's game sets up each NPC whose param row has byte 0xE8 set in a mode of its own, with type 4, in two kinds
+// of setup: a person (a player's body, c0000: Thomas, the Crestfallen, Ostrava), 0x002999C8, which gives the
+// character's constructor mode 4, and an NPC with a model of its own (Stonefang's smith Ed, c7131, and the Dregling
+// merchant, c7100), whose constructors (0x002C2588, and its twin 0x002C3018) pick type 4 themselves. A friend keeps
+// that mode, as the game's own co-op does. (Set up as a body's game sets them up instead, they were the friend's own:
+// in 1-1, Ostrava died in the friend's copy of the world, and his death reached the host's.) The second kind's look
+// is at its hook (0x002C2848).
+// Type 4 draws a person as a white phantom: the draw update (0x002DD920) reads the type four times, for the phantom
 // material on or off (0x000D7C58), its kind (0x000D81D0), the draw path (types 3, 4, 10 and 11 take another) and
 // 0x0025D418. The host has these NPCs at types 5 and 9, and so does the friend's own world; the two read alike at all
 // four. At each read a friend gets 9 for such an NPC, so it draws them as the host does. r3 the type read, the
@@ -2424,6 +2427,15 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
         break;
     case 0x00299BB0u:   // the same setup, after mr r23,r3 (the new character, 0 when out of memory)
         host_npc_made((uint32_t)ctx->gpr[3]);
+        break;
+    case 0x002C2848u:   // the constructor of an NPC with a model of its own (0x002C2588, and its twin 0x002C3018) in a
+    case 0x002C32D8u:   // visitor's game, after extsh r0,r0 of the row's +0xEC, before stw r0,0x24(r9) (r9 the +0x18)
+        // Besides type 4, a visitor's game writes the row's +0xEC to +0x24 of the character's +0x18 (7105 for the
+        // Dregling merchant, 7135 for the smith Ed), where a body's game leaves -1. That value, not the type, draws them
+        // as white phantoms, and the draw update's reads above are a person's only. A friend writes back the value
+        // already there, so it sees them as the host does; their type stays 4.
+        if (m == co::Mode::Join && guest_ok((uint32_t)ctx->gpr[9]))
+            ctx->gpr[0] = (uint64_t)(int64_t)(int32_t)vm_read32((uint32_t)ctx->gpr[9] + 0x24u);
         break;
     case 0x002DDAA8u:   // a character's draw update (0x002DD920), after bl 0x0026F378: r3 its type, r31 the character
         // The type picks the draw object's (+0x6A4) phantom material, on or off (0x000D7C58: on for types 1-4, 8, 10,

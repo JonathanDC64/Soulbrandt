@@ -135,6 +135,8 @@ DES_REGION_ADDR(0x002A6C60, 0x002A4D10)  /* return address in 0x002A6AA8 */
 DES_REGION_ADDR(0x002A6C70, 0x002A4D20)  /* return address in 0x002A6AA8 */
 DES_REGION_ADDR(0x002A6CA8, 0x002A4D58)  /* return address in 0x002A6AA8 */
 DES_REGION_ADDR(0x002B2984, 0x002B0A34)  /* hook des_coop_hook: a corpse's drop add after lwz r9,0x8C(r9) (a friend gets drops too) */
+DES_REGION_ADDR(0x002C2848, 0x002C08F8)  /* hook des_coop_hook: the constructor of an NPC with a model of its own, the look a visitor's game gives it (a friend keeps the one a body's game gives) */
+DES_REGION_ADDR(0x002C32D8, 0x002C1388)  /* hook des_coop_hook: the same in its twin */
 DES_REGION_ADDR(0x002C9600, 0x002C76B0)  /* hook des_coop_hook: message 0x26's read (an area character's place, from the host), held after a load */
 DES_REGION_ADDR(0x002C96A8, 0x002C7758)  /* hook des_coop_hook: message 0x26's read in its loop (the same) */
 DES_REGION_ADDR(0x002C9740, 0x002C77F0)  /* hook des_coop_hook: message 4's read (the area characters' states, from the host), held after a load */
