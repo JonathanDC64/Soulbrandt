@@ -138,18 +138,31 @@ own update replaces it with the program.
 
 ## 6. Decisions
 
-Settled 2026-11-20 unless marked open.
+All settled on 2026-11-20.
 
-1. **Two updaters (open).** The launcher updates the game too: it installs the latest full release, and each release
-   reaches players the next time it checks. It unpacks the new version over the folder (read: the guide's "Releases
-   that install cleanly").
-   - Our own update check runs in any player's install, so in the launcher's too. Each works alone: after the launcher
-     unpacks a new version, setup shows "This version needs a rebuild" and rebuilds (setup_engine's `launch_state`:
-     Outdated).
-   - Used together, the launcher's idea of the installed version goes wrong after our update or our Go back. A
-     launcher update also leaves the files an older version had and the new one dropped.
-   - Proposed: when `RECOMPLAUNCHER=1` is set, skip our check and say in Settings > About that updates come from
-     RecompLauncher. A small change in `updates::wanted`.
+1. **Updates: the launcher's, not ours, in a copy it installed.** The launcher updates the game itself: it installs
+   the latest full release, and each release reaches players the next time it checks. It unpacks the new version over
+   the folder (read: the guide's "Releases that install cleanly").
+   - Two updaters on one install would fight: the launcher's idea of the installed version goes wrong after our
+     update or our Go back. After the launcher's update, setup shows "This version needs a rebuild" and rebuilds, as
+     after ours (setup_engine's `launch_state`: Outdated).
+   - **How the game knows** (`updates::from_launcher`, `port/ui/src/updates.cpp`):
+     - The launcher sets `RECOMPLAUNCHER=1` for each game it starts (read: the guide's table of variables). The
+       program's own restarts (setup's Play, Restart, co-op) keep the variables it started with.
+     - The first such start leaves `setup/recomplauncher.txt` in the install. The launcher's updates keep it, since
+       they unpack over the folder. A later start from the exe itself (a shortcut, a double-click) finds it, so it
+       leaves the updates to the launcher too.
+     - The file is left only in a player's install (`setup/release-info.txt` beside the program). A developer's build
+       that the launcher's "Add a build" starts gets none.
+   - **What changes then:**
+     - no check at the start;
+     - Settings > About's Check now is greyed out;
+     - the Updates line reads "RecompLauncher brings each new version.";
+     - its help says how to undo it: delete the file, and start the game without the launcher.
+   - **Measured** (the branch's host in a copy shaped like a player's install, a missing update feed):
+     - started with `RECOMPLAUNCHER=1`: the file is left and no check runs;
+     - started again without it: no check in 40 s;
+     - without the file: the check runs (and ends in "got no answer", the missing feed).
 2. **Downloads from our releases: yes.** That is how the launcher installs: straight from GitHub, the same files a
    player downloads by hand, checked by GitHub's SHA-256.
 3. **Game files and keys: none, by design.** The file asks for no copy, no key and no setup step. Setup asks for the

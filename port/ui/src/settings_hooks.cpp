@@ -92,7 +92,11 @@ std::string update_status() {
 }
 
 bool update_possible() {
-    return updates::possible();
+    return updates::possible() && !updates::from_launcher();
+}
+
+bool update_from_launcher() {
+    return updates::from_launcher();
 }
 
 bool update_checking() {
