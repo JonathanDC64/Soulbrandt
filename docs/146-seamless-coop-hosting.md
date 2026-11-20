@@ -681,9 +681,14 @@ alive.
   taken, whether the host has or not. One it takes is kept in its own world (the item list's flag set, from
   0x0025C5EC), as a boss's soul is: its own world doesn't offer it again.
 - **The people (the Nexus's and the areas').** A visitor's game (a phantom's) sets up each person whose character row
-  has byte `0xE8` set in a mode of its own (4), chosen in three places (a person's setup, US 0x002999C8, and its
-  controller's two, 0x002C2588 and 0x002C3018). Such a person has type 4, so the visitor sees a white phantom. On the
-  host, and in the friend's own world, the same people are types 5 and 9.
+  has byte `0xE8` set in a mode of its own (4), chosen in three places, for two kinds of people:
+  - a person with a player's body (`c0000`: Thomas, the Crestfallen, Ostrava): its setup, US 0x002999C8, gives the
+    character's constructor mode 4;
+  - an NPC with a model of its own (Stonefang's smith Ed, `c7131`, and the Dregling merchant, `c7100`): its
+    constructor (0x002C2588, or its twin 0x002C3018) picks type 4 itself.
+
+  Such a person has type 4, so the visitor sees a white phantom. On the host, and in the friend's own world, the same
+  people are types 5 and 9.
   - A friend keeps that mode, as the game's own co-op does.
   - The character's draw update (US 0x002DD920) reads the type four times:
     - the phantom material on or off (0x000D7C58, the hook at 0x002DDAA8 above);
@@ -693,6 +698,13 @@ alive.
 
     Types 5 and 9 read alike at all four. Each read is hooked (0x002DDAA8, 0x002DDADC, 0x002DDB48, 0x002DDB90). On a
     friend, such a person of type 4 reads 9, so the friend sees these people as the host does.
+  - **The other kind's look.** That draw update is the first kind's only (its draw object is at `+0x6A4`). The
+    second kind's constructor, in its visitor branch, also writes the row's `+0xEC` (7105 for the Dregling merchant,
+    7135 for Ed) to `+0x24` of the character's `+0x18`, where a body's game leaves -1. That value, not the type, draws
+    them as white phantoms: on a friend they were white phantoms in Stonefang from 11-14, when the mode was kept
+    (below), to the 11-19 playtest. With the value kept at -1 they are drawn as on the host while their type still
+    reads 4. The store's value is hooked (after `extsh r0,r0`, 0x002C2848, and 0x002C32D8 in the twin): on a friend
+    it becomes the value already there, so the store changes nothing.
   - **Only these people.** Some characters are set up with mode 4 in every game: the tutorial's developer ghosts
     (`m08_00`'s 400, and `m08_01`'s 401 to 404, white phantoms that walk through the demon's hall and fight each
     other) are type 4 on the host too. Until 11-15 every non-player of type 4 read 9 on a friend, so the friend saw the ghosts as living
@@ -1061,6 +1073,13 @@ the newer generation, and saves as usual.
   - In the Nexus (the after-tutorial saves), the friend's game noted the 14 people the host's game sets up, so
     Thomas and the others still read 9.
   - The shots didn't catch the ghost itself on screen: it fades in for about 10 s at a time.
+- Stonefang's merchant and smith (11-19, two copies, scripted, a save from the 11-15 co-op session, the friend
+  following the host to 2-1, the merchant seen from 3 m by both):
+  - Before (a scratch switch, same build), the friend saw the Dregling merchant as a white phantom. The value at
+    `+0x24` of his `+0x18` was 7105 on the friend's game and -1 on the host's.
+  - With the store's value kept, the friend saw him as the host does, with -1 there and his type still 4. Ed's store
+    was kept the same way (7135 not written); he wasn't looked at.
+  - Not checked with the change: the talk prompts of the two.
 - Closing the game window as a friend: the session is lost and nothing from it is saved (the game only saves at
   home).
 - The tutorial's demon (the Vanguard, `m08_01`) offered its soul only outside a session (`ATTR_NOSESSION`; the

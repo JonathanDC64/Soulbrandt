@@ -276,6 +276,8 @@
 0x0044C780=des_coop_hook   # ld r0,0x90(r1), the end of WarpNextStageKick: a guest going home loads its own area, where it stood
 0x00299B74=des_coop_hook   # lbz r0,0xE8(r9) in an NPC's setup 0x002999C8 (r24 the mode it came with): a friend notes the NPCs it sets up as the host's
 0x00299BB0=des_coop_hook   # mr r23,r3 in the NPC setup 0x002999C8 (r3 the new character): the same
+0x002C2848=des_coop_hook   # extsh r0,r0 in 0x002C2588, the constructor of an NPC with a model of its own, in a visitor's game: r0 the look its row gives a visitor (+0xEC), before stw r0,0x24(r9): a friend keeps the one a body's game gives
+0x002C32D8=des_coop_hook   # extsh r0,r0 in its twin 0x002C3018: the same
 0x004C9638=des_coop_hook   # bl 0x0026F378 (the player's type) in the talk check 0x004C9600: a friend can talk to the NPCs
 0x004C9C5C=des_coop_hook   # bl 0x0026F378 (the player's type) in the talk check 0x004C9C18: the same
 0x0025CB6C=des_coop_hook   # lwz r9,0x8C(r9) in the area items' add 0x0025CAE8 (the player's type for this area): a friend gets the items too
