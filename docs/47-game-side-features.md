@@ -32,6 +32,7 @@ Two labels are used below:
 | Change Name and Change Body | **Built** (section 1.11): `DES_IDENTITY`, with `DES_APPEARANCE`, adds both rows. The name goes through the on-screen keyboard. A new body takes off worn armour made only for the other body, opens Edit Appearance, then the Nexus reloads. | Done. |
 | Stat respec | **Built** (section 1.9): `DES_RESPEC` makes the statue in front of the Nexus spawn open a menu whose Respecialization resets to the class, refunds the levels and opens the level-up screen. The Maiden in Black's menu has the same row after Seek Soul Power. | Done. No on-screen prompt at the statue yet. |
 | Use several souls at once | **Built** (section 2.5): `DES_SOULS_AT_ONCE` makes Use on a soul stack ask how many, in Drop's count picker. | Done. |
+| Send items to Storage | **In progress** (section 2.6): `DES_STORAGE` adds a command below Drop that sends inventory stacks to Stockpile Thomas's box. | PR #519 draft; regional coverage unverified. |
 | 8-direction rolls while locked on | **Built** (section 3.7): `DES_ROLLDIR` plays the roll the game picks and turns the character toward the stick, so a roll goes where the stick points. | Done. True diagonal roll animations: not feasible (new animation content). |
 | 8-direction walking while locked on | **Probably nothing to do.** The walk already twists the legs toward the movement (inferred). | 0, unless the run shows otherwise. |
 | PvP arena | **Not feasible as a new mode.** The game has no arena. Online duels and invasions come with docs/46 stage 2. | 8-16 days through docs/46, after its stages 0 and 1. A new arena mode: weeks, high risk. |
@@ -519,6 +520,24 @@ Approach C, at the user's choice: the game's own count picker, the one Drop open
 | Continue from the save | 3 left and 1,418 souls after the next autosave. The game saves at Use, before the item leaves, so the save made at a Use holds the state before it (as without the knob) |
 
 Not tested: menu mode 1 (0x85), the storage box, and a co-op phantom's use.
+
+### 2.6 Send items to Storage
+
+`DES_STORAGE` adds **Send to Storage** below Drop in the player's inventory command menu. The transfer calls the game's own deposit routine. The addresses below are US keys for BLUS30443 01.00. `DES_GAME_CALLS` resolves them through the EU, JP and Asia tables.
+
+| Routine | Inputs and result |
+|---|---|
+| `0x00924BB8` deposit | `(box, inventory, slot, quantity)`; returns 1 after inserting into the box and reducing the inventory, or 0 when it refuses. |
+| `0x00924D58` count | `(box, category, item id)`; returns the amount of that item in the box. |
+| `0x00923FD8` limit | `(item-record array, slot)`; returns the stack limit for the selected item's key. |
+
+The box has a 12-byte header followed by 2048 records of 20 bytes each. Records begin at `box + 0x0C`; the high-water index is at `box + 0xA00C`. The insert helper scans those 2048 records for a free one. If the box is full and the item needs a new record, the helper returns failure and the deposit returns 0 before it removes inventory. Merging into an existing record is a separate path: the box can clamp a stack at its limit while the deposit still removes the requested quantity, so the caller must check the available stack room and compare the before/after counts.
+
+The inventory's burden-reason word is at `inventory + 0x1B0`. The earlier US pickup prototype treated value 1 as an inventory-burden refusal; that value interpretation is specific to the prototype's US path, not a regional guarantee.
+
+The added command is a fifth visible row after Use and Drop. The navigation state maps Use, Drop, Send, Reorganize and Auto Sort to logical rows 0 through 4. Send is intercepted at native row 2; Reorganize and Auto Sort dispatch to their original native rows 2 and 3. A `past_last` flag distinguishes Auto Sort when the native row wraps to 0. The port enables Send only when Drop's grey overlay is off and helper `0x008F88D0` accepts the selected slot. Thomas's Deposit Item screen uses its own eligibility checks and opens its quantity selector directly.
+
+In US gameplay, the player's inventory used mode 0 (slot `0x95`). Thomas's Take Item screen opened the shared command menu in mode 1 (slot `0x85`), where the selected row belongs to the box. Send is limited to the player's inventory mode. The native picker has distinct OK (`2000`) and cancel (`2002`) messages. A US copy-save run with Storage off at `d53905fb` opened native Drop on a stack of 16 with CANCEL selected. Send preserves the native default.
 
 ## 3. 8-direction movement while locked on
 

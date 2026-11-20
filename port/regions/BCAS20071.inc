@@ -299,9 +299,13 @@ DES_REGION_ADDR(0x008DA0E0, 0x008DB268)  /* hook des_viewer_rate */
 DES_REGION_ADDR(0x008DB170, 0x008DC2F8)  /* hook des_viewer_rate */
 DES_REGION_ADDR(0x008EF430, 0x008F0380)  /* call kLogoUpdate */
 DES_REGION_ADDR(0x008F2A58, 0x008F3F20)  /* call kBackPlateUpdate */
+DES_REGION_ADDR(0x008F88D0, 0x008F9D98)  /* call kStorageMovable */
 DES_REGION_ADDR(0x008FB4F0, 0x008FC9B8)  /* call */
 DES_REGION_ADDR(0x008FD2A8, 0x008FE770)  /* call */
 DES_REGION_ADDR(0x0090FCD0, 0x00911198)  /* call */
+DES_REGION_ADDR(0x00923FD8, 0x009254A0)  /* call kStorageLimit */
+DES_REGION_ADDR(0x00924BB8, 0x00926080)  /* call kStorageDeposit */
+DES_REGION_ADDR(0x00924D58, 0x00926220)  /* call kStorageCount */
 DES_REGION_ADDR(0x009E0148, 0x009E1610)  /* call */
 DES_REGION_ADDR(0x00A36220, 0x00A376E8)  /* call */
 DES_REGION_ADDR(0x00A6B2F8, 0x00A6C7C0)  /* hook des_coop_hook: the game's Lua reader (scripts edited for co-op) */
