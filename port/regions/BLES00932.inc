@@ -206,6 +206,7 @@ DES_REGION_ADDR(0x00532108, 0x00532F00)  /* call des_seamless_game (by address):
 DES_REGION_ADDR(0x00532358, 0x00533148)  /* call des_seamless_game (by address): the host's P2P message read */
 DES_REGION_ADDR(0x0053B31C, 0x0053C10C)  /* hook des_coop_hook: the session's leave */
 DES_REGION_ADDR(0x0053C1F8, 0x0053CFE8)  /* hook des_coop_hook: the network code's leave (OnIrregularLeaveSession), logged */
+DES_REGION_ADDR(0x0053C208, 0x0053CFF8)  /* hook des_net_script: the session's send to everyone */
 DES_REGION_ADDR(0x0053C66C, 0x0053D45C)  /* hook des_coop_hook: the send's leave, more than 1000 messages waiting, logged */
 DES_REGION_ADDR(0x0053CFE8, 0x0053DDD8)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x0053E368, 0x0053F158)  /* hook des_coop_hook: the session event dispatch's member-left case (a leave during a load taken at once) */

@@ -2409,6 +2409,79 @@ extern "C" void des_net_replay(ppu_context* ctx, uint32_t addr)
     }
 }
 
+/* A script's call to the other players' games (docs/69, "Script messages at
+ * high frame rates"). LuaCallStart and the like run the call in this game and
+ * send it to the others (0x00525ED8: a type-12 message of 20 bytes, through
+ * the session's send 0x0053C208), a message that must arrive. The scripts run
+ * once a frame, and a few repeat a call on every frame for some seconds
+ * (OnKeyTime2's every-frame form): the Tower Knight's "keep sending the down
+ * command" for 5 s, about 150 messages at the PS3's 30 fps and 2000 at
+ * 400 fps. With some delay on the connection more than 1000 then wait to go,
+ * and the game leaves the session ("The network connection is unstable").
+ * So a call the same as one on the frame before goes out at most 30 times a
+ * second of game time, as at 30 fps; the first three of a run go as they
+ * come, and so does a call made twice in one frame. One not sent goes
+ * nowhere: the send is handed a size it refuses (it takes size + 8 <= 0x800)
+ * and returns 0, as with no one to send to; no caller reads that. The call
+ * itself still ran in this game. At 30 fps or below nothing is held back.
+ * DES_NET_SCRIPT_RATE=0 turns it off. */
+constexpr int32_t  kScriptCallMsg  = 12;      /* the message type, and its size */
+constexpr uint32_t kScriptCallSize = 20;
+constexpr uint32_t kSendRefused    = 0x7F9;   /* a size the send refuses */
+constexpr double   kScriptCallGap  = 1.0 / 30.0;
+
+struct ScriptCall {
+    uint32_t w[5];   /* the message: the call's kind, its id, its argument, ... */
+    unsigned frame;  /* the frame it last came (des_phys_rate's count) */
+    unsigned run;    /* frames in a row it came; 0 = a free slot */
+    double next;     /* the game time the next copy goes */
+    bool said;
+};
+
+extern "C" void des_net_script(ppu_context* ctx, uint32_t)
+{
+    static int on = 1;
+    PS3_KNOB(on, ps3_env_int("DES_NET_SCRIPT_RATE", 1) != 0);
+    if (!on || (int32_t)ctx->gpr[4] != kScriptCallMsg || (uint32_t)ctx->gpr[6] != kScriptCallSize) return;
+    const uint32_t data = (uint32_t)ctx->gpr[5];
+    if (!guest_ptr_ok(data)) return;
+    uint32_t w[5];
+    for (int i = 0; i < 5; i++) w[i] = vm_read32(data + 4 * i);
+    const unsigned frame = s_phys_frame.load();
+    const double now = s_phys_clock.load();
+    static std::mutex lock;
+    static ScriptCall calls[8];
+    std::lock_guard<std::mutex> l(lock);
+    ScriptCall* c = nullptr;
+    for (ScriptCall& k : calls)
+        if (k.run && !memcmp(k.w, w, sizeof w)) c = &k;
+    if (!c) {   /* a new one takes the slot that came longest ago */
+        c = &calls[0];
+        for (ScriptCall& k : calls)
+            if (!k.run || (c->run && frame - k.frame > frame - c->frame)) c = &k;
+        memcpy(c->w, w, sizeof w);
+        c->run = 0;
+        c->said = false;
+    }
+    if (c->run && c->frame == frame) return;   /* again in the same frame */
+    c->run = c->run && frame - c->frame == 1u ? c->run + 1 : 1;
+    c->frame = frame;
+    if (c->run == 1) c->next = now + kScriptCallGap;
+    if (c->run <= 3) return;
+    if (now + 0.25 * kScriptCallGap >= c->next) {   /* (a quarter of a frame early is on time) */
+        c->next = std::max(c->next + kScriptCallGap, now);
+        return;
+    }
+    ctx->gpr[6] = kSendRefused;
+    static int lines = 0;
+    if (!c->said && lines < 16) {
+        c->said = true;
+        lines++;
+        fprintf(stderr, "[coop] a script sends its call %d (%d) to the other players on every frame: 30 a second "
+                "go, as at 30 fps\n", (int32_t)w[1], (int32_t)w[2]);
+    }
+}
+
 /* A step a camera adds once a frame, cur += input * step, tuned for 30 fps:
  * the bow's aim view zooms by 0.1 of its range a frame (ChrAimCam 0x00110608,
  * +0x138 += input * +0x13C, then clamped to [0, 1]), so at 120 fps it zoomed

@@ -175,6 +175,10 @@
 0x003A5EA0=des_net_replay  # cmplwi cr7, r0, 0xfff: the same after its second unpack
 0x003957B8=des_net_replay  # cmpwi cr7, r4, 0: the replay reader's entry (r4 = the data)
 
+# des_net_script (port/des_options.cpp): a script's call to the other players that it repeats every frame goes
+# out at most 30 times a second, as at 30 fps (docs/69, "Script messages at high frame rates").
+0x0053C208=des_net_script  # stdu r1, -0x120(r1): the session's send to everyone (r4 the type, r5 the data, r6 the size)
+
 # des_fx_state (port/des_options.cpp): particle effect (FFX) nodes' state
 # machine in the scene update 0x013B74B8. An emitter repeats by re-entering its
 # own state, at most once an update: 30 times a second at 30 fps, 240 at 240.
