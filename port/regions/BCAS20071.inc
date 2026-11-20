@@ -205,9 +205,13 @@ DES_REGION_ADDR(0x0052C2D8, 0x0052A670)  /* call des_seamless_game (by address) 
 DES_REGION_ADDR(0x00532108, 0x00530460)  /* call des_seamless_game (by address): a member's P2P message read */
 DES_REGION_ADDR(0x00532358, 0x005306B0)  /* call des_seamless_game (by address): the host's P2P message read */
 DES_REGION_ADDR(0x0053B31C, 0x00539674)  /* hook des_coop_hook: the session's leave */
+DES_REGION_ADDR(0x0053C1F8, 0x0053A550)  /* hook des_coop_hook: the network code's leave (OnIrregularLeaveSession), logged */
+DES_REGION_ADDR(0x0053C66C, 0x0053A9C4)  /* hook des_coop_hook: the send's leave, more than 1000 messages waiting, logged */
 DES_REGION_ADDR(0x0053CFE8, 0x0053B340)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x0053E368, 0x0053C6C0)  /* hook des_coop_hook: the session event dispatch's member-left case (a leave during a load taken at once) */
 DES_REGION_ADDR(0x0053EA2C, 0x0053CD84)  /* hook des_coop_hook: the session's check of a joined guest (a friend joins in either form) */
+DES_REGION_ADDR(0x0053EDAC, 0x0053D104)  /* hook des_coop_hook: the session update's leave, network memory under 64 KB, logged */
+DES_REGION_ADDR(0x00540A24, 0x0053ED7C)  /* hook des_coop_hook: the send's leave, more than 1000 messages waiting, logged */
 DES_REGION_ADDR(0x00540D90, 0x0053F0E8)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00541B78, 0x0053FED0)  /* call des_seamless_game (by address): a connection's P2P message read */
 DES_REGION_ADDR(0x0054E8C0, 0x00550870)  /* hook des_net_show */
@@ -393,6 +397,7 @@ DES_REGION_ADDR(0x019B5040, 0x019B5058)  /* data kToc, the TOC base (r2) */
 DES_REGION_ADDR(0x019D8C88, 0x019D8D08)  /* data kLanguageIndex */
 DES_REGION_ADDR(0x01AD6298, 0x01AD62C8)  /* data kFlipModeObj */
 DES_REGION_ADDR(0x01AD62C8, 0x01AD62F8)  /* data kStepHeap */
+DES_REGION_ADDR(0x01AD62E8, 0x01AD6318)  /* data kNetPool, the game's network memory */
 DES_REGION_ADDR(0x01AD6358, 0x01AD6388)  /* data kLocalBase */
 DES_REGION_ADDR(0x01AD6498, 0x01AD64C8)  /* data kArenaDebug */
 DES_REGION_ADDR(0x01AD6530, 0x01AD6560)  /* data kArenaTemp */

@@ -264,6 +264,10 @@
 0x0053B31C=des_coop_hook   # lwz r9,0x9C(r3) in the session's leave 0x0053B300: the host keeps its session
 0x0053E368=des_coop_hook   # bl 0x001A2028 (a byte set while the game loads) in the session event dispatch 0x0053DFD8's member-left case: a leave during a load is taken at once
 0x00467628=des_coop_hook   # cmpwi r4,0, the start of 0x00467628 (r4: the name of a script event the game raises, the session's among them): the co-op log names them
+0x0053C1F8=des_coop_hook   # bl 0x00411FD0 (OnIrregularLeaveSession, "The network connection is unstable") in 0x0053C0E0, a leave the network code calls: the co-op log says why the game left
+0x0053C66C=des_coop_hook   # bl 0x00411FD0 in the session's send 0x0053C208 (more than 1000 messages waiting to go): the same
+0x0053EDAC=des_coop_hook   # bl 0x00411FD0 in the session update 0x0053E578 (the network memory under 64 KB): the same
+0x00540A24=des_coop_hook   # bl 0x00411FD0 in the session's send 0x00540608 (more than 1000 messages waiting to go): the same
 0x00A6B2F8=des_coop_hook   # lwz r11,8(r4) in the game's Lua reader: co-op's edits to the area scripts
 0x00CA15A8=des_coop_hook   # lwz r0,4(r4) in Lua's string reader (getS): co-op's edits to the area scripts
 0x005086F8=des_coop_hook   # cmpwi cr7,r4,0x427F, the event flags' set (r3 flags, r4 flag, r5 value): progress kept for every player

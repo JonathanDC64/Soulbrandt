@@ -111,6 +111,14 @@ constexpr uint32_t kSmMembers = 0x13C;   // a list: the members, each node's slo
 constexpr uint32_t kSmArrival = 0x1DC;   // 4: in the world
 constexpr uint32_t kSmArea = 0x2A8;      // the area this game is in, FFFFFFFF while it loads
 constexpr uint32_t kStateHost = 3, kStateClient = 6;
+// The messages that must arrive and found no room in the network's send buffer wait in two queues: one for every
+// member (its count at +0xE0) and one for each member (a list at +0xC8; each node's queue at +8, its count at +0x40).
+// The sends (0x0053C208, 0x00540608) leave the session when the two hold more than 1000.
+constexpr uint32_t kSmSendWaiting = 0xE0;
+constexpr uint32_t kSmSendLists = 0xC8;
+// The game's network memory: *this is the pool the waiting messages are made in, and its table's +0x1C gives its free
+// bytes. The session update (0x0053E578) leaves the session when fewer than 64 KB are free.
+constexpr uint32_t kNetPool = 0x01AD62E8u;
 // GameMan.
 constexpr uint32_t kGmNextArea = 0x08;                       // FFFFFFFF unless a load was asked for
 constexpr uint32_t kGmSaveAsked = 0xA97;   // u8: a save asked for (SaveRequest_Profile's 0x0020FBA8; SaveRequest too)
@@ -2169,6 +2177,34 @@ bool left()
 
 }  // namespace des::seamless
 
+// The game's "The network connection is unstable / Leaving the session..." (global_event.lua's
+// OnIrregularLeaveSession, message 20001001) comes from 0x00411FD0, which four places call: the two sends, when more
+// than 1000 messages that must arrive are waiting to go; the session update, when the network memory is under 64 KB;
+// and 0x0053C0E0, a leave the network code calls through a pointer. The co-op log says which, with the numbers, so
+// that a report says why the game left. (Co-op then joins again on its own.)
+static void irregular_leave_line(ppu_context* ctx, uint32_t addr)
+{
+    const uint32_t sm = session_manager();
+    uint32_t all = 0, each = 0;
+    if (guest_ok(sm)) {
+        all = vm_read32(sm + kSmSendWaiting);
+        const uint32_t head = vm_read32(sm + kSmSendLists);
+        uint32_t n = guest_ok(head) ? vm_read32(head) : head;
+        for (int i = 0; n != head && guest_ok(n) && i < 16; i++, n = vm_read32(n)) {
+            const uint32_t q = vm_read32(n + 8);
+            if (guest_ok(q)) each += vm_read32(q + 0x40);
+        }
+    }
+    const uint32_t pool = vm_read32(DES_AT(kNetPool));
+    const uint32_t free_bytes = guest_ok(pool) ? call_virtual(ctx, pool, 0x1C, {(int64_t)pool}) : 0;
+    const char* why = addr == 0x0053EDACu ? "its network memory was under 64 KB"
+                    : addr == 0x0053C1F8u ? "its network code ended the session"
+                                          : "more than 1000 messages that must arrive were waiting to go";
+    std::fprintf(stderr, "[coop] the game leaves the session (\"The network connection is unstable\"): %s; %u "
+                 "waiting (%u for everyone, %u for one player), %u KB of network memory free\n", why, all + each, all,
+                 each, free_bytes / 1024);
+}
+
 // A line for each change of the session's state, for the co-op log (report.cpp's coop.log). With it, what tells the
 // game's leaves apart: the members as the room library has them (+0x11C to +0x120, 0x30 bytes each) and as the game
 // counts them (its member list's count), and the room's timer (+0x2C4, seconds: 55 when a room opens, -1 once a
@@ -2476,6 +2512,12 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
             }
         break;
     }
+    case 0x0053C1F8u:   // bl 0x00411FD0 (OnIrregularLeaveSession) in 0x0053C0E0, a leave the network code calls
+    case 0x0053C66Cu:   // the same in the send 0x0053C208: more than 1000 messages waiting to go
+    case 0x0053EDACu:   // the same in the session update 0x0053E578: the network memory under 64 KB
+    case 0x00540A24u:   // the same in the send 0x00540608: more than 1000 messages waiting to go
+        irregular_leave_line(ctx, addr);
+        break;
     case 0x00A6B2F8u:   // the game's Lua reader, after lwz r11,8(r4): ud = {buf, size, pos}; pos 0 is the first read
     case 0x00CA15A8u: { // Lua's string reader (getS), after lwz r0,4(r4): ud = {s, size}; size 0 after the first read
         const uint32_t ud = (uint32_t)ctx->gpr[4];
