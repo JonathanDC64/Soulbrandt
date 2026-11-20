@@ -202,6 +202,9 @@ the time the host reached the bridge, so that case wasn't tested.
 doesn't update an object that far away every frame (not checked), so no test ran before the first step. The bug
 needs the friend close by, as in the report.
 
+The pieces' physics is still dropped once they lie still, as at 30 fps: with the fix, about 6 s after the break solo
+unlocked, and 7 to 9 s in both games in two co-op runs (about 6 s at 30 fps).
+
 ## Arrows stuck in a character (2026-10-27)
 
 Above 30 fps, arrows stuck in the player jittered.
