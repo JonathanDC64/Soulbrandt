@@ -876,6 +876,26 @@ their first instruction):
   handler in the Nexus that takes or gives back the player's control ignore a call from another game
   (`param:IsNetMessage()`); only 90 and 91 match. Checked with two copies: the friend held the stick through the
   host's level-up and moved the whole time (before: no movement for those 20 s).
+- The Nexus's Archstones ignore another player's touch. A touch is a network event, so its handler ran in every
+  player's game: when the host touched a stone, a friend's game said "You can't return during multiplayer." (the
+  guest check above), and a friend's touch ran the host's handler. Each stone's handler now starts with
+  `if param:IsNetMessage() == true then return; end`, as the levels' stones do.
+- The poses a player's own script plays on that player show in the other players' games too: an Archstone's touch
+  (8283), the trip home after it (8284) and a sword pulled out (8290: Stormbringer, the Nexus's last sword and three
+  more). In the original no phantom saw a player use an Archstone, and a pull runs only in the puller's game, so the
+  other games never played them; a friend saw the host stand still at the stone and then the loading screen
+  (playtest 11-20). After each live `PlayAnimation(10000 or LOCAL_PLAYER, <pose>)` (70 in the areas' scripts) the edit
+  sends `LuaCallStartPlus(4013, <area's key>, <pose>)`, unless the handler runs for another player's message. Each
+  area's `SEAMLESS_Pose` (registered as it starts) plays it on the sender's character, `GetPlayID() + 10001`, as the
+  game's own pose sync does, and does nothing in the sender's game. That sync (`Luafunc_PlaySynchroAnimation`) isn't
+  used, as it would play the pose a second time in the sender's game, under the script's own `OnChrAnimEnd` watch of
+  it. The send goes out from inside `NotNetMessage` blocks too: the call's network send checks `proxy+0x65`, and
+  `NotNetMessage_begin` sets `proxy+0x64`. The key is the area's (7600 + 10 x world + block): the trip home's pose,
+  sent just before the trip, reached the friend's game 2 s after its follow had loaded 1-1, and played on the host
+  there as it arrived. No handler in the next area takes the old key, so the friend sees the touch and then the
+  load. Checked with two copies at the Boletaria stone: the host's game sent both poses; the friend's game played the
+  touch on the host's character (the stone's green light in its frames) and nothing in 1-1; the friend's own touch
+  gave it the "can't return" message and nothing in the host's game. The swords' pulls weren't run.
 
 The edited copies are cached by the original's size and hash, so a script read again costs nothing.
 
