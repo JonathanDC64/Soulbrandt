@@ -180,6 +180,9 @@ constexpr char kMsgGlow[4] = {'G', 'L', 'O', 'W'};
 constexpr char kMsgQwc[4] = {'Q', 'W', 'C', ' '};
 // u32 the host's load (trip) this game was in the world for: it arrived in the host's area after that load (sync_hold)
 constexpr char kMsgHere[4] = {'H', 'E', 'R', 'E'};
+// u32 the same load: this game emptied its queues of the area syncs after it (sync_read), so it reads what the others
+// send from now on (resend_own)
+constexpr char kMsgSync[4] = {'S', 'Y', 'N', 'C'};
 constexpr uint32_t kRoomMax = 0x200;
 
 bool guest_ok(uint32_t a) { return a >= 0x00010000u && a < 0xF0000000u; }
@@ -377,6 +380,7 @@ struct Qwc { bool have = false; uint32_t w[kQwcWords] = {}; };
 Qwc sHostQwc;                        // the host's tendency in use (QWC, a guest)
 Qwc sOwnQwc;                         // this guest's own in use, kept while the host's is in place
 uint32_t sOwnSaved[kQwcWords];       // and its own values (+0x48) at that time
+std::atomic<bool> sResendOwn{false}; // another game said SYNC: this game's characters' states go out again
 
 float getf(const uint8_t* p)
 {
@@ -426,6 +430,10 @@ void on_message(uint32_t from, const uint8_t* d, uint32_t n)
         const uint32_t trip = get32(d + 4);
         while (sHere.size() >= 8) sHere.erase(sHere.begin());   // (the oldest loads: none waits on them now)
         sHere[trip].insert(from);
+    } else if (!std::memcmp(d, kMsgSync, 4) && n >= 8) {
+        std::fprintf(stderr, "[coop] load %u: another player reads this area's syncs now; this game's characters' "
+                     "states go out again\n", get32(d + 4));
+        sResendOwn = true;
     } else if (!std::memcmp(d, kMsgGlow, 4) && n >= 12) {
         const uint32_t id = get32(d + 4);
         const bool on = get32(d + 8) != 0;
@@ -1540,6 +1548,7 @@ constexpr uint32_t kSyncMsgs[] = {0x03, 0x04, 0x21, 0x26};
 constexpr uint32_t kSyncBufSize = 0x400;   // the largest of them (0x21's)
 std::atomic<bool> sSyncHeld{false};        // read by the hooks
 std::atomic<bool> sSyncDrain{false};       // the hold ended: the next read empties every queue of them first
+std::atomic<bool> sSaySync{false};         // that's done: SYNC goes out (the tick)
 std::atomic<uint32_t> sSyncBuf{0};         // guest memory for that (kSyncBufSize)
 std::atomic<uint32_t> sSyncDropped{0};
 struct SyncHold { bool on = false, arrived = false; uint32_t trip = 0; };
@@ -1556,6 +1565,7 @@ void sync_read(ppu_context* ctx, uint32_t fn, std::initializer_list<int64_t> arg
         const uint32_t n = drain_syncs(ctx, (uint32_t)*args.begin()) + ((int32_t)ctx->gpr[3] > 0 ? 1 : 0);
         ctx->gpr[3] = 0;
         if (n) std::fprintf(stderr, "[coop] %u more area sync(s) from before the load dropped\n", n);
+        sSaySync = true;
         return;
     }
     if (!sSyncHeld.load() || (int32_t)ctx->gpr[3] <= 0) return;
@@ -1595,6 +1605,45 @@ void own_first(ppu_context* ctx, co::Mode m)
             ctx->gpr[0] = 1;
             return;
         }
+}
+
+// The game sends a character's animation state (message 0x21) only when it changes. A character's AI step (0x00308430)
+// compares the state it runs (0x002FABC8) with its copy in the area sync object's table at +0xC (8 bytes by index,
+// 0x002C9138). On a change it writes the new state there and queues the index (0x002CC988, the list at +0x84) for the
+// frame's send (0x002CBB10). An NPC that sat down stays sitting, so a game that missed that one message never gets it:
+// a friend drops what the others sent before its load ended (sync_read), and the host's NPCs sit in its first frames
+// (own_first), while the friend is still loading. 11-20: Thomas stood for good in the friend's Nexus.
+// So a game that has emptied those queues says SYNC, and each other game sets the copies of the characters it runs to
+// -1: its list (+0x58), and in the host's game before the first share-out its claims (+0x6C), as own_first counts
+// them. Each one's next AI step then finds a change and sends its state again. This is done while nothing is queued
+// (the list at +0x84 empty), so a -1 is never sent; one would be skipped there anyway (0x002FB688). Places (message 3)
+// go out all the time, so they need nothing.
+// The game's own catch-up, for a member's join (0x0053D288, 0x00297508, 0x002CD380), sends the table as it is (message
+// 0x26, from the host only), and the table holds 0 for a character no game runs yet.
+void resend_own(co::Mode m)
+{
+    if (!sResendOwn.load(std::memory_order_relaxed)) return;
+    const uint32_t obj = rd(rd(DES_AT(kChrMan)) + 0x1C0);
+    if (!guest_ok(obj) || vm_read32(obj + 0x84) != vm_read32(obj + 0x88)) return;   // (the next frame)
+    sResendOwn = false;
+    const uint32_t count = vm_read32(obj + 4), tbl = vm_read32(obj + 0xC);
+    if (!guest_ok(tbl) || count > 0x4000u) return;
+    uint32_t n = 0;
+    auto clear = [&](uint32_t id) {
+        if (id >= count) return;
+        vm_write32(tbl + id * 8, 0xFFFFFFFFu);
+        vm_write32(tbl + id * 8 + 4, 0xFFFFFFFFu);
+        n++;
+    };
+    const uint32_t b = vm_read32(obj + 0x5C), e = vm_read32(obj + 0x60);
+    if (guest_ok(b) && e >= b && e - b <= 0x4000u)
+        for (uint32_t p = b; p < e; p += 4) clear(vm_read32(p));
+    if (m == co::Mode::Host && sOwnFirst.load() == obj) {
+        const uint32_t cb = vm_read32(obj + 0x6C), ce = vm_read32(obj + 0x70);
+        if (guest_ok(cb) && ce >= cb && ce - cb <= 0x4000u)
+            for (uint32_t p = cb; p < ce; p += 4) clear(vm_read16(p + 2));
+    }
+    std::fprintf(stderr, "[coop] %u state(s) of this game's characters to send again\n", n);
 }
 
 // Whether a member of the game's list is still in the room: the room library's members (sm+0x11C to +0x120, 0x30
@@ -1664,9 +1713,16 @@ void sync_hold_tick(ppu_context* ctx, uint32_t sm, bool session)
     if (!session) {
         sHold = SyncHold();
         sSyncHeld = false;
+        sSaySync = false;
         std::lock_guard<std::mutex> l(sMsgLock);
         sHere.clear();
         return;
+    }
+    if (sSaySync.exchange(false)) {   // the queues were emptied (sync_read): the others send their states again
+        std::vector<uint8_t> b;
+        put32(b, sHold.trip);
+        send(kMsgSync, b);
+        std::fprintf(stderr, "[coop] load %u: this game reads the area syncs again (SYNC)\n", sHold.trip);
     }
     if (!sHold.on || !sHold.arrived) return;
     size_t heard;
@@ -2506,6 +2562,9 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
         break;
     case 0x002CA45Cu:   // whether a character is this game's own (0x002CA418), the lookup's end: own_first
         own_first(ctx, m);
+        break;
+    case 0x002CE440u:   // the area's update (0x002CE2B0), after bl 0x002CBB10 (the frame's send of message 0x21)
+        resend_own(m);
         break;
     case 0x002C9AECu:   // message 3 in 0x002C9A18: the manager *r27, the member r29, the buffer *(r31 + 0x28)
         sync_read(ctx, DES_AT(0x00532108u), {rd((uint32_t)ctx->gpr[27]), (uint32_t)ctx->gpr[29], 0x03,

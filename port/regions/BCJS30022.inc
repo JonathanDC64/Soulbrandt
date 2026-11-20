@@ -145,6 +145,7 @@ DES_REGION_ADDR(0x002C98C4, 0x002C78FC)  /* hook des_coop_hook: message 0x21's r
 DES_REGION_ADDR(0x002C9AEC, 0x002C7B24)  /* hook des_coop_hook: message 3's read (the area characters' places, from a member), held after a load */
 DES_REGION_ADDR(0x002CA45C, 0x002C8494)  /* hook des_coop_hook: the owned-list lookup's end (whether a character is this game's own) */
 DES_REGION_ADDR(0x002CB178, 0x002C91B0)  /* hook des_coop_hook: the area sync object's set-up for a new area */
+DES_REGION_ADDR(0x002CE440, 0x002CC478)  /* hook des_coop_hook: the area's update, after its send of message 0x21 */
 DES_REGION_ADDR(0x002CE90C, 0x002CC944)  /* hook des_coop_hook: the host's share-out of the area's characters */
 DES_REGION_ADDR(0x002D0EB0, 0x002CF2D8)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x002D8978, 0x002D7140)  /* call */

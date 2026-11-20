@@ -407,10 +407,27 @@ session is open, so for the area's first 5 s no game owned any character. In the
 
 Now, from the area's set-up (`0x002CB178`) until its first share-out (the timer's reset at `0x002CE90C`), the host's
 game also counts its claims as its own (a hook at the lookup's end, `0x002CA45C`), as it would if it were alone. From
-the first share-out on, the game shares the characters out as before. After the fix:
-- **The host:** the Nexus's NPCs sit from the first frame (their state script ran 8 ms after the area's start).
-- **A friend:** they sit once the host's state for them arrives, 0.5 s after the friend's area start, while its
-  arrival glow is still on.
+the first share-out on, the game shares the characters out as before. In the host's game the Nexus's NPCs now sit
+from the first frame (their state script ran 8 ms after the area's start).
+
+**A friend gets each character's state again once it reads them.** The game sends a character's animation state
+(message `0x21`) only when it changes:
+- A character's AI step (`0x00308430`) compares the state it runs with its copy in the sync object's table at `+0xC`.
+- On a change it writes the new state there and queues the character for the frame's send (`0x002CBB10`).
+
+An NPC that sat down stays sitting, so a game that missed that one message never gets it. A friend drops what the others
+sent before its load ended (the hold above). With the host's NPCs sitting in its first frames, the friend was often
+still loading, so the NPCs stood for good in its world. That happened in a test (11-20): the Nexus, then 1-1, then back.
+
+Now a game that has emptied those queues says so (`SYNC`). Each other game then sets its copies of the states of the
+characters it runs to -1: its list, and in the host's game before the first share-out its claims. The game's own
+check then sends each state again on the next frame. This happens only while nothing is queued for the send (the list
+at `+0x84` empty, checked by a hook after the send, `0x002CE440`), so a -1 is never sent. Places (message 3) go out
+all the time, so they need nothing.
+
+The game has a catch-up of its own for a member that joins: `0x0053D288` calls `0x00297508`, which calls `0x002CD380`.
+The host then sends message `0x26`, each character's place and state, one character a frame. That message sends the
+table as it is, and the table holds 0 for a character no game runs yet, so it isn't used here.
 
 **A friend that leaves during the host's load.** The session's event dispatch (`0x0053DFD8`) takes a member's leave
 through the game's member-left step (`0x0053B7F8`) only while a byte the game sets during its loads is clear
