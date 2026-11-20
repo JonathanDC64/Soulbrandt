@@ -1565,6 +1565,38 @@ void sync_read(ppu_context* ctx, uint32_t fn, std::initializer_list<int64_t> arg
     ctx->gpr[3] = 0;
 }
 
+// Which game moves each of the area's characters. A game asks the area's sync object (the character manager's
+// +0x1C0) whether a character is its own (0x002955B8, 0x002CA418: its list at +0x58). Its own character gets its AI
+// controller (0x002D2270: the character's +0x4A0) and runs its logic; another game's gets the network controller
+// (+0x4A4) and waits for that game's messages, so an NPC's state script doesn't run and it stands in its default pose.
+// The host shares the characters out every 5 s (0x002CE2B0, its timer at +0x90 from 0 when the area is set up): its
+// own share into its list, each other player's by message 0x15. A game alone in its session uses its claims
+// (+0x6C, 0x002CDD38) as its list.
+// In the game, the host's list carries over from before anyone joined. A seamless load sets up a new area while the
+// session is open, so for its first 5 s no game owned any of its characters. 11-20 in the Nexus: the NPCs stood for
+// 5.0 s in the host's game and 5.4 s in a friend's, then sat down. Now, from the area's set-up until its first
+// share-out, the host's game counts its claims as its own, as it would if it were alone. From the first share-out on,
+// the game shares them out as before.
+std::atomic<uint32_t> sOwnFirst{0};   // the area sync object whose first share-out hasn't happened yet
+
+// The list lookup's end (0x002CA418, after xor r0,r11,r10): r0 is 0 when the id (r4) isn't in the list (r3, the
+// object's +0x58). In the host's game, before the area's first share-out, a character it claims is its own too.
+void own_first(ppu_context* ctx, co::Mode m)
+{
+    const uint32_t obj = sOwnFirst.load(std::memory_order_relaxed);
+    if (!obj || m != co::Mode::Host || ctx->gpr[0] != 0 || (uint32_t)ctx->gpr[3] != obj + 0x58u) return;
+    const uint32_t sm = session_manager();
+    if (!guest_ok(sm) || vm_read32(sm + kSmState) != kStateHost) return;
+    const uint32_t id = (uint32_t)ctx->gpr[4];
+    const uint32_t b = vm_read32(obj + 0x6Cu), e = vm_read32(obj + 0x70u);
+    if (id > 0xFFFFu || !guest_ok(b) || e < b || e - b > 0x4000u) return;
+    for (uint32_t p = b; p < e; p += 4)   // each claim's id is its low half
+        if (vm_read16(p + 2) == id) {
+            ctx->gpr[0] = 1;
+            return;
+        }
+}
+
 // Whether a member of the game's list is still in the room: the room library's members (sm+0x11C to +0x120, 0x30
 // bytes each) start with the same word as the member's +8. A friend's leave during the host's load (its own trip,
 // Leave co-op as the host warps) leaves its member in the game's list; the room library has dropped it.
@@ -2466,6 +2498,15 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
         break;
     // The area syncs' reads, after each call (r3 the bytes read; sync_read). From a member: 0x00532108(session
     // manager, member, message, buffer, size); from the session's host (sm+0xE8): 0x00532358(sm, message, buffer, size).
+    case 0x002CB178u:   // the area sync object's set-up for a new area (0x002CB178), after li r0,0x1D0: r3 the object
+        sOwnFirst = (uint32_t)ctx->gpr[3];
+        break;
+    case 0x002CE90Cu:   // its share-out (0x002CE2B0), after stw r0,0x90(r9) (the timer back to 0): r9 the object
+        if ((uint32_t)ctx->gpr[9] == sOwnFirst.load()) sOwnFirst = 0;
+        break;
+    case 0x002CA45Cu:   // whether a character is this game's own (0x002CA418), the lookup's end: own_first
+        own_first(ctx, m);
+        break;
     case 0x002C9AECu:   // message 3 in 0x002C9A18: the manager *r27, the member r29, the buffer *(r31 + 0x28)
         sync_read(ctx, DES_AT(0x00532108u), {rd((uint32_t)ctx->gpr[27]), (uint32_t)ctx->gpr[29], 0x03,
                                      rd((uint32_t)ctx->gpr[31] + 0x28), 0x70});

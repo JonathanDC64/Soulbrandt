@@ -389,6 +389,29 @@ during a game's load used to stay in that game's member list (each game now take
 the room library had dropped it: its members (`sm+0x11C` to `+0x120`, 0x30 bytes each) start with the word a member
 has at `+8`. Before, the host's game waited on such a friend until it joined again.
 
+**Who moves each character after a load.** A game moves only the area's characters it owns. Each game asks the
+area's sync object (the character manager's `+0x1C0`) whether a character is its own: `0x002955B8` and `0x002CA418`
+look in the object's list at `+0x58`.
+- **A character the game owns** gets its AI controller (`0x002D2270`, the character's `+0x4A0`) and runs its state
+  script.
+- **Another game's character** gets the network controller (`+0x4A4`) and waits for that game's messages. Until they
+  come, an NPC stands in its default pose.
+
+The host shares the characters out every 5 s (`0x002CE2B0`; the timer at `+0x90` starts at 0 when the area is set
+up). The host's share goes into its own list, and each friend's goes out as message `0x15`. A game alone in its
+session uses its claims (`+0x6C`, built in `0x002CDD38`) as its list.
+
+In the game, the host's list carries over from before anyone joined. A seamless load sets up a new area while the
+session is open, so for the area's first 5 s no game owned any character. In the Nexus (11-20) the NPCs stood for
+5.0 s in the host's game and 5.4 s in a friend's, then sat down.
+
+Now, from the area's set-up (`0x002CB178`) until its first share-out (the timer's reset at `0x002CE90C`), the host's
+game also counts its claims as its own (a hook at the lookup's end, `0x002CA45C`), as it would if it were alone. From
+the first share-out on, the game shares the characters out as before. After the fix:
+- **The host:** the Nexus's NPCs sit from the first frame (their state script ran 8 ms after the area's start).
+- **A friend:** they sit once the host's state for them arrives, 0.5 s after the friend's area start, while its
+  arrival glow is still on.
+
 **A friend that leaves during the host's load.** The session's event dispatch (`0x0053DFD8`) takes a member's leave
 through the game's member-left step (`0x0053B7F8`) only while a byte the game sets during its loads is clear
 (`bl 0x001A2028`). While it is set, the dispatch drops the event. The room library drops the member anyway, and the id
