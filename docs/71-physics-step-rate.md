@@ -194,9 +194,14 @@ fell in each game (host / friend):
 | 17 m and 34 m away (below the bridge) | 18 / 0, 18 / 0 | |
 | 112 m away, where it arrived in 2-1, and came to look 6 s later | 0 / 20 down | 18 / 20 down |
 | The same, the host onto the bridge straight after the load (the third with the friend on 2 cores at idle priority) | | 19 / 20 down, 20 / 20 down (the friend's fix off), 19 / 20 down |
+| Still loading: the friend joins while the host waits at the bridge, and the host breaks it about 2 s into the friend's 5.4 s load | | 19 / 20, 19 / 20, and 19 / 20, 19 / 20 with the friend's fix off |
 
-The last row was meant to break the bridge while the friend was still loading 2-1. Its load had always finished by
-the time the host reached the bridge, so that case wasn't tested.
+The row before it was meant to break the bridge while the friend was still loading 2-1, but its load had always
+finished by the time the host reached the bridge. The last row does it: the host stands at the bridge before the
+friend joins, and walks on as the friend's join load of 2-1 starts. The bridge breaks before the friend's game has
+even made it. The friend's game breaks it about 0.4 s after its load, without the script's handler (the object just
+turns broken), and the pieces fall in every run, with or without the fix there. Walking on, the friend falls, as
+it should with the bridge gone.
 
 "20 down": the friend first saw the pieces already on the ground, so they had fallen there too. Most likely the game
 doesn't update an object that far away every frame (not checked), so no test ran before the first step. The bug
