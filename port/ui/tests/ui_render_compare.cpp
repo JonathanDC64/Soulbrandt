@@ -1733,7 +1733,7 @@ int main(int argc, char** argv) {
         pages.push_back({"des-controls-help", 1280, 720, false, 1.f, false,
                          in_band([] { open_controls(true, 0, 0, false, true); }), {}});
         pages.push_back({"des-controls-restore", 1280, 720, false, 1.f, false,
-                         in_band([] { open_controls(false, 16, 0, false, false); }), {}});
+                         in_band([] { open_controls(false, 17, 0, false, false); }), {}});   // (16 buttons, Kick)
         // Notes over the game as stone bars, each kind's mark in its colour; the menu hint low in the middle.
         for (const char* kind : {"warning", "done", "info", "trophy", "hint"})
             pages.push_back({std::string("des-note-") + kind, 1280, 720, false, 1.f, false,

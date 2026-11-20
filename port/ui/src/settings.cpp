@@ -353,6 +353,64 @@ std::string keys_for_pad(const std::string& keys) {
     return out;
 }
 
+// The gamepad's buttons as cellPad gets them (PAD_MAP), less the Kick row's ("kick=", Change Buttons' Gamepad page:
+// des_kick in des_options.cpp). With DES_KICK=1 its pad button presses R1 too, added to R1's buttons, and nothing else:
+// a game button that had it has it no more ("none" when that leaves it none), and DES_KICK_PAD names it, for des_kick
+// to read at each attack. A game button named again replaces what it had, in cellPad, so the changed ones go last.
+std::string map_for_pad(const std::string& map) {
+    // cellPad's names (pad_map.h): the game's 16 buttons, then the extra ones some pads have (paddles, misc, touchpad)
+    static const char* const kNames[] = {
+        "select", "l3", "r3", "start", "up", "right", "down", "left", "l2", "r2", "l1", "r1",
+        "triangle", "circle", "cross", "square", "paddle1", "paddle2", "paddle3", "paddle4", "misc", "touchpad"};
+    constexpr int kGame = 16;
+    const auto lower = [](std::string s) {
+        for (char& c : s) c = char(std::tolower(static_cast<unsigned char>(c)));
+        return s;
+    };
+    const std::string mode = pinned("DES_KICK") ? pinned_value("DES_KICK") : get("DES_KICK");
+    std::string out, kick;
+    std::map<std::string, std::string> src;   // each game button's last value
+    size_t at = 0;
+    while (at < map.size()) {
+        size_t end = map.find_first_of(", ;", at);
+        if (end == std::string::npos) end = map.size();
+        const std::string pair = map.substr(at, end - at);
+        at = end + 1;
+        if (pair.empty()) continue;
+        const size_t eq = pair.find('=');
+        const std::string target = lower(pair.substr(0, eq));
+        const std::string value = eq == std::string::npos ? "" : lower(pair.substr(eq + 1));
+        if (target == "kick") {
+            kick = value;
+            continue;
+        }
+        src[target] = value;
+        if (!out.empty()) out += ',';
+        out += pair;
+    }
+    bool known = false;
+    for (const char* name : kNames) known = known || kick == name;
+    if (mode != "1" || !known) kick.clear();
+    for (int g = 0; g < kGame && !kick.empty(); g++) {
+        const std::string name = kNames[g];
+        const auto it = src.find(name);
+        const std::string was = it == src.end() ? name : it->second;
+        std::string now;   // the same buttons, less the Kick's, and R1's with it
+        for (size_t a = 0; a <= was.size();) {
+            size_t bar = was.find('|', a);
+            if (bar == std::string::npos) bar = was.size();
+            const std::string item = was.substr(a, bar - a);
+            a = bar + 1;
+            if (!item.empty() && item != "none" && item != kick) now += (now.empty() ? "" : "|") + item;
+        }
+        if (name == "r1") now += (now.empty() ? "" : "|") + kick;
+        if (now.empty()) now = "none";
+        if (now != was) out += (out.empty() ? "" : ",") + name + "=" + now;
+    }
+    ps3_setenv("DES_KICK_PAD", kick.c_str());
+    return out;
+}
+
 // The environment variables a setting drives (DES_SKIP_INTRO_MOVIE sets PS3_SAIL_SKIP_FIRST, which cellSail reads as each movie opens; PAD_KEYS gives cellPad the
 // layout with the changes after it, keys_for_pad).
 void apply_env(std::string_view key, const std::string& value) {
@@ -366,6 +424,10 @@ void apply_env(std::string_view key, const std::string& value) {
     if (key == "DES_NET_PASSWORD") return;  // (only its hash is used, in PS3_HTTP_HEADER: apply_match_group)
     if (key == "PAD_KEYS") {
         ps3_setenv("PAD_KEYS", keys_for_pad(keys_with_layout(value)).c_str());
+        return;
+    }
+    if (key == "PAD_MAP") {
+        ps3_setenv("PAD_MAP", map_for_pad(value).c_str());
         return;
     }
     ps3_setenv(k.c_str(), value.c_str());
@@ -840,6 +902,10 @@ void load_and_apply_env() {
     ps3_setenv("PAD_KEYS", keys_for_pad(keys_with_layout(keys)).c_str());
     std::fprintf(stderr, "[ui] keyboard and mouse: the Souls layout%s%s\n", keys.empty() ? "" : ", changed by ",
                  keys.c_str());
+    // The gamepad's buttons too, once DES_KICK is known: the Kick row's button is R1's with it (map_for_pad).
+    ps3_setenv("PAD_MAP", map_for_pad(pinned("PAD_MAP") ? pinned_value("PAD_MAP") : get("PAD_MAP")).c_str());
+    if (const char* kick = std::getenv("DES_KICK_PAD"); kick && *kick)
+        std::fprintf(stderr, "[ui] gamepad: %s kicks (the Kick row)\n", kick);
     // Mods before the network: a gameplay mod keeps it off. Which mods are on is the mods folder's order file
     // (mods.hpp); settings.ini's DES_MODS, from before it, moves there once. DES_MODS in the environment still wins
     // (a test run's mods).
@@ -890,10 +956,19 @@ void set(std::string_view key, const std::string& value) {
     if ((d->apply == Apply::Live || d->apply == Apply::Session) && !pinned(key))
         apply_env(key, value.empty() ? default_of(*d) : value);
     if (key == "DES_NET_PASSWORD" && !pinned(key)) apply_match_group();
-    if (key == "DES_KICK" && !pinned(key))   // (the Kick key presses R1 only with DES_KICK=1: keys_for_pad)
+    if (key == "DES_KICK" && !pinned(key)) {   // (the Kick key and button press R1 only with DES_KICK=1: keys_for_pad,
+                                               // map_for_pad)
         apply_env("PAD_KEYS", pinned("PAD_KEYS") ? pinned_value("PAD_KEYS") : get("PAD_KEYS"));
+        apply_env("PAD_MAP", pinned("PAD_MAP") ? pinned_value("PAD_MAP") : get("PAD_MAP"));
+    }
     save();
     write_in_use();
+}
+
+bool kick_chosen() {
+    if (pinned("DES_KICK") || get("DES_KICK") == "1") return false;
+    set("DES_KICK", "1");
+    return true;
 }
 
 void store(std::string_view key, const std::string& value) {

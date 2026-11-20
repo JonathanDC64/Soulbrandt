@@ -1,6 +1,8 @@
 // Written for Demon's Souls. What Change Buttons changes (controls_model.hpp); moved out of controls_window.cpp.
 #include "controls_model.hpp"
 
+#include "ui.hpp"  // (first: RmlUi's headers before platform.hpp's windowsx.h, whose GetNextSibling is a macro)
+
 #include "input.hpp"
 #include "keys.hpp"
 #include "platform.hpp"
@@ -9,6 +11,7 @@
 #include "sound.hpp"
 
 #include <cctype>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -19,6 +22,7 @@ const char* const kPadNames[kPadCount] = {"select", "l3", "r3", "start", "up", "
                                           "l2", "r2", "l1", "r1", "triangle", "circle", "cross", "square"};
 const char* const kPadLabels[kPadCount] = {"Select", "L3", "R3", "Start", "Up", "Right", "Down", "Left",
                                            "L2", "R2", "L1", "R1", "Triangle", "Circle", "Cross", "Square"};
+const char* const kPadExtraNames[kPadExtraCount] = {"paddle1", "paddle2", "paddle3", "paddle4", "misc", "touchpad"};
 const int kPadRows[kPadCount] = {14, 13, 15, 12, 10, 11, 8, 9, 1, 2, 3, 0, 4, 6, 7, 5};
 const char* const kPadSections[kPadCount] = {"Face buttons", nullptr, nullptr, nullptr, "Shoulders", nullptr,
                                              nullptr, nullptr, "Sticks", nullptr, "Start and Select", nullptr,
@@ -35,7 +39,8 @@ const Target kTargets[] = {
     {"r1", "Attack (R1)", nullptr, nullptr},
     // the port's, not cellPad's (settings.cpp's keys_for_pad)
     {"kick", "Kick (own key)", nullptr,
-     "The forward attack, or kick, when Settings > Controls > Forward attack is Own key."},
+     "The forward attack, or kick, when Settings > Controls > Forward attack is Own key. Choosing a key here sets "
+     "Forward attack to Own key."},
     {"r2", "Strong attack (R2)", nullptr, nullptr},
     {"l1", "Left hand, guard (L1)", nullptr, nullptr},
     {"l2", "Left hand, parry (L2)", nullptr, nullptr},
@@ -197,10 +202,17 @@ int either_side(int vk) {
     }
 }
 
+// The pad buttons held that a capture for `target` can take, as host buttons (bit i: kPadHostCount's i): the 16, and
+// for the Kick also the extra ones some pads have.
+unsigned capture_buttons(int target) {
+    const unsigned b = input::pad_buttons();
+    return target == kKickTarget ? b | input::pad_extra_buttons() << kPadCount : b;
+}
+
 // Nothing is held: no key, mouse button or pad button (the press that started the capture would otherwise be taken
 // as the choice).
 bool input_neutral() {
-    if (input::pad_buttons() != 0) return false;
+    if (input::pad_buttons() != 0 || input::pad_extra_buttons() != 0) return false;
     if (settings::no_user_input()) return true;  // PS3_NO_USER_INPUT: a key held is the user's
     for (int vk = 1; vk < 0xFF; vk++) {
         if (keys::key_down(vk)) return false;
@@ -220,15 +232,118 @@ PadMap pad_map() {
     return m;
 }
 
-void save_pad_map(const PadMap& m) {
+namespace {
+
+int host_index(const std::string& s) {
+    for (int i = 0; i < kPadHostCount; i++) {
+        if (same_name(s.c_str(), pad_host_name(i))) return i;
+    }
+    return -1;
+}
+
+// PAD_MAP as the rows write it: the game buttons moved, then the Kick's button ("kick=paddle1").
+void write_pad_map(const PadMap& m, int kick) {
     std::string out;
     for (int i = 0; i < kPadCount; i++) {
         if (m[i] == i) continue;
         if (!out.empty()) out += ',';
         out += std::string(kPadNames[i]) + "=" + kPadNames[m[i]];
     }
+    if (kick >= 0) out += std::string(out.empty() ? "" : ",") + "kick=" + pad_host_name(kick);
     settings::set("PAD_MAP", out);
 }
+
+}  // namespace
+
+void save_pad_map(const PadMap& m) {
+    write_pad_map(m, pad_kick());
+}
+
+const char* pad_host_name(int host) {
+    if (host >= 0 && host < kPadCount) return kPadNames[host];
+    if (host >= kPadCount && host < kPadHostCount) return kPadExtraNames[host - kPadCount];
+    return "";
+}
+
+std::string pad_host_label(int host, prompts::Device device) {
+    if (host >= 0 && host < kPadCount) return kPadLabels[host];
+    using prompts::Device;
+    // The extra buttons as each pad names them (SDL's order: paddle1 is the upper right paddle, paddle2 the upper
+    // left, paddle3 and paddle4 the lower ones; on a DualSense Edge its back buttons, then its Fn buttons).
+    static const char* const kXbox[kPadExtraCount] = {"P1", "P3", "P2", "P4", "Share", "Touchpad"};
+    static const char* const kSony[kPadExtraCount] = {"Right back button", "Left back button", "Right Fn",
+                                                      "Left Fn", "Mute", "Touchpad"};
+    static const char* const kDeck[kPadExtraCount] = {"R4", "L4", "R5", "L5", "Share", "Touchpad"};
+    static const char* const kSwitch[kPadExtraCount] = {"Paddle 1", "Paddle 2", "Paddle 3", "Paddle 4", "Capture",
+                                                        "Touchpad"};
+    static const char* const kAny[kPadExtraCount] = {"Paddle 1", "Paddle 2", "Paddle 3", "Paddle 4", "Share",
+                                                     "Touchpad"};  // (the keyboard in use: no pad to go by)
+    if (host < kPadCount || host >= kPadHostCount) return "None";
+    const int k = host - kPadCount;
+    switch (device) {
+    case Device::PlayStation: return kSony[k];
+    case Device::Xbox: return kXbox[k];
+    case Device::SteamDeck: return kDeck[k];
+    case Device::Nintendo: return kSwitch[k];
+    default: return kAny[k];
+    }
+}
+
+int pad_kick() {
+    int kick = -1;
+    each_pair(settings::get("PAD_MAP"), [&](const std::string& game, const std::string& v) {
+        if (same_name(game.c_str(), "kick")) kick = host_index(v);  // (named again, it replaces)
+    });
+    return kick;
+}
+
+void set_pad_kick(int host) {
+    write_pad_map(pad_map(), host >= 0 && host < kPadHostCount ? host : -1);
+}
+
+bool kick_on() {
+    const char* key = "DES_KICK";
+    return (settings::pinned(key) ? settings::pinned_value(key) : settings::get(key)) == "1";
+}
+
+namespace {
+
+// A Kick button or key was chosen: the player wants it to kick, and it does only with Forward attack at Own key. At
+// Forward + attack it would do nothing, and nothing on Change Buttons said so (a tester bound one and it never
+// kicked), so choosing one sets Own key (settings::kick_chosen), and a note says what that changes. Clearing one
+// changes nothing.
+void kick_chosen() {
+    if (!settings::kick_chosen()) return;
+    std::fprintf(stderr, "[ui] Change Buttons: a Kick was chosen, so Forward attack is Own key\n");
+    push_toast({
+        .type = "",
+        .title = "Forward attack: Own key",
+        .content = "<toast-message-text>The Kick button or key kicks now. Attacking alone no longer kicks (Settings "
+                   "&gt; Controls &gt; Forward attack).</toast-message-text>",
+        .duration = std::chrono::seconds(6),
+    });
+}
+
+}  // namespace
+
+bool kick_takes(int button) {
+    const int kick = pad_kick();
+    return kick >= 0 && button >= 0 && button < kPadCount && pad_map()[button] == kick && kick_on();
+}
+
+std::string pad_value_label(int button, prompts::Device device) {
+    if (kick_takes(button)) return "None (Kick)";
+    return pad_host_label(pad_map()[button], device);
+}
+
+std::string kick_label(prompts::Device device) {
+    return pad_host_label(pad_kick(), device);
+}
+
+const char* const kKickLabel = "Kick";
+const char* const kKickAbout =
+    "This button kicks and does nothing else. Choosing it sets Settings > Controls > Forward attack to Own key, so "
+    "attacking alone no longer kicks. A back button or paddle works too, when the pad reports it.";
 
 void assign(PadMap& m, int button, int value) {
     for (int i = 0; i < kPadCount; i++) {
@@ -429,12 +544,17 @@ void Capture::update_pad() {
         cancel();
     } else if (!mArmed) {
         mArmed = input_neutral();
-    } else if (const unsigned b = input::pad_buttons(); b != 0) {
+    } else if (const unsigned b = capture_buttons(mTarget); b != 0) {
         int host = 0;
         while (!(b & (1u << host))) host++;
-        PadMap m = pad_map();
-        assign(m, mTarget, host);
-        save_pad_map(m);
+        if (mTarget == kKickTarget) {
+            set_pad_kick(host);  // (the game button that had it, if any, then has none while the Kick is on)
+            kick_chosen();
+        } else {
+            PadMap m = pad_map();
+            assign(m, mTarget, host);
+            write_pad_map(m, pad_kick() == host ? -1 : pad_kick());  // (a pad button works one thing)
+        }
         play_sound(kSoundBindingChanged);
         cancel();
     }
@@ -511,6 +631,7 @@ void Capture::bind_key(int in, int mod) {
     KeyMap m = key_map();
     assign_key(m, mTarget, mSlot, in, mod);
     save_key_map(m);
+    if (in != 0 && std::strcmp(kTargets[mTarget].name, "kick") == 0) kick_chosen();  // (not for Delete: none)
     play_sound(kSoundBindingChanged);
     cancel();
 }
