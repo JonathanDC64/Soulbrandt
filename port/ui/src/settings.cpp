@@ -72,6 +72,7 @@ constexpr Def kDefs[] = {
     {"DES_IDENTITY", "1", Apply::Live},        // des_respec.cpp, each frame: 1 = with DES_APPEARANCE, also Change Name and Change Body
     {"DES_RESPEC", "0", Apply::Live},          // des_respec.cpp, each frame: 1 = the Nexus statue and the Maiden in Black offer a stat respec
     {"DES_TENDENCY", "0", Apply::Live},        // des_respec.cpp, each frame: 1 = the Nexus statue offers Change Tendency
+    {"DES_LIZARD_RETURN", "0", Apply::Live},   // des_seamless_scripts.cpp, at each area's load: 1 = a crystal lizard that gets away comes back
     {"DES_DOF", "1", Apply::Live},             // des_dof, read each frame
     {"RSX_AA", "0", Apply::Live},              // 0 = none, as on the PS3; 1 = FXAA, 2 = SMAA, before the HUD; per batch
     {"RSX_SCALE", "100", Apply::Live},         // the D3D12 backend remakes its render targets at the next batch
