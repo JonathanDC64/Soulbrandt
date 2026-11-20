@@ -13,8 +13,9 @@ what is left open. Labels: **read** (the guide, the schema or our code), **measu
 - **It asks for no game copy, runs no setup step and downloads nothing.** Setup still does all of that with the
   player's own copy: the launcher's Play opens setup on a first start, as a double-click does.
 - **A check** (`tools/release/recomplauncher.py check`, in CI) fails when the file and the menu's settings drift.
-- **It ships in 0.2.0** (the maintainer's call, 2026-11-20). Section 6 has the maintainer's decisions, section 7 the questions
-  for the launcher's team.
+- **It waits for 0.2.1** (the maintainer's call, 2026-11-20): 0.2.1's single data folder (docs/164) moves
+  `settings.ini` and the saves, and the file names both, so it ships with the new paths from the start. Section 6
+  has the maintainer's decisions, section 7 the questions for the launcher's team.
 
 ## 1. What the launcher does (read)
 
