@@ -484,6 +484,40 @@ Online, other players' ghosts walked far too fast above 30 fps.
 - Bloodstain replays and the `BeginReplayGhost` event most likely play through the same pair (ReplayGhostIns calls
   SetReplay 0x003145D8), so they get the same fix. Not checked in a run.
 
+## 7c. Script messages at high frame rates (read: the area scripts, EBOOT disassembly and two-copy runs, 2026-11-19)
+
+A tester playing as a blue phantom at an unlocked frame rate got "The network connection is unstable / Leaving the
+session..." as the Tower Knight went down. The host played at 60 fps.
+
+- **The scripts run once a frame.** A timer in OnKeyTime2's every-frame form (its fourth argument 1) runs its handler
+  on every frame for its time. 50 of the scripts' timers have that form. Seven of them call `LuaCallStart` each time,
+  all in boss scripts:
+  - the Tower Knight's (1-2, m02_01, event 4270): "keep sending the down command" for 5 s (the host only), and the
+    get-up command 12 s later (every player's game);
+  - the same pair in 4-1's boss script (m03_01, event 4745) and in 2-1's (m06_00, event 6205).
+- **Each call is a message that must arrive.** `LuaCallStart` runs the call in this game, then sends it to the
+  others (0x00525ED8: message type 12, 20 bytes) through the session's send to everyone (0x0053C208). Such a message
+  waits in a queue until the others have it. With more than 1000 waiting, the send raises the game's own leave
+  (OnIrregularLeaveSession, the message above; the co-op log names it, docs/146).
+- **So the count follows the frame rate.** 5 s is about 150 messages at the PS3's 30 fps, 300 at 60 fps and about
+  2000 at 400 fps. In a run of two copies on one PC with 40 ms of delay added to every packet (a test switch, not
+  shipped) and the same timer in the test area's script, the copy at about 420 fps sent 2187 in one run of the timer.
+  It then left the session with 1001 waiting. A copy at 60 fps peaked at 4.
+- **The fix,** `des_net_script` (port/des_options.cpp), hooks the send's first instruction:
+  - a script's call that is the same as one sent on the frame before goes out at most 30 times a second of game
+    time, as at 30 fps;
+  - the first three of a run go as they come, and so does the same call made twice in one frame;
+  - a call held back is not sent at all. The send is handed a size it refuses (it takes size + 8 up to 0x800), so it
+    returns 0 as with no one to send to, and no caller reads that. The call itself still ran in this game;
+  - at 30 fps or below nothing is held back. It works in the game's own sessions and in seamless co-op.
+  
+  The first call held back in a run writes one line to the co-op log ("a script sends its call ... on every frame").
+  `DES_NET_SCRIPT_RATE=0` turns the fix off.
+- **With the fix,** in the same run: the copy at about 420 fps sent 153 of 2000 (it held back about 1850), and the copy
+  at 60 fps sent 152 of 300. Neither queue rose, and the session stayed.
+- **Not changed:** the position packets (type 1, every 6 frames, section 7a) go out more often above 30 fps. They didn't
+  fill the queue in these runs (0 waiting at 420 fps without the timer).
+
 ## 8. Decisions for you
 
 1. **Archstones as the default server** (settled 2026-10-25: the project's own server, section 6): ask Yuvi first
