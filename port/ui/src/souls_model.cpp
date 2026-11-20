@@ -894,7 +894,7 @@ void find_spots(Model& m) {
 // The swords, by name. model: its file in parts/, the weapon's equipModelId in the game's EquipParamWeapon. solid: how
 // much its opaque meshes are brightened: the game lights these from its surroundings, and some are near black
 // without them. glow: the halo's colour and strength; whole: it is around all of the sword, as none of them but the
-// moonlight has a blended mesh.
+// moonlight has a blended mesh. The first is the cursor's default (settings.cpp's DES_CURSOR_SWORD).
 struct SwordInfo {
     const char* name;
     const char* label;
@@ -905,8 +905,8 @@ struct SwordInfo {
     bool whole;
 };
 const SwordInfo kSwords[] = {
+    {"soulbrandt", "Soulbrandt", "0251", 2.6f, {0.72f, 0.84f, 1.0f}, 0.75f, true},  // (the sword the port is named for)
     {"moonlight", "Large Sword of Moonlight", "0258", 1.0f, {0.55f, 0.78f, 1.0f}, 0.85f, false},
-    {"soulbrandt", "Soulbrandt", "0251", 2.6f, {0.72f, 0.84f, 1.0f}, 0.75f, true},  // (the game's sword)
     {"demonbrandt", "Demonbrandt", "0254", 1.0f, {0.95f, 0.25f, 0.12f}, 0.55f, true},
     {"regalia", "Northern Regalia", "0253", 1.7f, {0.8f, 0.88f, 1.0f}, 0.55f, true},
     {"stormruler", "Storm Ruler", "0256", 1.5f, {0.6f, 0.78f, 1.0f}, 0.5f, true},

@@ -13,7 +13,9 @@
 // key, unless the environment pins Forward attack. And seamless co-op's servers
 // (TEST_SEAMLESS=host stands in for a hosting start): the endpoint for room codes (DES_SEAMLESS_INTRO) from the Server
 // row, settings.ini's or the environment's value winning, and off in a test run; settings.ini's DES_SEAMLESS_STUN. And
-// a gameplay mod (a made-up one with game parameters): it keeps online play off, and not seamless co-op.
+// a gameplay mod (a made-up one with game parameters): it keeps online play off, and not seamless co-op. And the
+// cursor's sword: the Soulbrandt with no settings.ini, the one a file names, the moonlight (the default until 0.2.0)
+// from a file that names none.
 //
 //   settings_check --row      a build with the row (DES_RSX_VULKAN: port/CMakeLists.txt found the Vulkan route)
 //   settings_check --no-row   a build without it: nothing of it, and settings.ini's RSX_BACKEND is not applied
@@ -293,6 +295,12 @@ int run_case(const std::string& name) {
         check(env("DES_SEAMLESS_INTRO") == want, "DES_SEAMLESS_INTRO " + want + ": " + env("DES_SEAMLESS_INTRO"));
         check(env("DES_SEAMLESS_STUN") == (name == "coop-off" ? "0" : ""), "DES_SEAMLESS_STUN: " +
                                                                                env("DES_SEAMLESS_STUN"));
+    } else if (name.rfind("sword-", 0) == 0) {  // the cursor's sword: a new player's Soulbrandt, a player's kept
+        const std::string want = name == "sword-new" ? "soulbrandt" : name == "sword-picked" ? "regalia" : "moonlight";
+        check(settings::get("DES_CURSOR_SWORD") == want, "the sword " + want + ": " + settings::get("DES_CURSOR_SWORD"));
+        settings::store("setup_preset", "balanced");  // (as setup does: settings.ini written, every key in it)
+        const std::string ini = read_text(std::filesystem::path(data) / "settings.ini");
+        check(ini.find("DES_CURSOR_SWORD = " + want + "\n") != std::string::npos, "settings.ini's line");
     } else if (name == "set-saves") {  // the row changed in the menu: kept for the next start, not applied now
         settings::set("RSX_BACKEND", "vulkan");
         check(env("RSX_BACKEND").empty(), "not applied before a restart: " + env("RSX_BACKEND"));
@@ -360,6 +368,11 @@ const Case kCases[] = {
     {"coop-test-run", "DES_NET_NAME = tester\n", {{"TEST_SEAMLESS", "host"}, {"PS3_PIDFILE", "test.pid"}}},
     {"coop-mods", "DES_NET_NAME = tester\n", {{"TEST_SEAMLESS", "host"}}},
     {"online-mods", "DES_NET_NAME = tester\n", {}},
+    {"sword-new", nullptr, {}},                                     // no settings.ini: a new player
+    {"sword-saved", "DES_CURSOR_SWORD = moonlight\n", {}},          // a setup's file from before 0.2.0
+    {"sword-picked", "DES_CURSOR_SWORD = regalia\n", {}},
+    {"sword-old", "RSX_BACKEND = d3d12\n", {}},                     // a file with no sword in it
+    {"sword-empty", "DES_CURSOR_SWORD = \n", {}},
 };
 
 }  // namespace
