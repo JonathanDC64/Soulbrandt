@@ -798,7 +798,7 @@ Steps 1 and 3 change the save (one level bought, one soul item used). Use the pi
 
 ## 7. Crystal lizards that get away
 
-Asked for on 2026-11-19: an option, off by default, so that a crystal lizard's count goes down only when it is killed, not when it gets away. Built as `DES_LIZARD_RETURN` (Settings > Game > Items, "Crystal lizards come back after getting away").
+Asked for on 2026-11-19: an option, off by default, so that a crystal lizard's count goes down only when it is killed, not when it gets away. Built as `DES_LIZARD_RETURN` (Settings > Game > Items, "Escaped crystal lizards come back").
 
 ### 7.1 How the game counts them (read, in `global_event.lua`)
 
