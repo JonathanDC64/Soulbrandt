@@ -145,7 +145,8 @@ constexpr Def kDefs[] = {
     {"trophy_popups", "1", Apply::UiOnly},     // trophy_toasts.cpp; off hides the toast, the unlock is still kept
     {"trophy_sound", "1", Apply::UiOnly},      // trophy_toasts.cpp; off = no tune when a trophy is earned
     {"DES_CURSOR3D", "1", Apply::Live},        // host.cpp, each frame: 0 = the system's arrow, not the sword (docs/112)
-    {"DES_CURSOR_SWORD", "moonlight", Apply::Live},  // host.cpp, each frame: which sword (souls_model.hpp's swords())
+    {"DES_CURSOR_SWORD", "soulbrandt", Apply::Live},  // host.cpp, each frame: which sword (souls_model.hpp's swords());
+                                                      // until 0.2.0 the default was moonlight (load_file keeps it)
     {"DES_CURSOR_SIZE", "64", Apply::Live},    // host.cpp, each frame: the sword's length in dp
     {"DES_UI_LIZARD", "1", Apply::Live},       // host.cpp, each frame: 0 = no dancing crystal lizard in the corner
     {"start_smoke", "1", Apply::UiOnly},       // prelaunch.cpp: 0 = no smoke behind the start screen (DeS UI)
@@ -522,7 +523,7 @@ void load_file() {
     if (!f) return;
     char line[8192];  // (DES_MODS lists mod folders by name: dozens of long names fit)
     int applied = 0;
-    bool layout_line = false;
+    bool layout_line = false, sword_line = false;
     while (std::fgets(line, sizeof line, f)) {
         const std::string l = trim(line);
         if (l.empty() || l[0] == '#' || l[0] == ';') continue;
@@ -537,6 +538,7 @@ void load_file() {
         const Def* d = find(key);
         if (!d || d->apply == Apply::Session) continue;  // (a per-session value is never read from the file)
         if (key == "keys_layout") layout_line = true;
+        if (key == "DES_CURSOR_SWORD" && !value.empty()) sword_line = true;
         // World tendency's empty value was "With the server's", then the default, so every file has it, picked or not.
         // Now the default is Yours only and the server's is "server": an empty one reads as the default.
         if (key == "DES_NET_TENDENCY" && value.empty()) continue;
@@ -562,6 +564,10 @@ void load_file() {
                      "layout again\n", get("PAD_KEYS").c_str());
         sValues["PAD_KEYS"] = "";
     }
+    // The cursor's sword was the moonlight until 0.2.0, and a settings.ini a setup wrote says so (save() writes every
+    // key), so a player keeps theirs and only a new one gets the new default. A file with no sword in it (from before
+    // the row, or edited) is a player's too: the moonlight as well.
+    if (!sword_line) sValues["DES_CURSOR_SWORD"] = "moonlight";
 }
 
 std::string sNetStatus = "Off";
