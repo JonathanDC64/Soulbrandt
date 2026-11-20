@@ -41,6 +41,8 @@ walks into them. RPCS3's DeS FPS patch has the same warning: above 60 fps "users
   inverse mass above 0). Keyframed bodies and copies of anything else are left alone.
 - `DES_PARTINTERP` (default 1): what the game ties to a character's part, such as an arrow stuck in it, moves
   every frame too. See "Arrows stuck in a character" below.
+- `des_rest_gate`: a broken object's pieces are tested for having come to rest only after the world has stepped,
+  as at 30 fps. See "Broken pieces that stay in the air" below.
 - `DES_PHYS_HZ=0` steps every frame (the old behaviour above 30 fps). Other values set the cap; 60 was tried and
   is worse than 30 (below).
 
@@ -139,6 +141,66 @@ Normal play on the deep Palace save is unchanged (same build, knob off and on, 3
 The breaks were replayed from a player's recording: the frame log with the camera yaw, then a scratch probe that kills
 every enemy, warps to where the player stood before each roll, and rolls along the same world direction (stick angle =
 heading minus camera yaw).
+
+## Broken pieces that stay in the air (2026-11-20)
+
+Above 30 fps, the collapsing bridge in Stonefang 2-1 (event 187, object 1121) often broke without falling. The break's
+sound played and the bridge still looked whole, but there was nothing to stand on, so the player fell through it. A
+tester saw it as a friend in seamless co-op at an unlocked frame rate. It is not about co-op: solo play does the same.
+
+- **What the game does.** The break (`ChangeModel(1121, 1)`, then `SetBrokenPiece(1121)`) swaps the bridge for its
+  broken model, whose pieces are 24 rigid bodies of about 20 kg. While the object is broken, its updates (`0x00245AA8`,
+  `0x00247448`) call `0x001E2D78` each frame. That takes a piece whose linear and angular speeds are both under a
+  limit (squared, 0.000025, so 0.005 m/s; f31, loaded at `0x001E2E00`) as come to rest, for good, and takes it out of
+  the physics world. Once no piece is still moving, `0x00245AA8` drops the pieces' physics (`0x001E0C08`) and keeps
+  drawing them where they are.
+- **Cause.** At 30 fps the world steps before each test, so a new piece has been falling for 1/30 s. Under
+  `DES_PHYS_HZ`'s cap the world steps every few frames, and a piece tested before its first step has no speed at all.
+  All 24 were taken as at rest at once: they stayed in place, in the bridge's shape, with no physics under them. At
+  60 fps that happens when the break falls on a frame without a step; unlocked, nearly every time.
+- **How it was found.** A hardware write watch on two pieces showed them taken out of the world by the physics
+  command queue (`0x001E80F8`, run every frame at the start of the physics update) in the frame after the break,
+  before any step. A watch on the queue showed who asked: the broken object's update, through `0x00245AA8` and
+  `0x001E2D78`.
+- **Fix.** Each frame, `des_phys_rate` decides whether pieces may be tested: only when the world's steps since the
+  last frame that allowed it add up to 0.75/30 s. `des_rest_gate` runs after `0x001E2E00`; on the other frames it
+  sets the limit to -1, so no piece is taken as at rest, and the live ones are counted as moving. At 30 fps every
+  frame steps about 1/30 s and allows it, as before. Under the cap only the frames that step do, so a piece is tested
+  with the speed of a full 1/30 s step, as at 30 fps. `DES_BREAKFIX=0` turns it off live.
+- **A first try that failed.** Deciding in the hook itself, from the steps since the hook last let a test run, let the
+  first test after a quiet spell (no broken object about) run at once: the bridge's pieces were tested before their
+  first step again (one unlocked break of two). The decision has to be made every frame, tested or not.
+- **Without the cap** (`DES_PHYS_HZ=0`) the world steps every frame, and the physics update adds a new piece
+  (`0x001E80F8`) before it steps, so the bridge fell with or without the fix.
+
+Tests: solo, a copy of a test save taken to 2-1, walking onto the bridge from its near end (x 175.5), 5 s after. A
+probe logged every rigid body within 8 m of the bridge as it moved. Pieces that fell more than 2 m, of 24 (a break at
+30 fps drops 18):
+
+| Setting | Before | After |
+|---|---|---|
+| 30 fps | 18 | 18 |
+| 60 fps | 16, 19, 0, 19 | 18, 17 |
+| Unlocked (about 300 fps), cap 30 | 0, 0, 18, 0, 0, 0 | 15, 18, 18 |
+| The same, the fix off (`DES_BREAKFIX=0`) | 16, 0, 0 | |
+| Unlocked, `DES_PHYS_HZ=0` | 18 | 19 |
+
+Seamless co-op, two copies, the host at 60 fps breaking the bridge, the friend unlocked with vsync off, pieces that
+fell in each game (host / friend):
+
+| Friend | Before | After |
+|---|---|---|
+| On the walkway, 10 m from the bridge | 0 / 0 | 18 / 17, 19 / 20, 19 / 19, 19 / 18 |
+| 17 m and 34 m away (below the bridge) | 18 / 0, 18 / 0 | |
+| 112 m away, where it arrived in 2-1, and came to look 6 s later | 0 / 20 down | 18 / 20 down |
+| The same, the host onto the bridge straight after the load (the third with the friend on 2 cores at idle priority) | | 19 / 20 down, 20 / 20 down (the friend's fix off), 19 / 20 down |
+
+The last row was meant to break the bridge while the friend was still loading 2-1. Its load had always finished by
+the time the host reached the bridge, so that case wasn't tested.
+
+"20 down": the friend first saw the pieces already on the ground, so they had fallen there too. Most likely the game
+doesn't update an object that far away every frame (not checked), so no test ran before the first step. The bug
+needs the friend close by, as in the report.
 
 ## Arrows stuck in a character (2026-10-27)
 
