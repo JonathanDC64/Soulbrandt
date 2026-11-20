@@ -33,9 +33,13 @@
 // And from each area's script, the flags that move forward in every player's world (progress_flags), the soul
 // pickups each player makes for itself (own_flags) and the cutscenes each player sees for itself (the Nexus's,
 // scene_flags, and an area's opening, opening_flags), for des_seamless_game.cpp.
+//
+// One edit is a game option, made with or without co-op: DES_LIZARD_RETURN=1 (Settings, Items; off by default) has a
+// crystal lizard that gets away come back at the next load without using up one of its returns (edit_lizards).
 #include "des_seamless.h"
 
 #include "ps3emu/ppu_lift.h"
+#include "ps3emu/ps3_knob.h"
 
 #include <algorithm>
 #include <cctype>
@@ -49,6 +53,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <vector>
 
 extern "C" void ds_malloc(ppu_context* ctx);   // des_heap.cpp: the guest heap
@@ -89,6 +94,43 @@ bool replace_func(std::string& t, const std::string& name, std::string body, con
     if (nl != "\n")
         for (size_t p = 0; (p = body.find('\n', p)) != std::string::npos; p += nl.size()) body.replace(p, 1, nl);
     t.replace(a, e - a, body + nl);
+    return true;
+}
+
+// Crystal lizards (global_event.lua's RegistTokage, called by each area's script for each of its lizards). A lizard
+// has an event flag and a count of returns (GetEventCount), and two watches that call the area's OnEvent_<flag>:
+// its death and its EzState message 1000, its escape. That handler sets the flag and deletes both watches. At each
+// load, a lizard whose flag is set comes back if it has a return left (the flag cleared, the count down one; the
+// host's game only), else it stays gone. Each boss kill in a world gives each of its lizards a return
+// (ResetTokage). So in the original game an escape uses up a return as a kill does.
+// DES_LIZARD_RETURN=1: the escape's watch calls a handler of its own that only deletes the watches, so the flag stays
+// clear and the lizard is there at the next load with its returns as they were. It is registered between
+// NotNetMessage_begin and _end, so each game handles an escape it sees itself: the other players' games never run
+// a handler they may not have. A kill works as before.
+bool lizard_return()
+{
+    static int on = 0;
+    PS3_KNOB(on, ps3_env_int("DES_LIZARD_RETURN", 0) != 0);
+    return on != 0;
+}
+
+bool edit_lizards(std::string& t, const std::string& nl)
+{
+    const std::string old = "proxy:OnCheckEzStateMessage( eventId,TokageId,\"OnEvent_\"..eventId,1000);";
+    size_t a, e;
+    if (!func_span(t, "RegistTokage", &a, &e)) return false;
+    const size_t at = t.find(old, a);
+    if (at == std::string::npos || at + old.size() > e) return false;
+    const size_t line = t.rfind('\n', at) + 1;
+    const std::string indent = t.substr(line, at - line);
+    if (indent.find_first_not_of(" \t") != std::string::npos) return false;
+    t.replace(at, old.size(),
+              "_G[\"OnTokageEscape_\"..eventId] = function(proxy,param) print(\"OnTokageEscape_\"..eventId); "
+              "proxy:DeleteEvent(eventId); end; "
+              "--DES_LIZARD_RETURN: an escape leaves the flag clear" + nl +
+              indent + "proxy:NotNetMessage_begin();" + nl +
+              indent + "proxy:OnCheckEzStateMessage( eventId,TokageId,\"OnTokageEscape_\"..eventId,1000);" + nl +
+              indent + "proxy:NotNetMessage_end();");
     return true;
 }
 
@@ -1484,7 +1526,8 @@ struct Copy {
 // the King and the Maiden's place from a friend's Nexus while its host's had them.
 constexpr uint32_t kFinalScenes[] = {40, 60, 71, 80, 81};
 std::mutex sLock;
-std::map<std::pair<uint32_t, uint64_t>, Copy> sCopies;
+// (by the original's size and hash, and the edits made: 1 co-op's, 2 the lizards')
+std::map<std::tuple<uint32_t, uint64_t, int>, Copy> sCopies;
 // Each world's flags, from its area scripts (a load reads every area script of its world): sorted, no repeats.
 std::map<uint32_t, std::vector<uint32_t>> sProgress, sBoss, sOwn, sScenes, sSeal;
 
@@ -1528,7 +1571,8 @@ uint32_t guest_alloc(ppu_context* ctx, uint32_t size)
 // or false to leave it.
 bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t* out, uint32_t* out_size)
 {
-    if (des::seamless::active() == des::seamless::Mode::Off || size < 64 || size > (4u << 20)) return false;
+    const bool coop = des::seamless::active() != des::seamless::Mode::Off, lizards = lizard_return();
+    if ((!coop && !lizards) || size < 64 || size > (4u << 20)) return false;
     // only the area scripts: global_event.lua and m0X_YY_ZZ_WW.lua, recognised by what they define
     static const char kGlobal[] = "function BlockClear2_3Leave(";
     static const char kArea[] = "function Initialize_m0";
@@ -1537,7 +1581,8 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
     const bool global = t.find(kGlobal) != std::string::npos;
     const size_t ar = t.find(kArea);
     if (!global && ar == std::string::npos) return false;
-    const auto key = std::make_pair(size, fnv(t));
+    if (!coop && !global) return false;   // (without co-op only the lizards' edit, in global_event.lua)
+    const auto key = std::make_tuple(size, fnv(t), (coop ? 1 : 0) | (lizards ? 2 : 0));
     {
         std::unique_lock<std::mutex> g(sLock);
         auto it = sCopies.find(key);
@@ -1554,16 +1599,25 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
     }
     const std::string nl = t.find("\r\n") != std::string::npos ? "\r\n" : "\n";
     std::string ed = t;
-    int edits = 0;
+    int edits = 0;   // co-op's
+    bool lizard_edit = false;
     if (global) {
-        if (edit_global(ed, nl)) edits = 19;
-        else ed = t;
+        if (coop) {
+            if (edit_global(ed, nl)) edits = 19;
+            else ed = t;
+        }
+        if (lizards) {
+            lizard_edit = edit_lizards(ed, nl);
+            std::fprintf(stderr, "[des] crystal lizards: %s\n",
+                         lizard_edit ? "one that gets away comes back at the next load (DES_LIZARD_RETURN)"
+                                     : "the script's lizards aren't as expected, so they work as in the original game");
+        }
     } else {
         static const char kNexus[] = "function Initialize_m01_00_00_00(";   // the Nexus: no Archstone edits
         edits = edit_area(ed, t.compare(ar, sizeof kNexus - 1, kNexus) == 0);
     }
     uint32_t addr = 0, n = 0;
-    if (edits && ed != t) {
+    if ((edits || lizard_edit) && ed != t) {
         n = (uint32_t)ed.size();
         addr = guest_alloc(ctx, n + 16);
         if (addr) for (uint32_t i = 0; i < n; i++) vm_write8(addr + i, (uint8_t)ed[i]);
@@ -1587,8 +1641,9 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
                                                                   std::end(kFinalScenes); }),
                            c.scenes.end());
     }
-    std::fprintf(stderr, "[coop] script %s: %s%s\n", global ? "global_event.lua" : t.substr(ar + 20, 12).c_str(),
-                 addr ? (std::to_string(edits) + " edits for co-op").c_str() : global ? "left as it is (an edit didn't fit)"
+    if (coop)
+        std::fprintf(stderr, "[coop] script %s: %s%s\n", global ? "global_event.lua" : t.substr(ar + 20, 12).c_str(),
+                 addr && edits ? (std::to_string(edits) + " edits for co-op").c_str() : global ? "left as it is (an edit didn't fit)"
                                                                                       : "nothing to edit",
                  global ? "" : ("; " + std::to_string(c.progress.size()) + " progress flags, " +
                                 std::to_string(c.own.size()) + " soul and key pickups, " + std::to_string(c.scenes.size()) +

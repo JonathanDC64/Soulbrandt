@@ -320,6 +320,10 @@ std::vector<TabDesc> make_tabs() {
                 "Press Cross facing the statue in front of where you wake in the Nexus and pick Change Tendency to "
                 "set a world's tendency or your character's, from Pure White to Pure Black. Some events only happen "
                 "at a tendency, and what has already happened stays."),
+            toggle("Crystal lizards come back after getting away", "DES_LIZARD_RETURN",
+                "A crystal lizard that gets away is back the next time its area loads, without using up a return. "
+                "Only a kill uses one. Off, as in the original game: getting away uses a return as a kill does. "
+                "Each boss killed in a lizard's world gives it one return. Applies at the next load."),
         }},
         {"HUD", {
             action("Edit HUD", Opens::HudEditor, "Move, resize, hide or show each part of the HUD on the game screen."),

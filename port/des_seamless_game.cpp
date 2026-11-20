@@ -2394,6 +2394,23 @@ void item_taken(uint32_t fb, uint32_t flag)
         std::fprintf(stderr, "[coop] an item taken: flag %u kept for this player's world\n", flag);
 }
 
+// A script about to be read by one of the two Lua readers: the edited copy in its place, if it has edits
+// (des_seamless_scripts.cpp; co-op's only while co-op runs).
+static void script_read(ppu_context* ctx, uint32_t addr)
+{
+    // 0x00A6B2F8, the game's Lua reader, after lwz r11,8(r4): ud = {buf, size, pos}; pos 0 is the first read.
+    // 0x00CA15A8, Lua's string reader (getS), after lwz r0,4(r4): ud = {s, size}; size 0 after the first read.
+    const uint32_t ud = (uint32_t)ctx->gpr[4];
+    if (!guest_ok(ud)) return;
+    const bool game_reader = addr == 0x00A6B2F8u;
+    if (game_reader && vm_read32(ud + 8) != 0) return;
+    uint32_t to = 0, size = 0;
+    if (!des_seamless_script(ctx, vm_read32(ud), vm_read32(ud + 4), &to, &size)) return;
+    vm_write32(ud, to);
+    vm_write32(ud + 4, size);
+    if (!game_reader) ctx->gpr[0] = size;   // the size it just read
+}
+
 // Instruction hooks (port/insn_hooks.txt), with the US disc's addresses as keys.
 extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
 {
@@ -2402,6 +2419,10 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
             vm_write32(tTintMgr + 0x70, tTintMat);
             tTintMgr = 0;
         }
+        return;
+    }
+    if (addr == 0x00A6B2F8u || addr == 0x00CA15A8u) {   // the scripts' edits: co-op's, and a game option's without it
+        script_read(ctx, addr);
         return;
     }
     const co::Mode m = co::active();
@@ -2530,19 +2551,6 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
     case 0x00540A24u:   // the same in the send 0x00540608: more than 1000 messages waiting to go
         irregular_leave_line(ctx, addr);
         break;
-    case 0x00A6B2F8u:   // the game's Lua reader, after lwz r11,8(r4): ud = {buf, size, pos}; pos 0 is the first read
-    case 0x00CA15A8u: { // Lua's string reader (getS), after lwz r0,4(r4): ud = {s, size}; size 0 after the first read
-        const uint32_t ud = (uint32_t)ctx->gpr[4];
-        if (!guest_ok(ud)) break;
-        const bool game_reader = addr == 0x00A6B2F8u;
-        if (game_reader && vm_read32(ud + 8) != 0) break;
-        uint32_t to = 0, size = 0;
-        if (!des_seamless_script(ctx, vm_read32(ud), vm_read32(ud + 4), &to, &size)) break;
-        vm_write32(ud, to);
-        vm_write32(ud + 4, size);
-        if (!game_reader) ctx->gpr[0] = size;   // the size it just read
-        break;
-    }
     case 0x005086F8u: { // the event flags' set, after its cmpwi: r3 = the flags, r4 = the flag, r5 = the value
         const uint32_t flag = (uint32_t)ctx->gpr[4];
         if (flag == kEndingMarker && (uint32_t)ctx->gpr[5] != 0 && m == co::Mode::Join) {   // the final area's script
