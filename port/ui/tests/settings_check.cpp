@@ -9,7 +9,8 @@
 // (keys_for_pad): DES_ITEM_KEYS from the layout and PAD_KEYS's changes, without wheel notches and without an input a
 // cellPad row has too, and none of the item rows in the PAD_KEYS cellPad reads. And the Gamepad page's Kick row
 // (map_for_pad): with Forward attack at Own key its pad button presses R1 and nothing else, in the PAD_MAP cellPad
-// reads, and DES_KICK_PAD names it; with the original, the row is left out. And seamless co-op's servers
+// reads, and DES_KICK_PAD names it; with the original, the row is left out; choosing a Kick (kick_chosen) sets Own
+// key, unless the environment pins Forward attack. And seamless co-op's servers
 // (TEST_SEAMLESS=host stands in for a hosting start): the endpoint for room codes (DES_SEAMLESS_INTRO) from the Server
 // row, settings.ini's or the environment's value winning, and off in a test run; settings.ini's DES_SEAMLESS_STUN. And
 // a gameplay mod (a made-up one with game parameters): it keeps online play off, and not seamless co-op.
@@ -254,6 +255,24 @@ int run_case(const std::string& name) {
                   "the original again: PAD_MAP " + env("PAD_MAP") + ", DES_KICK_PAD " + env("DES_KICK_PAD"));
             check(settings::get("PAD_MAP") == "kick=paddle2", "the row is kept: " + settings::get("PAD_MAP"));
         }
+        if (name == "kickpad-chosen") {   // a Kick chosen in Change Buttons at Forward + attack: Own key, and it kicks
+            settings::set("PAD_MAP", "kick=select");   // (as the row writes it, then settings::kick_chosen)
+            check(env("PAD_MAP").empty(), "before: no Kick in PAD_MAP: " + env("PAD_MAP"));
+            check(settings::kick_chosen(), "Forward attack changed");
+            check(settings::get("DES_KICK") == "1" && env("DES_KICK") == "1",
+                  "Own key: DES_KICK " + settings::get("DES_KICK") + ", env " + env("DES_KICK"));
+            check(env("PAD_MAP") == "select=none,r1=r1|select",
+                  "PAD_MAP select=none,r1=r1|select: " + env("PAD_MAP"));
+            check(env("DES_KICK_PAD") == "select", "DES_KICK_PAD select: " + env("DES_KICK_PAD"));
+            check(!settings::kick_chosen(), "on already: no change the second time");
+            check(read_text(std::filesystem::path(data) / "settings.ini").find("DES_KICK = 1") != std::string::npos,
+                  "saved: DES_KICK = 1");
+        }
+        if (name == "kickpad-pinned") {   // Forward attack set in the environment: a Kick chosen leaves it
+            check(!settings::kick_chosen(), "pinned: no change");
+            check(env("DES_KICK") == "0" && env("PAD_MAP").empty() && env("DES_KICK_PAD").empty(),
+                  "still the original: DES_KICK " + env("DES_KICK") + ", PAD_MAP " + env("PAD_MAP"));
+        }
     } else if (name == "coop-mods") {  // a gameplay mod doesn't keep seamless co-op off
         check(ui::mods::gameplay_in_use(), "the mod counts as gameplay");
         check(!settings::net_mods_held(), "not held by the mod");
@@ -314,6 +333,8 @@ const Case kCases[] = {
     {"kickpad-env", nullptr, {{"PAD_MAP", "kick=misc"}, {"DES_KICK", "1"}}},
     {"kickpad-unknown", "DES_KICK = 1\nPAD_MAP = kick=paddle9\n", {}},
     {"kickpad-live", "PAD_MAP = kick=paddle2\n", {}},
+    {"kickpad-chosen", "DES_KICK = 0\n", {}},
+    {"kickpad-pinned", "PAD_MAP = kick=select\n", {{"DES_KICK", "0"}}},
     // 0.1.0's settings.ini ("d3d12" whether picked or not), by GPU
     {"gpu-in-1070-saved", "RSX_BACKEND = d3d12\n", {{"DES_RENDERER_GPU_ID", "10de:1b81"}}},        // GTX 1070 (#205, #372)
     {"gpu-in-1060-saved", "RSX_BACKEND = d3d12\n", {{"DES_RENDERER_GPU_ID", "10de:1c03"}}},        // GTX 1060 6GB (#398)

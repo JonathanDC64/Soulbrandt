@@ -397,7 +397,8 @@ std::vector<TabDesc> make_tabs() {
                 "The Kick (own key) row in Change Buttons, Keyboard and mouse, does it instead, and on a gamepad the "
                 "Kick row in Change Buttons, Gamepad: the button you choose there kicks and does nothing else. A "
                 "back button or paddle works too, when the pad reports it. With no key or button set, there's no "
-                "forward attack.<br/><br/>Only your own moves change; other players see them as usual."),
+                "forward attack. Choosing a Kick key or button there sets this to Own key.<br/><br/>Only your own "
+                "moves change; other players see them as usual."),
             info("Keyboard and mouse", "WASD, mouse, Space",
                 "As in the Souls games on PC:<br/>"
                 "<b>W A S D</b> move &nbsp; <b>Left Alt</b> (held) walk &nbsp; <b>Mouse</b> camera (Mouse look, "

@@ -1,6 +1,8 @@
 // Written for Demon's Souls. What Change Buttons changes (controls_model.hpp); moved out of controls_window.cpp.
 #include "controls_model.hpp"
 
+#include "ui.hpp"  // (first: RmlUi's headers before platform.hpp's windowsx.h, whose GetNextSibling is a macro)
+
 #include "input.hpp"
 #include "keys.hpp"
 #include "platform.hpp"
@@ -9,6 +11,7 @@
 #include "sound.hpp"
 
 #include <cctype>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -36,7 +39,8 @@ const Target kTargets[] = {
     {"r1", "Attack (R1)", nullptr, nullptr},
     // the port's, not cellPad's (settings.cpp's keys_for_pad)
     {"kick", "Kick (own key)", nullptr,
-     "The forward attack, or kick, when Settings > Controls > Forward attack is Own key."},
+     "The forward attack, or kick, when Settings > Controls > Forward attack is Own key. Choosing a key here sets "
+     "Forward attack to Own key."},
     {"r2", "Strong attack (R2)", nullptr, nullptr},
     {"l1", "Left hand, guard (L1)", nullptr, nullptr},
     {"l2", "Left hand, parry (L2)", nullptr, nullptr},
@@ -302,6 +306,26 @@ bool kick_on() {
     return (settings::pinned(key) ? settings::pinned_value(key) : settings::get(key)) == "1";
 }
 
+namespace {
+
+// A Kick button or key was chosen: the player wants it to kick, and it does only with Forward attack at Own key. At
+// Forward + attack it would do nothing, and nothing on Change Buttons said so (a tester bound one and it never
+// kicked), so choosing one sets Own key (settings::kick_chosen), and a note says what that changes. Clearing one
+// changes nothing.
+void kick_chosen() {
+    if (!settings::kick_chosen()) return;
+    std::fprintf(stderr, "[ui] Change Buttons: a Kick was chosen, so Forward attack is Own key\n");
+    push_toast({
+        .type = "",
+        .title = "Forward attack: Own key",
+        .content = "<toast-message-text>The Kick button or key kicks now. Attacking alone no longer kicks (Settings "
+                   "&gt; Controls &gt; Forward attack).</toast-message-text>",
+        .duration = std::chrono::seconds(6),
+    });
+}
+
+}  // namespace
+
 bool kick_takes(int button) {
     const int kick = pad_kick();
     return kick >= 0 && button >= 0 && button < kPadCount && pad_map()[button] == kick && kick_on();
@@ -318,8 +342,8 @@ std::string kick_label(prompts::Device device) {
 
 const char* const kKickLabel = "Kick";
 const char* const kKickAbout =
-    "With Settings > Controls > Forward attack at Own key, this button kicks and does nothing else. A back button "
-    "or paddle works too, when the pad reports it.";
+    "This button kicks and does nothing else. Choosing it sets Settings > Controls > Forward attack to Own key, so "
+    "attacking alone no longer kicks. A back button or paddle works too, when the pad reports it.";
 
 void assign(PadMap& m, int button, int value) {
     for (int i = 0; i < kPadCount; i++) {
@@ -525,6 +549,7 @@ void Capture::update_pad() {
         while (!(b & (1u << host))) host++;
         if (mTarget == kKickTarget) {
             set_pad_kick(host);  // (the game button that had it, if any, then has none while the Kick is on)
+            kick_chosen();
         } else {
             PadMap m = pad_map();
             assign(m, mTarget, host);
@@ -606,6 +631,7 @@ void Capture::bind_key(int in, int mod) {
     KeyMap m = key_map();
     assign_key(m, mTarget, mSlot, in, mod);
     save_key_map(m);
+    if (in != 0 && std::strcmp(kTargets[mTarget].name, "kick") == 0) kick_chosen();  // (not for Delete: none)
     play_sound(kSoundBindingChanged);
     cancel();
 }

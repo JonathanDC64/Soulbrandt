@@ -965,6 +965,12 @@ void set(std::string_view key, const std::string& value) {
     write_in_use();
 }
 
+bool kick_chosen() {
+    if (pinned("DES_KICK") || get("DES_KICK") == "1") return false;
+    set("DES_KICK", "1");
+    return true;
+}
+
 void store(std::string_view key, const std::string& value) {
     if (!find(key)) return;
     sValues[std::string(key)] = value;

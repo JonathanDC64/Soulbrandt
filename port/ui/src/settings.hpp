@@ -65,6 +65,11 @@ void store(std::string_view key, const std::string& value);
 bool try_value(std::string_view key, const std::string& value);
 void end_try(std::string_view key);  // the stored value again, applied
 
+// Change Buttons: a Kick button or key was chosen. It kicks only with Forward attack at Own key (DES_KICK=1), so that
+// is set now (and the Kick's PAD_MAP and PAD_KEYS with it), unless it is on already or the environment pins it. True
+// when it changed it: controls_model.cpp then says so in a note.
+bool kick_chosen();
+
 // The variable was set in the environment when the game started (not by settings.ini): it wins over the file.
 bool pinned(std::string_view key);
 std::string pinned_value(std::string_view key);
