@@ -21,7 +21,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from des_setup import fetch, gamefiles, journal, sfo  # noqa: E402
-from des_setup.__main__ import lift_blockers, stage  # noqa: E402
+from des_setup.__main__ import absolute_paths, lift_blockers, main, stage  # noqa: E402
 
 
 def sha(b: bytes) -> str:
@@ -756,6 +756,43 @@ def _tar(members) -> bytes:
                 info.size, info.mode = len(data), kind
                 t.addfile(info, io.BytesIO(data))
     return b.getvalue()
+
+
+class AbsolutePathsTest(unittest.TestCase):
+    """Issue #667: a relative DES_SETUP_DATA reached setup as a relative --data, and the lift's tools, which run in
+    the source tree, looked for portable\inputs\...\EBOOT.elf there. The folders are absolute from the start."""
+
+    def test_relative_folders_become_absolute_against_the_current_folder(self):
+        with tempfile.TemporaryDirectory() as d:
+            was = os.getcwd()
+            os.chdir(d)
+            try:
+                a = absolute_paths(mock.Mock(data="portable", game="game", firmware=None, gamedata="", update=None,
+                                             install=None, decrypted=["dec"], rpcs3="rpcs3", host="game.exe"))
+                here = os.getcwd()
+            finally:
+                os.chdir(was)
+        self.assertEqual(a.data, os.path.join(here, "portable"))
+        self.assertEqual(a.game, os.path.join(here, "game"))
+        self.assertEqual(a.decrypted, [os.path.join(here, "dec")])
+        self.assertIsNone(a.firmware)      # (not given: stays not given)
+        self.assertEqual(a.gamedata, "")
+        self.assertEqual(a.rpcs3, "rpcs3")  # (a program may be one on the PATH)
+        self.assertEqual(a.host, "game.exe")
+
+    def test_main_hands_the_step_an_absolute_data_folder(self):
+        seen = {}
+        with tempfile.TemporaryDirectory() as d, mock.patch("des_setup.__main__.cmd_status",
+                                                             side_effect=lambda a: seen.setdefault("data", a.data) and 0):
+            was = os.getcwd()
+            os.chdir(d)
+            try:
+                main(["status", "--data", "portable"])
+                here = os.getcwd()
+            finally:
+                os.chdir(was)
+        self.assertEqual(seen["data"], os.path.join(here, "portable"))
+        self.assertTrue(os.path.isabs(seen["data"]))
 
 
 if __name__ == "__main__":
