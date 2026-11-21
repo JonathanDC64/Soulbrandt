@@ -37,8 +37,20 @@ private:
     void play();
     void show_update();
     void update_prompts();
+    // The sword's look (start_sword.hpp): 1 to its count, 0 none, any other wraps; it starts after `delay` seconds.
+    void set_sword_look(int look, double delay = 0.0);
 
     bool mEntranceAnimationStarted = false;
+    int mSwordLook = 0;
+    int mSwordShown = 0;  // (how many times a look was set: each decorator value is new)
+    bool mSwordOn = false;  // the sword's looks are tried (DES_START_SWORD): off, the start screen is as it was
+    bool mSwordSolid = false;  // a faint look drawn whole (T, or DES_START_SWORD_SOLID=1)
+    Rml::Element* mSwordWindow = nullptr;  // the sword's element over the window, over the logo, down the middle
+    Rml::Element* mSwordLogo = nullptr;
+    Rml::Element* mSwordColumn = nullptr;
+    Rml::Element* mSwordMenu = nullptr;  // (behind the choices)
+    Rml::Element* mSwordTitle = nullptr;  // (beside the title)
+    Rml::Element* mSwordLabel = nullptr;
     std::vector<std::unique_ptr<Button>> mMenuButtons;
     size_t mUpdateIndex = 0;     // "Update to <version>" among them, shown once the check found one (updates.hpp)
     std::string mUpdateShown;    // the version it shows; empty: hidden
