@@ -45,12 +45,14 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <iterator>
 #include <map>
 #include <mutex>
+#include <random>
 #include <regex>
 #include <set>
 #include <sstream>
@@ -63,6 +65,8 @@ extern "C" void ds_malloc(ppu_context* ctx);   // des_heap.cpp: the guest heap
 // and its soul, key and item pickups), before the area starts
 void des_seamless_area_read(uint32_t world, const std::vector<uint32_t>& scenes, const std::vector<uint32_t>& chain,
                             const std::vector<uint32_t>& own);
+// des_seamless_game.cpp: the host's load of the area, for a pick that comes out the same in every game (false: none)
+bool des_seamless_shared_seed(uint64_t* seed);
 
 namespace {
 
@@ -1578,7 +1582,58 @@ struct Copy {
     std::vector<uint32_t> scenes;     // the cutscenes each player sees: the Nexus's, an area's opening
     std::vector<uint32_t> chain;      // of those, the opening's (the area's start plays one: opening_flags)
     std::vector<uint32_t> seal;       // and the Archstones' seal (the Nexus)
+    uint32_t pick[2] = {0, 0};        // the Nexus: where the Maiden's two numbers go in the copy (maiden_pick)
 };
+
+// The Maiden in Black's place in the Nexus (Lua_SetPos, from Lua_SetHeroinPos at the area's start, once she waits for
+// the player and flag 304 is set): two numbers from GetRandom(0, 100) pick one of her places for the world last
+// visited and the pose that goes with it there (sitting, 7003-7008, or standing). In co-op the host's game moves her
+// (each game runs its own copy of the script, the host's sends where she is), but the pose isn't sent: a friend's game
+// made its own pick, so she was where the host's game put her in the pose of the friend's pick (11-20: on the stairs,
+// then on the floor in a sitting pose). So the two numbers come from the host's load of the area, the same in every
+// game (des_seamless_shared_seed; the world last visited is the host's too, as the friend plays with the host's
+// flags). The script's GetRandom calls become 3-digit numbers ("local randA = 042;", 42 to Lua), written into the copy
+// each time it is handed to the game (set_pick); out of a session, in a friend's own world, they are random as before.
+int maiden_pick(std::string& t)
+{
+    int n = 0;
+    for (const char* v : {"randA", "randB"}) {
+        const std::string from = std::string("local ") + v + " = proxy:GetRandom(0,100);";
+        const size_t at = t.find(from);
+        if (at == std::string::npos || t.find(from, at + 1) != std::string::npos) continue;
+        t.replace(at, from.size(), std::string("local ") + v + " = 000;");
+        n++;
+    }
+    return n;
+}
+
+uint64_t fnv(const std::string& s);
+
+// The Maiden's two numbers into the Nexus's copy (maiden_pick), as this load has them.
+void set_pick(const Copy& c)
+{
+    if (!c.addr || !c.pick[0] || !c.pick[1]) return;
+    uint64_t seed = 0;
+    unsigned v[2];
+    const bool shared = des_seamless_shared_seed(&seed);
+    if (shared) {
+        const uint64_t h = fnv("maiden " + std::to_string(seed));
+        v[0] = (unsigned)(h % 101);
+        v[1] = (unsigned)((h >> 32) % 101);
+    } else {
+        static std::minstd_rand r((unsigned)std::chrono::steady_clock::now().time_since_epoch().count());
+        v[0] = (unsigned)(r() % 101);
+        v[1] = (unsigned)(r() % 101);
+    }
+    for (int k = 0; k < 2; k++) {
+        char d[4];
+        std::snprintf(d, sizeof d, "%03u", v[k]);
+        for (int i = 0; i < 3; i++) vm_write8(c.addr + c.pick[k] + i, (uint8_t)d[i]);
+    }
+    if (shared)
+        std::fprintf(stderr, "[coop] the Maiden's place in the Nexus: %u, %u (from the host's load %llu, as in every "
+                     "game)\n", v[0], v[1], (unsigned long long)seed);
+}
 
 // The final area's cutscenes in the Nexus's script: the trip down (40, and 60, which its end runs), the one after King
 // Allant (71) and the endings (80, 81). Each plays in every player's game when it happens (40 through the talk's
@@ -1653,6 +1708,7 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
             g.unlock();
             if (!global) des_seamless_area_read(c.world, c.scenes, c.chain, c.own);
             if (!c.addr) return false;
+            set_pick(c);
             *out = c.addr;
             *out_size = c.size;
             return true;
@@ -1675,7 +1731,9 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
         }
     } else {
         static const char kNexus[] = "function Initialize_m01_00_00_00(";   // the Nexus: no Archstone edits
-        edits = edit_area(ed, t.compare(ar, sizeof kNexus - 1, kNexus) == 0);
+        const bool nexus = t.compare(ar, sizeof kNexus - 1, kNexus) == 0;
+        edits = edit_area(ed, nexus);
+        if (coop && nexus) edits += maiden_pick(ed);
     }
     uint32_t addr = 0, n = 0;
     if ((edits || lizard_edit) && ed != t) {
@@ -1686,6 +1744,11 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
     Copy c;
     c.addr = addr;
     c.size = n;
+    for (int k = 0; k < 2 && addr; k++) {
+        const std::string at = std::string("local ") + (k ? "randB" : "randA") + " = 000;";
+        const size_t i = ed.find(at);
+        if (i != std::string::npos) c.pick[k] = (uint32_t)(i + at.size() - 4);
+    }
     if (!global) {
         c.progress = progress_flags(t, &c.boss, &c.seal);
         c.own = own_flags(t);
@@ -1716,6 +1779,7 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
     }
     if (!global) des_seamless_area_read(c.world, c.scenes, c.chain, c.own);
     if (!addr) return false;
+    set_pick(c);
     *out = addr;
     *out_size = n;
     return true;

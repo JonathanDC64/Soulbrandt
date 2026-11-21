@@ -2412,6 +2412,27 @@ bool own_has(uint32_t world, uint32_t flag)
 //   is as this player's own world has it, whoever took it in the host's world: its prompt is here if this player
 //   hasn't taken it (and it gets it when another player takes it, the scripts' pickups_for_all and gifts_for_all), and
 //   not if it has (no second one).
+// A number every game in the session has for the area being loaded, for a pick the scripts make at random that has
+// to come out the same in each (des_seamless_scripts.cpp's maiden_pick): the host's load of the area. In the host's
+// game its count (0 for the area it started in; it counts its loads once its room is open), in a guest's the load its
+// host's READY names (a guest's load, a follow's, a join's or a respawn's, waits for the host's READY of the same load
+// in guest_load_step, before the area's scripts are read). The same load number gives the same pick in another session
+// too; deaths and warps move the count on. False in a guest's game out of a session: in its own world its own pick.
+bool des_seamless_shared_seed(uint64_t* seed)
+{
+    const co::Mode m = co::active();
+    if (m == co::Mode::Host) {
+        *seed = sGame.trip;
+        return true;
+    }
+    const uint32_t sm = session_manager();
+    if (m != co::Mode::Join || !guest_ok(sm) || vm_read32(sm + kSmState) != kStateClient) return false;
+    std::lock_guard<std::mutex> l(sMsgLock);
+    if (sReady.area == kNoArea) return false;
+    *seed = sReady.trip;
+    return true;
+}
+
 void des_seamless_area_read(uint32_t world, const std::vector<uint32_t>& scenes, const std::vector<uint32_t>& chain,
                             const std::vector<uint32_t>& own)
 {
