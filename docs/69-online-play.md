@@ -506,15 +506,28 @@ session..." as the Tower Knight went down. The host played at 60 fps.
 - **The fix,** `des_net_script` (port/des_options.cpp), hooks the send's first instruction:
   - a script's call that is the same as one sent on the frame before goes out at most 30 times a second of game
     time, as at 30 fps;
-  - the first three of a run go as they come, and so does the same call made twice in one frame;
+  - the first three of a run go as they come;
+  - in a run, only a frame's first copy of the call may go (since 2026-11-20, below). A call made twice in one frame
+    outside a run goes twice;
   - a call held back is not sent at all. The send is handed a size it refuses (it takes size + 8 up to 0x800), so it
     returns 0 as with no one to send to, and no caller reads that. The call itself still ran in this game;
-  - at 30 fps or below nothing is held back. It works in the game's own sessions and in seamless co-op.
+  - it works in the game's own sessions and in seamless co-op.
   
   The first call held back in a run writes one line to the co-op log ("a script sends its call ... on every frame").
   `DES_NET_SCRIPT_RATE=0` turns the fix off.
 - **With the fix,** in the same run: the copy at about 420 fps sent 153 of 2000 (it held back about 1850), and the copy
   at 60 fps sent 152 of 300. Neither queue rose, and the session stayed.
+- **The real fight (2026-11-20).** The tester got the same leave again with the fix, as the Tower Knight got up,
+  twice in one session. In the real fight the script makes the get-up call 4 times a frame, in every player's game:
+  two copies on one PC (host 60 fps, friend about 120 fps, 40 ms of delay) sent 240 and about 500 a second. The fix
+  held back only each frame's first copy, so about three quarters still went. The friend left with 1001 waiting about
+  4 s into the get-up. The host's queue grew too: with that delay it drained about 120 a second.
+  - The 4 copies are the same command (`SetEventCommand(801, 851)`, the knight's get-up), so in a run only a frame's
+    first copy goes now. That is at most 30 a second, at any frame rate. The other copies still run in the game that
+    made them.
+  - This also changes 30 fps: the PS3 sent all 4 copies each frame (120 a second). The others got the same command 4
+    times a frame; now they get it once.
+  - The test area's timer in the first runs made one call a frame, which is why those runs passed.
 - **Not changed:** the position packets (type 1, every 6 frames, section 7a) go out more often above 30 fps. They didn't
   fill the queue in these runs (0 waiting at 420 fps without the timer).
 

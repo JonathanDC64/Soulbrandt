@@ -2461,11 +2461,19 @@ extern "C" void des_net_replay(ppu_context* ctx, uint32_t addr)
  * and the game leaves the session ("The network connection is unstable").
  * So a call the same as one on the frame before goes out at most 30 times a
  * second of game time, as at 30 fps; the first three of a run go as they
- * come, and so does a call made twice in one frame. One not sent goes
- * nowhere: the send is handed a size it refuses (it takes size + 8 <= 0x800)
- * and returns 0, as with no one to send to; no caller reads that. The call
- * itself still ran in this game. At 30 fps or below nothing is held back.
- * DES_NET_SCRIPT_RATE=0 turns it off. */
+ * come. A script may also make the same call more than once a frame: the
+ * Tower Knight's get-up goes 4 times a frame, in every game (2026-11-20,
+ * two games at 60 and 120 fps with 40 ms of delay: 120 and 240 a second,
+ * the guest's backlog past 1000 in 4 s; the host's grew too, the backlog
+ * drained about 120 a second). In a run only a frame's first copy may go:
+ * the others are the same command again, and run in the game that made
+ * them. So a call made on every frame goes out at most 30 times a second,
+ * at any frame rate; a call made twice in one frame outside a run (a
+ * script's one-off call, or a run's first three frames) goes twice. One
+ * not sent goes nowhere: the send is handed a size it refuses (it takes
+ * size + 8 <= 0x800) and returns 0, as with no one to send to; no caller
+ * reads that. The call itself still ran in this game. DES_NET_SCRIPT_RATE=0
+ * turns it off. */
 constexpr int32_t  kScriptCallMsg  = 12;      /* the message type, and its size */
 constexpr uint32_t kScriptCallSize = 20;
 constexpr uint32_t kSendRefused    = 0x7F9;   /* a size the send refuses */
@@ -2504,7 +2512,10 @@ extern "C" void des_net_script(ppu_context* ctx, uint32_t)
         c->run = 0;
         c->said = false;
     }
-    if (c->run && c->frame == frame) return;   /* again in the same frame */
+    if (c->run && c->frame == frame) {   /* again in the same frame: one copy a frame in a run */
+        if (c->run > 3) ctx->gpr[6] = kSendRefused;
+        return;
+    }
     c->run = c->run && frame - c->frame == 1u ? c->run + 1 : 1;
     c->frame = frame;
     if (c->run == 1) c->next = now + kScriptCallGap;
