@@ -27,6 +27,12 @@ struct ModelView {
     float scale = 0;
     bool turning = false;
     double time = 0;  // seconds into its animation (looped)
+    float glow_scale = 1.f;  // its look's glow, times this (the start screen's sword: start_sword.hpp)
+    float solid_scale = 1.f;  // its look's brightness, times this (the same)
+    // Models drawn together, in front of and behind each other (the start screen's swords): the depth's range in
+    // pixels, the same for them all, and the depth kept as the ones before left it (cleared before the first). 0: the
+    // model's own range, its depth cleared round it.
+    float depth_reach = 0.f;
 };
 
 class Renderer {

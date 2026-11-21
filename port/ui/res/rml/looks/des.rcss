@@ -1248,6 +1248,16 @@ body.prelaunch hero title-logo {
     decorator: image(/res/img/soulbrandt-logo.png) content-box, shader("flame:logo") padding-box;
 }
 
+/* The start screen's sword beside the title (a prototype: prelaunch.rcss's #sword-title), its middle line 30 dp past
+   the logo's right, its top 80 dp above the logo's for the flame. */
+body.prelaunch start-sword#sword-title {
+    left: 50%;
+    margin-left: 170dp;
+    top: -80dp;
+    width: 160dp;
+    height: 276dp;
+}
+
 /* The flame off (Settings > Interface > Soul flame): the letters alone. */
 body.prelaunch.no-flame hero title-logo {
     decorator: image(/res/img/soulbrandt-logo.png) content-box;
@@ -2980,5 +2990,12 @@ body.prelaunch hero title-logo {
     height: 106dp;
     padding: 109dp 41dp 41dp 41dp;
     margin: -109dp -41dp -41dp -41dp;
+}
+
+body.prelaunch start-sword#sword-title {
+    margin-left: 116dp;
+    top: -54dp;
+    width: 109dp;
+    height: 188dp;
 }
 }
