@@ -708,9 +708,9 @@ alive.
   - after the Nexus script's blend (the hook after `bl 0x009204A0` at US 0x004117E4, in `RecvGlobalQwc`'s
     0x004117C0), which sets `+0x10` from the player's own.
 
-  When the session ends, the friend's own values are put back in play: each one that matched its own saved value at
-  the first write follows that value as it is then, and any other is put back as it was. The own values at `+0x48`
-  are never written.
+  When the session ends, the friend's own values (`+0x48`) are put back in play, as its game sets them at each load
+  out of a session. (Until 11-20 the values in play at the first write were put back instead; after a rejoin those
+  could already be the host's.) The own values at `+0x48` are never written.
 - **Items.** A phantom's game makes no items: the area's items (lying on corpses, made at each load, US 0x0025CAE8)
   and a dead enemy's drop (rolled by each game when the enemy dies, 0x002B2900) are made only when the player type
   the area was loaded for is body form (0) or soul form (8), and a friend is a blue phantom (1). Both reads of that
