@@ -66,6 +66,11 @@ std::string redact_log(std::string text);
 // previous run's log is kept as des.prev.log). Called once, before main() (crash_report.cpp). Nothing without a data
 // folder.
 void start_log();
+#ifndef _WIN32
+// Where descriptor 1 or 2 went before start_log took it over (a descriptor of its own, closed when a program is
+// started), -1 when nowhere that still reads it, or `fd` itself when start_log hasn't taken it over.
+int original_output(int fd);
+#endif
 std::filesystem::path log_path();
 // The co-op log, logs\coop.log beside des.log: the session's lines of the log ([coop], the rooms, matching, the
 // network, the router, reports), each with its time (UTC). Made at this run's first such line; the one before it is

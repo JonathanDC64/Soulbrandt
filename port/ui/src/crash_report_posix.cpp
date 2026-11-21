@@ -460,14 +460,28 @@ bool start_again(const std::vector<std::string>& set, bool play) {
     envp.push_back(nullptr);
     for (std::string& a : args) argv.push_back(a.data());
     argv.push_back(nullptr);
+    // What the new one gets of this one's files: standard output and error as they were when this one started (a
+    // terminal, the desktop's journal), not the log's pipe that report::start_log put there, which nothing reads once
+    // this one has closed (after 1 MB in it, the new one's every thread that prints would wait: #670). Nothing else
+    // either: no lock on des.log, no end of that pipe.
+    posix_spawn_file_actions_t files;
+    posix_spawn_file_actions_init(&files);
+    for (int fd : {1, 2}) {
+        const int original = report::original_output(fd);
+        if (original < 0) posix_spawn_file_actions_addopen(&files, fd, "/dev/null", O_WRONLY, 0);
+        else if (original != fd) posix_spawn_file_actions_adddup2(&files, original, fd);
+    }
+    posix_spawn_file_actions_addclosefrom_np(&files, 3);
     // The program's file where it was started (report::program_now, read at the start): after an update that path
     // holds the new version, while /proc/self/exe follows this one's file into .previous/. /proc/self/exe only if
     // the path cannot be started.
     pid_t child = 0;
     const std::string exe = report::program_now().string();
-    if ((exe.empty() || posix_spawn(&child, exe.c_str(), nullptr, nullptr, argv.data(), envp.data()) != 0) &&
-        posix_spawn(&child, "/proc/self/exe", nullptr, nullptr, argv.data(), envp.data()) != 0)
-        return false;
+    const bool started =
+        (!exe.empty() && posix_spawn(&child, exe.c_str(), &files, nullptr, argv.data(), envp.data()) == 0) ||
+        posix_spawn(&child, "/proc/self/exe", &files, nullptr, argv.data(), envp.data()) == 0;
+    posix_spawn_file_actions_destroy(&files);
+    if (!started) return false;
     // A test run's PS3_PIDFILE (each process appends itself, late in its boot): the new one goes in now, so the script
     // that started this one sees the game at once, to wait for it or stop it.
     if (const char* pids = std::getenv("PS3_PIDFILE"); pids && *pids)

@@ -39,7 +39,10 @@
 #include "platform.hpp"
 
 #include <SDL.h>  // (the displays, for system_info)
+#include <dirent.h>
 #include <fcntl.h>
+#include <poll.h>
+#include <signal.h>
 #include <spawn.h>
 #include <sys/file.h>
 #include <sys/ioctl.h>
@@ -673,9 +676,40 @@ bool tee(std::initializer_list<int> fds, HANDLE original, int slot) {
     return thread != nullptr;
 }
 #else
+// Where standard output and error went before the tee took them over (a descriptor of their own, kept for start_again:
+// crash_report_posix.cpp), -1 when they went nowhere that still reads, or -2 while the tee hasn't taken them over.
+int g_original_out = -2;
+int g_original_err = -2;
+
+// Copies to `out`, never holding the game up for long: a terminal or a program reading the game's output that stops
+// taking it would otherwise stop the game's every thread that prints, once the pipe behind them is full (#670: a
+// game started by an older version's Play wrote to a pipe that nobody read). 4 KB at a time, each when `out` has
+// room; when it has had none for 2 s, the copy to it stops for good (the log goes on). false then.
+bool copy_out(int out, const char* p, size_t n) {
+    while (n) {
+        pollfd pf{out, POLLOUT, 0};
+        int ready;
+        do ready = poll(&pf, 1, 2000);
+        while (ready < 0 && errno == EINTR);
+        if (ready <= 0 || (pf.revents & (POLLERR | POLLHUP | POLLNVAL))) return false;
+        const ssize_t w = ::write(out, p, n < 4096 ? n : 4096);
+        if (w < 0 && errno == EINTR) continue;
+        if (w <= 0) return false;  // (that terminal or file is gone: the log goes on)
+        p += w;
+        n -= size_t(w);
+    }
+    return true;
+}
+
 // One per pipe, as on Windows: what the program prints, to where it was going (a copy of that descriptor, or -1) and
 // into the log, which is flushed whenever the pipe has nothing more waiting.
 void tee_thread(int read_fd, int out) {
+    // A reader that has gone is an error for the write, not SIGPIPE ending the game (the network ignores it for the
+    // whole process later; this can come before).
+    sigset_t pipe_signal;
+    sigemptyset(&pipe_signal);
+    sigaddset(&pipe_signal, SIGPIPE);
+    pthread_sigmask(SIG_BLOCK, &pipe_signal, nullptr);
     std::vector<char> buf(1 << 16);
     bool idle = true;
     g_tee_idle.fetch_add(1);
@@ -686,10 +720,11 @@ void tee_thread(int read_fd, int out) {
         if (idle) g_tee_idle.fetch_sub(1);
         idle = false;
         if (n <= 0) break;
-        for (const char* p = buf.data(); out >= 0 && p < buf.data() + n;) {
-            const ssize_t w = ::write(out, p, size_t(buf.data() + n - p));
-            if (w <= 0 && errno != EINTR) out = -1;  // (that terminal or file is gone: the log goes on)
-            if (w > 0) p += w;
+        if (out >= 0 && !copy_out(out, buf.data(), size_t(n))) {
+            out = -1;
+            static const char kNote[] = "[log] what the game prints stopped going where it went (nothing takes it "
+                                        "there any more): it goes on in this log only\n";
+            log_write(kNote, sizeof kNote - 1);
         }
         log_write(buf.data(), size_t(n));
         int waiting = 0;
@@ -705,7 +740,7 @@ void tee_thread(int read_fd, int out) {
 // descriptor of its own, or -1) and the log.
 bool tee(std::initializer_list<int> fds, int original) {
     int p[2];
-    if (pipe(p) != 0) {
+    if (pipe2(p, O_CLOEXEC) != 0) {  // (its ends are this process's only: see start_again)
         if (original >= 0) close(original);
         return false;
     }
@@ -717,9 +752,60 @@ bool tee(std::initializer_list<int> fds, int original) {
         std::setvbuf(stream, nullptr, _IONBF, 0);
     }
     close(p[1]);  // (the descriptors above hold it)
+    for (int target : fds) (target == 1 ? g_original_out : g_original_err) = original;  // (the thread never closes it)
     g_tees++;
     std::thread(tee_thread, p[0], original).detach();
     return true;
+}
+
+// What an older version's Play or update left this process (its start_again passed on all its descriptors): its log
+// pipe as standard output and error, with the pipe's read end, which only this process holds (nobody reads it, so
+// this one's every printing thread waited once 1 MB was in it: #670), and its log files, whose lock made this one
+// write des.<pid>.log. Closes those (before this process opens anything in `logs`) and puts /dev/null in the pipe's
+// place: what was printed there went nowhere anyway. Prints nothing (standard error may be that pipe): `note` says
+// what it did, for the log.
+void drop_inherited(const std::filesystem::path& logs, std::string& note) {
+    struct stat out {}, err {};
+    const bool out_pipe = fstat(1, &out) == 0 && S_ISFIFO(out.st_mode);
+    const bool err_pipe = fstat(2, &err) == 0 && S_ISFIFO(err.st_mode);
+    std::error_code ec;
+    const std::string folder = std::filesystem::weakly_canonical(logs, ec).string() + "/";
+    bool out_orphaned = false, err_orphaned = false;
+    DIR* d = opendir("/proc/self/fd");
+    if (!d) return;
+    std::vector<int> drop;
+    while (const dirent* e = readdir(d)) {
+        const int fd = std::atoi(e->d_name);
+        if (fd < 3 || fd == dirfd(d)) continue;
+        struct stat st {};
+        if (fstat(fd, &st) != 0) continue;
+        const int mode = fcntl(fd, F_GETFL);
+        const bool reads = S_ISFIFO(st.st_mode) && mode >= 0 && (mode & O_ACCMODE) == O_RDONLY;
+        const bool of_out = reads && out_pipe && st.st_ino == out.st_ino && st.st_dev == out.st_dev;
+        const bool of_err = reads && err_pipe && st.st_ino == err.st_ino && st.st_dev == err.st_dev;
+        if (of_out || of_err) {
+            drop.push_back(fd);
+            out_orphaned = out_orphaned || of_out;
+            err_orphaned = err_orphaned || of_err;
+            continue;
+        }
+        char target[4096];
+        const ssize_t k = readlink(("/proc/self/fd/" + std::string(e->d_name)).c_str(), target, sizeof target - 1);
+        if (S_ISREG(st.st_mode) && k > 0 && std::string(target, size_t(k)).rfind(folder, 0) == 0) drop.push_back(fd);
+    }
+    closedir(d);
+    if (out_orphaned || err_orphaned) {
+        const int null = open("/dev/null", O_WRONLY | O_CLOEXEC);
+        if (null >= 0) {
+            if (out_orphaned) dup2(null, 1);
+            if (err_orphaned) dup2(null, 2);
+            close(null);
+        }
+    }
+    for (int fd : drop) close(fd);
+    if (!drop.empty())
+        note = "[log] closed " + std::to_string(drop.size()) + " file(s) an older version's restart handed down" +
+               (out_orphaned || err_orphaned ? " (among them its log's pipe, which nothing read)" : "") + "\n";
 }
 #endif
 
@@ -921,7 +1007,7 @@ std::string narrow(const std::wstring& w) {
 }
 
 FILE* open_file(const std::filesystem::path& path, const char* mode) {
-    return std::fopen(path.c_str(), mode);
+    return std::fopen(path.c_str(), (std::string(mode) + "e").c_str());  // ("e": not handed to programs started)
 }
 
 bool replace_file(const std::filesystem::path& from, const std::filesystem::path& to) {
@@ -1955,6 +2041,8 @@ void start_log() {
     std::error_code ec;
     const auto dir = data_dir() / "logs";
     std::filesystem::create_directories(dir, ec);
+    std::string inherited;
+    drop_inherited(dir, inherited);
     auto path = dir / "des.log";
     // Another copy of the game running at the same time holds a lock on des.log: this one then writes its own, which
     // its reports quote (those of finished copies are cleared away after a day). Otherwise des.log starts over and
@@ -1979,7 +2067,7 @@ void start_log() {
     } else {
         std::filesystem::rename(path, dir / "des.prev.log", ec);
     }
-    g_log_file = std::fopen(path.c_str(), "wb");
+    g_log_file = open_file(path, "wb");  // (its lock stays this process's: see start_again)
     if (!g_log_file) return;
     flock(fileno(g_log_file), LOCK_EX | LOCK_NB);
     std::setvbuf(g_log_file, nullptr, _IOFBF, 1 << 16);
@@ -1994,11 +2082,17 @@ void start_log() {
     const bool same = (fstat(1, &so) == 0 && fstat(2, &se) == 0 && so.st_dev == se.st_dev && so.st_ino == se.st_ino) ||
                       (isatty(1) && isatty(2));
     bool ok;
-    if (same) ok = tee({1, 2}, dup(2));
-    else ok = tee({2}, dup(2)) && tee({1}, dup(1));
+    if (same) ok = tee({1, 2}, fcntl(2, F_DUPFD_CLOEXEC, 3));
+    else ok = tee({2}, fcntl(2, F_DUPFD_CLOEXEC, 3)) && tee({1}, fcntl(1, F_DUPFD_CLOEXEC, 3));
     if (!ok) return;
     g_log_path = path;
     std::atexit(flush_at_exit);
+    if (!inherited.empty()) std::fputs(inherited.c_str(), stderr);
+}
+
+int original_output(int fd) {
+    const int kept = fd == 1 ? g_original_out : fd == 2 ? g_original_err : -2;
+    return kept == -2 ? fd : kept;
 }
 
 void flush_log() {
