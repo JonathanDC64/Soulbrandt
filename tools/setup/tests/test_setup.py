@@ -768,7 +768,7 @@ class AbsolutePathsTest(unittest.TestCase):
             os.chdir(d)
             try:
                 a = absolute_paths(mock.Mock(data="portable", game="game", firmware=None, gamedata="", update=None,
-                                             install=None, decrypted=["dec"], rpcs3="rpcs3", host="Soulbrandt.exe"))
+                                             install=None, decrypted=["dec"], rpcs3="rpcs3", host="game.exe"))
                 here = os.getcwd()
             finally:
                 os.chdir(was)
@@ -778,7 +778,7 @@ class AbsolutePathsTest(unittest.TestCase):
         self.assertIsNone(a.firmware)      # (not given: stays not given)
         self.assertEqual(a.gamedata, "")
         self.assertEqual(a.rpcs3, "rpcs3")  # (a program may be one on the PATH)
-        self.assertEqual(a.host, "Soulbrandt.exe")
+        self.assertEqual(a.host, "game.exe")
 
     def test_main_hands_the_step_an_absolute_data_folder(self):
         seen = {}
