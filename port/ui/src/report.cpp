@@ -940,6 +940,10 @@ const std::filesystem::path& data_dir() {
     g_data_dir_resolved = true;
     if (const char* given = std::getenv("DES_DATA_DIR"); given && *given) {
         g_data_dir = std::filesystem::path(widen(given));
+        std::error_code ec;   // (absolute, against the folder the program started in: issue #667)
+        if (g_data_dir.is_relative()) {
+            if (auto abs = std::filesystem::absolute(g_data_dir, ec); !ec) g_data_dir = abs.lexically_normal();
+        }
     } else if (settings::harness_run()) {
         g_data_dir.clear();  // test runs keep nothing
     } else if (portable()) {
