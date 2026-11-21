@@ -69,6 +69,23 @@ from .pipeline import stage  # noqa: F401 (the copy step; the tests import it fr
 NAME = "DemonsSoulsRecomp"
 
 
+# The folders and files given on the command line, made absolute against this process's folder once, at the start
+# (issue #667): the steps start their tools in other folders (the lift in the source tree, the compile in its build
+# folder), so a relative --data (from a relative DES_SETUP_DATA) pointed them at the wrong place. --rpcs3 and --host
+# stay as given: a program name there may be one to find on the PATH.
+PATH_ARGS = ("data", "game", "firmware", "gamedata", "update", "install")
+
+
+def absolute_paths(a):
+    for k in PATH_ARGS:
+        v = getattr(a, k, None)
+        if v:
+            setattr(a, k, os.path.abspath(v))
+    if getattr(a, "decrypted", None):
+        a.decrypted = [os.path.abspath(d) for d in a.decrypted]
+    return a
+
+
 def default_data() -> Path:
     """The shared folder, or the build folder the player chose on setup's screens (pipeline.chosen_folder). A portable
     install's folder is the host's to know (setup_engine.cpp data_dir): it always passes --data."""
@@ -456,7 +473,7 @@ def main(argv=None) -> int:
     sp.add_argument("--install", required=True, metavar="DIR", help="the folder the player's zip was unpacked in")
     data_arg(sp)
     sp.set_defaults(fn=update.main_back)
-    a = p.parse_args(argv)
+    a = absolute_paths(p.parse_args(argv))
     if a.cmd == "run":
         _check_run_args(p, a)
     return a.fn(a)
