@@ -2232,6 +2232,16 @@ extern "C" void des_net_sync(ppu_context* ctx, uint32_t addr)
  * skips the reply, both functions see server = own, and the result is the
  * offline one. The player's own values still go to the server (addQWCData).
  * Blends saved before stay. Live: from the next load. Main thread.
+ * A new character (0x00920FC8 called from the new-game step, 0x00185200,
+ * 0x001856B8, 0x00185748) gets 0 in every area instead: the own values then
+ * are whatever was in memory, a character played before in the same run, and
+ * a new character took that one's world tendency (2026-11-20: a tester's new
+ * character had pure white Palace, 200, from their other character, so 1-1's
+ * dragons were gone). 0 is what the game gives a new character offline (no
+ * server reply, NetData's zeros). The caller is read off the stack: the
+ * reader 0x00567E98 has pushed its frame (stdu at its first instruction),
+ * the back chain gives 0x00920FC8's, which keeps its return address at
+ * +0x110 (std r0, 0x110(r1) at 0x00921008).
  * Always in seamless co-op (DES_SEAMLESS host or join): there is no server
  * there, only the game's own in-game answers (des_seamless.cpp), which give a
  * neutral tendency, so the mix only pulled each player's tendency toward
@@ -2249,15 +2259,19 @@ extern "C" void des_qwc_local(ppu_context* ctx, uint32_t)
     uint32_t q = vm_read32(DES_AT(0x01B4EF9Cu));
     if (!guest_ptr_ok(q) || !guest_ptr_ok(q = vm_read32(q + 0x24))) return;
     const uint32_t own_at = q + 0x48 + 8 * (area - 1);
-    vm_write32(out, vm_read32(own_at));
-    vm_write32(out + 4, vm_read32(own_at + 4));
+    const uint32_t frame = vm_read32((uint32_t)ctx->gpr[1] + 4);   /* (the back chain's low word) */
+    const uint32_t from = guest_ptr_ok(frame) ? vm_read32(frame + 0x114) : 0;
+    const bool fresh = from == DES_AT(0x00185204u) || from == DES_AT(0x001856BCu) || from == DES_AT(0x0018574Cu);
+    const uint32_t b0 = fresh ? 0u : vm_read32(own_at), b1 = fresh ? 0u : vm_read32(own_at + 4);
+    vm_write32(out, b0);
+    vm_write32(out + 4, b1);
     ctx->gpr[4] = 0;
     if (area == 1) {
         float bw, lr;
-        const uint32_t b0 = vm_read32(own_at), b1 = vm_read32(own_at + 4);
         std::memcpy(&bw, &b0, 4);
         std::memcpy(&lr, &b1, 4);
-        std::fprintf(stderr, "[des] world tendency: yours only (the server's skipped; area 1 %.0f / %.0f)\n", bw, lr);
+        std::fprintf(stderr, "[des] world tendency: yours only (the server's skipped%s; area 1 %.0f / %.0f; from %08X)\n",
+                     fresh ? ", a new character: 0 everywhere" : "", bw, lr, from);
     }
 }
 
