@@ -70,6 +70,9 @@ DES_REGION_ADDR(0x0015AE10, 0x0015BDD8)  /* call kLoadSouls */
 DES_REGION_ADDR(0x00162D0C, 0x00163BDC)  /* data kGameParamCases */
 DES_REGION_ADDR(0x0017A4A8, 0x0017B390)  /* hook des_coop_hook: the summoned reload's load step */
 DES_REGION_ADDR(0x0017B258, 0x0017C468)  /* call */
+DES_REGION_ADDR(0x00185204, 0x0018608C)  /* code: des_qwc_local, the new-game step's calls of 0x00920FC8 (returns) */
+DES_REGION_ADDR(0x001856BC, 0x00186544)  /* code: des_qwc_local, the new-game step's calls of 0x00920FC8 (returns) */
+DES_REGION_ADDR(0x0018574C, 0x001865D4)  /* code: des_qwc_local, the new-game step's calls of 0x00920FC8 (returns) */
 DES_REGION_ADDR(0x00196158, 0x00196FE0)  /* call */
 DES_REGION_ADDR(0x001D17A0, 0x001D2628)  /* call */
 DES_REGION_ADDR(0x001D1E64, 0x001D2CEC)  /* hook des_phys_rate */
