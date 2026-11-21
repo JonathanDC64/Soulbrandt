@@ -57,6 +57,7 @@ std::string guest_line(const co::Status& s) {
         return s.join_warn ? "" : !s.join.empty() ? s.join : "Reaching the host's game...";
     case co::Status::Link::Connected: return "You're connected to the host's game.";
     case co::Status::Link::Full: return "The host's game is full. You join as soon as a place frees up.";
+    case co::Status::Link::Fight: return "The host is in a boss fight. You join as soon as it's over.";
     default: return "";
     }
 }

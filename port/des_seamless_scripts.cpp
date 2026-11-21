@@ -16,7 +16,8 @@
 //   - no multiplayer wall closes the way back to an Archstone (the host may use them in a session);
 //   - a boss's extra health counts a third blue phantom (a party of four) as two: x2, the game's most.
 // Each area's script:
-//   - a boss fight is marked from the boss's health bar to its clearing (for the watch above);
+//   - a boss fight is marked from the boss's health bar to its clearing (for the watch above, and flag 19994 for
+//     des_seamless_game.cpp: no join during the host's);
 //   - the boss rooms' party walls drop as in solo play;
 //   - a guest doesn't play the warp-out pose at a boss's death;
 //   - the poses a player's script plays on it (an Archstone's touch and the trip home after it, a sword pulled out)
@@ -318,7 +319,8 @@ bool edit_global(std::string& t, const std::string& nl)
     // A boss's health bar cleared: its fight is over (BlockClear's kill; see edit_area)
     const std::regex clear("proxy:ClearBossGauge\\s*\\(");
     if (!std::regex_search(t, clear)) return false;
-    t = std::regex_replace(t, clear, "SeamlessBossFight = false; proxy:ClearBossGauge(");
+    t = std::regex_replace(t, clear,
+                           "SeamlessBossFight = false; proxy:SetEventFlag(19994, false); proxy:ClearBossGauge(");
     return true;
 }
 
@@ -1189,8 +1191,10 @@ int edit_area(std::string& t, bool nexus)
     // script): a guest who dies in it watches until it ends (global_event.lua's PartyGhostDeath_2). The Nexus's script
     // holds the final area and its boss too, so it gets this as well (its other edits first).
     auto boss_fight = [&] {
-        sub(std::regex("proxy:SetBossGauge\\s*\\("), "SeamlessBossFight = true; proxy:SetBossGauge(");
-        sub(std::regex("proxy:ClearBossGauge\\s*\\("), "SeamlessBossFight = false; proxy:ClearBossGauge(");
+        sub(std::regex("proxy:SetBossGauge\\s*\\("),
+            "SeamlessBossFight = true; proxy:SetEventFlag(19994, true); proxy:SetBossGauge(");
+        sub(std::regex("proxy:ClearBossGauge\\s*\\("),
+            "SeamlessBossFight = false; proxy:SetEventFlag(19994, false); proxy:ClearBossGauge(");
     };
     if (nexus) {
         // The Nexus's Archstones (OnDistanceAction(<id>, 10000, <stone>, "OnEvent_<id>", WarpGimmickDist_A, ...)) have

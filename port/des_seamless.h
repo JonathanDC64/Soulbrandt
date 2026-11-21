@@ -65,9 +65,10 @@ struct Status {
     int waiting = 0;         // host: other games connected to it but not in the session (full, or between sessions)
     int max_players = 4;     // host: the most it takes (DES_SEAMLESS_PLAYERS)
     bool code_spent = false; // host: too many wrong codes came, so the code lets no one else in (new_code())
-    enum class Link { Connecting, Connected, Lost, Full };
+    enum class Link { Connecting, Connected, Lost, Full, Fight };
     Link link = Link::Connecting;  // join: the connection to the host's game (Lost: it was there, and is gone; Full:
-                                   // the host has all the players it takes, and this one waits for a place)
+                                   // the host has all the players it takes, and this one waits for a place;
+                                   // Fight: the host is in a boss fight, and this one joins once it's over)
     // Host, with the endpoint on (DES_SEAMLESS_INTRO): the room code, once the endpoint has the room ("" before, and
     // with it off), and the endpoint's answer in plain words ("" with it off).
     std::string room_code;
