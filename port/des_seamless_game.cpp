@@ -381,8 +381,7 @@ constexpr uint32_t kQwcInUse = 0x10, kQwcWords = 14;   // the QWC object's tende
 constexpr uint32_t kQwcOwn = 0x48;                      // and the player's own (the save keeps them), the same layout
 struct Qwc { bool have = false; uint32_t w[kQwcWords] = {}; };
 Qwc sHostQwc;                        // the host's tendency in use (QWC, a guest)
-Qwc sOwnQwc;                         // this guest's own in use, kept while the host's is in place
-uint32_t sOwnSaved[kQwcWords];       // and its own values (+0x48) at that time
+Qwc sOwnQwc;                         // have: the host's in use is in place on this guest (w: the log's own values)
 std::atomic<bool> sResendOwn{false}; // another game said SYNC: this game's characters' states go out again
 
 float getf(const uint8_t* p)
@@ -1228,7 +1227,7 @@ void leave_tick(ppu_context* ctx, uint32_t st, bool world)
 // keeps). A phantom's game takes the host's in-use values from the host's (P2P 0x17, received at 0x005256F0), so the area
 // scripts' IsSuccessQWC see the host's world. That message never comes in seamless co-op, so the host sends its own (QWC)
 // and each friend puts them in place: at its load step, after the Nexus's blend (0x004117E4), and when they change. The
-// friend's own values are never touched, and its own in-use values come back when the session ends.
+// friend's own values are never touched, and in use they come back when the session ends (own_qwc_back).
 uint32_t qwc_object()
 {
     return rd(rd(DES_AT(kPgdRoot)) + 0x24);
@@ -1257,20 +1256,14 @@ void send_qwc()
     send(kMsgQwc, b);
 }
 
-// The host's tendency in use (QWC) in place on this guest's game, its own kept the first time; why for the log.
+// The host's tendency in use (QWC) in place on this guest's game; why for the log.
 void take_host_qwc(const char* why)
 {
     const uint32_t q = qwc_object();
     if (!guest_ok(q)) return;
     std::lock_guard<std::mutex> l(sMsgLock);
     if (!sHostQwc.have) return;
-    if (!sOwnQwc.have) {
-        sOwnQwc.have = true;
-        for (uint32_t i = 0; i < kQwcWords; i++) {
-            sOwnQwc.w[i] = vm_read32(q + kQwcInUse + 4 * i);
-            sOwnSaved[i] = vm_read32(q + kQwcOwn + 4 * i);
-        }
-    }
+    sOwnQwc.have = true;
     bool changed = false;
     for (uint32_t i = 0; i < kQwcWords; i++)
         if (vm_read32(q + kQwcInUse + 4 * i) != sHostQwc.w[i]) {
@@ -1280,9 +1273,11 @@ void take_host_qwc(const char* why)
     if (changed) log_qwc("the host's", why, sHostQwc);
 }
 
-// Out of the session: this guest's own tendency in use again. A value that was its own (saved) one at the join follows
-// that own value, so a change to it during the session (a Nexus's blend, say) is in play at once; any other is put back
-// as it was at the join.
+// Out of the session: this guest's own tendency in use again, its own values (+0x48), as its game sets them at each
+// load out of a session (the blend 0x009204A0 with no server: in use = own). They used to be the in-use values kept at
+// the first QWC put in place; but those can be the host's already then (11-20, a friend's rejoin after a drop: the line
+// "this player's own again" printed the host's values, though its own were 0; it then played in the host's tendency
+// until its next load).
 void own_qwc_back()
 {
     std::lock_guard<std::mutex> l(sMsgLock);
@@ -1292,7 +1287,7 @@ void own_qwc_back()
     const uint32_t q = qwc_object();
     if (!guest_ok(q)) return;
     for (uint32_t i = 0; i < kQwcWords; i++) {
-        if (sOwnQwc.w[i] == sOwnSaved[i]) sOwnQwc.w[i] = vm_read32(q + kQwcOwn + 4 * i);
+        sOwnQwc.w[i] = vm_read32(q + kQwcOwn + 4 * i);
         vm_write32(q + kQwcInUse + 4 * i, sOwnQwc.w[i]);
     }
     log_qwc("this player's own again", "out of the session", sOwnQwc);
