@@ -870,6 +870,14 @@ their first instruction):
   the tutorial's end each game took its own player to the Nexus (now a friend goes with its host, see the next item),
   and the host, still in its locked room, kicked the friend's joins. (The friend's game then kept leaving the room it was kicked from, and the runtime took down each
   room it joined after that; fixed in ps3recomp, see "A friend kicked out of the room" below.)
+- No join during the host's boss fight, as in the original, where that lock kept everyone out once the fight began.
+  The scripts mark a fight with flag 19994 (past the game's last flag), set at the boss's health bar
+  (`SetBossGauge`) and cleared at its clearing (`ClearBossGauge`); a load of the host's ends it too. The host's game
+  tells its guests when its fight begins and ends (message `FGHT`, u32 1 or 0), and again with each ask for its room
+  during one. A guest out of the session (a first join, or a rejoin after a drop) holds its join until the fight is
+  over; the Co-op window says "The host is in a boss fight. You join as soon as it's over." Before this (11-20), a
+  friend that rejoined during the Tower Knight's fight was in the room in the host's game but not in the fight in its
+  own: no boss there.
 - No trip of a friend's own: each `proxy:WarpNextStage(...);` in an area's script (not the Nexus's, whose stones have
   their own check above) runs only when `proxy:IsSession() == false or proxy:IsClient() == false`. In the game's own
   co-op such a trip ends a client's session: at the area's teardown, a client that didn't ask for a summoned reload

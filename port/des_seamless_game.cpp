@@ -174,6 +174,7 @@ constexpr char kMsgFlag[4] = {'F', 'L', 'A', 'G'};   // u32 flag, u32 area: a pr
 constexpr char kMsgFlags[4] = {'F', 'L', 'G', 'S'};
 constexpr char kMsgBack[4] = {'B', 'A', 'C', 'K'};   // u32 player id: a guest back in the world after its respawn
 // u32 player id, u32 1 or 0: whether that player shows its phantom glow, u32 its colour (0x01RRGGBB; 0 the game's)
+constexpr char kMsgFight[4] = {'F', 'G', 'H', 'T'};  // u32 1 or 0: the host's boss fight began, or is over
 constexpr char kMsgGlow[4] = {'G', 'L', 'O', 'W'};
 // 14 x u32: the host's world tendency in use, two floats for each of worlds 1-7 (before each READY), as the game's own
 // message to a phantom (P2P 0x17) gives them
@@ -349,6 +350,8 @@ std::vector<uint8_t> sRoom;          // the host's room data (a guest)
 bool sFull = false;                  // the host's last answer was FULL: no join until its room data comes (a guest)
 bool sAsked = false;                 // a guest asked for the room data (the host)
 uint32_t sLeadTrip = 0;              // the host's latest load (a guest)
+bool sHostFight = false;             // the host is in a boss fight: no join until it's over (a guest; FGHT)
+std::atomic<bool> sFight{false};     // this game's boss fight (the host; kFightMarker), until it's over or a load
 struct Place { float x = 0, y = 0, z = 0, yaw = NAN; };   // yaw: the facing (player_transform), NaN if unknown
 struct Ready {
     uint32_t trip = 0, area = kNoArea;
@@ -407,6 +410,8 @@ void on_message(uint32_t from, const uint8_t* d, uint32_t n)
     } else if (!std::memcmp(d, kMsgFull, 4)) {   // (a guest in the session ignores it: guest_tick reads it only out)
         sRoom.clear();
         sFull = true;
+    } else if (!std::memcmp(d, kMsgFight, 4) && n >= 8) {
+        sHostFight = get32(d + 4) != 0;
     } else if (!std::memcmp(d, kMsgAsk, 4)) {
         sAsked = true;
     } else if (!std::memcmp(d, kMsgLead, 4) && n >= 8) {
@@ -494,6 +499,8 @@ struct Game {
     bool host_gone = false;   // a guest: that connection lost since; said once
     bool home_wait = false;   // a guest: its game is taking it home (flag 4047): no join until it's there; said once
     bool room_sent = false;   // the host: this room's data made and sent
+    bool fight_told = false;  // the host: the boss fight its guests were last told of (FGHT)
+    bool fight_wait = false;  // a guest out of the session: holding its join for the host's boss fight
     bool told_full = false;   // the host: its last answer to a guest's ask was FULL (logged once in a row)
     int room_frames = 0;
     bool was_world = false;   // the host: in the world last frame
@@ -1801,6 +1808,9 @@ void beside_landing(uint32_t k)
 // stain too. That respawn's load step puts the player there, facing the way it died, if the stain is in the area it
 // loads (the host's); else where the host arrived, as for any other death.
 constexpr uint32_t kStainMarker = 19993;
+// A boss fight in this game: from the boss's health bar (flag 19994 set) to its clearing (cleared), past the game's
+// last flag as the markers above (des_seamless_scripts.cpp's boss_fight). The host's holds its guests' joins.
+constexpr uint32_t kFightMarker = 19994;
 constexpr uint32_t kStainPlace = 0x0, kStainFacing = 0xC, kStainMap = 0x20;
 void stain_mark()
 {
@@ -1921,6 +1931,21 @@ void host_tick(ppu_context* ctx, uint32_t sm, uint32_t gm, uint32_t st, bool wor
         }
         asked = !data.empty();
     }
+    // No one joins during a boss fight, as in the game, where the boss room's LockSession locked the room (the scripts'
+    // lock is gone in co-op: it stayed until the room closed, des_seamless_scripts.cpp). A friend that joined in one
+    // wasn't in the fight in its own game: no boss there, while the host's game showed it in the room (11-20, after a
+    // drop in the Tower Knight's fight). So the guests out of the session hold their join until it's over (FGHT), told
+    // at each change and again with each ask during one (a guest that connected since), before the room's data.
+    const bool fight = sFight.load();
+    if (fight != g.fight_told || (asked && fight)) {
+        std::vector<uint8_t> b;
+        put32(b, fight ? 1u : 0u);
+        send(kMsgFight, b);
+        if (fight != g.fight_told)
+            std::fprintf(stderr, "[coop] the boss fight %s: joins %s\n", fight ? "began" : "is over",
+                         fight ? "wait until it's over" : "are open again");
+        g.fight_told = fight;
+    }
     if (asked && g.room_sent) {
         // The session has all the players the host takes (Settings' Players when you host): FULL instead, so a guest
         // asking waits (its join would be refused, with the game's failure boxes) and asks again.
@@ -1943,6 +1968,7 @@ void host_tick(ppu_context* ctx, uint32_t sm, uint32_t gm, uint32_t st, bool wor
     // The host's own load (a warp, a death): its guests follow, and once it has arrived they are told where.
     if (!g.in_load && vm_read32(gm + kGmNextArea) != kNoArea) {
         g.in_load = true;
+        sFight = false;   // (a load ends a boss fight: the host's death, a warp)
         std::vector<uint8_t> b;
         put32(b, ++g.trip);
         send(kMsgLead, b);
@@ -2012,6 +2038,7 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
                 std::lock_guard<std::mutex> l(sMsgLock);
                 sRoom.clear();
                 sReady = Ready();
+                sHostFight = false;
                 std::fprintf(stderr, "[coop] the host's game is gone: no join until it is back\n");
             }
             g.calm = 0;
@@ -2042,6 +2069,20 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
             }
             return;
         }
+        bool fight;
+        {
+            std::lock_guard<std::mutex> l(sMsgLock);
+            fight = sHostFight;
+        }
+        if (fight) {   // the host is in a boss fight (FGHT): the join waits until it's over
+            if (!g.fight_wait)
+                std::fprintf(stderr, "[coop] the host is in a boss fight: this player joins once it's over\n");
+            g.fight_wait = true;
+            g.calm = 0;
+            return;
+        }
+        if (g.fight_wait) std::fprintf(stderr, "[coop] the host's boss fight is over: this player joins\n");
+        g.fight_wait = false;
         // standing in the world (150 frames), then every 20 s while not in a session
         if (g.calm == 150 || (g.calm > 150 && (g.calm - 150) % 1200 == 0)) {
             // in either form: the session's check of a joined guest lets a friend in body form stay (0x0053EA2C)
@@ -2327,8 +2368,11 @@ extern "C" void des_seamless_tick(ppu_context* ctx)
                 std::lock_guard<std::mutex> l(sMsgLock);
                 full = sFull;
             }
-            sLink = full ? co::Status::Link::Full : co::Status::Link::Connected;
-        } else if (sLink.load() == co::Status::Link::Connected || sLink.load() == co::Status::Link::Full) {
+            sLink = full                ? co::Status::Link::Full
+                    : sGame.fight_wait ? co::Status::Link::Fight
+                                       : co::Status::Link::Connected;
+        } else if (sLink.load() == co::Status::Link::Connected || sLink.load() == co::Status::Link::Full ||
+                   sLink.load() == co::Status::Link::Fight) {
             sLink = co::Status::Link::Lost;
         }
     }
@@ -2681,6 +2725,10 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
         }
         if (flag >= kBesideMarker && flag < kBesideMarker + 3) {   // 3-1's flight: a friend's own spot at the landing
             if ((uint32_t)ctx->gpr[5] != 0 && m == co::Mode::Join) beside_landing(flag - kBesideMarker);
+            break;
+        }
+        if (flag == kFightMarker) {   // a boss fight began or is over (the host's: its guests' joins wait)
+            if (m == co::Mode::Host) sFight = (uint32_t)ctx->gpr[5] != 0;
             break;
         }
         if (flag == kStainMarker) {   // a friend's respawn after its death in a boss fight: at its bloodstain

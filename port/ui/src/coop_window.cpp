@@ -388,6 +388,9 @@ std::string body(const co::Status& s) {
             return s.join_warn ? "<modal-warning>" + escape(s.join) + "</modal-warning>" : escape(s.join);
         if (s.link == co::Status::Link::Connecting) return "Reaching the host's game...";
         if (s.link == co::Status::Link::Connected) return "You're connected to the host's game.";
+        if (s.link == co::Status::Link::Fight)
+            return "You're connected to the host's game. The host is in a boss fight, and no one joins during one, as "
+                   "in the original game. You join as soon as it's over.";
         if (s.link == co::Status::Link::Full)
             return "You're connected to the host's game, but it is full: it has all the players the host takes. You "
                    "join as soon as a place frees up.";
