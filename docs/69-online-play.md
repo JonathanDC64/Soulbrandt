@@ -455,7 +455,18 @@ inferred from the code; it was not compared with a PS3.
     sender moves, the gait comes from the sender's own speed instead: the distance between its last two positions
     over their gap, averaged with the one before. That is the speed the chase settles to.
   - *The speed surged.* The gap the chase divides by (+0x21C, at 0x0030C330) is replaced with an exponential
-    average of the recent gaps (a fifth of each new one).
+    average of the recent gaps (a fifth of each new one; a late packet counts as twice the average at most).
+  - *Uneven arrival.* Over the internet packets don't arrive as evenly as they're sent: two can come in one frame,
+    then none for a few. The second of two has a gap of 0, which the game treats as a warp and puts the remote at
+    the new position at once; a very short gap can read as a speed past its warp limit. Gaps under 150 ms are
+    replaced with the average before those tests too (0x0030C2DC), and the sender's speed for the gait counts the
+    packets since the last frame times the average gap, not the gap this copy saw. A real warp is still far past
+    the limit.
+
+    In two copies on one PC, the host at 60 fps sending 15 packets a second, the friend unlocked, with 40 ms of
+    delay and 0-60 ms of jitter added to every packet (two runs each): the friend's copy of the host warped 40 and
+    44 times a minute before, none after; frames shown as a dash during a run went from 1,238 and 1,602 to none,
+    and gait changes while moving from 82 and 88 to 22 and 19.
   - *The stick let go.* A chase that reaches the last position before the next packet moves nothing until it, and
     SetMoveVector turns a zero move into a zero stick. While the sender moves, such a frame gets a 0.1 mm move
     along the last direction, so the stick holds.

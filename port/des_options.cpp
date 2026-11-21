@@ -2039,9 +2039,11 @@ struct NetRemote {
     float x, z;          /* the target at the last packet */
     float acc;           /* seconds since it */
     float speed, gap;    /* the sender's speed, and the last gap between packets */
-    float gap_avg;       /* those gaps averaged, 0 after a long one */
+    float gap_avg;       /* those gaps averaged, 0 at the game's own rate */
     float dir_x, dir_z;  /* the direction of the last move that went somewhere */
     unsigned last_use;
+    unsigned npk;        /* packets since the last frame that saw one */
+    float raw;           /* the gap the game measured for the packet in hand */
 };
 static NetRemote s_net_rem[8];
 
@@ -2062,7 +2064,7 @@ static NetRemote* net_remote(uint32_t m)
         r = &s_net_rem[0];
         for (NetRemote& e : s_net_rem)
             if (e.last_use < r->last_use) r = &e;
-        *r = NetRemote{m, vm_readf(m + 0x1D0), vm_readf(m + 0x1D8), 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0};
+        *r = NetRemote{m, vm_readf(m + 0x1D0), vm_readf(m + 0x1D8), 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0, 0, 0.0f};
     }
     r->last_use = ++use;
     return r;
@@ -2077,9 +2079,12 @@ static NetRemote* net_remote(uint32_t m)
  * or two, the chase arrives early on a fifth of the frames, and each arrival
  * shows idle for at least 0.2 s (the gait's hold): a walk that flickers into
  * idle, and a walk that reads as a run. The sender's speed is the distance
- * between its last two positions over their gap, averaged with the one
- * before: the speed the game's chase settles to (its 1.2 lead sets only how
- * far behind it trails). */
+ * between its last two positions over the time the sender took between
+ * them, averaged with the one before: the speed the game's chase settles to
+ * (its 1.2 lead sets only how far behind it trails). The sender's time is the
+ * packets between them times the average gap, not the gap this copy saw:
+ * over the internet packets arrive unevenly (two in one frame, then none for
+ * three), and a speed from the gaps seen jumped with each. */
 static void net_remote_frame(NetRemote* r, float dt)
 {
     const uint32_t m = r->m;
@@ -2088,20 +2093,24 @@ static void net_remote_frame(NetRemote* r, float dt)
     const float x = vm_readf(m + 0x1D0), z = vm_readf(m + 0x1D8);
     const float d = std::sqrt((x - r->x) * (x - r->x) + (z - r->z) * (z - r->z));
     const float gap = r->acc;
-    r->x = x; r->z = z; r->acc = 0.0f;
-    if (gap > 0.0f) {   /* (a second packet in the same frame: no gap to measure) */
-        r->gap = gap;
-        const float v = d / gap;
+    const float t = r->gap_avg > 0.0f ? (float)(r->npk > 1 ? r->npk : 1) * r->gap_avg : gap;
+    r->x = x; r->z = z; r->acc = 0.0f; r->npk = 0;
+    if (gap > 0.0f) r->gap = gap;
+    if (t > 0.0f) {
+        const float v = d / t;
         r->speed = (d < 0.005f || v > 20.0f) ? 0.0f : (r->speed > 0.0f ? 0.5f * (r->speed + v) : v);
     }
 }
 
-/* The sender's speed while packets come under 150 ms apart and it moves; -1
- * for a packet with the same position (it stopped), a gap over 150 ms, or a
- * jump over 20 m/s (a warp): then the game's own value stands. */
+/* The sender's speed while packets come under 150 ms apart on average and it
+ * moves; -1 at the game's own rate, for a packet with the same position (it
+ * stopped), a jump over 20 m/s (a warp), or no packet for three average gaps
+ * (a quarter of a second at least): then the game's own value stands. */
 static float net_remote_gait(const NetRemote* r)
 {
-    if (r->gap > 0.15f || r->acc > 0.15f || r->speed <= 0.0f) return -1.0f;
+    if (!(r->gap_avg > 0.0f) || r->speed <= 0.0f) return -1.0f;
+    const float wait = 3.0f * r->gap_avg;
+    if (r->acc > (wait > 0.25f ? wait : 0.25f)) return -1.0f;
     return r->speed;
 }
 
@@ -2132,7 +2141,13 @@ static float net_remote_gait(const NetRemote* r)
  * divides by (+0x21C, 0x0030C330) is counted in the receiver's frames and is
  * off by up to one, 20-30% of 45 ms, so the remote surges and slows 20 times
  * a second. That gap is replaced with the average of the recent ones (an
- * exponential average, a fifth of each new gap). And a chase that reaches the
+ * exponential average, a fifth of each new gap, a late one counted as twice
+ * the average at most). Over the internet two packets can also come in one
+ * frame: the second has a gap of 0, which the game takes as a warp (OnPacket
+ * puts the remote at the new position at once, 0x0030C2DC), and a very short
+ * one can read as a speed past its warp limit. Gaps under 150 ms are replaced
+ * there too, before that test, so the remote chases instead of jumping; a
+ * real warp is still far past the limit. And a chase that reaches the
  * last position before the next packet (the game then moves nothing until
  * it) handed SetMoveVector a zero move, which sets the remote's stick to
  * zero: a frame of letting go mid-walk. While the sender moves, such a frame
@@ -2164,16 +2179,32 @@ extern "C" void des_net_sync(ppu_context* ctx, uint32_t addr)
     static int on = 1;
     PS3_KNOB(on, ps3_env_int("DES_NETFIX", 1) != 0);
     const bool fix = on && dt > 0.0f && dt <= kMaxFrameDt;
-    if (addr == 0x0030C330u) {   /* fmuls f0, f12, f0: OnPacket's 1.2 * gap; r31 = the manipulator */
+    if (addr == 0x0030C2DCu) {   /* after lfs f12, 0x21C(r31): the gap, before the warp tests; f13 = the distance */
         if (!fix) return;
         NetRemote* r = net_remote((uint32_t)ctx->gpr[31]);
         const float gap = (float)ctx->fpr[12];
-        if (!(gap > 0.0f && gap < 0.15f)) {
+        r->npk++;
+        r->raw = gap;
+        if (r->gap_avg > 0.0f && gap < 0.15f) ctx->fpr[12] = r->gap_avg;
+        return;
+    }
+    if (addr == 0x0030C330u) {   /* fmuls f0, f12, f0: OnPacket's 1.2 * gap; r31 = the manipulator */
+        if (!fix) return;
+        NetRemote* r = net_remote((uint32_t)ctx->gpr[31]);
+        const float used = (float)ctx->fpr[12];   /* the average, when 0x0030C2DC put it there */
+        float gap = r->raw;
+        if (!(gap > 0.0f)) gap = r->gap_avg;      /* a second packet in the frame: no gap to add */
+        if (r->gap_avg > 0.0f) {
+            if (gap > 2.0f * r->gap_avg) gap = 2.0f * r->gap_avg;
+            r->gap_avg += 0.2f * (gap - r->gap_avg);
+        } else if (gap > 0.0f && gap < 0.15f) {
+            r->gap_avg = gap;
+        }
+        if (!(r->gap_avg > 0.0f && r->gap_avg < 0.15f)) {   /* the game's own rate */
             r->gap_avg = 0.0f;
             return;
         }
-        r->gap_avg = r->gap_avg > 0.0f ? r->gap_avg + 0.2f * (gap - r->gap_avg) : gap;
-        ctx->fpr[0] = (float)(ctx->fpr[0] * (r->gap_avg / gap));
+        if (used > 0.0f) ctx->fpr[0] = (float)(ctx->fpr[0] * (r->gap_avg / used));
         return;
     }
     if (addr == 0x0030C378u) {   /* SetMoveVector's entry: v2 = this frame's move, r3 = the manipulator */

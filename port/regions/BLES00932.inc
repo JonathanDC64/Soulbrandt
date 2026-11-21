@@ -166,6 +166,7 @@ DES_REGION_ADDR(0x002F5DB8, 0x002F6B90)  /* hook des_ik_rate */
 DES_REGION_ADDR(0x002FF8F0, 0x003006C8)  /* hook des_roll_dir */
 DES_REGION_ADDR(0x00300BAC, 0x00301984)  /* hook des_kick */
 DES_REGION_ADDR(0x00301C24, 0x003029FC)  /* hook des_roll_dir */
+DES_REGION_ADDR(0x0030C2DC, 0x0030D0B4)  /* hook des_net_sync */
 DES_REGION_ADDR(0x0030C330, 0x0030D108)  /* hook des_net_sync */
 DES_REGION_ADDR(0x0030C378, 0x0030D150)  /* hook des_net_sync */
 DES_REGION_ADDR(0x0030C46C, 0x0030D244)  /* hook des_net_sync */
