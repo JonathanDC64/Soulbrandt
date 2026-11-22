@@ -107,6 +107,7 @@ DES_REGION_ADDR(0x00273D38, 0x00271D98)  /* hook des_move_post */
 DES_REGION_ADDR(0x00273D4C, 0x00271DAC)  /* return address in 0x00273D38 */
 DES_REGION_ADDR(0x0027882C, 0x0027688C)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x002802E0, 0x0027E3E8)  /* call */
+DES_REGION_ADDR(0x0028033C, 0x0027E444)  /* hook des_coop_hook: the HP update's base, before its rates (enemy difficulty) */
 DES_REGION_ADDR(0x00280724, 0x0027E82C)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x00280C78, 0x0027ED80)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x00280E64, 0x0027EF6C)  /* hook des_dev_hook */

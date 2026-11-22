@@ -524,6 +524,12 @@ std::vector<TabDesc> make_tabs() {
                 .help = "The most players in a co-op game you host (Seamless co-op, in the menu), you included. One more "
                         "waits, and joins as soon as a place frees up. A change counts at once; players already here "
                         "stay.<br/><br/>The original game plays three at most in co-op."},
+            choice("Enemy difficulty", "DES_SEAMLESS_DIFFICULTY",
+                {{"", "Vanilla", true}, {"bosses", "Scaled like bosses"}},
+                "How much health enemies have in a co-op game you host. Vanilla: only a boss gets more, at its fog "
+                "gate, when blue phantoms are there. Scaled like bosses: every enemy gets more with each player, x1.5 "
+                "with two players, x2 with three and x2.5 with four. Bosses get the same, or their own if it is more."
+                "<br/><br/>The host's choice counts for everyone in its game. A change counts at once."),
             toggle("Your glow", "DES_SEAMLESS_GLOW",
                 "Whether the other players see your blue phantom glow while you are in a host's world. Off: they see "
                 "you as you look in your own world. A change counts at once."),

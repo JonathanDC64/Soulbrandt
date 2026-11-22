@@ -184,6 +184,8 @@ constexpr char kMsgHere[4] = {'H', 'E', 'R', 'E'};
 // u32 the same load: this game emptied its queues of the area syncs after it (sync_read), so it reads what the others
 // send from now on (resend_own)
 constexpr char kMsgSync[4] = {'S', 'Y', 'N', 'C'};
+// u32 the host's enemy difficulty (enemy_health): 0 the game's own, 1 scaled like bosses (with each READY)
+constexpr char kMsgDifficulty[4] = {'D', 'I', 'F', 'F'};
 constexpr uint32_t kRoomMax = 0x200;
 
 bool guest_ok(uint32_t a) { return a >= 0x00010000u && a < 0xF0000000u; }
@@ -352,6 +354,7 @@ bool sAsked = false;                 // a guest asked for the room data (the hos
 uint32_t sLeadTrip = 0;              // the host's latest load (a guest)
 bool sHostFight = false;             // the host is in a boss fight: no join until it's over (a guest; FGHT)
 std::atomic<bool> sFight{false};     // this game's boss fight (the host; kFightMarker), until it's over or a load
+std::atomic<int> sHostDifficulty{-1};   // the host's enemy difficulty (a guest; DIFF): 0, 1, or -1 not heard yet
 struct Place { float x = 0, y = 0, z = 0, yaw = NAN; };   // yaw: the facing (player_transform), NaN if unknown
 struct Ready {
     uint32_t trip = 0, area = kNoArea;
@@ -411,6 +414,8 @@ void on_message(uint32_t from, const uint8_t* d, uint32_t n)
         sFull = true;
     } else if (!std::memcmp(d, kMsgFight, 4) && n >= 8) {
         sHostFight = get32(d + 4) != 0;
+    } else if (!std::memcmp(d, kMsgDifficulty, 4) && n >= 8) {
+        sHostDifficulty = get32(d + 4) == 1 ? 1 : 0;
     } else if (!std::memcmp(d, kMsgAsk, 4)) {
         sAsked = true;
     } else if (!std::memcmp(d, kMsgLead, 4) && n >= 8) {
@@ -1847,6 +1852,134 @@ std::vector<uint8_t> dead_record(ppu_context* ctx)
     return out;
 }
 
+// Enemy difficulty (DES_SEAMLESS_DIFFICULTY, Settings > Network > Seamless co-op): the host's choice, sent to its
+// guests (DIFF), so every game in the session works out the same health for an enemy. The game makes a boss tougher
+// by the blue phantoms at its fog gate (global_event.lua's Lua_MultiDoping): effect 7500, the most HP x1.5, for one,
+// 7501, x2, for two or more (des_seamless_scripts.cpp; SetEventSpecialEffect_2 adds the effect itself, 0x002706D0).
+// Scaled like bosses, every enemy gets that with the players in the session, a step more for four: x1.5 with two, x2
+// with three, x2.5 with four. A boss keeps its own when it is more (its fight began with more players than are left).
+//
+// 0x002802E0 works out a character's health: its base (its vtable's +0x94) times its effects' maxHpRate (0x00378940)
+// is the most HP (+0x3C8), and the HP goes up by as much as the most HP went up (+0x3DC). The hook scales the base
+// there (0x0028033C), so the most HP and the HP move together when a player comes or goes, and the bosses' effects
+// still count. A dead character (HP 0) is left as it is: its most HP going up would raise its HP from 0. The game runs
+// 0x002802E0 for an enemy only now and then (in 2-1, 3 of the 16 nearest enemies took a change at once), so on a
+// change, and every 2 s while enemies are scaled, this game runs it for each enemy in the world, as the respec runs it
+// for the player (des_respec.cpp).
+std::atomic<int> sScalePlayers{0};   // the players the enemies are scaled for now (2-4); 0: the game's own health
+constexpr uint32_t kDopeFx[2] = {7500, 7501};   // a boss's doping, x1.5 and x2
+
+int own_difficulty()
+{
+    const char* v = std::getenv("DES_SEAMLESS_DIFFICULTY");
+    return v && !std::strcmp(v, "bosses") ? 1 : 0;
+}
+
+void send_difficulty()
+{
+    std::vector<uint8_t> b;
+    put32(b, (uint32_t)own_difficulty());
+    send(kMsgDifficulty, b);
+}
+
+float difficulty_scale(int players) { return 1.0f + 0.5f * (float)(players - 1); }
+
+// An enemy whose health the difficulty scales: team 6 (an enemy) or 7 (a boss's; 8 is a friendly NPC, 5 a wandering
+// ghost), alive, not a player.
+bool scaled_enemy(uint32_t chr)
+{
+    if (!guest_ok(chr)) return false;
+    const int32_t team = (int32_t)vm_read32(chr + 0x6C);
+    return (team == 6 || team == 7) && (int32_t)vm_read32(chr + kChrHp) > 0 && !is_player(chr);
+}
+
+// How much of a character's most HP its doping gives (1: none): the rate of its 7500 or 7501 effect, read as the
+// rates' walk (0x00378940) reads an effect: in the list at +0x304 (its first at +4, each next at +0x20), its id at
+// +0x18, its row at +0x1C with the maxHpRate at +0x20, counted in states other than 0 and 1 (+0x10).
+float doping_of(uint32_t chr)
+{
+    float r = 1.0f;
+    const uint32_t list = rd(chr + 0x304);
+    uint32_t n = guest_ok(list) ? rd(list + 4) : 0;
+    for (int k = 0; k < 64 && guest_ok(n); ++k, n = rd(n + 0x20)) {
+        const uint32_t fx = vm_read32(n + 0x18), row = rd(n + 0x1C);
+        if ((fx != kDopeFx[0] && fx != kDopeFx[1]) || vm_read32(n + 0x10) <= 1 || !guest_ok(row)) continue;
+        const float f = rdf(row + 0x20);
+        if (std::isfinite(f) && f > 1.0f) r *= f;
+    }
+    return r;
+}
+
+// Each enemy's health worked out again (0x002802E0), for the world's characters (*(*(*(TOC - 0x788C) - 0x7FFC)):
+// the list at +0xC, the count at +0x14).
+int refresh_enemies(ppu_context* ctx)
+{
+    const uint32_t wl = rd(rd(rd(DES_AT(kWorldSlot)) - 0x7FFCu));
+    const uint32_t count = guest_ok(wl) ? vm_read32(wl + 0x14) : 0, list = guest_ok(wl) ? rd(wl + 0xC) : 0;
+    if (!guest_ok(list) || count > 4096) return 0;
+    int n = 0;
+    for (uint32_t i = 0; i < count; i++) {
+        const uint32_t chr = rd(list + 4 * i);
+        if (!scaled_enemy(chr)) continue;
+        call_addr(ctx, DES_AT(0x002802E0u), {chr});
+        n++;
+    }
+    return n;
+}
+
+// Each frame: the players the enemies are scaled for, from the host's choice (DIFF in a guest's game) and the players
+// in the session now; none out of one. world: the player is in the world (not loading).
+void difficulty_tick(ppu_context* ctx, uint32_t sm, co::Mode m, uint32_t st, bool world)
+{
+    const bool host = m == co::Mode::Host && st == kStateHost, guest = m == co::Mode::Join && st == kStateClient;
+    if (!guest) sHostDifficulty = -1;   // (the next host's is heard again)
+    const int mode = host ? own_difficulty() : guest ? std::max(0, sHostDifficulty.load()) : 0;
+    static int sent = -1;
+    if (!host) sent = -1;
+    else if (mode != sent) {   // a change goes at once (and again with each READY)
+        sent = mode;
+        send_difficulty();
+    }
+    const int players = mode ? std::min(4, others_in(sm) + 1) : 0;
+    const int n = players >= 2 ? players : 0;
+    const int was = sScalePlayers.exchange(n);
+    static bool said = false;
+    if (was != n || !said) {
+        said = true;
+        if (n)
+            std::fprintf(stderr, "[coop] enemy difficulty: scaled like bosses, %d players: every enemy's health x%.1f\n",
+                         n, difficulty_scale(n));
+        else
+            std::fprintf(stderr, "[coop] enemy difficulty: the game's own (%s)\n",
+                         !host && !guest ? "out of a session" : mode ? "one player" : "Vanilla");
+    }
+    static int frames = 0;
+    static bool pending = false;   // a change made while the world wasn't there (a load)
+    pending = pending || was != n;
+    if (!world || (!pending && (!n || ++frames < 60))) return;
+    frames = 0;
+    const int done = refresh_enemies(ctx);
+    if (pending) std::fprintf(stderr, "[coop] enemy difficulty: %d enemies' health worked out again\n", done);
+    pending = false;
+}
+
+// The hook (0x0028033C, r27 the base, r31 the character): an enemy's base scaled, less what its doping gives.
+void enemy_health(ppu_context* ctx)
+{
+    const int n = sScalePlayers.load(std::memory_order_relaxed);
+    const uint32_t chr = (uint32_t)ctx->gpr[31];
+    if (n < 2 || !scaled_enemy(chr)) return;
+    const int32_t base = (int32_t)ctx->gpr[27];
+    const float want = difficulty_scale(n), doping = doping_of(chr);
+    if (base <= 0 || want <= doping) return;
+    const int32_t scaled = (int32_t)std::lround((double)base * want / doping);
+    ctx->gpr[27] = (uint64_t)(int64_t)scaled;
+    static std::atomic<int> told{0};
+    if (told.exchange(n) != n)
+        std::fprintf(stderr, "[coop] enemy difficulty: an enemy's base health %d -> %d (x%.2f; its doping x%.2f)\n",
+                     base, scaled, want / doping, doping);
+}
+
 // The host tells its guests where it is: its area, where it arrived (a respawn's place), where it stands (a join's),
 // each with its facing, and which of its area's characters are dead (a respawn's or a follow's load kills them as a
 // join's does).
@@ -1866,6 +1999,7 @@ void send_ready(ppu_context* ctx, uint32_t sm, uint32_t trip, const Place& arriv
     b.insert(b.end(), rec.begin(), rec.end());
     send_flags(sm);
     send_qwc();
+    send_difficulty();
     send(kMsgReady, b);
 }
 
@@ -2409,6 +2543,7 @@ extern "C" void des_seamless_tick(ppu_context* ctx)
     if (m == co::Mode::Host) host_tick(ctx, sm, gm, st, world);
     else guest_tick(ctx, sm, st, world);
     sync_hold_tick(ctx, sm, session);
+    difficulty_tick(ctx, sm, m, st, world);
     // BACKs: once this game is in the world after its own load (the others' dead characters survive a load, and a
     // BACK can come while this game follows the same load); dropped out of a session. One that waits for its player's
     // character (make_again) is tried again each world frame.
@@ -2656,6 +2791,9 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
         // when the session state is 6 (a guest, 0x0052A610). A friend in seamless co-op gets the full souls, as the
         // host does.
         if (m == co::Mode::Join) ctx->gpr[3] = 0;
+        break;
+    case 0x0028033Cu:   // the HP update 0x002802E0, mr r27,r3: r27 the character's base most HP, before its rates
+        enemy_health(ctx);
         break;
     case 0x0044A5E4u:   // SetClearBonus's native (0x0044A4B8), after bl 0x0052A5B0: r3 the session's member count
         // A boss's souls wait in the player's game data (+0xD4) until they are paid (GetSoloClearBonus, or the next

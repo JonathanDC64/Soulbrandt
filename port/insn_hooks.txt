@@ -298,6 +298,7 @@
 0x002CE90C=des_coop_hook   # stw r0,0x90(r9) in 0x002CE2B0: the host's share-out of the area's characters (r9 the object)
 0x002CA45C=des_coop_hook   # xor r0,r11,r10 in 0x002CA418: whether a character is this game's own; the host's claims count before the first share-out
 0x002CE440=des_coop_hook   # after bl 0x002CBB10 in 0x002CE2B0 (the frame's send of message 0x21): the states of this game's characters again after another game's SYNC
+0x0028033C=des_coop_hook   # mr r27,r3 in the HP update 0x002802E0, after its vtable +0x94 call (r27 the base most HP, r31 the character), before the effects' rates: the enemy difficulty's scale
 0x002B2984=des_coop_hook   # lwz r9,0x8C(r9) in a corpse's drop add 0x002B2900: a friend gets drops from dead enemies too
 0x0053EA2C=des_coop_hook   # lwz r0,0x8C(r9) in the session update 0x0053E578's check of a joined guest (state 6): one in body form (0) leaves; a friend joins in either form
 0x0043E4E0=des_coop_hook   # mr r3,r4 at the start of SetTextEffect's native (r3: the text's type): a friend's revival waits for its "The Demon Was Destroyed"

@@ -139,6 +139,11 @@ set).
   watches, it goes home (with the game's own message for a lost session) and joins again from there.
 - **Bosses get more health with friends,** as in the original game: half as much again with one friend, double with
   two. Three friends get double too (the original has nothing for three, so a boss had its solo health).
+- **Enemy difficulty.** Settings > Network > Enemy difficulty (or Settings on the Seamless co-op screen) is the
+  host's choice, and counts for everyone in its game. **Vanilla** (the default) is the game's own: only bosses get
+  more health. **Scaled like bosses** gives every enemy more health with each player in the session: x1.5 with two
+  players, x2 with three, x2.5 with four. A boss gets the same, or its own when that is more. The health changes as
+  players come and go.
 - **Settings on the Seamless co-op screen** shows co-op's own settings (the Seamless co-op rows of Settings > Network)
   on a screen of their own, in both looks.
 - **When the host dies,** everyone goes back to the start together. There the friends see the host's rolls, attacks
@@ -966,6 +971,7 @@ side by their times.
 | `DES_SEAMLESS_UPNP=0` | The host leaves the router alone (the port forwarded by hand). |
 | `DES_SEAMLESS_ADDRESS=ip` | The host's public IPv4 address, for the code, when the router doesn't give it. Co-op's Public address keeps it in settings.ini; a report shows only whether it is set. |
 | `DES_SEAMLESS_PLAYERS=n` | The most players a host takes, itself included: 2 to 4 (4 when unset). Settings > Network keeps it in settings.ini. One more connects but waits: the host answers its ask for the room with FULL, and it joins once the host answers with the room again (the room server also refuses a join past the limit, `max_players`). |
+| `DES_SEAMLESS_DIFFICULTY=bosses` | The host's enemy difficulty: every enemy's health scaled by the players in the session, x1.5 with two, x2 with three, x2.5 with four (a boss keeps its own doping when that is more). Unset: the game's own. Settings > Network > Enemy difficulty keeps it in settings.ini; a change counts at once in the host's game and within 2 s in its guests' (DIFF, with each READY). A guest's own setting is not used in a host's game. |
 | `DES_SEAMLESS_GLOW=0` | The other players (and this one) see this player without its blue phantom glow in a session. Settings > Network > Your glow keeps it in settings.ini; a change counts within 2 s (GLOW). |
 | `DES_SEAMLESS_GLOW_COLOR=RRGGBB` | This player's glow colour in a session, for the others and itself (unset: the game's blue). Settings > Network > Your glow colour keeps it in settings.ini; a change counts within 2 s (GLOW). |
 | `DES_SEAMLESS_STUN` | Unset: a host whose router gives no public address asks Google's STUN server (`stun.l.google.com:19302`) for it. `0`: never. `host:port`: that server instead. settings.ini can set it too. |
