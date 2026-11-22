@@ -2737,6 +2737,78 @@ void host_to_stain(uint32_t gm)
                  to);
 }
 
+// The enemies' health across the host's lone respawn. Its load sets the world up again, so in the host's game every
+// enemy still alive came back with its full health, and the host's game then gave that health to its friends' games
+// too (11-22, two copies in 1-1: a hollow at 42 of 78 HP was at 78 in both games after the host's lone respawn; a
+// tester's report). The friends played on, so the enemies keep what they had. At the end of the respawn's
+// WarpNextStageKick (the world still loaded) this game notes each living enemy's HP below its most, by its place in
+// the world's list, the place the dead-character record counts too (0x002977C0); once the load has arrived it puts
+// that HP back, the same part of the most HP there. A friend's own respawn needs none of this: its game takes the
+// host's health for the area's enemies (the same test: 75 of 78 in both games after it).
+struct KeptHp {
+    uint32_t index;
+    int32_t hp, most;
+};
+std::mutex sKeptLock;
+std::vector<KeptHp> sKept;   // under sKeptLock, as the three below
+uint32_t sKeptCount = 0;     // the world's list count when they were noted
+uint32_t sKeptTrip = 0;      // the host's load they are for (0: its start not seen yet)
+
+bool world_list(uint32_t& list, uint32_t& count)
+{
+    const uint32_t wl = rd(rd(rd(DES_AT(kWorldSlot)) - 0x7FFCu));
+    count = guest_ok(wl) ? vm_read32(wl + 0x14) : 0;
+    list = guest_ok(wl) ? rd(wl + 0xC) : 0;
+    return guest_ok(list) && count <= 4096;
+}
+
+void keep_health_for_respawn()
+{
+    std::lock_guard<std::mutex> l(sKeptLock);
+    sKept.clear();
+    sKeptTrip = 0;
+    uint32_t list, count;
+    if (!world_list(list, count)) return;
+    sKeptCount = count;
+    for (uint32_t i = 0; i < count; i++) {
+        const uint32_t chr = rd(list + 4 * i);
+        if (!scaled_enemy(chr)) continue;
+        const int32_t hp = (int32_t)vm_read32(chr + kChrHp), most = (int32_t)vm_read32(chr + kChrHp + 4);
+        if (most > 0 && hp < most) sKept.push_back({i, hp, most});
+    }
+}
+
+// At the host's arrival after its lone respawn (load trip): the enemies' HP kept for it go back.
+void health_back_after_respawn(uint32_t trip)
+{
+    std::lock_guard<std::mutex> l(sKeptLock);
+    if (sKeptTrip != trip || !trip) return;
+    sKeptTrip = 0;
+    std::vector<KeptHp> kept;
+    kept.swap(sKept);
+    if (kept.empty()) return;
+    uint32_t list, count;
+    if (!world_list(list, count) || count != sKeptCount) {
+        std::fprintf(stderr, "[coop] load %u: the world's characters aren't the ones noted (%u, were %u): %zu "
+                             "damaged enemies come back with full health\n", trip, count, sKeptCount, kept.size());
+        return;
+    }
+    int back = 0;
+    for (const KeptHp& k : kept) {
+        const uint32_t chr = rd(list + 4 * k.index);
+        if (!scaled_enemy(chr)) continue;   // (dead since, or not an enemy)
+        const int32_t hp = (int32_t)vm_read32(chr + kChrHp), most = (int32_t)vm_read32(chr + kChrHp + 4);
+        if (most <= 0) continue;
+        int32_t want = k.most == most ? k.hp : (int32_t)std::lround((double)k.hp * most / k.most);
+        want = std::max<int32_t>(1, std::min(want, most));
+        if (hp <= want) continue;
+        vm_write32(chr + kChrHp, (uint32_t)want);
+        back++;
+    }
+    std::fprintf(stderr, "[coop] load %u: the host's lone respawn: %d of %zu damaged enemies keep their health\n",
+                 trip, back, kept.size());
+}
+
 void keep_dead_for_respawn(ppu_context* ctx, uint32_t sm)
 {
     const uint32_t gm = game_manager();
@@ -2756,6 +2828,7 @@ void keep_dead_for_respawn(ppu_context* ctx, uint32_t sm)
     }
     call_addr(ctx, DES_AT(0x0020E788u), {kRecordSize, sGame.scratch + 0xC00, 1});
     sLoneArea = to;
+    keep_health_for_respawn();
     int marked = 0;
     for (size_t i = 4; i < rec.size(); i++)
         for (int b = 0; b < 8; b++) marked += (rec[i] >> b) & 1;
@@ -2866,6 +2939,11 @@ void host_tick(ppu_context* ctx, uint32_t sm, uint32_t gm, uint32_t st, bool wor
         if (sHostAlone.exchange(false)) {
             std::fprintf(stderr, "[coop] load %u started: the host's respawn, alone; the guests stay\n", g.trip);
             const uint32_t to = vm_read32(gm + kGmNextArea), kept = sLoneArea.exchange(kNoArea);
+            {
+                std::lock_guard<std::mutex> l(sKeptLock);
+                if (kept != kNoArea && world_of(to) == world_of(kept)) sKeptTrip = g.trip;
+                else sKept.clear();
+            }
             if (kept != kNoArea && world_of(to) != world_of(kept)) {   // (another world's: its characters aren't these)
                 vm_write32(gm + kGmOwnRecord, 0);
                 std::fprintf(stderr, "[coop] load %u goes to %08X, not %08X: the dead characters kept are dropped\n",
@@ -2889,6 +2967,7 @@ void host_tick(ppu_context* ctx, uint32_t sm, uint32_t gm, uint32_t st, bool wor
         send_ready(ctx, sm, g.trip, g.arrival);
         say_here(g.trip);
         std::fprintf(stderr, "[coop] load %u done: area %08X\n", g.trip, vm_read32(sm + kSmArea));
+        health_back_after_respawn(g.trip);
         send_back_if_died();
     } else if (!g.in_load && world && (where || ++g.ready_frames >= 60)) {
         g.ready_frames = 0;
