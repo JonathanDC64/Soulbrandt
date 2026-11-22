@@ -105,8 +105,8 @@ set).
   once if it stands, or when it comes back if it is dead. Each friend goes home in the form it has then.
 - **The Stone of Ephemeral Eyes** works during co-op for any player in soul form, the host too: it brings the player
   back in body form, as it does alone. A friend stays a blue phantom. In body form it can't be used, as in the game.
-- **Friends follow the host.** When the host travels (an Archstone, the Nexus, a death), its friends go too: one
-  loading screen, then they stand beside the host again.
+- **Friends follow the host.** When the host travels (an Archstone, the Nexus), its friends go too: one loading
+  screen, then they stand beside the host again. After the host's death they stay where they are (below).
 - **The tutorial's trips are the host's too.** At the end of each part of the tutorial, and when the dragon god ends
   it, a friend goes on with its host: one that gets there first waits there for the host. A friend killed by the
   Vanguard comes back where it fell; when the host dies there, the group goes to the Nexus. Before, a friend whose game
@@ -144,8 +144,8 @@ set).
   Cutscenes that show you (the tutorial's opening, for one) show your glow and its colour as you chose them too.
 - **In a boss fight,** a friend who dies first watches until the fight ends. Once the boss is dead, it comes back at
   its own bloodstain in the boss's room, where it can take its souls back at once. Before, it came back at the area's
-  start. If the host dies too, it goes back with everyone. If the connection to the host is lost while it
-  watches, it goes home (with the game's own message for a lost session) and joins again from there.
+  start. If everyone dies, it goes back with everyone. If the connection to the host is lost while it watches, it
+  goes home (with the game's own message for a lost session) and joins again from there.
 - **Bosses get more health with friends,** as in the original game: half as much again with one friend, double with
   two. Three friends get double too (the original has nothing for three, so a boss had its solo health).
 - **Enemy difficulty.** Settings > Network > Enemy difficulty (or Settings on the Seamless co-op screen) is the
@@ -161,8 +161,13 @@ set).
   on a screen of their own, in both looks, in two groups. **When you host:** the host's game uses only the host's
   settings, for everyone in it (the most players, the enemy difficulty); a friend's own don't count there.
   **When you join:** each player's own, in a host's world (its glow). Settings > Network has the same two groups.
-- **When the host dies,** everyone goes back to the start together. There the friends see the host's rolls, attacks
-  and other moves again. Before, a friend that was alive could see the host stuck in a weapon swap after that.
+- **When the host dies,** it respawns alone at the area's start, as a friend does, while a friend is still standing.
+  The friends play on where they are, and enemies that are dead stay dead. In a boss fight the host first waits, dead,
+  until the boss is dead, then comes back at its own bloodstain in the boss's room, as a friend does, where it can
+  take its souls back at once (the boss's souls too, if it died before the boss). Only when no friend is standing
+  (everyone is dead) does everyone go back to the start together, with the enemies back. Settings > Network > When
+  you die as host > Everyone goes back makes every death of the host take everyone back, as before (2026-11-21).
+  After the host's respawn, the friends see its rolls, attacks and other moves again.
 - **Enemies stay where they belong after a load.** Before, an enemy that stood near a player as the group moved to
   another area could move the new area's enemy with the same number to its place. In the tutorial that put the
   Vanguard outside its hall: it fell, and "The Demon Was Destroyed" showed before anyone saw it.
@@ -494,6 +499,7 @@ alive.
 | `REDY` | host | load count, area, where it arrived and where it stands (each with its facing), its area's dead characters | after each load, every 2 s, and when asked |
 | `HER?` | friend | none | send a `REDY` now (a friend's respawn) |
 | `BACK` | any | its player id | back in the world after a death: make its character again |
+| `DOWN` | friend | its player id, 1 or 0 | 1: it died; 0: it stands (each arrival). The host's death reads it |
 | `HERE` | any | the host's load count | in the world after that load: the area's syncs from this player are current again |
 | `FLGS` | host | area, offset, up to 1,000 bytes of its event flags | the host's flags, in three parts, before each `REDY` |
 | `FLAG` | host | flag, area | a progress flag was set in the host's world |
@@ -907,7 +913,56 @@ their first instruction):
     (a reload under way) is set, and the phantom holds 4047 from its death until it is back. Before, a session lost
     during the watch left the phantom dead out of the session for good, and co-op doesn't join again until 4047 is
     clear ("on its way home: no join until it is there"; playtest 11-14, the second Tower Knight fight).
-  - The host's death doesn't send the phantoms home; the host's respawn takes them along.
+  - The host's death doesn't send the phantoms home. `OnEvent_4000` no longer sends the guests' `HostDead` at once
+    while flag 20298 is set (the setting, below); `SoloPlayDeath_1` goes on in `SeamlessHostWait`:
+    - while a friend stands (flag 20299), the host respawns alone: it sets flag 19996 (past the game's last flag) and
+      goes on to `SoloPlayDeath_2`. In a boss fight (`SeamlessBossFight`, `ClearBoss` false) it looks again each
+      second (timer slots 6 and 8 in turn, as a friend's watch), so it respawns once the boss is dead;
+    - with no friend standing, it sends the guests' `HostDead` (`LuaCallStart(4000, 1)`) and goes on: the old way,
+      the guests follow its respawn.
+    - The host's HP at 0 (`OnEvent_4000_Hp`) sends call 99999 to every game. Five areas answer it by putting their
+      boss's parts in dead mode 2 (`OnEvent_4000_Hp_1`: `SetDeadMode2`, so the boss's HP stops at 1): 1-1's Phalanx
+      (800-802 and 821), and the bosses of m03_01, m04_00, m05_00 and m06_00. In the original game the host's death
+      reloads everyone, so no one kills the boss after it. While the host respawns alone (flags 20298 and 20299, in a
+      party) the call doesn't go out, so its friends can still kill the boss it waits for. On 11-22 the call still
+      went out: Phalanx stood at 1 HP in both games, and the dead host waited for good.
+  - Flags 20298 and 20299 are two of the game's flags at 20,000 and up: one byte each at the flags' +0x14D0 +
+    (n - 20,000), read by 0x005087A0 through the scripts' flag check 0x0043FC90. No script uses them as flags (the
+    20xxx numbers in the scripts are cutscene, tendency and message ids), and the save doesn't hold them.
+    des_seamless_game.cpp writes them each frame on the host: 20298 = `DES_SEAMLESS_HOST_DEATH` isn't `together`;
+    20299 = another player's character here is alive, and that player's game hasn't said it died (`DOWN`) since it
+    was last back (a friend watching a boss fight, or still in its respawn's load, doesn't stand). Before 11-22 the
+    host's own "seen dead" mark on a friend's character decided it, and only that friend's `BACK` cleared it. In
+    the 11-22 playtest every death of the host took everyone back while the friend stood (it never died); a mark
+    left on its character is the one part of the old check that could stay wrong for a whole session.
+  - The host's death is in the log, with each friend's state: "the host died: a friend stands, so it respawns
+    alone (player 2 stands (HP 329 here))", or "no friend stands, so everyone goes back with it".
+  - Flag 19996 makes the host's next load its lone respawn: at the end of its `WarpNextStageKick`, its world's
+    dead-character record goes into its own slot (0x0020E788(76, record, 1), as a guest's join keeps its own at
+    0x00417560), which that load applies, so the enemies dead stay dead. The load is the game's own respawn, and a
+    world loads all its blocks at once, so it stays in the world: from 1-2 it is the Archstone in the Phalanx room,
+    block 0 of the same world. A respawn into another world keeps no record. No LEAD goes out, and no sync hold. Once
+    back, it places its guests again (requeue) and they make its character again (its BACK), as after a guest's
+    respawn.
+  - A host that died in a boss fight (`sFight`, flag 19994, at its death) comes back at its own bloodstain
+    (`host_to_stain`, at the same end of `WarpNextStageKick`): the load goes to the stain's map, to a place (point
+    -1 and the summoned place `+0x1C`, as a friend's trip home), facing the way it died. `SoloPlayDeath_2` runs its
+    `UpDateBloodMark` after that `WarpNextStageKick`, so the stain's record still holds the last death's then. Its
+    source is read instead, as `UpDateBloodMark` (0x00419670) reads it: `*(chr + 0x640)`, the place at `+0x24`, the
+    rotation at `+0x30` and the map at `+0x3C`. A stain in another world than the respawn's: the area's start, as
+    before. In the 11-22 playtest the host came back at the area's start after Phalanx, with the boss's souls in its
+    stain in the boss's room.
+  - Checked with two copies (11-21, the host on the pinned save in 1-2, the friend standing by god mode):
+    - The Tower Knight's fight began at the host's arrival. The host died in it, and no load came in 20 s. The knight
+      killed (a test switch), the host's load came at once: "the host's respawn, alone; the guests stay". The friend
+      stayed in 1-2 and made the host's character again.
+    - The record went into the slot (`+0xB3C` 0x4C) and the respawn's load emptied it. Ordinary enemies the host had
+      killed at its respawn spot were still dead after a second lone respawn there. The knight stayed beaten: his
+      flag (4224) was set before the load, and back at the spot there was no health bar and nothing attacked.
+    - Both dead: the old way, "load 4 started: the guests follow", both back at the start.
+  - Checked again on 11-22 (the tutorial's save, the Nexus, then 1-1): two deaths of the host, each "a friend
+    stands" and alone, the friend staying; then the friend dead and the host dead after it: the friend's `DOWN`
+    came first, "no friend stands", and everyone went back together.
   - `proxy:ClearBossGauge(` also clears `SeamlessBossFight`.
   - A boss's extra health: `Lua_MultiDoping` (and `Lua_MultiDopingm04_02`, for 4-2), at the boss room's first entry,
     gives each boss part effect 7500 (health x1.5) for one blue phantom and 7501 (x2) for two. The count is the

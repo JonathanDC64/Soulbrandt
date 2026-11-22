@@ -128,6 +128,7 @@ constexpr Def kDefs[] = {
     {"DES_SEAMLESS_GLOW", "1", Apply::Live},       // seamless co-op: "0" = the other players see this one without its phantom glow
     {"DES_SEAMLESS_GLOW_COLOR", "", Apply::Live},  // seamless co-op: this player's glow colour, "RRGGBB"; "" = the game's blue
     {"glow_hue_custom", "30", Apply::UiOnly},      // Your glow colour's Custom hue (0-350), kept while a named colour is on
+    {"DES_SEAMLESS_HOST_DEATH", "", Apply::Live},  // the host's death: "" = alone while a friend stands, "together" = all back
     {"DES_NET_PASSWORD", "", Apply::Live},     // matchmaking password; a hash of it goes to the server; "" = everyone
     {"DES_NET_TENDENCY", "own", Apply::Live},  // des_qwc_local: "own" = yours only, "server" = the server's mixed in (the game's)
     {"DES_NET_RATING_POLL", "", Apply::Live},  // des_net_grade_poll: seconds between rating checks; "" = the game's 300

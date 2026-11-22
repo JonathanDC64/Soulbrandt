@@ -543,6 +543,13 @@ std::vector<TabDesc> make_tabs() {
                 "Players' hits on enemies do as much less as Enemy difficulty gives them health: at x2, half the "
                 "damage. Off with Vanilla.<br/><br/>The host's choice counts for everyone in its game. A change "
                 "counts at once."),
+            choice("When you die as host", "DES_SEAMLESS_HOST_DEATH",
+                {{"", "You respawn alone"}, {"together", "Everyone goes back"}},
+                "You respawn alone: you go back to the area's start by yourself, your friends play on, and dead "
+                "enemies stay dead. In a boss fight you wait until the boss is dead. Only when no friend is left "
+                "standing does everyone go back with you, and the enemies come back.<br/><br/>Everyone goes back: "
+                "each of your deaths takes everyone back to the area's start, and the enemies come back. A change "
+                "counts at once."),
         }},
         {std::string(kCoopHeading) + kCoopJoin, {
             toggle("Your glow", "DES_SEAMLESS_GLOW",
