@@ -1121,15 +1121,26 @@ void after_world_swap(uint32_t fb, bool in_session)
 // +0xACA, is 1, but nothing sets +0xA97: 11-21, 9 s into the Tower Knight's fight), so the leave waited its 2 minutes
 // and the game started again with nothing saved. So home with no save asked for or written after kHomeSaveGrace, the
 // leave asks for it as the game's own are asked for (+0xA97). One the game asks for as well is only a second save.
+// Leave now (the Co-op window's, while leaving: leave_now) started the game again at once, so whatever the friend did
+// since its last save was lost. Now it ends the leave as soon as the friend's progress is in a save: where it stands
+// in the host's world, a friend's own save (own_save_tick) when one can be made there, and the leave is done once it
+// is written; else (in a boss fight, dead, in a load) the leave goes home as a Leave does, and at home asks for the
+// save at once.
 enum { kLeaveNone, kLeaveAsked, kLeaveOut, kLeaveGoing, kLeaveHome, kLeaveDone };
 std::atomic<int> sLeave{kLeaveNone};
+std::atomic<bool> sLeaveNow{false};      // Leave now: done as soon as a save holds this player's progress
+std::atomic<bool> sCanSaveHere{false};   // a friend's own save could be made where it stands (guest_tick, each frame)
 constexpr auto kHomeSaveGrace = std::chrono::seconds(5);
 struct LeaveState {   // the game thread's only
-    bool seen = false, save_asked = false;
+    bool seen = false, save_asked = false, here_tried = false;
+    int here_from = 0;   // own saves written before Leave now's own save (own_saves_written)
     std::chrono::steady_clock::time_point asked{}, home{};
     std::filesystem::file_time_type home_at{};
 };
 LeaveState sLeaveState;
+bool own_save_busy();
+void own_save_ask(const char* why);
+int own_saves_written();
 
 // A file under the save folder (PS3_SAVEDATA_ROOT, co-op's own) written after t.
 bool saved_since(std::filesystem::file_time_type t)
@@ -1180,6 +1191,22 @@ void leave_tick(ppu_context* ctx, uint32_t st, bool world)
         return;
     }
     if (lv == kLeaveAsked) {
+        // Leave now, in the host's world: a friend's own save where it stands, if one can be made there, then done
+        if (sLeaveNow.load() && st == kStateClient && sGame.arrived.load() && world) {
+            if (own_save_busy()) return;   // a save of its own under way (this one, or one asked for before): its end first
+            if (!s.here_tried && sCanSaveHere.load()) {
+                s.here_tried = true;
+                s.here_from = own_saves_written();
+                own_save_ask("for Leave now");
+                return;
+            }
+            if (s.here_tried && own_saves_written() > s.here_from) {
+                sLeave = kLeaveDone;
+                std::fprintf(stderr, "[coop] leave now: saved where it stands, with its own world; done\n");
+                return;
+            }
+            // (none can be made there, or none was written: home, as a Leave goes)
+        }
         if (st == kStateClient && sGame.arrived.load() && world) {
             call_addr(ctx, DES_AT(0x00447258u), {0});                // LeaveSession
             call_addr(ctx, DES_AT(0x00508820u), {flag_base(), 2});   // SetFlagInitState(2)
@@ -1227,12 +1254,14 @@ void leave_tick(ppu_context* ctx, uint32_t st, bool world)
         if (saved_since(s.home_at) && idle) {   // a save since the arrival, and finished
             sLeave = kLeaveDone;
             std::fprintf(stderr, "[coop] leave: saved at home; done\n");
-        } else if (!s.save_asked && idle && world && now - s.home > kHomeSaveGrace) {
+        } else if (!s.save_asked && idle && world &&
+                   (sLeaveNow.load() || now - s.home > kHomeSaveGrace)) {   // (Leave now: at once)
             const uint32_t gm = game_manager();
             if (guest_ok(gm)) {
                 vm_write8(gm + kGmSaveAsked, 1);
                 s.save_asked = true;
-                std::fprintf(stderr, "[coop] leave: home, and the game asked for no save; asked for it\n");
+                std::fprintf(stderr, sLeaveNow.load() ? "[coop] leave now: home; asked for the save\n"
+                                                      : "[coop] leave: home, and the game asked for no save; asked for it\n");
             }
         }
     }
@@ -1251,9 +1280,15 @@ void leave_tick(ppu_context* ctx, uint32_t st, bool world)
 //   - its type, the player game data's +0x8C, which a load makes the player's: the form it goes home in (kGmForm), not
 //     a blue phantom's, for the length of the character's writer (0x0090E4B0). Saved as a blue phantom, it loaded alone
 //     as one in its own world, at half its HP.
-// Not while it couldn't stand there alone: in a boss fight, dead, in a load or a cutscene, leaving, or in the ending. A
-// load's arrival in the host's world and a boss killed bring the next one forward. DES_SEAMLESS_SAVE_EVERY: the seconds
-// between them (90; 0: none, a friend saves at home only, as before).
+// When: as the host's game saves, at the moments its own game asks for a save (sOwnSaveGameAsked, from des_coop_hook):
+//   - the scripts' SaveRequest and SaveRequest_Profile (a light wall passed, a boss's door opened, a few NPCs), which
+//     ask only for a living player or a soul, so a blue phantom's stops at their first check (noted there);
+//   - the game's own: its save requests 0x0020FB78 and 0x0020FBA8, which skip the ask while +0xACA is 0 (noted at
+//     that gate);
+// 10 s after a load's arrival in the host's world or a boss killed; and at least every DES_SEAMLESS_SAVE_EVERY seconds
+// (90; 0: never, a friend saves at home only, as before).
+// Not while it couldn't stand there alone: in a boss fight, dead, in a load or a cutscene, leaving, or in the ending; an
+// ask then waits until it can be made.
 constexpr auto kOwnSaveSoon = std::chrono::seconds(10);
 std::chrono::seconds own_save_every()
 {
@@ -1272,8 +1307,10 @@ std::atomic<bool> sOwnSaveWrote{false};    // this save's flags were its own wor
 std::atomic<bool> sOwnSaveTyped{false};    // and its type the form it goes home in
 std::atomic<bool> sFriendFight{false};     // this friend's game is in a boss fight (kFightMarker), until it's over or a load
 std::atomic<uint32_t> sOwnSaveFlags{0};    // guest memory for the flags' copy (kOwnSaveFlagsSize)
+std::atomic<bool> sOwnSaveGameAsked{false};   // its game asked for a save (one a phantom's gate skips): its own follows
+std::atomic<int> sOwnSavesWritten{0};      // own saves written with its own world, in this run
 struct OwnSaveState {                      // the tick thread's only
-    bool counting = false;
+    bool counting = false, soon = false;   // soon: the next one is an arrival's or a boss kill's
     std::chrono::steady_clock::time_point next{}, started{};
 };
 OwnSaveState sOwnSaveState;
@@ -1284,6 +1321,8 @@ bool own_save_known()
 {
     static const bool known = [] {
         const bool ok = vm_read32(DES_AT(0x002117E8u)) == 0x88090ACAu &&   // lbz r0,0xACA(r9)
+                        vm_read32(DES_AT(0x0020FB8Cu)) == 0x88090ACAu &&   // (the two save requests' gates)
+                        vm_read32(DES_AT(0x0020FBB8u)) == 0x88090ACAu &&
                         vm_read32(DES_AT(0x00211544u)) == 0x7F63DB78u &&   // mr r3,r27
                         (vm_read32(DES_AT(0x0021154Cu)) >> 26) == 18u &&    // bl (the character's writer)
                         vm_read32(DES_AT(0x00509678u)) == 0xF821FF41u;     // stdu r1,-0xC0(r1)
@@ -1332,9 +1371,10 @@ void own_save_tick(bool can)
         if (over || now - s.started > std::chrono::seconds(20)) {
             sOwnSave = kOwnSaveNone;
             s.next = now + own_save_every();
-            const bool typed = sOwnSaveTyped.exchange(false);
+            const bool typed = sOwnSaveTyped.exchange(false), wrote = sOwnSaveWrote.exchange(false);
+            if (wrote) sOwnSavesWritten++;
             std::fprintf(stderr, "[coop] this player's own save: %s%s\n",
-                         sOwnSaveWrote.exchange(false) ? "written, with its own world"
+                         wrote ? "written, with its own world"
                          : over ? "the game wrote none" : "not over after 20 s; left to the game",
                          typed ? "" : " (its type not found: saved as the game had it)");
         }
@@ -1344,17 +1384,33 @@ void own_save_tick(bool can)
         s.counting = true;
         s.next = now + own_save_every();
     }
-    if (sOwnSaveSoon.exchange(false) && s.next > now + kOwnSaveSoon) s.next = now + kOwnSaveSoon;
-    if (!can || now < s.next || own_save_every().count() == 0 || !guest_ok(gm) || !own_save_known() ||
-        !sOwnSaveFlags.load())
-        return;
+    if (sOwnSaveSoon.exchange(false) && s.next > now + kOwnSaveSoon) {
+        s.next = now + kOwnSaveSoon;
+        s.soon = true;
+    }
+    const bool asked = sOwnSaveGameAsked.load();
+    if (!can || own_save_every().count() == 0 || (now < s.next && !asked)) return;
+    sOwnSaveGameAsked = false;
+    own_save_ask(asked ? "as its game would have saved now" : s.soon ? "after an arrival or a boss killed"
+                                                                  : "its time since the last");
+    s.soon = false;
+}
+
+bool own_save_busy() { return sOwnSave.load() != kOwnSaveNone; }
+int own_saves_written() { return sOwnSavesWritten.load(); }
+
+// A friend's own save asked for now, for why (the caller has checked it can be made where it stands).
+void own_save_ask(const char* why)
+{
+    const uint32_t gm = game_manager();
+    if (sOwnSave.load() != kOwnSaveNone || !guest_ok(gm) || !own_save_known() || !sOwnSaveFlags.load()) return;
     sOwnSave = kOwnSaveAsked;
     sOwnSaveWrote = false;
     sOwnSaveTyped = false;
-    s.started = now;
+    sOwnSaveState.started = std::chrono::steady_clock::now();
     vm_write8(gm + kGmSaveAsked, 1);
-    std::fprintf(stderr, "[coop] this player's own save: asked for (where it stands in area %08X, its own world, in %s "
-                 "form)\n", vm_read32(session_manager() + kSmArea), body_form() ? "body" : "soul");
+    std::fprintf(stderr, "[coop] this player's own save: asked for, %s (where it stands in area %08X, its own world, in "
+                 "%s form)\n", why, vm_read32(session_manager() + kSmArea), body_form() ? "body" : "soul");
 }
 
 // A load's arrival in the host's world: the next save soon.
@@ -1365,6 +1421,7 @@ void own_save_soon()
     if (!s.counting || s.next > soon) {
         s.counting = true;
         s.next = soon;
+        s.soon = true;
     }
 }
 
@@ -2152,6 +2209,8 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
         g.follow = 0;   // a follow or a respawn whose load never came: not the next session's
         g.respawn = false;
         if (sOwnSave.load() == kOwnSaveNone) sOwnSaveState.counting = false;   // (a session's first save: own_save_every() in)
+        sOwnSaveGameAsked = false;   // (an ask the session's end left: the next session's saves are its own)
+        sCanSaveHere = false;
         {
             std::lock_guard<std::mutex> l(sHostNpcLock);
             sHostNpcs.clear();
@@ -2289,9 +2348,11 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
     {   // this friend's own save: in the world, alive, out of boss fights, cutscenes and loads, not leaving or ending
         const uint32_t pc = player_chr();
         const bool home_trip = guest_ok(fb) && ((vm_read8(fb + (kFlagReloadGuard >> 3)) >> (kFlagReloadGuard & 7)) & 1);
-        own_save_tick(world && !g.in_load && own_kept() && !sEnding.load() && sLeave.load() == kLeaveNone &&
-                      !sFriendFight.load() && guest_ok(pc) && (int32_t)vm_read32(pc + kChrHp) > 0 &&
-                      !des_cutscene_playing() && save_idle() && !home_trip);
+        const bool here = world && !g.in_load && own_kept() && !sEnding.load() && !sFriendFight.load() &&
+                          guest_ok(pc) && (int32_t)vm_read32(pc + kChrHp) > 0 && !des_cutscene_playing() &&
+                          save_idle() && !home_trip;
+        sCanSaveHere = here;   // (Leave now's, leave_tick)
+        own_save_tick(here && sLeave.load() == kLeaveNone);
     }
     uint32_t lead;
     {
@@ -2453,6 +2514,14 @@ void leave()
     int none = kLeaveNone;
     if (sLeave.compare_exchange_strong(none, kLeaveAsked))
         std::fprintf(stderr, "[coop] leave: asked; going home first\n");
+}
+
+void leave_now()
+{
+    if (active() != Mode::Join) return;
+    leave();   // (one not under way yet starts)
+    if (!sLeaveNow.exchange(true))
+        std::fprintf(stderr, "[coop] leave now: asked; done once this player's progress is saved\n");
 }
 
 bool left()
@@ -2998,6 +3067,15 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
     case 0x002117E8u:   // the save step (0x002117A8), after lbz r0,0xACA(r9): 0 drops the save asked for (a phantom's)
         if (m == co::Mode::Join && sOwnSave.load() != kOwnSaveNone && own_save_known() && (ctx->gpr[0] & 0xFFu) == 0)
             ctx->gpr[0] = 1;
+        break;
+    case 0x0020FB8Cu:   // the save requests 0x0020FB78 (+0xA97 and +0xA98) and 0x0020FBA8 (+0xA97), after their
+    case 0x0020FBB8u:   // lbz r0,0xACA(r9): 0 skips the ask (a phantom's). A friend's game asked: its own save follows
+        if (m == co::Mode::Join && (ctx->gpr[0] & 0xFFu) == 0 && own_kept()) sOwnSaveGameAsked = true;
+        break;
+    case 0x00411958u:   // the scripts' SaveRequest (0x00411930) and SaveRequest_Profile (0x004119B8), after their first
+    case 0x004119E0u:   // check (bl 0x0044C678): they ask only for a living player or a soul, so a blue phantom's ask
+        // stops there, before the request. A friend's script asked (a light wall passed, a boss's door): its own follows
+        if (m == co::Mode::Join && own_kept()) sOwnSaveGameAsked = true;
         break;
     case 0x00211548u:   // the save's build (0x002112F8), before its bl 0x0090E4B0, the character's writer: it writes
         // the player's game data (its character's +0x49C), whose +0x8C a load makes the player's type: a blue
