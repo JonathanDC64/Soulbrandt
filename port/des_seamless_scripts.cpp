@@ -264,6 +264,9 @@ bool edit_global(std::string& t, const std::string& nl)
     // edit_area) the phantom first watches until the fight ends: it looks again each second (two timer slots in turn,
     // so a handler never sets up its own slot) until the boss is dead, or the host has died: the host's respawn
     // then takes everyone back (des_seamless_game.cpp's follow), and this phantom goes with it at full health.
+    // Whether the host's death takes everyone back is flag 20297, which des_seamless_game.cpp sets in a guest's game
+    // from the host's word (ALLB) until the guest has followed that load: a value of the scripts' own, set by HostDead,
+    // outlived it when HostDead came after the load (11-22: the next death of that friend waited for good).
     // Once the boss is dead, a phantom that died in the fight (SeamlessFightDeath, noted at its death) comes back at
     // its own bloodstain, in the boss's room, not at the area's start: flag 19993 (past the game's last flag; only
     // des_seamless_game.cpp's flag hook reads it) just before the reload says so.
@@ -286,7 +289,7 @@ bool edit_global(std::string& t, const std::string& nl)
                       "\t\tproxy:NotNetMessage_end();\n"
                       "\t\treturn;\n"
                       "\tend\n"
-                      "\tif SeamlessHostDown == true then\n"
+                      "\tif proxy:IsCompleteEvent(20297) == true then\n"
                       "\t\tproxy:RequestFullRecover();\n"
                       "\t\tproxy:SetEventFlag(4047, false);\n"
                       "\t\tproxy:SetEventFlag(4000, false);\n"
@@ -310,14 +313,13 @@ bool edit_global(std::string& t, const std::string& nl)
         return false;
     // The host's death: the host's respawn takes everyone back together (des_seamless_game.cpp's follow), so a blue
     // phantom isn't recalled and sent home (MissionFailed's 8943, HostDead_1's trip). A phantom watching a boss fight
-    // goes back with it (PartyGhostDeath_2).
+    // goes back with it (PartyGhostDeath_2, from flag 20297).
     if (!replace_func(t, "HostDead",
                       "function HostDead(proxy, param)\n"
                       "\t--SEAMLESS: the host's respawn takes the group back together; no recall, no trip home\n"
                       "\tif proxy:IsHost() == true or proxy:IsGreyGhost() == true then\n"
                       "\t\treturn;\n"
                       "\tend\n"
-                      "\tSeamlessHostDown = true;\n"
                       "\tprint(\"SEAMLESS HostDead\");\n"
                       "end\n", nl))
         return false;
@@ -326,9 +328,11 @@ bool edit_global(std::string& t, const std::string& nl)
     // 20299), the host respawns alone (flag 19996 tells des_seamless_game.cpp, which keeps the dead enemies dead and
     // its guests where they are), in a boss fight once the boss is dead (it looks again each second, as a friend's
     // watch does); with no friend standing, the guests get their HostDead and the load is the old one: everyone back.
+    // Flag 19995 (past the game's last flag) just before each HostDead: des_seamless_game.cpp tells the guests which
+    // load takes them back (flag 20297 in their games).
     if (!replace_in(t, "OnEvent_4000", "proxy:LuaCallStart(4000, 1 );",
-                    "if proxy:IsCompleteEvent(20298) == false then proxy:LuaCallStart(4000, 1 ); end "
-                    "--SEAMLESS: else SeamlessHostWait"))
+                    "if proxy:IsCompleteEvent(20298) == false then proxy:SetEventFlag(19995, true); "
+                    "proxy:LuaCallStart(4000, 1 ); end --SEAMLESS: else SeamlessHostWait"))
         return false;
     // The host's HP at 0 (OnEvent_4000_Hp) sends call 99999 to every game, and five areas' scripts answer it with
     // their boss's parts in dead mode 2 (OnEvent_4000_Hp_1's SetDeadMode2: m02_00 Phalanx 800-802 and 821, m03_01,
@@ -367,6 +371,7 @@ bool edit_global(std::string& t, const std::string& nl)
                       "\t\tproxy:SetEventFlag(19996, true);\n"
                       "\t\tprint(\"SEAMLESS the host respawns alone\");\n"
                       "\telse\n"
+                      "\t\tproxy:SetEventFlag(19995, true);\n"
                       "\t\tproxy:LuaCallStart(4000, 1 );\n"
                       "\t\tprint(\"SEAMLESS the host's death takes everyone back\");\n"
                       "\tend\n"

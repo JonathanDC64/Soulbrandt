@@ -170,6 +170,8 @@ constexpr char kMsgRoom[4] = {'R', 'O', 'O', 'M'};   // the host's room data
 constexpr char kMsgAsk[4] = {'R', 'O', 'M', '?'};    // a guest asks for it
 constexpr char kMsgFull[4] = {'F', 'U', 'L', 'L'};   // u32 most: the host's answer instead while its session is full
 constexpr char kMsgLead[4] = {'L', 'E', 'A', 'D'};   // u32 trip, u32 1 if it gives full HP and MP: the host's load began
+// u32 trip: the host died and its load of that number takes everyone back (its scripts send the guests' HostDead)
+constexpr char kMsgAllBack[4] = {'A', 'L', 'L', 'B'};
 // u32 trip, u32 area, f32 x, y, z, yaw where it arrived, f32 x, y, z, yaw where it is, then its area's dead-character
 // record (76 bytes, or none): the host has arrived (after each load), every 2 s while it hosts, and when a guest asks
 constexpr char kMsgReady[4] = {'R', 'E', 'D', 'Y'};
@@ -393,6 +395,7 @@ bool sFull = false;                  // the host's last answer was FULL: no join
 bool sAsked = false;                 // a guest asked for the room data (the host)
 uint32_t sLeadTrip = 0;              // the host's latest load (a guest)
 bool sLeadRecover = false;           // ... gives the host full HP and MP
+std::atomic<uint32_t> sAllBackTrip{0};   // the host's load that takes everyone back after its death (a guest; ALLB)
 bool sHostFight = false;             // the host is in a boss fight: no join until it's over (a guest; FGHT)
 std::atomic<bool> sFight{false};     // this game's boss fight (the host; kFightMarker), until it's over or a load
 std::atomic<bool> sFriendFight{false};   // this friend's own boss fight (kFightMarker), until it's over or a load
@@ -473,6 +476,8 @@ void on_message(uint32_t from, const uint8_t* d, uint32_t n)
     } else if (!std::memcmp(d, kMsgLead, 4) && n >= 8) {
         sLeadTrip = get32(d + 4);
         sLeadRecover = n >= 12 && get32(d + 8) != 0;
+    } else if (!std::memcmp(d, kMsgAllBack, 4) && n >= 8) {
+        if (get32(d + 4) > sAllBackTrip.load()) sAllBackTrip = get32(d + 4);
     } else if (!std::memcmp(d, kMsgReady, 4) && n >= 44) {
         Ready r;
         r.trip = get32(d + 4);
@@ -2591,9 +2596,18 @@ void take_guest_seal(ppu_context* ctx)
 //     host does for a guest after a guest's respawn.
 //   - With no friend standing, the scripts send the guests' HostDead instead, and the load is the old one: the guests
 //     follow, and the world resets.
-constexpr uint32_t kAloneMarker = 19996;
+//   - Just before they send HostDead, the scripts set kAllBackMarker (past the game's last flag), and this game tells
+//     its guests which of its loads takes them back (ALLB: the next one). Until a guest has followed that load, its
+//     game sets kAllBackFlag each frame, and its scripts' PartyGhostDeath_2 leaves a death under way to that load:
+//     full health, no respawn of its own. Before, HostDead set a value in the guest's scripts for that
+//     (SeamlessHostDown), and nothing cleared it. When the last friend standing died while the host waited in a boss
+//     fight, the host's load came at once, and the friend followed it before HostDead reached its game: HostDead then
+//     came in the new area's scripts, where nothing went after it. The friend's next death there left its respawn to
+//     a host load that never came: it lay dead, died again at once, and so on, until the host's next load that took
+//     it along (11-22: 3 minutes, until the host went to the Nexus).
+constexpr uint32_t kAloneMarker = 19996, kAllBackMarker = 19995;
 constexpr uint32_t kHighFlags = 0x14D0, kHighFlagFirst = 20000;
-constexpr uint32_t kAloneFlag = 20298, kStandsFlag = 20299;
+constexpr uint32_t kAloneFlag = 20298, kStandsFlag = 20299, kAllBackFlag = 20297;
 std::atomic<bool> sHostAlone{false};   // the host's next load is its lone respawn (kAloneMarker), until it starts
 std::atomic<uint32_t> sLoneArea{kNoArea};   // the area that load goes to, whose world's dead characters it keeps
 std::atomic<bool> sHostFightDeath{false};   // the host died in a boss fight (sFight at its death): its stain, then
@@ -2882,6 +2896,13 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
     leave_tick(ctx, st, world);
     // leaving: no join again; and once out of the session (LeaveSession), no follow, requeue or BACK either, while
     // the session state still says client
+    if (st == 0) sAllBackTrip = 0;   // (the next session's host counts its loads anew)
+    {   // the host died and its load that takes everyone back hasn't been followed here yet (ALLB; kAllBackMarker)
+        const uint32_t fb = flag_base();
+        if (guest_ok(fb))
+            vm_write8(fb + kHighFlags + (kAllBackFlag - kHighFlagFirst),
+                      st == kStateClient && sAllBackTrip.load() > g.trip ? 1 : 0);
+    }
     const int lv = sLeave.load();
     if (lv != kLeaveNone && (st == 0 || lv != kLeaveAsked)) return;
     if (st == 0) {
@@ -3703,6 +3724,16 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
         }
         if (flag == kAloneMarker) {   // the host's death: it respawns alone (its scripts' SeamlessHostWait)
             if ((uint32_t)ctx->gpr[5] != 0 && m == co::Mode::Host) sHostAlone = true;
+            break;
+        }
+        if (flag == kAllBackMarker) {   // the host's death takes everyone back: with its next load, which they follow
+            if ((uint32_t)ctx->gpr[5] != 0 && m == co::Mode::Host) {
+                const uint32_t next = (uint32_t)sGame.trip + 1;
+                std::vector<uint8_t> b;
+                put32(b, next);
+                send(kMsgAllBack, b);
+                std::fprintf(stderr, "[coop] the host's death takes everyone back: its friends are told (its load %u)\n", next);
+            }
             break;
         }
         if ((uint32_t)ctx->gpr[5] == 0 || flag >= kFlagCount) break;   // flags only move forward
