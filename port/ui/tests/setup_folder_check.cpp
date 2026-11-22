@@ -4,7 +4,8 @@
 // kept in full, or relative in a portable install, and goes when the usual folder is chosen again. A folder picked
 // that holds other things gets a folder of setup's own in it, and the program's own folders are refused. And how
 // setup's own files can be missing beside the program (issue #431). And game-folders.txt, the game folders
-// the game ran from (docs/164 section 5).
+// the game ran from (docs/164 section 5). And whether a folder's drive can hold the build (issue #673): on Linux, CI
+// mounts a FAT drive and a noexec one and names them in SETUP_CHECK_FAT_FOLDER and SETUP_CHECK_NOEXEC_FOLDER.
 //
 // Each case runs in made-up folders under the system's temporary folder, removed at the end. Prints one line a case
 // and "setup_folder_check: N passed, M failed"; exit 1 on a failure. The same on every platform (CI runs it on Windows
@@ -12,6 +13,7 @@
 #include "setup_folder.hpp"
 
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <functional>
 #include <sstream>
@@ -254,6 +256,39 @@ int main() {
     run("refuses_a_relative_folder", [](const fs::path&) {
         return cannot_use("build", {}).empty() ? std::string("not refused") : std::string();
     });
+
+    // ---- A drive that cannot hold the build (issue #673) ----
+    run("holds_programs_here", [](const fs::path& t) {
+        if (const std::string why = cannot_hold_programs(t); !why.empty()) return "refused: " + why;
+        return fs::is_empty(t) ? std::string() : std::string("its check's files are left");
+    });
+    run("holds_programs_asks_the_folder_above", [](const fs::path& t) {
+        if (const std::string why = cannot_hold_programs(t / "not" / "made"); !why.empty()) return "refused: " + why;
+        std::error_code ec;
+        return all({fs::exists(t / "not", ec) ? "a folder made" : "",
+                    fs::is_empty(t) ? "" : "its check's files are left"});
+    });
+#ifndef _WIN32
+    // Drives CI mounts on Linux (host.yml): a FAT one, as a player's USB stick or exFAT drive, which holds no links,
+    // and one mounted with noexec. Both refused, with nothing of the check's left there.
+    const auto refused = [](const char* variable, const char* word) {
+        const char* at = std::getenv(variable);
+        if (!at || !*at) return;
+        run(variable, [at, word](const fs::path&) {
+            const fs::path drive = from_utf8(at);
+            if (const std::string why = cannot_hold_programs(drive); why.find(word) == std::string::npos)
+                return std::string("not refused for '") + word + "': '" + why + "'";
+            if (cannot_use(drive / "build", {}).empty()) return std::string("cannot_use took it");
+            std::error_code ec;
+            const bool left = !fs::is_empty(drive / "build", ec) || fs::exists(drive / ".setup-program-check", ec) ||
+                              fs::exists(drive / ".setup-link-check", ec);
+            fs::remove_all(drive / "build", ec);
+            return left ? std::string("its check's files are left") : std::string();
+        });
+    };
+    refused("SETUP_CHECK_FAT_FOLDER", "links");
+    refused("SETUP_CHECK_NOEXEC_FOLDER", "noexec");
+#endif
 
     // ---- Setup's own files beside the program (issue #431) ----
     const auto gone = [](EngineGone got, EngineGone want) {
