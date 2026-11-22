@@ -25,6 +25,8 @@
 //   - the Archstones: the host may use them in a session (the guests then follow it, des_seamless_game.cpp); a guest
 //     still gets "You can't return during multiplayer.", at the Nexus's stones too (they had no session check);
 //   - a boss's soul: a blue phantom may take its own, as the host takes its own;
+//   - an NPC's talk that gives an item (1-1's Ostrava, once saved) is each player's own: each player has that talk
+//     and gets the item (talk_gifts_for_each);
 //   - the wandering ghosts' sightings are each player's own (local_wander_loops);
 //   - a light wall one player walks through is gone in every player's game (walls_for_watchers);
 //   - a boss that wakes only for the player who walks through its fog wakes for one put in its room too
@@ -964,6 +966,56 @@ int gifts_for_all(std::string& t)
     return n;
 }
 
+// The items an NPC's talk gives: the talk system starts LuaCall(<id>, 0, "OnEvent_<id>", once), and its steps
+// (OnEvent_<id>_1) give the item to the player who talked (GetRateItem under param:IsNetMessage() == false), set flag
+// <id> and move the NPC on. 1-1's Ostrava (10501, after he is saved) is the one. The call is a network event (the
+// original has its NotNetMessage_begin and _end in a comment), so one player's talk moved the NPC on in every
+// player's game, without their item: the others never had that talk. The IDs.
+std::set<std::string> talk_gift_ids(const std::string& t)
+{
+    std::set<std::string> out;
+    const std::regex reg("proxy:LuaCall\\(\\s*(\\d+)\\s*,\\s*0\\s*,\\s*\"OnEvent_(\\d+)\"\\s*,\\s*once\\s*\\)");
+    const std::regex mine("if\\s+param:IsNetMessage\\(\\)\\s*==\\s*false\\s+then\\s*(?:--[^\\n]*\\n\\s*)*proxy:GetRateItem\\(");
+    for (auto it = std::sregex_iterator(t.begin(), t.end(), reg); it != std::sregex_iterator(); ++it) {
+        const std::string id = (*it)[1].str();
+        size_t a, e;
+        if (id != (*it)[2].str() || out.count(id) || !func_span(t, "OnEvent_" + id + "_1", &a, &e)) continue;
+        const std::string body = t.substr(a, e - a);
+        if (std::regex_search(body, mine) &&
+            std::regex_search(body, std::regex("SetEventFlag\\(\\s*" + id + "\\s*,\\s*(?:true|1)\\s*\\)")))
+            out.insert(id);
+    }
+    return out;
+}
+
+// Each player's own talk (talk_gift_ids): the call registered between NotNetMessage_begin and _end, as the scripts'
+// other talk calls are, so a talk's steps run only in the game of the player who talked; each player has that talk
+// and gets the item. The item only while flag <id> is clear: in a friend's game that is its own world's flag
+// (des_seamless_game.cpp keeps it as a pickup's, own_flags), so a friend who talked, then loaded into the host's
+// world where nobody has talked yet, doesn't get the item again from the same talk. Returns the number of edits.
+int talk_gifts_for_each(std::string& t)
+{
+    int n = 0;
+    for (const std::string& id : talk_gift_ids(t)) {
+        const std::regex reg("proxy:(LuaCall\\(\\s*" + id + "\\s*,\\s*0\\s*,\\s*\"OnEvent_" + id + "\"\\s*,\\s*once\\s*\\)\\s*;)");
+        const auto calls = std::distance(std::sregex_iterator(t.begin(), t.end(), reg), std::sregex_iterator());
+        t = std::regex_replace(t, reg,
+                               "proxy:NotNetMessage_begin(); proxy:$1 proxy:NotNetMessage_end(); --SEAMLESS: each player's own talk ");
+        n += (int)calls;
+        size_t a, e;
+        if (!func_span(t, "OnEvent_" + id + "_1", &a, &e)) continue;
+        const std::string body = t.substr(a, e - a);
+        const std::string ed = std::regex_replace(body, std::regex("if(\\s+param:IsNetMessage\\(\\)\\s*==\\s*false)(\\s+then)"),
+                                                  "if$1 and proxy:IsCompleteEvent( " + id + " ) == false$2",
+                                                  std::regex_constants::format_first_only);
+        if (ed != body) {
+            t.replace(a, e - a, ed);
+            n++;
+        }
+    }
+    return n;
+}
+
 // A statement at the top of function `name`, after its first line; false if the function isn't there.
 bool insert_first(std::string& t, const std::string& name, const std::string& line, const std::string& nl)
 {
@@ -1302,6 +1354,8 @@ int edit_area(std::string& t, bool nexus)
     n += pickups_for_all(t);
     // ... and the items the host alone took at an item prompt
     n += gifts_for_all(t);
+    // An NPC's talk that gives an item: each player's own (talk_gifts_for_each)
+    n += talk_gifts_for_each(t);
     // The treasures the host alone turned on in the moment (treasures_for_all)
     n += treasures_for_all(t);
     // A handler that does nothing in a party (party_gates), and a watch the host alone starts after a kill
@@ -1516,13 +1570,14 @@ std::vector<uint32_t> progress_flags(const std::string& t, std::vector<uint32_t>
     return std::vector<uint32_t>(out.begin(), out.end());
 }
 
-// The soul pickups (the prompt 10010180), the keys (key_pickups) and the host's item prompts (gift_pickups): the
-// event's ID is the flag its handler sets once the item is taken.
+// The soul pickups (the prompt 10010180), the keys (key_pickups), the host's item prompts (gift_pickups) and the
+// items an NPC's talk gives (talk_gift_ids): the event's ID is the flag its handler sets once the item is taken.
 std::vector<uint32_t> own_flags(const std::string& t)
 {
     std::set<uint32_t> out;
     std::set<std::string> ids = key_pickups(t);
     for (const auto& g : gift_pickups(t)) ids.insert(g.first);
+    for (const std::string& id : talk_gift_ids(t)) ids.insert(id);
     for (const std::string& id : ids) {
         const unsigned long v = std::stoul(id);
         if (v < kProgressMax) out.insert((uint32_t)v);
