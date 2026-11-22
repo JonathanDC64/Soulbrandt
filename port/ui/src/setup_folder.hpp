@@ -47,8 +47,16 @@ bool holds_setup(const std::filesystem::path& folder);
 std::filesystem::path folder_for_pick(const std::filesystem::path& picked);
 // Empty when setup can build in `folder`, else why not, for the player: it is the program's folder, or in one of the
 // program's own folders, which an update replaces (setup, and the names in setup/release-files.txt); or setup cannot
-// make it or write in it. It makes the folder. program: the program's folder (empty: not known).
+// make it or write in it; or its drive cannot hold programs (cannot_hold_programs). It makes the folder. program: the
+// program's folder (empty: not known).
 std::string cannot_use(const std::filesystem::path& folder, const std::filesystem::path& program);
+// Empty when the drive `folder` is on can hold what setup unpacks and runs there, else why not, for the player. On
+// Linux setup's Python has 1,048 symbolic links (bin/python3 -> python3.13, ...), which a drive formatted FAT32 or
+// exFAT cannot hold (tar -xf ends with exit 2, issue #673), and the build runs the programs it unpacks, which a drive
+// mounted with noexec does not. Asked of the drive itself: a small program file and a link to it, made in the folder
+// (or the nearest one above it there is) and removed at once. Empty when it cannot be asked (cannot_use's write check
+// says that), and always on Windows, whose setup needs neither.
+std::string cannot_hold_programs(const std::filesystem::path& folder);
 // Keeps the choice of `folder` in <usual>/setup-folder.txt, or removes that file when `folder` is the usual one. The
 // path is written relative to the usual folder when both are in the program's folder (a portable install, which may
 // be moved or renamed as one folder), else in full. False, with why (for the player), when the file cannot be written.
