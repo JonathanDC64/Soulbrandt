@@ -4,6 +4,7 @@
 
 #include "crc32.hpp"
 #include "host.hpp"
+#include "log_runs.hpp"
 #include "mods.hpp"
 #include "portable.hpp"
 #include "report_addresses.hpp"
@@ -473,12 +474,22 @@ uint64_t g_log_bytes = 0;
 int g_tees = 0;
 std::atomic<int> g_tee_idle{0};  // tee threads waiting for output with everything before it in the log file
 
+// ---- The runs kept: des.log and coop.log, and the four before each (log_runs.hpp) ----
+// A report quotes those of the last day. A friend's Leave co-op starts the game again twice (on the normal characters,
+// then back in co-op), so with one run kept, the run a report was about was often gone (11-21: both lost-progress
+// reports).
+constexpr int kOlderRuns = runs::kOlder;
+std::filesystem::path older_run(const std::filesystem::path& log, int back) { return runs::older(log, back); }
+void keep_older_runs(const std::filesystem::path& log) { runs::keep(log, replace_file); }
+bool kept_log(const std::wstring& name) { return runs::kept(name); }
+
 // ---- The co-op log: a session's lines from the log, each with its time, in logs/coop.log ----
 // A co-op session's story (the room, who joined and left, the loads the friends followed, what each game kept for the
 // others) is a few lines a minute among thousands, and a report keeps only des.log's start and end. coop.log keeps those
 // lines whole, each with the time it was printed (UTC, so that a host's and a friend's line up). The tee threads pick
 // them out of what they copy to des.log, so the game's own threads do nothing more. It is made at the first such line:
-// a run without one leaves the last session's as it was. The one before it is kept as coop.prev.log.
+// a run without one leaves the last session's as it was. The ones before it are kept as coop.prev.log to
+// coop.prev4.log.
 
 constexpr uint64_t kCoopCap = 32ull << 20;  // past this the file stops, with a note (des.log goes on)
 constexpr size_t kCoopLine = 4096;          // of a longer line, its start
@@ -507,7 +518,7 @@ void coop_write(const char* line, size_t n) {
     if (!g_coop_file) {
         if (g_coop_path.empty() || g_coop_failed) return;
         // The main one's last session becomes coop.prev.log (another copy's, coop.<process>.log, has none)
-        if (g_coop_path.filename() == "coop.log") replace_file(g_coop_path, g_coop_path.parent_path() / "coop.prev.log");
+        if (g_coop_path.filename() == "coop.log") keep_older_runs(g_coop_path);
         g_coop_file = open_file(g_coop_path, "wb");
         if (!g_coop_file) {
             g_coop_failed = true;
@@ -896,22 +907,29 @@ void make_issue_report(std::vector<uint8_t> rgba, int width, int height, std::st
     if (!g_log_path.empty()) {
         flush_log();
         files.push_back({"des.log", bytes(redact_log(read_head_tail(g_log_path, 120, 512 << 10)))});
-        std::error_code ec;
-        const auto prev = g_log_path.parent_path() / L"des.prev.log";
-        if (std::filesystem::exists(prev, ec) &&
-            std::filesystem::file_time_type::clock::now() - std::filesystem::last_write_time(prev, ec) <
-                std::chrono::hours(24))
-            files.push_back({"des.prev.log", bytes(redact_log(read_head_tail(prev, 40, 192 << 10)))});
-        // The co-op log whole (its last 4 MB at most), and the previous session's when it is from the last day. Until
-        // this run has a co-op line, coop.log is still the last session's.
-        const auto coop_prev = g_coop_path.parent_path() / L"coop.prev.log";
+        const auto recent = [](const std::filesystem::path& p) {
+            std::error_code ec;
+            return !p.empty() && std::filesystem::exists(p, ec) &&
+                   std::filesystem::file_time_type::clock::now() - std::filesystem::last_write_time(p, ec) <
+                       std::chrono::hours(24);
+        };
+        // The runs before this one, of the last day: the end of each (the last one's longer)
+        const auto main_log = g_log_path.parent_path() / L"des.log";
+        for (int k = 1; k <= kOlderRuns; k++)
+            if (const auto p = older_run(main_log, k); recent(p))
+                files.push_back({narrow(p.filename().wstring()),
+                                 bytes(redact_log(read_head_tail(p, 40, (k == 1 ? 192 : 128) << 10)))});
+        // The co-op log whole (its last 4 MB at most), and the sessions before it of the last day. Until this run has a
+        // co-op line, coop.log is still the last session's: it goes in as coop.prev.log, and each older one a place on.
         const bool started = g_coop_open.load();
         if (started) files.push_back({"coop.log", bytes(redact_log(read_head_tail(g_coop_path, 200, 4 << 20)))});
-        const auto last = started ? coop_prev : g_coop_path;
-        if (!last.empty() && std::filesystem::exists(last, ec) &&
-            std::filesystem::file_time_type::clock::now() - std::filesystem::last_write_time(last, ec) <
-                std::chrono::hours(24))
-            files.push_back({"coop.prev.log", bytes(redact_log(read_head_tail(last, 100, 1 << 20)))});
+        const auto coop_main = g_coop_path.parent_path() / L"coop.log";
+        for (int k = 1; k <= kOlderRuns; k++) {
+            const auto p = started ? older_run(coop_main, k) : k == 1 ? g_coop_path : older_run(coop_main, k - 1);
+            if (recent(p))
+                files.push_back({narrow(older_run(coop_main, k).filename().wstring()),
+                                 bytes(redact_log(read_head_tail(p, 100, (k == 1 ? 1024 : 512) << 10)))});
+        }
     }
     for (File& f : save) files.push_back(std::move(f));
     const auto zip = write_bundle("issue-" + stamp, files);
@@ -2046,7 +2064,7 @@ void start_log() {
     auto path = dir / "des.log";
     // Another copy of the game running at the same time holds a lock on des.log: this one then writes its own, which
     // its reports quote (those of finished copies are cleared away after a day). Otherwise des.log starts over and
-    // the previous run's is kept as des.prev.log.
+    // the previous run's is kept as des.prev.log, the older ones behind it (keep_older_runs).
     const auto locked = [](const std::filesystem::path& p) {
         const int fd = open(p.c_str(), O_RDONLY | O_CLOEXEC);
         if (fd < 0) return false;
@@ -2058,14 +2076,13 @@ void start_log() {
         const auto now = std::filesystem::file_time_type::clock::now();
         for (const auto& e : std::filesystem::directory_iterator(dir, ec)) {
             const std::string name = e.path().filename().string();
-            if ((name.rfind("des.", 0) == 0 || name.rfind("coop.", 0) == 0) && name != "des.log" &&
-                name != "des.prev.log" && name != "coop.log" && name != "coop.prev.log" &&
+            if ((name.rfind("des.", 0) == 0 || name.rfind("coop.", 0) == 0) && !kept_log(widen(name)) &&
                 now - e.last_write_time(ec) > std::chrono::hours(24))
                 std::filesystem::remove(e.path(), ec);
         }
         path = dir / ("des." + std::to_string(getpid()) + ".log");
     } else {
-        std::filesystem::rename(path, dir / "des.prev.log", ec);
+        keep_older_runs(path);
     }
     g_log_file = open_file(path, "wb");  // (its lock stays this process's: see start_again)
     if (!g_log_file) return;
@@ -2118,7 +2135,7 @@ void start_log() {
     const auto dir = data_dir() / L"logs";
     std::filesystem::create_directories(dir, ec);
     auto path = dir / L"des.log";
-    std::filesystem::rename(path, dir / L"des.prev.log", ec);
+    keep_older_runs(path);   // (not while another copy has it open: then des.log can't be moved)
     g_log_file = _wfsopen(path.c_str(), L"wb", _SH_DENYWR);
     if (!g_log_file) {
         // Another copy of the game running at the same time keeps des.log: this one writes its own, which its reports
@@ -2126,8 +2143,7 @@ void start_log() {
         const auto now = std::filesystem::file_time_type::clock::now();
         for (const auto& e : std::filesystem::directory_iterator(dir, ec)) {
             const std::wstring name = e.path().filename().wstring();
-            if ((name.rfind(L"des.", 0) == 0 || name.rfind(L"coop.", 0) == 0) && name != L"des.log" &&
-                name != L"des.prev.log" && name != L"coop.log" && name != L"coop.prev.log" &&
+            if ((name.rfind(L"des.", 0) == 0 || name.rfind(L"coop.", 0) == 0) && !kept_log(name) &&
                 now - e.last_write_time(ec) > std::chrono::hours(24))
                 std::filesystem::remove(e.path(), ec);
         }

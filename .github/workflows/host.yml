@@ -399,6 +399,13 @@ jobs:
           cmake --build build/host --target report_addresses_check
           build/host/ui/report_addresses_check.exe
 
+      # The runs the logs keep (port/ui/tests/log_runs_check.cpp): des.log and coop.log, and the four before each.
+      - name: The runs the logs keep
+        shell: bash
+        run: |
+          cmake --build build/host --target log_runs_check
+          build/host/ui/log_runs_check.exe
+
       # The menus' shaders kept compiled between starts (port/ui/tests/shader_cache_check.cpp): a stored one is used
       # only for exactly its input, and only whole. Linux runs it below.
       - name: The menus' shader cache
@@ -953,6 +960,12 @@ jobs:
         run: |
           cmake --build build/host --target report_addresses_check
           build/host/ui/report_addresses_check
+
+      # The runs the logs keep, as on Windows above.
+      - name: The runs the logs keep
+        run: |
+          cmake --build build/host --target log_runs_check
+          build/host/ui/log_runs_check
 
       # The menus' shader cache, as on Windows above. It knows the build by des_host's build id, which lld writes only
       # when asked (port/CMakeLists.txt): without one a copy of des_host would count as another build.
