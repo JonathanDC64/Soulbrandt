@@ -246,15 +246,28 @@ bool is_player(uint32_t chr)
 std::mutex sHostNpcLock;
 std::set<uint32_t> sHostNpcs;              // the NPCs a friend's game set up at 4 instead of the mode they came with
 thread_local bool tHostNpcNext = false;    // the NPC being set up on this thread is one of them
-void host_npc_type(ppu_context* ctx, co::Mode m, int chr_reg = 31)
+void npc_type_as_host(ppu_context* ctx, co::Mode m, uint32_t chr)
 {
     if (m != co::Mode::Join || (uint32_t)ctx->gpr[3] != 4) return;
-    const uint32_t chr = (uint32_t)ctx->gpr[chr_reg];
     {
         std::lock_guard<std::mutex> l(sHostNpcLock);
         if (!sHostNpcs.count(chr)) return;
     }
     if (!is_player(chr)) ctx->gpr[3] = 9;
+}
+void host_npc_type(ppu_context* ctx, co::Mode m, int chr_reg = 31)
+{
+    npc_type_as_host(ctx, m, (uint32_t)ctx->gpr[chr_reg]);
+}
+// A cutscene's copy of such an NPC (0x006087B8; see copy_seen) reads the type as the draw update does, so on a
+// friend it drew a white phantom where the host sees the person (11-22: the Crestfallen Warrior in the Nexus
+// cutscene of his first talk, scene 25). It reads the type nine times: for each of its two draw objects (+0x6C,
+// +0x70) the phantom material on or off and its kind, the draw path's check for types 3, 4, 10 and 11 (one call
+// each: a phantom's type takes the other path), and 0x0025D418. Each read gets 9 the same way. The character is
+// the copy's +0xBC (r31 the copy), or in r29 at the draw path's checks and 0x0025D418's.
+void copy_npc_type(ppu_context* ctx, co::Mode m, int chr_reg = -1)
+{
+    npc_type_as_host(ctx, m, chr_reg < 0 ? rd((uint32_t)ctx->gpr[31] + 0xBC) : (uint32_t)ctx->gpr[chr_reg]);
 }
 // The NPC setup's new character (0 when out of memory): one of sHostNpcs if its mode was changed, else not (a
 // character made earlier at the same address doesn't count).
@@ -899,12 +912,14 @@ bool glow_shown(uint32_t chr)
 // A cutscene's copy of a character set up (0x006087B8, after its bl 0x0026F378 at 0x00609338): r3 the
 // character's type (for the copy's phantom material, on or off), r31 the copy (+0x70 its draw object, +0xBC the
 // character). The copy is kept in sCopy for its player's colour (glow_tick), and a blue phantom whose player turned its
-// glow off is copied without it, as its character is drawn (the hook at 0x002DDAA8).
-void copy_seen(ppu_context* ctx)
+// glow off is copied without it, as its character is drawn (the hook at 0x002DDAA8). This read is one of the copy's
+// nine reads of the type, for an NPC too (copy_npc_type).
+void copy_seen(ppu_context* ctx, co::Mode m)
 {
     const uint32_t cp = (uint32_t)ctx->gpr[31];
     const uint32_t chr = rd(cp + 0xBC), handle = rd(rd(cp + 0x70) + 0x4);
     if (!guest_ok(chr)) return;
+    npc_type_as_host(ctx, m, chr);   // a copy of the host's NPC: its material as on the host (copy_npc_type)
     if ((uint32_t)ctx->gpr[3] == 1 && !glow_shown(chr)) ctx->gpr[3] = 0;
     if (!handle) return;
     const uint64_t e = (uint64_t)handle << 32 | chr;
@@ -2642,7 +2657,19 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
         sync_read(ctx, DES_AT(0x00532358u), {rd((uint32_t)ctx->gpr[22]), 0x26, (uint32_t)ctx->gpr[29], 0x18});
         break;
     case 0x00609338u:   // a cutscene's copy of a character set up (0x006087B8), after bl 0x0026F378: r3 its type, r31 the copy
-        copy_seen(ctx);
+        copy_seen(ctx, m);
+        break;
+    case 0x00608F04u:   // a cutscene's copy setup 0x006087B8, after bl 0x0026F378: the +0x6C draw object's phantom material (0x000DC6E0)
+    case 0x00608F38u:   // a cutscene's copy setup 0x006087B8, after bl 0x0026F378: the +0x6C draw object's material kind (0x000DC9C8)
+    case 0x0060936Cu:   // a cutscene's copy setup 0x006087B8, after bl 0x0026F378: the +0x70 draw object's material kind (0x000D81D0)
+        copy_npc_type(ctx, m);
+        break;
+    case 0x0060900Cu:   // the same, r29 the character: the draw path's check for type 3
+    case 0x00609020u:   // the same, r29 the character: the draw path's check for type 4
+    case 0x00609034u:   // the same, r29 the character: the draw path's check for type 10
+    case 0x0060904Cu:   // the same, r29 the character: the draw path's check for type 11
+    case 0x00609068u:   // the same, r29 the character: 0x0025D418's type read
+        copy_npc_type(ctx, m, 29);
         break;
     case 0x0017A4A8u:   // the summoned reload's load step, after addi r9,r26,0x34
         if (m == co::Mode::Join) guest_load_step(ctx);

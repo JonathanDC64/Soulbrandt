@@ -310,6 +310,14 @@
 0x0006C860=des_coop_hook   # bl 0x00080E88 in 0x0006C850 returned: kind 2's material back in the ghost manager's table
 0x000E9650=des_coop_hook   # bl 0x0006C908 in the ghost model draw 0x000E8C48 returned (r26 the ghost owner, r31 the drawn object): its own colours before 0x0006DA20 records its constants
 0x00609338=des_coop_hook   # bl 0x0026F378 in a cutscene's copy setup 0x006087B8 returned (r3 the character's type, r31 the copy: +0x70 its draw object, +0xBC the character): the copy drawn with its player's glow and colour
+0x00608F04=des_coop_hook   # bl 0x0026F378 in a cutscene's copy setup 0x006087B8 (the +0x6C draw object's phantom material (0x000DC6E0), the character at the copy's +0xBC): a friend's copy of an NPC of type 4 drawn as the host does
+0x00608F38=des_coop_hook   # bl 0x0026F378 in a cutscene's copy setup 0x006087B8 (the +0x6C draw object's material kind (0x000DC9C8), the character at the copy's +0xBC): a friend's copy of an NPC of type 4 drawn as the host does
+0x0060900C=des_coop_hook   # bl 0x0026F378 in a cutscene's copy setup 0x006087B8 (the draw path's check for type 3, the character in r29): a friend's copy of an NPC of type 4 drawn as the host does
+0x00609020=des_coop_hook   # bl 0x0026F378 in a cutscene's copy setup 0x006087B8 (the draw path's check for type 4, the character in r29): a friend's copy of an NPC of type 4 drawn as the host does
+0x00609034=des_coop_hook   # bl 0x0026F378 in a cutscene's copy setup 0x006087B8 (the draw path's check for type 10, the character in r29): a friend's copy of an NPC of type 4 drawn as the host does
+0x0060904C=des_coop_hook   # bl 0x0026F378 in a cutscene's copy setup 0x006087B8 (the draw path's check for type 11, the character in r29): a friend's copy of an NPC of type 4 drawn as the host does
+0x00609068=des_coop_hook   # bl 0x0026F378 in a cutscene's copy setup 0x006087B8 (0x0025D418's type read, the character in r29): a friend's copy of an NPC of type 4 drawn as the host does
+0x0060936C=des_coop_hook   # bl 0x0026F378 in a cutscene's copy setup 0x006087B8 (the +0x70 draw object's material kind (0x000D81D0), the character at the copy's +0xBC): a friend's copy of an NPC of type 4 drawn as the host does
 0x00272A88=des_coop_hook   # bl 0x0052A610 in an enemy's souls for this game's player (0x00272938; r3 1 for a guest, which halves them): a friend gets the full souls
 0x0044A5E4=des_coop_hook   # bl 0x0052A5B0 (the session's member count) in SetClearBonus's native 0x0044A4B8 (above 0, a boss's souls are cut to 75% for the host, 25% for a blue phantom): everyone gets the full souls
 0x004117E4=des_coop_hook   # bl 0x009204A0 in RecvGlobalQwc's 0x004117C0 (the Nexus script) returned: a friend plays in the host's world tendency

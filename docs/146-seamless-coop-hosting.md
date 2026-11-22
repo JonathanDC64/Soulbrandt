@@ -738,6 +738,13 @@ alive.
 
     Types 5 and 9 read alike at all four. Each read is hooked (0x002DDAA8, 0x002DDADC, 0x002DDB48, 0x002DDB90). On a
     friend, such a person of type 4 reads 9, so the friend sees these people as the host does.
+  - **In a cutscene.** A cutscene draws a copy of the person (the copy setup 0x006087B8, as for the players
+    above), and the copy reads the type nine times. For each of its two draw objects it reads the phantom
+    material on or off and the material's kind. The draw path's check for types 3, 4, 10 and 11 is one call
+    each, and there is 0x0025D418. Each read is hooked (0x00608F04, 0x00608F38, 0x0060900C, 0x00609020,
+    0x00609034, 0x0060904C, 0x00609068, 0x00609338 and 0x0060936C) and reads 9 the same way. Before 11-22 only
+    the person in the world was drawn as on the host: in the Nexus cutscene of the Crestfallen Warrior's first
+    talk (scene 25), the friend saw him as a white phantom.
   - **The other kind's look.** That draw update is the first kind's only (its draw object is at `+0x6A4`). The
     second kind's constructor, in its visitor branch, also writes the row's `+0xEC` (7105 for the Dregling merchant,
     7135 for Ed) to `+0x24` of the character's `+0x18`, where a body's game leaves -1. That value, not the type, draws

@@ -244,7 +244,15 @@ DES_REGION_ADDR(0x005F7254, 0x005F8474)  /* hook des_cut_cam */
 DES_REGION_ADDR(0x005F72EC, 0x005F850C)  /* hook des_cut_cam */
 DES_REGION_ADDR(0x005F7394, 0x005F85B4)  /* hook des_cut_cam */
 DES_REGION_ADDR(0x005F743C, 0x005F865C)  /* hook des_cut_cam */
+DES_REGION_ADDR(0x00608F04, 0x0060A124)  /* hook des_coop_hook: a cutscene's copy of a character set up, the +0x6C draw object's phantom material (0x000DC6E0) (a friend draws an NPC of type 4 as the host does) */
+DES_REGION_ADDR(0x00608F38, 0x0060A158)  /* hook des_coop_hook: a cutscene's copy of a character set up, the +0x6C draw object's material kind (0x000DC9C8) (a friend draws an NPC of type 4 as the host does) */
+DES_REGION_ADDR(0x0060900C, 0x0060A22C)  /* hook des_coop_hook: a cutscene's copy of a character set up, the draw path's check for type 3 (a friend draws an NPC of type 4 as the host does) */
+DES_REGION_ADDR(0x00609020, 0x0060A240)  /* hook des_coop_hook: a cutscene's copy of a character set up, the draw path's check for type 4 (a friend draws an NPC of type 4 as the host does) */
+DES_REGION_ADDR(0x00609034, 0x0060A254)  /* hook des_coop_hook: a cutscene's copy of a character set up, the draw path's check for type 10 (a friend draws an NPC of type 4 as the host does) */
+DES_REGION_ADDR(0x0060904C, 0x0060A26C)  /* hook des_coop_hook: a cutscene's copy of a character set up, the draw path's check for type 11 (a friend draws an NPC of type 4 as the host does) */
+DES_REGION_ADDR(0x00609068, 0x0060A288)  /* hook des_coop_hook: a cutscene's copy of a character set up, 0x0025D418's type read (a friend draws an NPC of type 4 as the host does) */
 DES_REGION_ADDR(0x00609338, 0x0060A558)  /* hook des_coop_hook: a cutscene's copy of a character set up (its glow and colour) */
+DES_REGION_ADDR(0x0060936C, 0x0060A58C)  /* hook des_coop_hook: a cutscene's copy of a character set up, the +0x70 draw object's material kind (0x000D81D0) (a friend draws an NPC of type 4 as the host does) */
 DES_REGION_ADDR(0x006A2E8C, 0x006A3F74)  /* hook des_noise_rate */
 DES_REGION_ADDR(0x006A3990, 0x006A4A78)  /* hook des_noise_rate */
 DES_REGION_ADDR(0x00718D84, 0x00719E6C)  /* hook des_hud_canvas */
