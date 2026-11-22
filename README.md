@@ -1,6 +1,9 @@
 <div align="center">
 
-<img src="assets/brand/soulbrandt-title.webp" alt="Soulbrandt">
+<picture>
+  <source srcset="assets/brand/soulbrandt-title.avif" type="image/avif">
+  <img src="assets/brand/soulbrandt-title.webp" alt="Soulbrandt" width="580">
+</picture>
 
 **Demon's Souls, running natively on PC.**
 
