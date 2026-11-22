@@ -184,7 +184,8 @@ constexpr char kMsgHere[4] = {'H', 'E', 'R', 'E'};
 // u32 the same load: this game emptied its queues of the area syncs after it (sync_read), so it reads what the others
 // send from now on (resend_own)
 constexpr char kMsgSync[4] = {'S', 'Y', 'N', 'C'};
-// u32 the host's enemy difficulty (enemy_health): 0 the game's own, 1 scaled like bosses (with each READY)
+// The host's enemy difficulty (with each READY): u32 0 the game's own, 1 scaled like bosses, 2 a fixed scale; u32
+// that scale x100; u32 what else it scales, 1 the enemies' attacks, 2 their defenses (an 8-byte one: the mode only)
 constexpr char kMsgDifficulty[4] = {'D', 'I', 'F', 'F'};
 constexpr uint32_t kRoomMax = 0x200;
 
@@ -354,7 +355,9 @@ bool sAsked = false;                 // a guest asked for the room data (the hos
 uint32_t sLeadTrip = 0;              // the host's latest load (a guest)
 bool sHostFight = false;             // the host is in a boss fight: no join until it's over (a guest; FGHT)
 std::atomic<bool> sFight{false};     // this game's boss fight (the host; kFightMarker), until it's over or a load
-std::atomic<int> sHostDifficulty{-1};   // the host's enemy difficulty (a guest; DIFF): 0, 1, or -1 not heard yet
+std::atomic<int> sHostDifficulty{-1};   // the host's enemy difficulty (a guest; DIFF): 0-2, or -1 not heard yet
+std::atomic<int> sHostFixed{0};         // with 2: its scale x100
+std::atomic<int> sHostDamage{0};        // its damage bits (kScaleAttack, kScaleDefense)
 struct Place { float x = 0, y = 0, z = 0, yaw = NAN; };   // yaw: the facing (player_transform), NaN if unknown
 struct Ready {
     uint32_t trip = 0, area = kNoArea;
@@ -415,7 +418,10 @@ void on_message(uint32_t from, const uint8_t* d, uint32_t n)
     } else if (!std::memcmp(d, kMsgFight, 4) && n >= 8) {
         sHostFight = get32(d + 4) != 0;
     } else if (!std::memcmp(d, kMsgDifficulty, 4) && n >= 8) {
-        sHostDifficulty = get32(d + 4) == 1 ? 1 : 0;
+        const uint32_t mode = get32(d + 4), fixed = n >= 12 ? get32(d + 8) : 0;
+        sHostDifficulty = mode == 1 || (mode == 2 && fixed > 100 && fixed <= 400) ? (int)mode : 0;
+        sHostFixed = (int)fixed;
+        sHostDamage = n >= 16 ? (int)(get32(d + 12) & 3) : 0;
     } else if (!std::memcmp(d, kMsgAsk, 4)) {
         sAsked = true;
     } else if (!std::memcmp(d, kMsgLead, 4) && n >= 8) {
@@ -1853,11 +1859,14 @@ std::vector<uint8_t> dead_record(ppu_context* ctx)
 }
 
 // Enemy difficulty (DES_SEAMLESS_DIFFICULTY, Settings > Network > Seamless co-op): the host's choice, sent to its
-// guests (DIFF), so every game in the session works out the same health for an enemy. The game makes a boss tougher
+// guests (DIFF), so every game in the session works out the same for an enemy. The game makes a boss tougher
 // by the blue phantoms at its fog gate (global_event.lua's Lua_MultiDoping): effect 7500, the most HP x1.5, for one,
 // 7501, x2, for two or more (des_seamless_scripts.cpp; SetEventSpecialEffect_2 adds the effect itself, 0x002706D0).
 // Scaled like bosses, every enemy gets that with the players in the session, a step more for four: x1.5 with two, x2
 // with three, x2.5 with four. A boss keeps its own when it is more (its fight began with more players than are left).
+// A fixed scale ("1.5" to "4") counts the same with any number of players in the session. With the scale, the
+// host can scale the enemies' attacks (DES_SEAMLESS_DIFFICULTY_ATTACK) and defenses (DES_SEAMLESS_DIFFICULTY_DEFENSE)
+// too (enemy_damage).
 //
 // 0x002802E0 works out a character's health: its base (its vtable's +0x94) times its effects' maxHpRate (0x00378940)
 // is the most HP (+0x3C8), and the HP goes up by as much as the most HP went up (+0x3DC). The hook scales the base
@@ -1866,23 +1875,68 @@ std::vector<uint8_t> dead_record(ppu_context* ctx)
 // 0x002802E0 for an enemy only now and then (in 2-1, 3 of the 16 nearest enemies took a change at once), so on a
 // change, and every 2 s while enemies are scaled, this game runs it for each enemy in the world, as the respec runs it
 // for the player (des_respec.cpp).
-std::atomic<int> sScalePlayers{0};   // the players the enemies are scaled for now (2-4); 0: the game's own health
+std::atomic<int> sScale{100};      // the enemies' health x100 now (100: the game's own), and with the bits below
+std::atomic<int> sScaleDamage{0};  // their attacks (kScaleAttack) and defenses (kScaleDefense) by as much
 constexpr uint32_t kDopeFx[2] = {7500, 7501};   // a boss's doping, x1.5 and x2
+constexpr int kScaleAttack = 1, kScaleDefense = 2;
 
-int own_difficulty()
+struct Difficulty {
+    int mode = 0;     // 0 the game's own, 1 scaled like bosses, 2 fixed
+    int fixed = 0;    // with 2: the scale x100 (101-400)
+    int damage = 0;   // kScaleAttack | kScaleDefense
+    bool operator==(const Difficulty& o) const { return mode == o.mode && fixed == o.fixed && damage == o.damage; }
+};
+
+// A scale as settings.ini has it, "1.5" or "3": x100, or 0 when it isn't one from 1.01 to 4 (no locale: a plain
+// point).
+int parse_scale(const char* v)
 {
+    int whole = 0, frac = 0, digits = 0;
+    const char* c = v;
+    for (; *c >= '0' && *c <= '9' && whole < 100; c++) whole = whole * 10 + (*c - '0');
+    if (c == v) return 0;
+    if (*c == '.')
+        for (c++; *c >= '0' && *c <= '9'; c++)
+            if (digits < 2) frac = frac * 10 + (*c - '0'), digits++;
+    if (*c) return 0;
+    const int x = whole * 100 + (digits == 1 ? frac * 10 : frac);
+    return x > 100 && x <= 400 ? x : 0;
+}
+
+bool knob_on(const char* name)
+{
+    const char* v = std::getenv(name);
+    return v && *v && std::strcmp(v, "0");
+}
+
+Difficulty own_difficulty()
+{
+    Difficulty d;
     const char* v = std::getenv("DES_SEAMLESS_DIFFICULTY");
-    return v && !std::strcmp(v, "bosses") ? 1 : 0;
+    if (v && !std::strcmp(v, "bosses")) d.mode = 1;
+    else if (v && (d.fixed = parse_scale(v))) d.mode = 2;
+    if (d.mode) d.damage = (knob_on("DES_SEAMLESS_DIFFICULTY_ATTACK") ? kScaleAttack : 0) |
+                           (knob_on("DES_SEAMLESS_DIFFICULTY_DEFENSE") ? kScaleDefense : 0);
+    return d;
 }
 
 void send_difficulty()
 {
+    const Difficulty d = own_difficulty();
     std::vector<uint8_t> b;
-    put32(b, (uint32_t)own_difficulty());
+    put32(b, (uint32_t)d.mode);
+    put32(b, (uint32_t)d.fixed);
+    put32(b, (uint32_t)d.damage);
     send(kMsgDifficulty, b);
 }
 
-float difficulty_scale(int players) { return 1.0f + 0.5f * (float)(players - 1); }
+// The scale x100 for the players in the session: like bosses, x1.5 with two players, x2 with three, x2.5 with four.
+int scale_for(const Difficulty& d, int players)
+{
+    if (d.mode == 2) return d.fixed;
+    if (d.mode == 1 && players >= 2) return 100 + 50 * (players - 1);
+    return 100;
+}
 
 // An enemy whose health the difficulty scales: team 6 (an enemy) or 7 (a boss's; 8 is a friendly NPC, 5 a wandering
 // ghost), alive, not a player.
@@ -1927,36 +1981,41 @@ int refresh_enemies(ppu_context* ctx)
     return n;
 }
 
-// Each frame: the players the enemies are scaled for, from the host's choice (DIFF in a guest's game) and the players
-// in the session now; none out of one. world: the player is in the world (not loading).
+// Each frame: the enemies' scale, from the host's choice (DIFF in a guest's game) and the players in the session
+// now; none out of one. world: the player is in the world (not loading).
 void difficulty_tick(ppu_context* ctx, uint32_t sm, co::Mode m, uint32_t st, bool world)
 {
     const bool host = m == co::Mode::Host && st == kStateHost, guest = m == co::Mode::Join && st == kStateClient;
     if (!guest) sHostDifficulty = -1;   // (the next host's is heard again)
-    const int mode = host ? own_difficulty() : guest ? std::max(0, sHostDifficulty.load()) : 0;
-    static int sent = -1;
-    if (!host) sent = -1;
-    else if (mode != sent) {   // a change goes at once (and again with each READY)
-        sent = mode;
+    Difficulty d;
+    if (host) d = own_difficulty();
+    else if (guest && sHostDifficulty.load() > 0)
+        d = {sHostDifficulty.load(), sHostFixed.load(), sHostDamage.load()};
+    static Difficulty sent{-1};
+    if (!host) sent = {-1};
+    else if (!(d == sent)) {   // a change goes at once (and again with each READY)
+        sent = d;
         send_difficulty();
     }
-    const int players = mode ? std::min(4, others_in(sm) + 1) : 0;
-    const int n = players >= 2 ? players : 0;
-    const int was = sScalePlayers.exchange(n);
+    const int players = host || guest ? std::min(4, others_in(sm) + 1) : 0;
+    const int scale = host || guest ? scale_for(d, players) : 100, damage = scale > 100 ? d.damage : 0;
+    const int was = sScale.exchange(scale), was_damage = sScaleDamage.exchange(damage);
     static bool said = false;
-    if (was != n || !said) {
+    if (was != scale || was_damage != damage || !said) {
         said = true;
-        if (n)
-            std::fprintf(stderr, "[coop] enemy difficulty: scaled like bosses, %d players: every enemy's health x%.1f\n",
-                         n, difficulty_scale(n));
+        if (scale > 100)
+            std::fprintf(stderr, "[coop] enemy difficulty: %s, %d player(s): every enemy's health x%.2f, its attacks "
+                         "%s, its defenses %s\n", d.mode == 2 ? "a fixed scale" : "scaled like bosses", players,
+                         scale / 100.0, damage & kScaleAttack ? "scaled too" : "the game's own",
+                         damage & kScaleDefense ? "scaled too" : "the game's own");
         else
             std::fprintf(stderr, "[coop] enemy difficulty: the game's own (%s)\n",
-                         !host && !guest ? "out of a session" : mode ? "one player" : "Vanilla");
+                         !host && !guest ? "out of a session" : d.mode ? "one player" : "Vanilla");
     }
     static int frames = 0;
     static bool pending = false;   // a change made while the world wasn't there (a load)
-    pending = pending || was != n;
-    if (!world || (!pending && (!n || ++frames < 60))) return;
+    pending = pending || was != scale;
+    if (!world || (!pending && (scale <= 100 || ++frames < 60))) return;
     frames = 0;
     const int done = refresh_enemies(ctx);
     if (pending) std::fprintf(stderr, "[coop] enemy difficulty: %d enemies' health worked out again\n", done);
@@ -1966,11 +2025,11 @@ void difficulty_tick(ppu_context* ctx, uint32_t sm, co::Mode m, uint32_t st, boo
 // The hook (0x0028033C, r27 the base, r31 the character): an enemy's base scaled, less what its doping gives.
 void enemy_health(ppu_context* ctx)
 {
-    const int n = sScalePlayers.load(std::memory_order_relaxed);
+    const int n = sScale.load(std::memory_order_relaxed);
     const uint32_t chr = (uint32_t)ctx->gpr[31];
-    if (n < 2 || !scaled_enemy(chr)) return;
+    if (n <= 100 || !scaled_enemy(chr)) return;
     const int32_t base = (int32_t)ctx->gpr[27];
-    const float want = difficulty_scale(n), doping = doping_of(chr);
+    const float want = n / 100.0f, doping = doping_of(chr);
     if (base <= 0 || want <= doping) return;
     const int32_t scaled = (int32_t)std::lround((double)base * want / doping);
     ctx->gpr[27] = (uint64_t)(int64_t)scaled;
@@ -1978,6 +2037,52 @@ void enemy_health(ppu_context* ctx)
     if (told.exchange(n) != n)
         std::fprintf(stderr, "[coop] enemy difficulty: an enemy's base health %d -> %d (x%.2f; its doping x%.2f)\n",
                      base, scaled, want / doping, doping);
+}
+
+// A hit's damage, worked out (0x0028B228, in the victim's damage handler 0x0028B1D8, after the calculation
+// 0x00285678 and before ApplyDamage 0x00280DC8: r31 the victim, r29 the attacker, r28 the hit's record, its HP
+// damage at +0x14C, as des_dev.cpp's H3 reads it). With the attacks scaled, an enemy's hit on a player does the
+// scale's times as much; with the defenses scaled, a player's hit on an enemy does that much less (1 at least).
+// A record of type 0x40 keeps the damage it holds (the calculation leaves it alone), so it is left as it is too.
+// Every game in the session has the same scale, so a hit is scaled the same in each game that works it out. Two
+// games, 11-22: an enemy's hit on a player is worked out in both (36 -> 72 in each, and each game had that
+// player's HP the same after); a friend's hit on an enemy in both too (36 -> 18 in each, the enemy's HP the same);
+// the host's own hit on an enemy only in the host's game, whose HP for the enemy its friends then get.
+constexpr uint32_t kRecHpDamage = 0x14C, kRecType = 0x28;
+constexpr int32_t kRecTypeKept = 0x40;
+
+bool enemy_team(uint32_t chr)
+{
+    if (!guest_ok(chr)) return false;
+    const int32_t team = (int32_t)vm_read32(chr + 0x6C);
+    return (team == 6 || team == 7) && !is_player(chr);
+}
+
+void enemy_damage(ppu_context* ctx)
+{
+    const int bits = sScaleDamage.load(std::memory_order_relaxed);
+    if (!bits) return;
+    const int n = sScale.load(std::memory_order_relaxed);
+    const uint32_t victim = (uint32_t)ctx->gpr[31], attacker = (uint32_t)ctx->gpr[29], rec = (uint32_t)ctx->gpr[28];
+    if (n <= 100 || !guest_ok(rec) || !guest_ok(victim) || !guest_ok(attacker)) return;
+    const int32_t d = (int32_t)vm_read32(rec + kRecHpDamage);
+    if (d <= 0 || (int32_t)vm_read32(rec + kRecType) == kRecTypeKept) return;
+    int32_t nd;
+    const char* what;
+    if ((bits & kScaleAttack) && is_player(victim) && enemy_team(attacker)) {
+        nd = (int32_t)std::min<int64_t>(((int64_t)d * n + 50) / 100, 10000000);
+        what = "an enemy's hit on a player";
+    } else if ((bits & kScaleDefense) && enemy_team(victim) && is_player(attacker)) {
+        nd = std::max<int32_t>(1, (int32_t)(((int64_t)d * 100 + n / 2) / n));
+        what = "a player's hit on an enemy";
+    } else {
+        return;
+    }
+    vm_write32(rec + kRecHpDamage, (uint32_t)nd);
+    static std::atomic<int> told{0};   // the first hit of each kind at each scale, in the log
+    const int key = n * 4 + (what[1] == 'n' ? 1 : 2);
+    if (told.exchange(key) != key || std::getenv("DES_DEVLOG"))
+        std::fprintf(stderr, "[coop] enemy difficulty: %s, %d -> %d (scale x%.2f)\n", what, d, nd, n / 100.0);
 }
 
 // The host tells its guests where it is: its area, where it arrived (a respawn's place), where it stands (a join's),
@@ -2794,6 +2899,9 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
         break;
     case 0x0028033Cu:   // the HP update 0x002802E0, mr r27,r3: r27 the character's base most HP, before its rates
         enemy_health(ctx);
+        break;
+    case 0x0028B228u:   // the damage handler 0x0028B1D8, mr r7,r26 after the calculation: the hit's HP damage
+        enemy_damage(ctx);
         break;
     case 0x0044A5E4u:   // SetClearBonus's native (0x0044A4B8), after bl 0x0052A5B0: r3 the session's member count
         // A boss's souls wait in the player's game data (+0xD4) until they are paid (GetSoloClearBonus, or the next

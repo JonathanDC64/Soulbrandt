@@ -292,7 +292,9 @@ void check_coop_tab() {
             if (r.key == key) return true;
         return false;
     };
-    check(has(0, "DES_SEAMLESS_PLAYERS") && has(0, "DES_SEAMLESS_DIFFICULTY"), "a host's row not under When you host");
+    check(has(0, "DES_SEAMLESS_PLAYERS") && has(0, "DES_SEAMLESS_DIFFICULTY") &&
+              has(0, "DES_SEAMLESS_DIFFICULTY_ATTACK") && has(0, "DES_SEAMLESS_DIFFICULTY_DEFENSE"),
+          "a host's row not under When you host");
     check(has(1, "DES_SEAMLESS_GLOW") && !has(0, "DES_SEAMLESS_GLOW"), "the glow not under When you join");
 }
 

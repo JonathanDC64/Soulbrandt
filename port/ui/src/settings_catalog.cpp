@@ -528,11 +528,21 @@ std::vector<TabDesc> make_tabs() {
                         "waits, and joins as soon as a place frees up. A change counts at once; players already here "
                         "stay.<br/><br/>The original game plays three at most in co-op."},
             choice("Enemy difficulty", "DES_SEAMLESS_DIFFICULTY",
-                {{"", "Vanilla", true}, {"bosses", "Scaled like bosses"}},
+                {{"", "Vanilla", true}, {"bosses", "Scaled like bosses"}, {"1.5", "x1.5"}, {"2", "x2"},
+                    {"2.5", "x2.5"}, {"3", "x3"}, {"3.5", "x3.5"}, {"4", "x4"}},
                 "How much health enemies have in a co-op game you host. Vanilla: only a boss gets more, at its fog "
                 "gate, when blue phantoms are there. Scaled like bosses: every enemy gets more with each player, x1.5 "
-                "with two players, x2 with three and x2.5 with four. Bosses get the same, or their own if it is more."
+                "with two players, x2 with three and x2.5 with four. x1.5 to x4: that much, however many play. "
+                "Bosses get the same, or their own if it is more."
                 "<br/><br/>The host's choice counts for everyone in its game. A change counts at once."),
+            toggle("Scale enemy attack power", "DES_SEAMLESS_DIFFICULTY_ATTACK",
+                "Enemies' hits on players do as much more as Enemy difficulty gives them health: at x2, twice the "
+                "damage. Off with Vanilla.<br/><br/>The host's choice counts for everyone in its game. A change "
+                "counts at once."),
+            toggle("Scale enemy defenses", "DES_SEAMLESS_DIFFICULTY_DEFENSE",
+                "Players' hits on enemies do as much less as Enemy difficulty gives them health: at x2, half the "
+                "damage. Off with Vanilla.<br/><br/>The host's choice counts for everyone in its game. A change "
+                "counts at once."),
         }},
         {std::string(kCoopHeading) + kCoopJoin, {
             toggle("Your glow", "DES_SEAMLESS_GLOW",
