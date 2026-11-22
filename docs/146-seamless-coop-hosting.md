@@ -798,6 +798,23 @@ alive.
 
     Types 5 and 9 read alike at all four. Each read is hooked (0x002DDAA8, 0x002DDADC, 0x002DDB48, 0x002DDB90). On a
     friend, such a person of type 4 reads 9, so the friend sees these people as the host does.
+  - **The draw objects.** The draw objects are made and kept on a phantom's draw path for types 3, 4, 10 and
+    11, each time with a check for 4 and 0x0025D418's value for the type. The model's draw object (`+0x6A0`,
+    0x000DB508) is made by the build of the character's draw objects (0x002E0E60) and kept by its update
+    (0x002E0968). The main one (`+0x6A4`) is made by 0x002E0AE0. With the draw update's reads alone, a friend
+    still saw those people as bright, see-through blue phantoms, where the host sees them solid with a pale
+    tint. In the 11-22 playtest that was the Crestfallen Warrior in the Nexus, and in his first talk's cutscene.
+    Those reads are hooked (0x002E0EE0, 0x002E0F28; 0x002E09E4, 0x002E0A2C; 0x002E0BDC, 0x002E0C20) and read 9
+    the same way. A check for 3, 10 or 11 needs no hook: 9 for 4 can't change it.
+  - **In a cutscene.** A cutscene draws a copy of the person (the copy setup 0x006087B8, as for the players
+    above). For each of its two draw objects the copy reads the type for the phantom material on or off and
+    the material's kind. It then reads it for the draw path's check for 4 and for 0x0025D418. Those reads are
+    hooked (0x00608F04, 0x00608F38, 0x00609020, 0x00609068, 0x00609338 and 0x0060936C) and read 9 the same way.
+    Two later steps of a cut read the type again, for the check for 4 and for 0x0025D418: the copy's model
+    (`+0xD4`, 0x000DB508) in 0x00609550, and its `+0x70` draw object's draw path (0x000D9388) in 0x006060C0.
+    Those are hooked too (0x00609828, 0x0060986C; 0x00606538, 0x0060657C). Before 11-22 the friend saw the
+    Crestfallen Warrior as white smoke in the Nexus cutscene of his first talk (scene 25), and then, with only
+    the copy setup's reads hooked, as a bright, see-through blue phantom.
   - **The other kind's look.** That draw update is the first kind's only (its draw object is at `+0x6A4`). The
     second kind's constructor, in its visitor branch, also writes the row's `+0xEC` (7105 for the Dregling merchant,
     7135 for Ed) to `+0x24` of the character's `+0x18`, where a body's game leaves -1. That value, not the type, draws
