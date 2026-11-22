@@ -85,6 +85,11 @@ DES_REGION_ADDR(0x001FED50, 0x001FCE28)  /* hook des_slide_rate */
 DES_REGION_ADDR(0x0020D3C0, 0x0020B498)  /* call des_seamless_game (by address): Tutorial_end's */
 DES_REGION_ADDR(0x0020E788, 0x0020C860)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x002107B8, 0x0020E890)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00211544, 0x0020F61C)  /* code read: the save's build before the character's writer (a friend's own save) */
+DES_REGION_ADDR(0x00211548, 0x0020F620)  /* hook des_coop_hook: the character's writer in the save's build (a friend's own save has its own form) */
+DES_REGION_ADDR(0x0021154C, 0x0020F624)  /* code read: the bl to the character's writer (a friend's own save) */
+DES_REGION_ADDR(0x00211550, 0x0020F628)  /* hook des_coop_hook: after the character's writer (the form back) */
+DES_REGION_ADDR(0x002117E8, 0x0020F8C0)  /* hook des_coop_hook: the save step's gate (a friend's own save) */
 DES_REGION_ADDR(0x00217E70, 0x00215F48)  /* hook des_motion_blur */
 DES_REGION_ADDR(0x002184DC, 0x002165B4)  /* hook des_dof */
 DES_REGION_ADDR(0x00226778, 0x00224850)  /* call */
@@ -212,6 +217,7 @@ DES_REGION_ADDR(0x004C9C5C, 0x004C7FC4)  /* hook des_coop_hook: the talk check a
 DES_REGION_ADDR(0x005086F8, 0x00506A60)  /* hook des_coop_hook: the event flags' set (progress kept for every player) */
 DES_REGION_ADDR(0x00508820, 0x00506B88)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00508C00, 0x00506F68)  /* hook des_coop_hook: a guest's join fills its flag copies (its own world's flags kept) */
+DES_REGION_ADDR(0x00509678, 0x005079E0)  /* hook des_coop_hook: the flags' writer (a friend's own save writes its own world's flags) */
 DES_REGION_ADDR(0x0052C2D8, 0x0052A670)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00532108, 0x00530460)  /* call des_seamless_game (by address): a member's P2P message read */
 DES_REGION_ADDR(0x00532358, 0x005306B0)  /* call des_seamless_game (by address): the host's P2P message read */

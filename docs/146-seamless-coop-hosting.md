@@ -57,6 +57,11 @@ so.
 it saves what the group did; the host's leave sends its friends back to theirs. Then the game starts again on your
 normal characters.
 
+**A friend's game saves as it goes.** In the host's world, a friend's game saves its own character every 90 s, and
+soon after each arrival and boss kill, though not in a boss fight, while dead, in a load or in a cutscene. That save
+keeps the friend's own world, not the host's. So if the game closes or crashes before a Leave, the friend loses at
+most the last minute and a half, and alone the character plays on from where it stood then, in its own world.
+
 **If the host's game closes,** a friend sees the game's own "The session has ended." about 13 s later and goes back
 to their own world. **Seamless co-op** then says the connection was lost. The friend's game keeps trying to reach the
 host's: after a network drop, with the host still hosting, it connects again, goes home as the game ends the session, and
@@ -485,6 +490,23 @@ alive.
   friend's bank and the friend's own flags in play. So after each load in a session the program puts the friend's
   banks back and the host's flags in play. The trip home puts the friend's own flags back (the game's own step),
   and its save then holds its own world.
+- **A friend's own save.** A phantom's game never saves: the save step (0x002117A8) drops each save asked for while
+  the game manager's `+0xACA` is 0, as a load leaves it for a phantom (0x001412FC). A tester's 27 minutes as a friend
+  wrote no save at all (11-21). So a friend's game asks for its own save (`+0xA97`, as the game's own are) every 90 s
+  (`DES_SEAMLESS_SAVE_EVERY`, 0 = none), and 10 s after an arrival or a boss kill. The save step lets that one through
+  (a hook at 0x002117E8) until it is over. Two of its parts are the friend's own:
+  - the flags' writer (0x00509678: the flags in play, then the worlds' banks) writes a copy made for the save: its own
+    world's flags, as a trip home would put them in play;
+  - the player's type (game data `+0x8C`) is the form it goes home in (0 body, 8 soul) while the character's writer
+    (0x0090E4B0) runs. Saved as a blue phantom (1), the save loaded alone as one, at half its HP.
+
+  The place is where the friend stands, so alone it plays on from there. It doesn't save in a boss fight, dead, in a
+  load or a cutscene, leaving, or in the ending, where it couldn't stand alone.
+
+  Checked with two copies (11-21, the friend on a save of its own joining the host in the Nexus, a save every 20 s):
+  the save was written in the host's area with the friend's own flags (4096 and 16140 at 0, the host's at 1) and in
+  body form. Loaded in a copy alone, it put the character where it stood, in body form at full HP (659), in its own
+  world. Before the form's fix it loaded as a blue phantom, at half HP (329).
 - **Progress for everyone.** From each area script as it is read, the program lists the progress flags:
   - every flag a boss kill's handlers set (the events whose handler starts the boss clear, `CustomLuaCallStart(4050)`);
   - the flags of a handler that a kill's handler names in quotes (a timer's, `OnKeyTime2(..., "<name>", ...)`), when
@@ -1154,8 +1176,8 @@ the newer generation, and saves as usual.
   - With the store's value kept, the friend saw him as the host does, with -1 there and his type still 4. Ed's store
     was kept the same way (7135 not written); he wasn't looked at.
   - Not checked with the change: the talk prompts of the two.
-- Closing the game window as a friend: the session is lost and nothing from it is saved (the game only saves at
-  home).
+- Closing the game window as a friend: the session is lost, and what the friend did since its last own save (at most
+  90 s before) with it. Before 11-21 nothing from the session was saved (the game saved only at home).
 - The tutorial's demon (the Vanguard, `m08_01`) offered its soul only outside a session (`ATTR_NOSESSION`; the
   game has no co-op there), so with a friend nobody got it. Its prompt is now offered with or without a session, to
   each player, like the other bosses'. Checked on the script (both of its registrations change, and only those); not
