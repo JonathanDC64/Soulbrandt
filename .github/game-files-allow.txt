@@ -26,3 +26,9 @@ port/ui/res/img/valuebox.png
 assets/brand/soulbrandt-logo*.png
 port/ui/res/img/soulbrandt-logo.png
 port/ui/res/img/soulbrandt-logo-map.png
+
+# The README's title (an animation, and a still of its first frame): that logo over smoke, with its flame, drawn by
+# tools/ui/make_readme_title.py from the start screen's own smoke and flame shaders (port/ui/src/fog_shader.hpp,
+# flame_shader.hpp) and the files above. No game pixels.
+assets/brand/soulbrandt-title.avif
+assets/brand/soulbrandt-title.webp

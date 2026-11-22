@@ -1,12 +1,27 @@
 <div align="center">
 
-# Soulbrandt
+<picture>
+  <source srcset="assets/brand/soulbrandt-title.avif" type="image/avif">
+  <img src="assets/brand/soulbrandt-title.webp" alt="Soulbrandt" width="580">
+</picture>
 
 **Demon's Souls, running natively on PC.**
 
 [![release](https://img.shields.io/github/v/release/JonathanDC64/Soulbrandt?filter=v%2A&sort=semver&display_name=tag&label=release&color=orange)](https://github.com/JonathanDC64/Soulbrandt/releases/latest)
 [![downloads](https://img.shields.io/github/downloads/JonathanDC64/Soulbrandt/latest/total?label=downloads&color=brightgreen)](https://github.com/JonathanDC64/Soulbrandt/releases/latest)
+[![stars](https://img.shields.io/github/stars/JonathanDC64/Soulbrandt?style=flat&label=stars&color=yellow)](https://github.com/JonathanDC64/Soulbrandt/stargazers)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![last commit](https://img.shields.io/github/last-commit/JonathanDC64/Soulbrandt/master?label=last%20commit)](https://github.com/JonathanDC64/Soulbrandt/commits/master)
+[![issues](https://img.shields.io/github/issues/JonathanDC64/Soulbrandt?label=issues)](https://github.com/JonathanDC64/Soulbrandt/issues)
 [![Discord](https://img.shields.io/discord/1565536292324769832?label=Discord&logo=discord&logoColor=white&color=5865F2)](https://discord.gg/BzmwDeca8s)
+
+[![Windows x64](https://img.shields.io/badge/Windows%20x64-0078D6)](#what-you-need)
+[![Linux x64](https://img.shields.io/badge/Linux%20x64-FCC624?logo=linux&logoColor=black)](#linux)
+[![Steam Deck](https://img.shields.io/badge/Steam%20Deck-1A9FFF?logo=steamdeck&logoColor=white)](#linux)
+[![DirectX 12](https://img.shields.io/badge/DirectX%2012-107C10)](#features)
+[![Vulkan](https://img.shields.io/badge/Vulkan-AC162C?logo=vulkan&logoColor=white)](#features)
+
+**[Download the latest release](https://github.com/JonathanDC64/Soulbrandt/releases/latest)** · [How to play](#how-to-play) · [What you need](#what-you-need) · [Release notes](https://github.com/JonathanDC64/Soulbrandt/releases) · [Build from source](#building-from-source) · [Report an issue](#problems)
 
 </div>
 
