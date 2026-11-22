@@ -474,6 +474,7 @@ alive.
 | `REDY` | host | load count, area, where it arrived and where it stands (each with its facing), its area's dead characters | after each load, every 2 s, and when asked |
 | `HER?` | friend | none | send a `REDY` now (a friend's respawn) |
 | `BACK` | any | its player id | back in the world after a death: make its character again |
+| `DOWN` | friend | its player id, 1 or 0 | 1: it died; 0: it stands (each arrival). The host's death reads it |
 | `HERE` | any | the host's load count | in the world after that load: the area's syncs from this player are current again |
 | `FLGS` | host | area, offset, up to 1,000 bytes of its event flags | the host's flags, in three parts, before each `REDY` |
 | `FLAG` | host | flag, area | a progress flag was set in the host's world |
@@ -832,8 +833,13 @@ their first instruction):
     (n - 20,000), read by 0x005087A0 through the scripts' flag check 0x0043FC90. No script uses them as flags (the
     20xxx numbers in the scripts are cutscene, tendency and message ids), and the save doesn't hold them.
     des_seamless_game.cpp writes them each frame on the host: 20298 = `DES_SEAMLESS_HOST_DEATH` isn't `together`;
-    20299 = another player's character here is alive and wasn't seen dead since (a friend watching a boss fight, or
-    still in its respawn's load, doesn't stand).
+    20299 = another player's character here is alive, and that player's game hasn't said it died (`DOWN`) since it
+    was last back (a friend watching a boss fight, or still in its respawn's load, doesn't stand). Before 11-22 the
+    host's own "seen dead" mark on a friend's character decided it, and only that friend's `BACK` cleared it. In
+    the 11-22 playtest every death of the host took everyone back while the friend stood (it never died); a mark
+    left on its character is the one part of the old check that could stay wrong for a whole session.
+  - The host's death is in the log, with each friend's state: "the host died: a friend stands, so it respawns
+    alone (player 2 stands (HP 329 here))", or "no friend stands, so everyone goes back with it".
   - Flag 19996 makes the host's next load its lone respawn: at the end of its `WarpNextStageKick`, its world's
     dead-character record goes into its own slot (0x0020E788(76, record, 1), as a guest's join keeps its own at
     0x00417560), which that load applies, so the enemies dead stay dead. The load is the game's own respawn, and a
@@ -849,6 +855,9 @@ their first instruction):
       killed at its respawn spot were still dead after a second lone respawn there. The knight stayed beaten: his
       flag (4224) was set before the load, and back at the spot there was no health bar and nothing attacked.
     - Both dead: the old way, "load 4 started: the guests follow", both back at the start.
+  - Checked again on 11-22 (the tutorial's save, the Nexus, then 1-1): two deaths of the host, each "a friend
+    stands" and alone, the friend staying; then the friend dead and the host dead after it: the friend's `DOWN`
+    came first, "no friend stands", and everyone went back together.
   - `proxy:ClearBossGauge(` also clears `SeamlessBossFight`.
   - A boss's extra health: `Lua_MultiDoping` (and `Lua_MultiDopingm04_02`, for 4-2), at the boss room's first entry,
     gives each boss part effect 7500 (health x1.5) for one blue phantom and 7501 (x2) for two. The count is the

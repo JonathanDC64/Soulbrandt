@@ -176,6 +176,8 @@ constexpr char kMsgFlag[4] = {'F', 'L', 'A', 'G'};   // u32 flag, u32 area: a pr
 // u32 area, u32 offset, then up to kFlagChunk bytes of the host's flags from that offset (with each READY)
 constexpr char kMsgFlags[4] = {'F', 'L', 'G', 'S'};
 constexpr char kMsgBack[4] = {'B', 'A', 'C', 'K'};   // u32 player id: a guest back in the world after its respawn
+// u32 player id, u32 1: a guest died (its BACK says it's back), 0: it stands (each arrival in the host's world)
+constexpr char kMsgDown[4] = {'D', 'O', 'W', 'N'};
 // u32 player id, u32 1 or 0: whether that player shows its phantom glow, u32 its colour (0x01RRGGBB; 0 the game's)
 constexpr char kMsgFight[4] = {'F', 'G', 'H', 'T'};  // u32 1 or 0: the host's boss fight began, or is over
 constexpr char kMsgGlow[4] = {'G', 'L', 'O', 'W'};
@@ -369,6 +371,8 @@ std::deque<HostFlag> sHostFlags;     // FLAGs not yet taken: a guest's from the 
 std::deque<uint32_t> sBack;          // BACKs not yet taken: the player ids
 std::map<uint32_t, std::set<uint32_t>> sHere;   // HEREs: for each host load (trip), the players that said they arrived
 std::atomic<bool> sDied{false};      // this game's player died in the session since its last BACK
+std::atomic<bool> sDownSent{false};  // a guest: its DOWN sent for that death
+std::set<uint32_t> sDownIds;         // the host: the guests whose DOWN came and whose BACK hasn't (under sMsgLock)
 std::set<uint32_t> sDeadCopies;      // the others' characters seen dead (their game data's HP at 0), tick thread only
 std::set<uint32_t> sBackWaiting;     // BACKs taken that wait for their player's character (make_again), tick thread only
 struct HostFlags {
@@ -433,6 +437,11 @@ void on_message(uint32_t from, const uint8_t* d, uint32_t n)
         sHostFlags.push_back({get32(d + 4), get32(d + 8)});
     } else if (!std::memcmp(d, kMsgBack, 4) && n >= 8 && sBack.size() < 16) {
         sBack.push_back(get32(d + 4));
+        sDownIds.erase(get32(d + 4));
+    } else if (!std::memcmp(d, kMsgDown, 4) && n >= 12 && sDownIds.size() < 16) {
+        if (!get32(d + 8)) sDownIds.erase(get32(d + 4));
+        else if (sDownIds.insert(get32(d + 4)).second)
+            std::fprintf(stderr, "[coop] player %u died: it doesn't stand until it's back\n", get32(d + 4));
     } else if (!std::memcmp(d, kMsgHere, 4) && n >= 8) {
         const uint32_t trip = get32(d + 4);
         while (sHere.size() >= 8) sHere.erase(sHere.begin());   // (the oldest loads: none waits on them now)
@@ -1500,8 +1509,9 @@ bool make_again(ppu_context* ctx, uint32_t sm, uint32_t id, bool first)
 }
 
 // The others' characters seen dead, each world frame of a session: their game data's (+0x49C) HP (+0xC) at 0. Only
-// those are made again on a BACK; one a load's placement made since is left alone.
-void dead_copies_tick()
+// those are made again on a BACK; one a load's placement made since is left alone. And this game's own death: on a
+// guest, its DOWN tells the host it doesn't stand (friend_stands) until its BACK.
+void dead_copies_tick(bool guest)
 {
     const uint32_t man = rd(DES_AT(kChrMan));
     if (!guest_ok(man)) return;
@@ -1513,11 +1523,20 @@ void dead_copies_tick()
         if (!guest_ok(p) || p == me) continue;
         here.insert(p);
         const uint32_t gd = rd(p + 0x49C);
-        if (guest_ok(gd) && (int32_t)vm_read32(gd + 0xC) <= 0) sDeadCopies.insert(p);
+        if (guest_ok(gd) && (int32_t)vm_read32(gd + 0xC) <= 0 && sDeadCopies.insert(p).second)
+            std::fprintf(stderr, "[coop] player %u's character here seen dead\n", vm_read32(p + 0x498));
     }
     for (auto it = sDeadCopies.begin(); it != sDeadCopies.end();) it = here.count(*it) ? std::next(it) : sDeadCopies.erase(it);
     // and this game's own player: a death in the session, for its BACK at the next arrival
-    if (guest_ok(me) && (int32_t)vm_read32(me + kChrHp) <= 0) sDied = true;
+    if (guest_ok(me) && (int32_t)vm_read32(me + kChrHp) <= 0) {
+        sDied = true;
+        if (guest && !sDownSent.exchange(true)) {
+            std::vector<uint8_t> b;
+            put32(b, vm_read32(me + 0x498));
+            put32(b, 1);
+            send(kMsgDown, b);
+        }
+    }
 }
 
 // This game's player died since its last BACK: the others make its character again (at an arrival after a load).
@@ -1528,6 +1547,7 @@ void send_back_if_died()
     std::vector<uint8_t> b;
     put32(b, vm_read32(me + 0x498));
     send(kMsgBack, b);
+    sDownSent = false;
     std::fprintf(stderr, "[coop] back after a death: the others make this player's character again\n");
 }
 
@@ -1922,31 +1942,62 @@ bool host_respawns_alone()
     return !(v && !std::strcmp(v, "together"));
 }
 
-// A friend standing in this game: another player's character, alive, and not one seen dead since (dead_copies_tick:
-// a friend dead and watching a boss fight, or still in its respawn's load, doesn't stand).
-bool friend_stands()
+// A friend standing in this game: another player's character, alive here (its game data's HP), whose game hasn't
+// said it died since its last BACK (its DOWN: a friend dead and watching a boss fight, or still in its respawn's
+// load, has its HP back before its BACK). The friend's own word, not this game's "seen dead" marks on its copies
+// (sDeadCopies), which only its BACK clears (11-22: every death of the host took everyone back while a friend that
+// never died stood; a mark left on its character would do that all session). why: each friend's state, for the log.
+bool friend_stands(std::string* why = nullptr)
 {
     const uint32_t man = rd(DES_AT(kChrMan));
     if (!guest_ok(man)) return false;
     const uint32_t me = rd(man + 0x1BC), pb = rd(man + 0x1A0), pe = rd(man + 0x1A4);
     if (!guest_ok(pb) || pe < pb || pe - pb > 0x40) return false;
+    std::set<uint32_t> down;
+    {
+        std::lock_guard<std::mutex> l(sMsgLock);
+        down = sDownIds;
+    }
+    bool up = false;
     for (uint32_t q = pb; q < pe; q += 4) {
         const uint32_t p = rd(q);
-        if (!guest_ok(p) || p == me || sDeadCopies.count(p)) continue;
-        const uint32_t gd = rd(p + 0x49C);
-        if (guest_ok(gd) && (int32_t)vm_read32(gd + 0xC) > 0) return true;
+        if (!guest_ok(p) || p == me) continue;
+        const uint32_t id = vm_read32(p + 0x498), gd = rd(p + 0x49C);
+        const int32_t hp = guest_ok(gd) ? (int32_t)vm_read32(gd + 0xC) : 0;
+        const bool stands = hp > 0 && !down.count(id);
+        up = up || stands;
+        if (why) {
+            char s[96];
+            std::snprintf(s, sizeof s, "%splayer %u %s (HP %d here)", why->empty() ? "" : ", ", id,
+                          stands ? "stands" : down.count(id) ? "is dead in its game" : "is dead here", hp);
+            *why += s;
+        }
     }
-    return false;
+    return up;
 }
 
-// Each frame on the host: the two flags its scripts read (0 out of a session).
+// Each frame on the host: the two flags its scripts read (0 out of a session). Its death, in the log.
 void host_death_flags(bool hosting, bool world)
 {
+    static bool was_dead = false;
     const uint32_t fb = flag_base();
     if (!guest_ok(fb)) return;
     const bool alone = hosting && host_respawns_alone();
+    const uint32_t pc = player_chr();
+    const bool dead = hosting && world && guest_ok(pc) && (int32_t)vm_read32(pc + kChrHp) <= 0;
+    std::string why;
+    const bool up = alone && world && friend_stands(dead && !was_dead ? &why : nullptr);
     vm_write8(fb + kHighFlags + (kAloneFlag - kHighFlagFirst), alone ? 1 : 0);
-    vm_write8(fb + kHighFlags + (kStandsFlag - kHighFlagFirst), alone && world && friend_stands() ? 1 : 0);
+    vm_write8(fb + kHighFlags + (kStandsFlag - kHighFlagFirst), up ? 1 : 0);
+    if (dead && !was_dead) {
+        if (!alone)
+            std::fprintf(stderr, "[coop] the host died: everyone goes back with it (the setting)\n");
+        else
+            std::fprintf(stderr, "[coop] the host died: %s, so %s (%s)\n", up ? "a friend stands" : "no friend stands",
+                         up ? "it respawns alone (after the boss, in a boss fight)" : "everyone goes back with it",
+                         why.empty() ? "no other player here" : why.c_str());
+    }
+    was_dead = dead;
 }
 
 // At the end of the lone respawn's WarpNextStageKick (the world still loaded): its dead characters for that load. The
@@ -2233,6 +2284,14 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
         // and, after its death (its own respawn, or a load it followed while dead), the others make it again
         if (g.respawn.exchange(false)) sDied = true;
         if (guest_ok(man)) send_back_if_died();
+        // and that it stands: a DOWN from before (a death, then a leave and a join again) doesn't count on the host
+        const uint32_t pc = player_chr();
+        if (guest_ok(pc) && (int32_t)vm_read32(pc + kChrHp) > 0) {
+            std::vector<uint8_t> b;
+            put32(b, vm_read32(pc + 0x498));
+            put32(b, 0);
+            send(kMsgDown, b);
+        }
     }
     if (world && !g.in_load) forms_tick(ctx, just_arrived);
     uint32_t lead;
@@ -2500,8 +2559,8 @@ extern "C" void des_seamless_tick(ppu_context* ctx)
         glow_tick(ctx, session || (m == co::Mode::Join && st == kStateClient && sEnding.load()));
     }
     const bool session = st == kStateHost || st == kStateClient;
-    if (world && session) dead_copies_tick();
-    if (!session) sDied = false;
+    if (world && session) dead_copies_tick(m == co::Mode::Join);
+    if (!session) sDied = sDownSent = false;
     if (m == co::Mode::Join) {   // the host's tendency in use while in its world (a change: a new QWC); own again after
         if (!session) own_qwc_back();
         else if (world && !sGame.in_load) take_host_qwc("the host's changed");
@@ -2519,6 +2578,7 @@ extern "C" void des_seamless_tick(ppu_context* ctx)
             std::fprintf(stderr, "[coop] out of the session: %zu BACK(s) dropped\n", sBack.size());
             sBack.clear();
         }
+        if (!session) sDownIds.clear();
         else if (world && !sGame.in_load) back.swap(sBack);
     }
     if (!session) sBackWaiting.clear();
