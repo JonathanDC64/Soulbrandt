@@ -10,6 +10,9 @@
 
 #ifdef _WIN32
 #include <cwctype>
+#else
+#include <sys/stat.h>
+#include <unistd.h>
 #endif
 
 namespace ui::setup {
@@ -166,7 +169,50 @@ std::string cannot_use(const std::filesystem::path& folder, const std::filesyste
     }
     std::filesystem::remove(probe, ec);
     if (!wrote) return "Setup cannot write in this folder. Choose another one.";
+    return cannot_hold_programs(folder);
+}
+
+std::string cannot_hold_programs(const std::filesystem::path& folder) {
+#ifdef _WIN32
+    (void)folder;
     return {};
+#else
+    std::error_code ec;
+    std::filesystem::path at = folder;  // (the folder may not be made yet: the nearest one above it, on its drive)
+    while (!at.empty() && !std::filesystem::is_directory(at, ec) && at != at.parent_path()) at = at.parent_path();
+    if (at.empty() || !std::filesystem::is_directory(at, ec)) return {};
+    const auto program = at / ".setup-program-check";
+    const auto link = at / ".setup-link-check";
+    std::filesystem::remove(link, ec);
+    bool wrote = false;
+    {
+        std::ofstream f(program, std::ios::binary | std::ios::trunc);
+        if (f.is_open()) {
+            f << "#!/bin/sh\n";
+            f.flush();
+            wrote = f.good();
+        }
+    }
+    if (!wrote) {
+        std::filesystem::remove(program, ec);
+        return {};
+    }
+    // (chmod may be refused where the drive fixes the rights; access then says whether it runs)
+    (void)::chmod(program.c_str(), 0755);
+    const bool runs = ::access(program.c_str(), X_OK) == 0;
+    std::filesystem::create_symlink(program.filename(), link, ec);
+    const bool links = !ec && std::filesystem::is_symlink(std::filesystem::symlink_status(link, ec));
+    std::filesystem::remove(link, ec);
+    std::filesystem::remove(program, ec);
+    if (!links)
+        return "Setup cannot build on this drive: it cannot hold the links Linux programs are made of, as drives "
+               "formatted FAT32 or exFAT cannot. Choose a folder on a drive formatted for Linux, such as one in your "
+               "home folder.";
+    if (!runs)
+        return "Setup cannot build on this drive: programs cannot run from it (it is mounted with noexec). Choose a "
+               "folder on another drive, such as one in your home folder.";
+    return {};
+#endif
 }
 
 bool keep_choice(const std::filesystem::path& usual, const std::filesystem::path& folder,

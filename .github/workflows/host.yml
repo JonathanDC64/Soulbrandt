@@ -901,11 +901,22 @@ jobs:
       - name: Build des_host
         run: cmake --build build/host --target des_host
 
-      # setup_folder.cpp on its own, as on Windows above: the same code path, with Linux's folders.
+      # setup_folder.cpp on its own, as on Windows above: the same code path, with Linux's folders. And two drives setup
+      # must not build on (issue #673): a FAT one, as a player's USB stick or exFAT drive (no links: setup's Python
+      # cannot be unpacked there), and one mounted with noexec, both mounted as a desktop mounts them for its user.
       - name: The build folder's choice
         run: |
           cmake --build build/host --target setup_folder_check
-          build/host/ui/setup_folder_check
+          python3 port/ui/tests/make_fat_image.py "$RUNNER_TEMP/fat.img" 64
+          mkdir -p "$RUNNER_TEMP/fat" "$RUNNER_TEMP/noexec"
+          sudo mount -o loop,uid=$(id -u),gid=$(id -g) "$RUNNER_TEMP/fat.img" "$RUNNER_TEMP/fat"
+          sudo mount -t tmpfs -o noexec,size=16m,uid=$(id -u),gid=$(id -g) tmpfs "$RUNNER_TEMP/noexec"
+          SETUP_CHECK_FAT_FOLDER="$RUNNER_TEMP/fat" SETUP_CHECK_NOEXEC_FOLDER="$RUNNER_TEMP/noexec" \
+            build/host/ui/setup_folder_check > "$RUNNER_TEMP/folder_check.txt" || { cat "$RUNNER_TEMP/folder_check.txt"; exit 1; }
+          cat "$RUNNER_TEMP/folder_check.txt"
+          grep -qx "ok    SETUP_CHECK_FAT_FOLDER" "$RUNNER_TEMP/folder_check.txt"
+          grep -qx "ok    SETUP_CHECK_NOEXEC_FOLDER" "$RUNNER_TEMP/folder_check.txt"
+          sudo umount "$RUNNER_TEMP/fat" "$RUNNER_TEMP/noexec"
 
       # Settings' rows, as on Windows above: Linux's choices (Display mode has no exclusive fullscreen).
       - name: Settings' rows

@@ -250,7 +250,8 @@ public:
 
     explicit SetupBeforeWindow(Props props);
 
-    bool focus() override;  // (Check again when the space is short, else Start building: not Change)
+    // (Change when the drive cannot hold the build; Check again when the space is short; else Start building)
+    bool focus() override;
 
 protected:
     std::vector<std::vector<Button*>> nav_lines() const override;
@@ -270,6 +271,10 @@ private:
     unsigned long long mPowerAt = 0;  // when the power was last asked (now_ms)
     BuildFolderPick mFolderPick;
     std::string mFolderProblem;  // the last pick's, until the next
+    // The folder in use when its drive was asked whether it can hold the build (setup::cannot_hold_programs), and why
+    // not: a folder chosen before setup asked that (issue #673). Start building waits for another folder.
+    std::filesystem::path mHeldAsked;
+    std::string mHoldProblem;
 };
 
 }  // namespace ui
