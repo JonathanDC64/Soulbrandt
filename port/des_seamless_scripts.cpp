@@ -323,6 +323,16 @@ bool edit_global(std::string& t, const std::string& nl)
                     "if proxy:IsCompleteEvent(20298) == false then proxy:LuaCallStart(4000, 1 ); end "
                     "--SEAMLESS: else SeamlessHostWait"))
         return false;
+    // The host's HP at 0 (OnEvent_4000_Hp) sends call 99999 to every game, and five areas' scripts answer it with
+    // their boss's parts in dead mode 2 (OnEvent_4000_Hp_1's SetDeadMode2: m02_00 Phalanx 800-802 and 821, m03_01,
+    // m04_00, m05_00, m06_00): the boss's HP stops at 1, so no one kills it after the host died, as the host's death
+    // reloads everyone. While the host respawns alone, it waits for the boss's death (SeamlessHostWait), so the call
+    // doesn't go out then: 11-22, Phalanx stood at 1 HP in both games and the dead host waited for good.
+    if (!replace_in(t, "OnEvent_4000_Hp", "proxy:LuaCallStart( 99999 , 0 );",
+                    "if proxy:IsCompleteEvent(20298) == false or proxy:IsCompleteEvent(20299) == false or "
+                    "proxy:IsInParty() == false then proxy:LuaCallStart( 99999 , 0 ); end "
+                    "--SEAMLESS: the boss stays mortal while the host respawns alone"))
+        return false;
     if (!replace_func(t, "SoloPlayDeath_1",
                       "function SoloPlayDeath_1(proxy,param)\n"
                       "\tprint(\"SoloPlayDeath_1 begin\");\n"

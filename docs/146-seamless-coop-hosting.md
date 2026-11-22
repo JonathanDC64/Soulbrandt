@@ -829,6 +829,12 @@ their first instruction):
       second (timer slots 6 and 8 in turn, as a friend's watch), so it respawns once the boss is dead;
     - with no friend standing, it sends the guests' `HostDead` (`LuaCallStart(4000, 1)`) and goes on: the old way,
       the guests follow its respawn.
+    - The host's HP at 0 (`OnEvent_4000_Hp`) sends call 99999 to every game. Five areas answer it by putting their
+      boss's parts in dead mode 2 (`OnEvent_4000_Hp_1`: `SetDeadMode2`, so the boss's HP stops at 1): 1-1's Phalanx
+      (800-802 and 821), and the bosses of m03_01, m04_00, m05_00 and m06_00. In the original game the host's death
+      reloads everyone, so no one kills the boss after it. While the host respawns alone (flags 20298 and 20299, in a
+      party) the call doesn't go out, so its friends can still kill the boss it waits for. On 11-22 the call still
+      went out: Phalanx stood at 1 HP in both games, and the dead host waited for good.
   - Flags 20298 and 20299 are two of the game's flags at 20,000 and up: one byte each at the flags' +0x14D0 +
     (n - 20,000), read by 0x005087A0 through the scripts' flag check 0x0043FC90. No script uses them as flags (the
     20xxx numbers in the scripts are cutscene, tendency and message ids), and the save doesn't hold them.
