@@ -700,10 +700,11 @@ void push_documents() {
     ui::push_document(std::make_unique<ui::MenuShell>(), false);
     if (sStartScreen) ui::push_document(std::make_unique<ui::Prelaunch>());
 
-    // DES_UI_OPEN=menu | settings | trophies | mods | players | coop | coop-host | coop-join | privacy | osk | setup |
-    // setup-run: open one at startup
+    // DES_UI_OPEN=menu | settings | trophies | mods | players | coop | coop-host | coop-join | coop-settings | privacy |
+    // osk | setup | setup-run: open one at startup
     // (for screenshots and tests; privacy is the note as Settings > Network shows it; coop-host and coop-join are
-    // Seamless co-op with Host's or Join's first question over it, as a press opens it: the notice, the mods warning).
+    // Seamless co-op with Host's or Join's first question over it, as a press opens it: the notice, the mods warning;
+    // coop-settings is co-op's settings alone, as the Co-op window's Settings opens them).
     // setup is setup's start screen over the game (docs/88: its own window comes with the split host), with
     // DES_SETUP_GAME's folders to begin with; setup-run runs the setup engine at once, on those folders.
     if (const char* open = std::getenv("DES_UI_OPEN"); open && *open) {
@@ -716,6 +717,7 @@ void push_documents() {
         else if (!std::strcmp(open, "mods")) ui::push_document(ui::menu::screen_alone("Mods"));
         else if (!std::strcmp(open, "players")) ui::push_document(std::make_unique<ui::PlayersWindow>());
         else if (!std::strcmp(open, "coop")) ui::push_document(ui::menu::screen_alone("Seamless co-op"));
+        else if (!std::strcmp(open, "coop-settings")) ui::push_document(ui::menu::screen_alone("Co-op settings"));
         else if (!std::strcmp(open, "coop-host") || !std::strcmp(open, "coop-join")) {
             ui::push_document(ui::menu::screen_alone("Seamless co-op"));
             if (!std::strcmp(open, "coop-host")) ui::coop::open_host();

@@ -738,6 +738,17 @@ const std::vector<TabDesc>& tabs() {
     return sTabs;
 }
 
+const std::vector<TabDesc>& coop_tabs() {
+    static const std::vector<TabDesc> sCoop = [] {
+        std::vector<TabDesc> out;
+        for (const TabDesc& tab : tabs())
+            for (const SectionDesc& section : tab.sections)
+                if (tab.title == "Network" && section.title == "Seamless co-op") out.push_back({"Co-op", {section}});
+        return out;
+    }();
+    return sCoop;
+}
+
 std::string choice_label(const Choice& c) {
     return c.original ? c.label + " (original)" : c.label;
 }

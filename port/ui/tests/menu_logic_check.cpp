@@ -168,6 +168,13 @@ void settings_page() {
     m.set_focus(2, rows);
     check(keys(m.prompts(rows, "Back")) == std::vector<Key>{Key::PrevTab, Key::NextTab, Key::Move, Key::Back},
           "an info row: Tabs, Select, Back");
+    {
+        SettingsModel one(1);  // (co-op's settings on their own: one tab)
+        check(keys(one.prompts(rows, "Back")) == std::vector<Key>{Key::Move, Key::Change, Key::Confirm, Key::Preview,
+                                                                  Key::Back},
+              "one tab: no Tabs prompt");
+        check(!one.step_tab(1) && one.tab() == 0, "one tab: the tab buttons change nothing");
+    }
 
     // Help, where the look has no help beside the rows.
     m.set_focus(0, rows);

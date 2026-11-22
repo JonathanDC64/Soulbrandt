@@ -139,6 +139,8 @@ set).
   watches, it goes home (with the game's own message for a lost session) and joins again from there.
 - **Bosses get more health with friends,** as in the original game: half as much again with one friend, double with
   two. Three friends get double too (the original has nothing for three, so a boss had its solo health).
+- **Settings on the Seamless co-op screen** shows co-op's own settings (the Seamless co-op rows of Settings > Network)
+  on a screen of their own, in both looks.
 - **When the host dies,** everyone goes back to the start together. There the friends see the host's rolls, attacks
   and other moves again. Before, a friend that was alive could see the host stuck in a weapon swap after that.
 - **Enemies stay where they belong after a load.** Before, an enemy that stood near a player as the group moved to

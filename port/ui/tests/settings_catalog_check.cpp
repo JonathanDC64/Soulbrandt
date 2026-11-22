@@ -261,6 +261,27 @@ void check_restart_names() {
     check(settings::restart_pending().empty(), "changed back, something still waits");
 }
 
+// Co-op's settings on their own (the Seamless co-op screen's Settings): one tab, the Network tab's Seamless co-op
+// section's rows in its order.
+void check_coop_tab() {
+    g_where = "coop_tabs";
+    const std::vector<catalog::TabDesc>& coop = catalog::coop_tabs();
+    check(coop.size() == 1 && coop[0].sections.size() == 1, "not one tab of one section");
+    if (coop.empty() || coop[0].sections.empty()) return;
+    const std::vector<catalog::RowDesc>& rows = coop[0].sections[0].rows;
+    for (const catalog::TabDesc& tab : catalog::tabs())
+        for (const catalog::SectionDesc& s : tab.sections)
+            if (tab.title == "Network" && s.title == "Seamless co-op") {
+                bool same = s.rows.size() == rows.size();
+                for (size_t i = 0; same && i < rows.size(); i++)
+                    same = rows[i].label == s.rows[i].label && rows[i].key == s.rows[i].key;
+                check(same, "not the rows of Network > Seamless co-op");
+                check(!rows.empty() && rows.size() == s.rows.size(), "no rows");
+                return;
+            }
+    check(false, "no Network > Seamless co-op section");
+}
+
 // The Game tab's Language rows shown on a disc of region r, and its heading.
 void check_region(int r, int rows, bool heading) {
     g_region = r;
@@ -307,6 +328,7 @@ int main() {
         rows += n;
     }
     check_restart_names();
+    check_coop_tab();
     check_region(0, 1, true);
     check_region(1, 1, true);
     check_region(2, 0, false);

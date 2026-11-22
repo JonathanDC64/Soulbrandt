@@ -30,7 +30,8 @@ const std::vector<Entry>& entries();
 
 // An entry's screen on its own, as the start screen's buttons and DES_UI_OPEN open it: in a look whose F1 screens are
 // pages (looks.hpp's pages), the menu's frame with that page alone; else the entry's own window. Null for an entry
-// that is a question (Report an issue, Quit).
+// that is a question (Report an issue, Quit). "Co-op settings" is co-op's settings alone (settings_page.hpp's
+// Scope::Coop) in the menu's frame, in every look: the Co-op window's Settings.
 std::unique_ptr<Document> screen_alone(const std::string& entry);
 
 // Asked by Quit, the window's close button and the start screen's Quit.

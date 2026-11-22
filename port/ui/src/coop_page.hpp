@@ -1,8 +1,9 @@
 // Written for Demon's Souls. Co-op as a page of the F1 menu (menu_page.hpp), for a look that draws the menu's screens
 // as its pages (looks.hpp's pages: DeS UI); Alpha UI keeps the Co-op window (coop_window.hpp). The window's actions
 // and questions (coop_window.hpp's coop namespace) as tall bars: Host and Join when off; Copy code, New code, Public
-// address and Leave co-op while hosting; Leave co-op when joined. Beside them, in a box: what co-op is, or the invite
-// code, the router's answer and the players, read again each half second. Each code's line has a small Copy button
+// address and Leave co-op while hosting; Leave co-op when joined; and last in each, Settings: co-op's settings opened
+// over the page (settings_page.hpp's Scope::Coop). Beside them, in a box: what co-op is, or the invite code, the
+// router's answer and the players, read again each half second. Each code's line has a small Copy button
 // (coop::copy_button) for the mouse. A guest's one line on the connection goes in the strip, and the box is left out
 // (class none).
 //
