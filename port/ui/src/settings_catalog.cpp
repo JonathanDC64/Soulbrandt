@@ -12,6 +12,7 @@
 #endif
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <initializer_list>
@@ -515,7 +516,9 @@ std::vector<TabDesc> make_tabs() {
                 {{"", "Original (every 6th frame)"}, {"15", "Smoother (at least 15 a second)"}},
                 "How often your position goes to other players. Smoother makes you look less laggy on their screens."),
         }},
-        {"Seamless co-op", {
+        // Seamless co-op's rows in two: the host's game (only the host's setting counts there, for everyone in it),
+        // and a friend's own (each player's, in a host's world). coop_tabs() shows both on the co-op screen.
+        {std::string(kCoopHeading) + kCoopHost, {
             {.label = "Players when you host", .key = "DES_SEAMLESS_PLAYERS",
                 .kind = ChoiceRow{
                     .choices = {{"2", "2: you and a friend"}, {"3", "3: you and two friends"},
@@ -530,6 +533,8 @@ std::vector<TabDesc> make_tabs() {
                 "gate, when blue phantoms are there. Scaled like bosses: every enemy gets more with each player, x1.5 "
                 "with two players, x2 with three and x2.5 with four. Bosses get the same, or their own if it is more."
                 "<br/><br/>The host's choice counts for everyone in its game. A change counts at once."),
+        }},
+        {std::string(kCoopHeading) + kCoopJoin, {
             toggle("Your glow", "DES_SEAMLESS_GLOW",
                 "Whether the other players see your blue phantom glow while you are in a host's world. Off: they see "
                 "you as you look in your own world. A change counts at once."),
@@ -746,11 +751,17 @@ const std::vector<TabDesc>& tabs() {
 
 const std::vector<TabDesc>& coop_tabs() {
     static const std::vector<TabDesc> sCoop = [] {
-        std::vector<TabDesc> out;
+        TabDesc coop{"Co-op", {}};
+        const std::string head = kCoopHeading;
         for (const TabDesc& tab : tabs())
             for (const SectionDesc& section : tab.sections)
-                if (tab.title == "Network" && section.title == "Seamless co-op") out.push_back({"Co-op", {section}});
-        return out;
+                if (tab.title == "Network" && section.title.rfind(head, 0) == 0) {
+                    SectionDesc s = section;
+                    s.title = section.title.substr(head.size());   // "when you host" -> "When you host"
+                    if (!s.title.empty()) s.title[0] = (char)std::toupper((unsigned char)s.title[0]);
+                    coop.sections.push_back(std::move(s));
+                }
+        return std::vector<TabDesc>{std::move(coop)};
     }();
     return sCoop;
 }

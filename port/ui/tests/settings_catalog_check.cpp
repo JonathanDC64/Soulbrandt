@@ -261,25 +261,39 @@ void check_restart_names() {
     check(settings::restart_pending().empty(), "changed back, something still waits");
 }
 
-// Co-op's settings on their own (the Seamless co-op screen's Settings): one tab, the Network tab's Seamless co-op
-// section's rows in its order.
+// Co-op's settings on their own (the Seamless co-op screen's Settings): one tab of two sections, "When you host" and
+// "When you join", each with the rows of the Network tab's section of that heading, in its order. The host's rows are
+// the ones whose setting counts in the host's game for everyone (the players, the enemies' health).
 void check_coop_tab() {
     g_where = "coop_tabs";
     const std::vector<catalog::TabDesc>& coop = catalog::coop_tabs();
-    check(coop.size() == 1 && coop[0].sections.size() == 1, "not one tab of one section");
-    if (coop.empty() || coop[0].sections.empty()) return;
-    const std::vector<catalog::RowDesc>& rows = coop[0].sections[0].rows;
-    for (const catalog::TabDesc& tab : catalog::tabs())
-        for (const catalog::SectionDesc& s : tab.sections)
-            if (tab.title == "Network" && s.title == "Seamless co-op") {
-                bool same = s.rows.size() == rows.size();
-                for (size_t i = 0; same && i < rows.size(); i++)
-                    same = rows[i].label == s.rows[i].label && rows[i].key == s.rows[i].key;
-                check(same, "not the rows of Network > Seamless co-op");
-                check(!rows.empty() && rows.size() == s.rows.size(), "no rows");
-                return;
-            }
-    check(false, "no Network > Seamless co-op section");
+    check(coop.size() == 1 && coop[0].sections.size() == 2, "not one tab of two sections");
+    if (coop.size() != 1 || coop[0].sections.size() != 2) return;
+    const char* const heads[2] = {catalog::kCoopHost, catalog::kCoopJoin};
+    const char* const titles[2] = {"When you host", "When you join"};
+    for (int k = 0; k < 2; k++) {
+        const catalog::SectionDesc& c = coop[0].sections[(size_t)k];
+        check(c.title == titles[k], "section " + std::to_string(k) + " is headed '" + c.title + "'");
+        bool found = false;
+        for (const catalog::TabDesc& tab : catalog::tabs())
+            for (const catalog::SectionDesc& s : tab.sections)
+                if (tab.title == "Network" && s.title == std::string(catalog::kCoopHeading) + heads[k]) {
+                    found = true;
+                    bool same = s.rows.size() == c.rows.size();
+                    for (size_t i = 0; same && i < c.rows.size(); i++)
+                        same = c.rows[i].label == s.rows[i].label && c.rows[i].key == s.rows[i].key;
+                    check(same, std::string("not the rows of Network > ") + s.title);
+                    check(!c.rows.empty(), std::string("no rows in ") + s.title);
+                }
+        check(found, std::string("no Network > ") + catalog::kCoopHeading + heads[k] + " section");
+    }
+    const auto has = [&](int k, const char* key) {
+        for (const catalog::RowDesc& r : coop[0].sections[(size_t)k].rows)
+            if (r.key == key) return true;
+        return false;
+    };
+    check(has(0, "DES_SEAMLESS_PLAYERS") && has(0, "DES_SEAMLESS_DIFFICULTY"), "a host's row not under When you host");
+    check(has(1, "DES_SEAMLESS_GLOW") && !has(0, "DES_SEAMLESS_GLOW"), "the glow not under When you join");
 }
 
 // The Game tab's Language rows shown on a disc of region r, and its heading.

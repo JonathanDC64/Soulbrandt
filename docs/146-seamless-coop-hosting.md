@@ -145,7 +145,9 @@ set).
   players, x2 with three, x2.5 with four. A boss gets the same, or its own when that is more. The health changes as
   players come and go.
 - **Settings on the Seamless co-op screen** shows co-op's own settings (the Seamless co-op rows of Settings > Network)
-  on a screen of their own, in both looks.
+  on a screen of their own, in both looks, in two groups. **When you host:** the host's game uses only the host's
+  settings, for everyone in it (the most players, the enemy difficulty); a friend's own don't count there.
+  **When you join:** each player's own, in a host's world (its glow). Settings > Network has the same two groups.
 - **When the host dies,** everyone goes back to the start together. There the friends see the host's rolls, attacks
   and other moves again. Before, a friend that was alive could see the host stuck in a weapon swap after that.
 - **Enemies stay where they belong after a load.** Before, an enemy that stood near a player as the group moved to
