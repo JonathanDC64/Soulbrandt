@@ -11,7 +11,9 @@
 //     (the host says where it is every 2 s: READY). The host's game places it, as after a summon.
 // Following the host with one load:
 //   - When the host's own load starts (a warp, a death), it tells its guests (LEAD). Each guest starts a summoned
-//     reload (SummonedMapReload, the guest's side of a summon), which keeps its session.
+//     reload (SummonedMapReload, the guest's side of a summon), which keeps its session. When the host's load gives
+//     it full HP and MP (a death, an Archstone: the scripts' RequestFullRecover before it), LEAD says so, and the
+//     guest's reload gives it the same, as the game's own forced reload of a party does (ForceSummonReloadStart).
 //   - The guest's load step waits, on the game's own loading screen, until the host says it has arrived (READY: its
 //     area and place). The map it loads then becomes the host's area, and its spawn point the host's place, facing
 //     the way the host faces there (a join's too).
@@ -164,7 +166,7 @@ constexpr uint32_t kNoArea = 0xFFFFFFFFu;
 constexpr char kMsgRoom[4] = {'R', 'O', 'O', 'M'};   // the host's room data
 constexpr char kMsgAsk[4] = {'R', 'O', 'M', '?'};    // a guest asks for it
 constexpr char kMsgFull[4] = {'F', 'U', 'L', 'L'};   // u32 most: the host's answer instead while its session is full
-constexpr char kMsgLead[4] = {'L', 'E', 'A', 'D'};   // u32 trip: the host's load started
+constexpr char kMsgLead[4] = {'L', 'E', 'A', 'D'};   // u32 trip, u32 1 if it gives full HP and MP: the host's load began
 // u32 trip, u32 area, f32 x, y, z, yaw where it arrived, f32 x, y, z, yaw where it is, then its area's dead-character
 // record (76 bytes, or none): the host has arrived (after each load), every 2 s while it hosts, and when a guest asks
 constexpr char kMsgReady[4] = {'R', 'E', 'D', 'Y'};
@@ -207,9 +209,16 @@ void wrf(uint32_t a, float f)
 uint32_t session_manager() { return rd(rd(rd(DES_AT(kSessionSlot)) - 0x7F08u)); }
 uint32_t game_manager() { return rd(rd(rd(DES_AT(kGameSlot)) - 0x7FFCu)); }
 uint32_t flag_base() { return rd(rd(rd(DES_AT(kGameSlot)) - 0x8000u)); }
-// The next load's record, *(*(*(*(TOC - 0x7884) - 0x8000)) + 8): +0x8C is the player's type at the load's request
-// (WarpNextStageKick copies it), and a summoned load makes a blue phantom (1) of soul form (8) only.
-uint32_t load_record() { return rd(rd(rd(rd(DES_AT(kSessionSlot)) - 0x8000u)) + 0x08u); }
+// The next load's request, *(*(*(TOC - 0x7884) - 0x8000)). Its record (+0x08): +0x8C is the player's type at the
+// load's request (WarpNextStageKick copies it), and a summoned load makes a blue phantom (1) of soul form (8) only.
+// +0x3C: 1 when the load gives the player full HP and MP (RequestFullRecover, 0x00439358, sets it).
+uint32_t load_request() { return rd(rd(rd(DES_AT(kSessionSlot)) - 0x8000u)); }
+uint32_t load_record() { return rd(load_request() + 0x08u); }
+bool load_recovers()
+{
+    const uint32_t r = load_request();
+    return guest_ok(r) && vm_read8(r + 0x3C) != 0;
+}
 constexpr uint32_t kLoadType = 0x8C;
 uint32_t player_chr() { return rd(rd(DES_AT(kChrMan)) + 0x1BC); }
 // Whether chr is a player's character: this game's own, or one of the others (the character manager's vector at
@@ -350,6 +359,7 @@ std::vector<uint8_t> sRoom;          // the host's room data (a guest)
 bool sFull = false;                  // the host's last answer was FULL: no join until its room data comes (a guest)
 bool sAsked = false;                 // a guest asked for the room data (the host)
 uint32_t sLeadTrip = 0;              // the host's latest load (a guest)
+bool sLeadRecover = false;           // ... gives the host full HP and MP
 bool sHostFight = false;             // the host is in a boss fight: no join until it's over (a guest; FGHT)
 std::atomic<bool> sFight{false};     // this game's boss fight (the host; kFightMarker), until it's over or a load
 struct Place { float x = 0, y = 0, z = 0, yaw = NAN; };   // yaw: the facing (player_transform), NaN if unknown
@@ -415,6 +425,7 @@ void on_message(uint32_t from, const uint8_t* d, uint32_t n)
         sAsked = true;
     } else if (!std::memcmp(d, kMsgLead, 4) && n >= 8) {
         sLeadTrip = get32(d + 4);
+        sLeadRecover = n >= 12 && get32(d + 8) != 0;
     } else if (!std::memcmp(d, kMsgReady, 4) && n >= 44) {
         Ready r;
         r.trip = get32(d + 4);
@@ -1964,11 +1975,14 @@ void host_tick(ppu_context* ctx, uint32_t sm, uint32_t gm, uint32_t st, bool wor
     if (!g.in_load && vm_read32(gm + kGmNextArea) != kNoArea) {
         g.in_load = true;
         sFight = false;   // (a load ends a boss fight: the host's death, a warp)
+        const bool recover = load_recovers();
         std::vector<uint8_t> b;
         put32(b, ++g.trip);
+        put32(b, recover ? 1 : 0);
         send(kMsgLead, b);
         sync_hold(g.trip);
-        std::fprintf(stderr, "[coop] load %u started: the guests follow\n", g.trip);
+        std::fprintf(stderr, "[coop] load %u started: the guests follow%s\n", g.trip,
+                     recover ? " (it gives full HP and MP)" : "");
     } else if (g.in_load && world && vm_read32(sm + kSmArrival) == 4) {
         g.in_load = false;
         requeue(ctx, sm);
@@ -2136,9 +2150,11 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
     }
     if (world && !g.in_load) forms_tick(ctx, just_arrived);
     uint32_t lead;
+    bool recover;
     {
         std::lock_guard<std::mutex> l(sMsgLock);
         lead = sLeadTrip;
+        recover = sLeadRecover;
     }
     if (lead != g.trip && sEnding.load()) {   // the host's load after its ending: this game is in its own (above)
         g.trip = lead;
@@ -2149,8 +2165,10 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
         g.follow_from = vm_read32(sm + kSmArea);
         g.follow = lead;
         sync_hold(lead);
+        // the host's load gives it full HP and MP: this one too, as it gives the host (RequestFullRecover first)
+        if (recover) call_addr(ctx, DES_AT(0x00439358u), {0});
         call_addr(ctx, DES_AT(0x00441AB8u), {});   // SummonedMapReload
-        std::fprintf(stderr, "[coop] following the host (its load %u)\n", lead);
+        std::fprintf(stderr, "[coop] following the host (its load %u%s)\n", lead, recover ? ", full HP and MP" : "");
     }
 }
 
