@@ -1915,9 +1915,10 @@ void take_guest_seal(ppu_context* ctx)
 }
 
 // The host's death in a session. By default, while a friend stands, the host respawns alone at the area's start as a
-// friend does, its friends play on, and the enemies that are dead stay dead; in a boss
-// fight it first waits until the boss is dead. Only when no friend stands (a wipe) does everyone go back with it, and
-// the world resets, as before. DES_SEAMLESS_HOST_DEATH=together (Settings): the old way every time.
+// friend does, its friends play on, and the enemies that are dead stay dead; in a boss fight it first waits until the
+// boss is dead, then comes back at its own bloodstain (host_to_stain). Only when no friend stands (a wipe) does
+// everyone go back with it, and the world resets, as before. DES_SEAMLESS_HOST_DEATH=together (Settings): the old way
+// every time.
 //   - The host's scripts (des_seamless_scripts.cpp's SeamlessHostWait, after SoloPlayDeath's 3 s) read two of the
 //     game's flags at 20,000 and up, which are one byte each at the flags' +0x14D0 + (n - 20,000) (0x005087A0, through
 //     the scripts' flag check 0x0043FC90). No script uses them, and the save doesn't hold them. This writes them each
@@ -1935,6 +1936,7 @@ constexpr uint32_t kHighFlags = 0x14D0, kHighFlagFirst = 20000;
 constexpr uint32_t kAloneFlag = 20298, kStandsFlag = 20299;
 std::atomic<bool> sHostAlone{false};   // the host's next load is its lone respawn (kAloneMarker), until it starts
 std::atomic<uint32_t> sLoneArea{kNoArea};   // the area that load goes to, whose world's dead characters it keeps
+std::atomic<bool> sHostFightDeath{false};   // the host died in a boss fight (sFight at its death): its stain, then
 
 bool host_respawns_alone()
 {
@@ -1990,6 +1992,7 @@ void host_death_flags(bool hosting, bool world)
     vm_write8(fb + kHighFlags + (kAloneFlag - kHighFlagFirst), alone ? 1 : 0);
     vm_write8(fb + kHighFlags + (kStandsFlag - kHighFlagFirst), up ? 1 : 0);
     if (dead && !was_dead) {
+        sHostFightDeath = hosting && sFight.load();
         if (!alone)
             std::fprintf(stderr, "[coop] the host died: everyone goes back with it (the setting)\n");
         else
@@ -2004,10 +2007,56 @@ void host_death_flags(bool hosting, bool world)
 // record is the world's (all its areas are loaded at once: 1-2's respawn, its Archstone in the Phalanx room, is area
 // 02000000 of the same world 2). The load is the game's own, to the respawn's place the death asked for
 // (SetDefaultMapUid: +0x08 its area, +0x0C its point).
+//
+// A host that died in a boss fight (sFight at its death) comes back at its own bloodstain, in the boss's room, as a
+// friend does (stain_mark), not at the area's start: the load goes to the stain's map, to a place (point -1, the
+// summoned place +0x1C and its copies, as going_home's), facing the way it died. SoloPlayDeath_2 runs its
+// UpDateBloodMark after this WarpNextStageKick, so the stain's record (the game data's +0x1C) still holds the last
+// death's here. Its source is read instead, as UpDateBloodMark (0x00419670) reads it: *(chr + 0x640), the place at
+// +0x24, the rotation at +0x30 (+0x34 the yaw) and the map at +0x3C (0x002CFB28, 0x002CFAD8, 0x002CFA98). Only a stain
+// in the load's world: else the area's start, as before.
+constexpr uint32_t kChrStainSource = 0x640, kSrcPlace = 0x24, kSrcFacing = 0x30, kSrcMap = 0x3C;
+void host_to_stain(uint32_t gm)
+{
+    const uint32_t pc = player_chr();
+    const uint32_t src = guest_ok(pc) ? rd(pc + kChrStainSource) : 0;
+    if (!guest_ok(src)) {
+        std::fprintf(stderr, "[coop] the host died in a boss fight, but its bloodstain isn't readable: it comes back "
+                             "at the area's start\n");
+        return;
+    }
+    Place p;
+    p.x = rdf(src + kSrcPlace);
+    p.y = rdf(src + kSrcPlace + 4);
+    p.z = rdf(src + kSrcPlace + 8);
+    p.yaw = rdf(src + kSrcFacing + 4);
+    const uint32_t map = rd(src + kSrcMap), to = vm_read32(gm + kGmNextArea);
+    if (!std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.z) || map == kNoArea ||
+        world_of(map) != world_of(to)) {
+        std::fprintf(stderr, "[coop] the host died in a boss fight, but its bloodstain (map %08X) isn't in the "
+                             "respawn's world (%08X): it comes back at the area's start\n", map, to);
+        return;
+    }
+    vm_write32(gm + kGmNextArea, map);
+    vm_write32(gm + kGmNextPoint, 0xFFFFFFFFu);
+    vm_write8(gm + kGmSummonedPlace, 1);
+    for (uint32_t off : kGmPlace) {
+        wrf(gm + off, p.x);
+        wrf(gm + off + 4, p.y);
+        wrf(gm + off + 8, p.z);
+    }
+    if (std::isfinite(p.yaw))
+        for (uint32_t off : kGmFacing) wrf(gm + off + 4, p.yaw);
+    std::fprintf(stderr, "[coop] the host died in a boss fight: the boss is dead, so it comes back at its bloodstain "
+                         "(%.2f %.2f %.2f facing %.2f, map %08X; the game asked for %08X)\n", p.x, p.y, p.z, p.yaw, map,
+                 to);
+}
+
 void keep_dead_for_respawn(ppu_context* ctx, uint32_t sm)
 {
     const uint32_t gm = game_manager();
     if (!guest_ok(gm)) return;
+    if (sHostFightDeath.exchange(false)) host_to_stain(gm);
     const uint32_t here = vm_read32(sm + kSmArea), to = vm_read32(gm + kGmNextArea);
     if (here == kNoArea || to == kNoArea || world_of(to) != world_of(here)) {   // (never another world's)
         std::fprintf(stderr, "[coop] the host respawns alone, in %08X from %08X: its dead characters come back\n", to,

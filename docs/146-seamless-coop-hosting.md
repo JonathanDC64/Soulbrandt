@@ -141,10 +141,11 @@ set).
   two. Three friends get double too (the original has nothing for three, so a boss had its solo health).
 - **When the host dies,** it respawns alone at the area's start, as a friend does, while a friend is still standing.
   The friends play on where they are, and enemies that are dead stay dead. In a boss fight the host first waits, dead,
-  until the boss is dead. Only when no friend is standing (everyone is dead) does everyone go back to the start
-  together, with the enemies back. Settings > Network > When you die as host >
-  Everyone goes back makes every death of the host take everyone back, as before (2026-11-21). After the host's
-  respawn, the friends see its rolls, attacks and other moves again.
+  until the boss is dead, then comes back at its own bloodstain in the boss's room, as a friend does, where it can
+  take its souls back at once (the boss's souls too, if it died before the boss). Only when no friend is standing
+  (everyone is dead) does everyone go back to the start together, with the enemies back. Settings > Network > When
+  you die as host > Everyone goes back makes every death of the host take everyone back, as before (2026-11-21).
+  After the host's respawn, the friends see its rolls, attacks and other moves again.
 - **Enemies stay where they belong after a load.** Before, an enemy that stood near a player as the group moved to
   another area could move the new area's enemy with the same number to its place. In the tutorial that put the
   Vanguard outside its hall: it fell, and "The Demon Was Destroyed" showed before anyone saw it.
@@ -853,6 +854,14 @@ their first instruction):
     block 0 of the same world. A respawn into another world keeps no record. No LEAD goes out, and no sync hold. Once
     back, it places its guests again (requeue) and they make its character again (its BACK), as after a guest's
     respawn.
+  - A host that died in a boss fight (`sFight`, flag 19994, at its death) comes back at its own bloodstain
+    (`host_to_stain`, at the same end of `WarpNextStageKick`): the load goes to the stain's map, to a place (point
+    -1 and the summoned place `+0x1C`, as a friend's trip home), facing the way it died. `SoloPlayDeath_2` runs its
+    `UpDateBloodMark` after that `WarpNextStageKick`, so the stain's record still holds the last death's then. Its
+    source is read instead, as `UpDateBloodMark` (0x00419670) reads it: `*(chr + 0x640)`, the place at `+0x24`, the
+    rotation at `+0x30` and the map at `+0x3C`. A stain in another world than the respawn's: the area's start, as
+    before. In the 11-22 playtest the host came back at the area's start after Phalanx, with the boss's souls in its
+    stain in the boss's room.
   - Checked with two copies (11-21, the host on the pinned save in 1-2, the friend standing by god mode):
     - The Tower Knight's fight began at the host's arrival. The host died in it, and no load came in 20 s. The knight
       killed (a test switch), the host's load came at once: "the host's respawn, alone; the guests stay". The friend
