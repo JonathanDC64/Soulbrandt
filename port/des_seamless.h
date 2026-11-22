@@ -113,7 +113,10 @@ Mode active();
 
 // A guest's leave (des_seamless_game.cpp): leave() asks its game to go back to its own world first, where the game
 // saves what the group did; left() is true once that is done (or after 2 minutes), and always when not a guest.
+// leave_now() (the leaving window's Leave now) ends it as soon as a save holds the guest's progress: where it stands,
+// with its own world, when it can save there, else at home as a leave does, with no wait for the game's own save.
 void leave();
+void leave_now();
 bool left();
 
 // ---- co-op's own save (des_seamless_save.cpp) ----

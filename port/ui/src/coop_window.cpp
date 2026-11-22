@@ -313,12 +313,15 @@ void open_new_code() {
     }));
 }
 
-void leave_now() {
+// Out of co-op: the game starts again on the normal characters.
+void restart_alone() {
     play_sound(kSoundWindowClose);
     restart_with({"DES_SEAMLESS=", "DES_SEAMLESS_CODE=", "DES_SEAMLESS_MODS_OK="});
 }
 
 // A guest's leave: its game goes back to its own world and saves there (des_seamless_game.cpp), then starts again.
+// Leave now doesn't wait for the trip home: the game saves the guest's progress where it stands if it can save there
+// (else at home, at once), and the window starts the game again when that save is written.
 class LeavingWindow final : public Modal {
 public:
     explicit LeavingWindow(Props props) : Modal(std::move(props)) {}
@@ -331,7 +334,7 @@ public:
             // The game side gives up after 2 minutes; this is for a game that never gets to look.
             if (co::left() || now - mStart > std::chrono::seconds(150)) {
                 mDone = true;
-                leave_now();
+                restart_alone();
             }
         }
         Modal::update();
@@ -344,13 +347,23 @@ private:
 
 void open_leaving() {
     co::leave();
+    static bool now_pressed;
+    now_pressed = false;
     push_document(std::make_unique<LeavingWindow>(Modal::Props{
         .title = "Leaving seamless co-op",
         .bodyRml = "Going back to your own world, then to your normal characters.",
         .actions = {ModalAction{.label = "Leave now",
-                                .onPressed = [](Modal&) { leave_now(); }}},
+                                .onPressed =
+                                    [](Modal& m) {
+                                        if (now_pressed) return;
+                                        now_pressed = true;
+                                        play_sound(kSoundItemEnable);
+                                        co::leave_now();
+                                        m.set_body("Saving your game first, then going to your normal characters.");
+                                    },
+                                .isDisabled = [] { return now_pressed; }}},
         // Back or Esc doesn't close it: the leave is under way (the session left), and only this window starts the
-        // game again. Leave now is the way out.
+        // game again, once the game has saved (or the leave gave up).
         .onDismiss = [](Modal&) {},
     }));
 }
@@ -366,7 +379,7 @@ void open_leave() {
                     ModalAction{.label = "Leave",
                                 .onPressed = [guest](Modal& m) {
                                     if (!guest) {
-                                        leave_now();
+                                        restart_alone();
                                         return;
                                     }
                                     play_sound(kSoundWindowClose);

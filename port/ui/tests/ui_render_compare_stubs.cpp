@@ -99,6 +99,7 @@ std::string set_public_address(const std::string&, std::string*) { return "not i
 std::string new_code() { return "not in ui_render_compare"; }
 std::string check_code(const std::string&, std::string*) { return "not in ui_render_compare"; }
 void leave() {}
+void leave_now() {}
 bool left() { return true; }
 std::vector<Character> characters_to_bring() { return {}; }
 std::string bring_character(int) { return "not in ui_render_compare"; }
