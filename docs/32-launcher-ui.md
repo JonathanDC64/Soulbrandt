@@ -317,7 +317,7 @@ FFCCEOT-Recomp (`report::data_dir()`, report.cpp):
 | In the data folder | What |
 |---|---|
 | `settings.ini` | the settings (unless `DES_SETTINGS` names another file) |
-| `logs\des.log`, `logs\des.prev.log` | this run's output and the previous run's |
+| `logs\des.log`, `logs\des.prev.log` to `logs\des.prev4.log` | this run's output and the four runs' before it, newest first |
 | `crashes\crash-<time>.txt/.dmp/.log/.cmdline` | a crash: what happened and the stack, a minidump, the end of the log, the command line (for Restart) |
 | `reports\crash-<time>.zip`, `reports\issue-<time>.zip` | what a GitHub issue gets attached |
 
@@ -338,7 +338,8 @@ where the output was going before (the console, or play.sh's
 for both when they went to the same place, so the log keeps their order.
 The log file is buffered (64 KB) and flushed whenever its pipe is empty; the
 pipes hold 1 MB, so a burst of messages doesn't wait on the console. The
-previous run's log is kept as `des.prev.log`; a second copy of the game
+four runs' logs before it are kept as `des.prev.log` to `des.prev4.log`
+(newest first; `log_runs.hpp`); a second copy of the game
 running at the same time writes `des.<pid>.log`. Past 128 MB the log keeps
 its first 2 MB and goes on from there.
 
