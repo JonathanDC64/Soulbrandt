@@ -157,6 +157,12 @@ DES_REGION_ADDR(0x002DDAA8, 0x002DE880)  /* hook des_coop_hook: a character's dr
 DES_REGION_ADDR(0x002DDADC, 0x002DE8B4)  /* hook des_coop_hook: a character's draw update, the material kind's type read (a friend draws an NPC of type 4 as the host does) */
 DES_REGION_ADDR(0x002DDB48, 0x002DE920)  /* hook des_coop_hook: a character's draw update, the draw path's type read (a friend draws an NPC of type 4 as the host does) */
 DES_REGION_ADDR(0x002DDB90, 0x002DE968)  /* hook des_coop_hook: a character's draw update, 0x0025D418's type read (a friend draws an NPC of type 4 as the host does) */
+DES_REGION_ADDR(0x002E09E4, 0x002E17BC)  /* hook des_coop_hook: a character's model update, the phantom draw path's check for type 4 (a friend's NPCs of type 4 drawn as the host draws them) */
+DES_REGION_ADDR(0x002E0A2C, 0x002E1804)  /* hook des_coop_hook: a character's model update, 0x0025D418's type read (a friend's NPCs of type 4 drawn as the host draws them) */
+DES_REGION_ADDR(0x002E0BDC, 0x002E19B4)  /* hook des_coop_hook: a character's main draw object made, the phantom draw path's check for type 4 (a friend's NPCs of type 4 made as the host makes them) */
+DES_REGION_ADDR(0x002E0C20, 0x002E19F8)  /* hook des_coop_hook: a character's main draw object made, 0x0025D418's type read (a friend's NPCs of type 4 made as the host makes them) */
+DES_REGION_ADDR(0x002E0EE0, 0x002E1CB8)  /* hook des_coop_hook: a character's draw objects' build, the phantom draw path's check for type 4 (a friend's NPCs of type 4 built as the host builds them) */
+DES_REGION_ADDR(0x002E0F28, 0x002E1D00)  /* hook des_coop_hook: a character's draw objects' build, 0x0025D418's type read (a friend's NPCs of type 4 built as the host builds them) */
 DES_REGION_ADDR(0x002E1000, 0x002E1DD8)  /* hook des_coop_hook: a character's draw objects' build, the face's type read (a friend's NPCs of type 4 get their faces) */
 DES_REGION_ADDR(0x002EC2B8, 0x002ED090)  /* call */
 DES_REGION_ADDR(0x002EDEB0, 0x002EEC88)  /* hook des_dev_hook */
@@ -244,15 +250,16 @@ DES_REGION_ADDR(0x005F7254, 0x005F7E9C)  /* hook des_cut_cam */
 DES_REGION_ADDR(0x005F72EC, 0x005F7F34)  /* hook des_cut_cam */
 DES_REGION_ADDR(0x005F7394, 0x005F7FDC)  /* hook des_cut_cam */
 DES_REGION_ADDR(0x005F743C, 0x005F8084)  /* hook des_cut_cam */
+DES_REGION_ADDR(0x00606538, 0x00607180)  /* hook des_coop_hook: a cutscene's copy, its draw object's draw path, the check for type 4 (a friend draws an NPC of type 4 as the host does) */
+DES_REGION_ADDR(0x0060657C, 0x006071C4)  /* hook des_coop_hook: a cutscene's copy, its draw object's draw path, 0x0025D418's type read (a friend draws an NPC of type 4 as the host does) */
 DES_REGION_ADDR(0x00608F04, 0x00609B4C)  /* hook des_coop_hook: a cutscene's copy of a character set up, the +0x6C draw object's phantom material (0x000DC6E0) (a friend draws an NPC of type 4 as the host does) */
 DES_REGION_ADDR(0x00608F38, 0x00609B80)  /* hook des_coop_hook: a cutscene's copy of a character set up, the +0x6C draw object's material kind (0x000DC9C8) (a friend draws an NPC of type 4 as the host does) */
-DES_REGION_ADDR(0x0060900C, 0x00609C54)  /* hook des_coop_hook: a cutscene's copy of a character set up, the draw path's check for type 3 (a friend draws an NPC of type 4 as the host does) */
 DES_REGION_ADDR(0x00609020, 0x00609C68)  /* hook des_coop_hook: a cutscene's copy of a character set up, the draw path's check for type 4 (a friend draws an NPC of type 4 as the host does) */
-DES_REGION_ADDR(0x00609034, 0x00609C7C)  /* hook des_coop_hook: a cutscene's copy of a character set up, the draw path's check for type 10 (a friend draws an NPC of type 4 as the host does) */
-DES_REGION_ADDR(0x0060904C, 0x00609C94)  /* hook des_coop_hook: a cutscene's copy of a character set up, the draw path's check for type 11 (a friend draws an NPC of type 4 as the host does) */
 DES_REGION_ADDR(0x00609068, 0x00609CB0)  /* hook des_coop_hook: a cutscene's copy of a character set up, 0x0025D418's type read (a friend draws an NPC of type 4 as the host does) */
 DES_REGION_ADDR(0x00609338, 0x00609F80)  /* hook des_coop_hook: a cutscene's copy of a character set up (its glow and colour) */
 DES_REGION_ADDR(0x0060936C, 0x00609FB4)  /* hook des_coop_hook: a cutscene's copy of a character set up, the +0x70 draw object's material kind (0x000D81D0) (a friend draws an NPC of type 4 as the host does) */
+DES_REGION_ADDR(0x00609828, 0x0060A470)  /* hook des_coop_hook: a cutscene's copy, its model made, the check for type 4 (a friend draws an NPC of type 4 as the host does) */
+DES_REGION_ADDR(0x0060986C, 0x0060A4B4)  /* hook des_coop_hook: a cutscene's copy, its model made, 0x0025D418's type read (a friend draws an NPC of type 4 as the host does) */
 DES_REGION_ADDR(0x006A2E8C, 0x006A3A9C)  /* hook des_noise_rate */
 DES_REGION_ADDR(0x006A3990, 0x006A45A0)  /* hook des_noise_rate */
 DES_REGION_ADDR(0x00718D84, 0x00719994)  /* hook des_hud_canvas */

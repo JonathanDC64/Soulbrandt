@@ -240,6 +240,13 @@ bool is_player(uint32_t chr)
 // The face is made once, when the character's draw objects are built (0x002E0E60): a character that isn't of a
 // phantom's type (3, 4, 10, 11) gets one at +0x664, from its own face data. So those NPCs had no face on a friend
 // (11-15 playtest: Thomas and the Crestfallen, a hole where the face goes). That read gets 9 the same way.
+// The draw objects are made and kept on a phantom's draw path for those types too, each time with a check for 4
+// and 0x0025D418's value for the type: the model's (+0x6A0, 0x000DB508) by the same build (r27 the character) and
+// by its update 0x002E0968 (r31 at the check, r29 at 0x0025D418's read), and the main one (+0x6A4) where
+// 0x002E0AE0 makes it (r27). With the draw update's reads alone, a friend still saw those NPCs as bright,
+// see-through blue phantoms where the host sees them solid with a pale tint (11-22: the Crestfallen in the
+// Nexus, and in the cutscene of his first talk). Each of those reads gets 9 too. Only a check for 4 needs it: 9
+// for 4 changes no check for 3, 10 or 11.
 // Only the NPCs whose mode that rule changed get 9 (sHostNpcs). Characters that every game sets up at 4, such as the
 // tutorial's wandering ghosts (m08_00's 400, m08_01's 401-404), are white phantoms on the host too, and stay so on a
 // friend.
@@ -261,10 +268,13 @@ void host_npc_type(ppu_context* ctx, co::Mode m, int chr_reg = 31)
 }
 // A cutscene's copy of such an NPC (0x006087B8; see copy_seen) reads the type as the draw update does, so on a
 // friend it drew a white phantom where the host sees the person (11-22: the Crestfallen Warrior in the Nexus
-// cutscene of his first talk, scene 25). It reads the type nine times: for each of its two draw objects (+0x6C,
-// +0x70) the phantom material on or off and its kind, the draw path's check for types 3, 4, 10 and 11 (one call
-// each: a phantom's type takes the other path), and 0x0025D418. Each read gets 9 the same way. The character is
-// the copy's +0xBC (r31 the copy), or in r29 at the draw path's checks and 0x0025D418's.
+// cutscene of his first talk, scene 25). For each of its two draw objects (+0x6C, +0x70) it reads the type for
+// the phantom material on or off and its kind, then for the draw path's check for 4 (types 3, 4, 10 and 11 take
+// a phantom's path) and for 0x0025D418. Each of those reads gets 9 the same way. The character is the copy's +0xBC
+// (r31 the copy), or in r29 at the check and 0x0025D418's read. Two later steps of a cut read it again for the
+// check for 4 (r29 the character) and for 0x0025D418 (the copy's +0xBC): the copy's model (+0xD4, 0x000DB508) in
+// 0x00609550, and its +0x70 draw object's draw path (0x000D9388) in 0x006060C0. Without those the friend still
+// saw the Crestfallen in scene 25 as a bright, see-through blue phantom (11-22 retest); they get 9 too.
 void copy_npc_type(ppu_context* ctx, co::Mode m, int chr_reg = -1)
 {
     npc_type_as_host(ctx, m, chr_reg < 0 ? rd((uint32_t)ctx->gpr[31] + 0xBC) : (uint32_t)ctx->gpr[chr_reg]);
@@ -2605,6 +2615,18 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
     case 0x002E1000u:   // a character's draw objects' build (0x002E0E60), after bl 0x0026F378 compared with 4 (r27
         host_npc_type(ctx, m, 27);   // the character): its face, or none for a phantom's type
         break;
+    case 0x002E0EE0u:   // the same build, after bl 0x0026F378 compared with 4: the model on a phantom's draw path
+    case 0x002E0F28u:   // (0x000DB508) or not; and its type for 0x0025D418 (r27 the character)
+    case 0x002E0BDCu:   // where the main draw object (+0x6A4) is made (0x002E0AE0), the same two reads (r27 the
+    case 0x002E0C20u:   // character)
+        host_npc_type(ctx, m, 27);
+        break;
+    case 0x002E09E4u:   // the model's update (0x002E0968), after bl 0x0026F378 compared with 4 (r31 the character)
+        host_npc_type(ctx, m, 31);
+        break;
+    case 0x002E0A2Cu:   // the same update, its type for 0x0025D418 (r29 the character)
+        host_npc_type(ctx, m, 29);
+        break;
     case 0x00299B74u:   // an NPC's setup (0x002999C8) in a visitor's game, after lbz r0,0xE8(r9) of its param row: the
         // mode becomes 4 when that byte is set; r24 the mode it came with
         tHostNpcNext = m == co::Mode::Join && (ctx->gpr[0] & 0xFFu) != 0 && (uint32_t)ctx->gpr[24] != 4;
@@ -2664,12 +2686,15 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
     case 0x0060936Cu:   // a cutscene's copy setup 0x006087B8, after bl 0x0026F378: the +0x70 draw object's material kind (0x000D81D0)
         copy_npc_type(ctx, m);
         break;
-    case 0x0060900Cu:   // the same, r29 the character: the draw path's check for type 3
-    case 0x00609020u:   // the same, r29 the character: the draw path's check for type 4
-    case 0x00609034u:   // the same, r29 the character: the draw path's check for type 10
-    case 0x0060904Cu:   // the same, r29 the character: the draw path's check for type 11
+    case 0x00609020u:   // the same, r29 the character: the draw path's check for type 4 (3, 10 and 11 can't change)
     case 0x00609068u:   // the same, r29 the character: 0x0025D418's type read
+    case 0x00609828u:   // a later step of a cut, the copy's model (+0xD4) made (0x00609550): the check for type 4
+    case 0x00606538u:   // and its +0x70 draw object's draw path (0x006060C0): the check for type 4 (r29 the character)
         copy_npc_type(ctx, m, 29);
+        break;
+    case 0x0060986Cu:   // the same two steps, 0x0025D418's type read (the copy's +0xBC, r31 the copy)
+    case 0x0060657Cu:
+        copy_npc_type(ctx, m);
         break;
     case 0x0017A4A8u:   // the summoned reload's load step, after addi r9,r26,0x34
         if (m == co::Mode::Join) guest_load_step(ctx);
