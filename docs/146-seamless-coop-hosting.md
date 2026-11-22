@@ -114,8 +114,8 @@ set).
   host does. Each player has its own copy: one player's pickup leaves the others' where it was. An item a friend
   takes is also gone in its own world.
 - **Light walls** (the fog you press Cross at and walk through, outside boss rooms): a friend can walk through too,
-  not only the host. The host's walk takes the wall away for everyone; a friend's takes it away in the friend's
-  game only, and the host walks through it as usual. A boss's fog is as in the game: the host walks in first.
+  not only the host. Whoever walks through takes the wall away for everyone, and it stays gone in the host's world.
+  A boss's fog is as in the game: the host walks in first.
 - **Boss kills keep everyone together:** no rating screen, nobody sent home, and the boss room's walls drop. The
   host's room stays open, during a boss fight and after it, so a friend can always join again.
 - **A friend who joins during a boss fight** fights the boss too. Before, in 1-1, Phalanx wasn't in its game: it
@@ -917,8 +917,13 @@ their first instruction):
   everytime)`, or `ATTR_HOST + ATTR_LIVE + ATTR_GREY`) was the host's alone; it is offered to a blue phantom too
   (`+ ATTR_WHITE`): 1-1's three, one each in 1-2 and 1-3, three each in 2-1, 2-2, 4-1 and 4-2
   (`light_walls_for_friends`). Its handler doesn't check who walks, so in the friend's game its walk runs as the
-  host's: the walk, the wall dropped, the wall's flag (a progress flag in 2-1 and 2-2). It doesn't reach the host's
-  game: there the wall and its prompt stay until the host walks through (scripted, 11-21).
+  host's: the walk, the wall dropped, the wall's flag (a progress flag in 2-1 and 2-2). The wall's delete
+  (`LuaCallStart(<id>, 1)`) reaches the other games and drops it there too, but sets no flag. So after a friend's
+  walk the host's flag stayed clear, and the wall was back for everyone at the host's next load (two copies, 11-22).
+  The walker's game now also sends `LuaCallStart(7600000 + <id>, 76)`, outside `NotNetMessage`, and each other
+  game's `SEAMLESS_WallPassed_<id>` sets the flags the walk sets for another player there (2-2's 572 sets 571's
+  too) and drops the walls (`light_walls_for_all`). It has an ID of its own: the delete's `DeleteEvent(<id>)` removes
+  every handler of `<id>`, so under `<id>` it ran only when it came before the delete (one run in three).
   In the other games the wall's handler plays the walk on the walker's character and marks the wall passed
   (`Luafunc_PlaySynchroAnimation`'s true branch, then a return). The areas made for sessions drop the wall for them
   through the game's wall-delete sync (`LuaCallStart`). The tutorial's (`m08_01`'s 14291) drops it with a direct call
