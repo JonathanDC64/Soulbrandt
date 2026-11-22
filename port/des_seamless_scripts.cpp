@@ -10,8 +10,11 @@
 //     multiplayer walls drop as at a session's end;
 //   - no rating screen after a kill: a short timer goes on to the next step instead;
 //   - a blue phantom's death keeps it in the session: it comes back where the host last arrived, and in a boss fight
-//     it first watches until the fight ends (the boss dead, or the host dead: then it goes back with the host); out
+//     it first watches until the fight ends (the boss dead, or everyone dead: then it goes back with the host); out
 //     of the session meanwhile, it goes home;
+//   - the host's death: while a friend stands, it respawns alone and its friends play on (in a boss fight, once the
+//     boss is dead); with none standing, everyone goes back with it (SeamlessHostWait;
+//     DES_SEAMLESS_HOST_DEATH=together: always everyone);
 //   - the cutscenes keep their solo mode in a session: each player skips its own;
 //   - no multiplayer wall closes the way back to an Archstone (the host may use them in a session);
 //   - a boss's extra health counts a third blue phantom (a party of four) as two: x2, the game's most.
@@ -309,6 +312,50 @@ bool edit_global(std::string& t, const std::string& nl)
                       "\tend\n"
                       "\tSeamlessHostDown = true;\n"
                       "\tprint(\"SEAMLESS HostDead\");\n"
+                      "end\n", nl))
+        return false;
+    // The host's own death (des_seamless_game.cpp's host_death_flags has the rest). By default (flag 20298 set on the
+    // host), its guests' HostDead waits for SeamlessHostWait, after SoloPlayDeath's 3 s: while a friend stands (flag
+    // 20299), the host respawns alone (flag 19996 tells des_seamless_game.cpp, which keeps the dead enemies dead and
+    // its guests where they are), in a boss fight once the boss is dead (it looks again each second, as a friend's
+    // watch does); with no friend standing, the guests get their HostDead and the load is the old one: everyone back.
+    if (!replace_in(t, "OnEvent_4000", "proxy:LuaCallStart(4000, 1 );",
+                    "if proxy:IsCompleteEvent(20298) == false then proxy:LuaCallStart(4000, 1 ); end "
+                    "--SEAMLESS: else SeamlessHostWait"))
+        return false;
+    if (!replace_func(t, "SoloPlayDeath_1",
+                      "function SoloPlayDeath_1(proxy,param)\n"
+                      "\tprint(\"SoloPlayDeath_1 begin\");\n"
+                      "\tif proxy:IsCompleteEvent(20298) == true and proxy:IsHost() == true and proxy:IsInParty() == true then\n"
+                      "\t\tSeamlessHostWait(proxy,param); --SEAMLESS: alone or together\n"
+                      "\t\treturn;\n"
+                      "\tend\n"
+                      "\tproxy:NotNetMessage_begin();\n"
+                      "\t\tSoloPlayDeath_2(proxy,param);\n"
+                      "\tproxy:NotNetMessage_end();\n"
+                      "\tprint(\"SoloPlayDeath_1 end\");\n"
+                      "end\n"
+                      "\n"
+                      "function SeamlessHostWait(proxy,param)\n"
+                      "\t--SEAMLESS: the host respawns alone while a friend stands, after the boss fight if one is on\n"
+                      "\tlocal up = proxy:IsCompleteEvent(20299) == true and proxy:IsInParty() == true;\n"
+                      "\tif up == true and SeamlessBossFight == true and ClearBoss == false then\n"
+                      "\t\tif SeamlessWatchSlot == 6 then SeamlessWatchSlot = 8 else SeamlessWatchSlot = 6 end\n"
+                      "\t\tproxy:NotNetMessage_begin();\n"
+                      "\t\t\tproxy:OnKeyTime2(4000,\"SeamlessHostWait\",1.0,0,SeamlessWatchSlot,once);\n"
+                      "\t\tproxy:NotNetMessage_end();\n"
+                      "\t\treturn;\n"
+                      "\tend\n"
+                      "\tif up == true then\n"
+                      "\t\tproxy:SetEventFlag(19996, true);\n"
+                      "\t\tprint(\"SEAMLESS the host respawns alone\");\n"
+                      "\telse\n"
+                      "\t\tproxy:LuaCallStart(4000, 1 );\n"
+                      "\t\tprint(\"SEAMLESS the host's death takes everyone back\");\n"
+                      "\tend\n"
+                      "\tproxy:NotNetMessage_begin();\n"
+                      "\t\tSoloPlayDeath_2(proxy,param);\n"
+                      "\tproxy:NotNetMessage_end();\n"
                       "end\n", nl))
         return false;
     // A boss's extra health with blue phantoms (Lua_MultiDoping, at the boss room's first entry, per boss part): one

@@ -542,6 +542,13 @@ std::vector<TabDesc> make_tabs() {
                 .help = "Your own glow colour, by hue: 0 red, 60 yellow, 120 green, 180 cyan, 240 blue, 300 magenta. "
                         "Setting it picks Custom in Your glow colour.",
                 .swatch = [](const std::string&) { return s::hue_hex(s::glow_hue()); }},
+            choice("When you die as host", "DES_SEAMLESS_HOST_DEATH",
+                {{"", "You respawn alone"}, {"together", "Everyone goes back"}},
+                "You respawn alone: you go back to the area's start by yourself, your friends play on, and dead "
+                "enemies stay dead. In a boss fight you wait until the boss is dead. Only when no friend is left "
+                "standing does everyone go back with you, and the enemies come back.<br/><br/>Everyone goes back: "
+                "each of your deaths takes everyone back to the area's start, and the enemies come back. A change "
+                "counts at once."),
         }},
         {"In your world", {
             toggle("Messages", "DES_NET_MESSAGES", "Messages from other players. Off hides all of them, yours too."),
