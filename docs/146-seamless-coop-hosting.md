@@ -53,10 +53,11 @@ so.
 3. Until it gets in, Co-op says how the join goes ("Finding the host's game...", or what is in the way, below), and
    the game keeps trying: after 10 s, 30 s, then every minute.
 
-**To leave:** **Seamless co-op** > **Leave co-op**. A friend's game first takes them back to their own world, where
-it saves what the group did; the host's leave sends its friends back to theirs. Then the game starts again on your
-normal characters. A friend's **Leave now**, while that is under way, doesn't wait for the trip home: the game saves
-where the friend stands (in a boss fight, at home as soon as it gets there), then starts again, so nothing is lost.
+**To leave:** **Seamless co-op** > **Leave co-op**. A friend's game first takes them back to their own world, right
+where they stand (in a boss fight, to that area's start, as a death would), and saves what the group did there; the
+host's leave sends its friends back to theirs the same way. Then the game starts again on your normal characters. A
+friend's **Leave now**, while that is under way, doesn't wait for the trip: the game saves where the friend stands
+(in a boss fight, at the area's start as soon as it gets there), then starts again, so nothing is lost.
 
 **A friend's game saves as it goes.** In the host's world, a friend's game saves its own character when the game
 would save it (as the host's game does: a light wall passed, a boss's door opened, and the game's own moments), soon
@@ -204,8 +205,9 @@ set).
   people stay as they were, and what the group did is added when you go back.
 - **World tendency.** In the host's world a friend plays in the host's world tendency, as a summoned phantom does in
   the original game. The friend's own tendency doesn't change, and it is in play again when the friend goes back.
-- **Going back:** when the host leaves, its friends go back to their own worlds, where they stood when they joined,
-  and their games save there, each in the form it has then (above).
+- **Going back:** when the host leaves, its friends go back to their own worlds, where they stand (in a boss fight,
+  to that area's start), and their games save there, each in the form it has then (above). Before 11-22 they went
+  back to where they stood when they joined: a friend that joined in the tutorial was back at its start.
 - **The Nexus is shared.** Friends stand in the host's Nexus and see its people as the host does, not as phantoms,
   and can talk to them. The people there and in the areas (Ostrava in 1-1, for one) are the host's, as in the game's
   own co-op. The tutorial's wandering ghosts (white phantoms on the way and in the demon's hall) are ghosts for everyone.
@@ -1142,9 +1144,9 @@ thread and keeps trying), and for a room code `PSNR_ROOM`, `PSNR_VERSION` (co-op
 `OnRoomDisappeared`, then `OnLeave_Limit`), through the same natives:
 1. leave the session (`LeaveSession`), and ask for the player's own flags back at the next load
    (`SetFlagInitState(2)`);
-2. once out of the session: back to where the player stood before the join (`SetSummonedPos`,
-   `SetDefaultMapUid(-1)`), in the form it had before the join (`SetChrTypeDataGreyNext`), with a load
-   (`WarpNextStageKick`);
+2. once out of the session: back to its own world where the player stands (`SetSummonedPos`,
+   `SetDefaultMapUid(-1)`; in a boss fight the area's start, below), in the form it had before the join
+   (`SetChrTypeDataGreyNext`), with a load (`WarpNextStageKick`);
 3. at home, the game saves by itself. The Seamless co-op window waits for a file written in the co-op save after the arrival
    and for the game's save to finish: no save asked for (GameMan `+0xA97`, `+0xA98`) and its save task idle
    (`+0xAA4` back at 0). A save writes PARAM.SFO first and the data after, so a new file alone is too early. Then
@@ -1175,10 +1177,18 @@ takes only the ones that come while it is in the session, once the join has kept
 host's boss kill while the friend was away don't count in the friend's world.
 
 **Going home** (a friend's leave, or the host gone):
-- **To where the friend stood.** The game's trip home reloads the area in play: a phantom of the game's own is always
-  summoned into its own area. A friend here may have joined from anywhere, so at the end of `WarpNextStageKick` (out of
-  a session, before the trip home) the load is pointed at the area and place the friend had at the join (the game
-  manager's next area, `+0x08`, and summoned place, `+0x20`).
+- **Where the friend stands** (the user's pick, 11-22: always, with no option). The game's trip home asks for that
+  already: `SetDefaultMapUid(-1)` keeps the area in play (the game manager's next area, `+0x08`) with point -1
+  (`+0x0C`: a place), and `SetSummonedPos` the place (`+0x1C`, then `+0x20` and its copies). At the end of
+  `WarpNextStageKick` (out of a session, before the trip home, `going_home`) the place and the facing are written
+  from where the player stands, for every way home (a Leave, the host gone, the session's end).
+  - **In a boss fight** (`sFriendFight`: flag 19994 in the friend's own game, from the boss's health bar to its
+    clearing), the friend's own world's boss would wake for a player put in its room, alone. So the load goes to the
+    area's start: the point a death there goes to, `SoloPlayDeath_2`'s `SetDefaultMapUid(999 - GetLastBlockId())`,
+    here 999 minus the area's block, through the same native (US 0x0044A368), which finds the point's area (from
+    1-2: the Archstone in the Phalanx room, area 02000000).
+  - Before 11-22 the load went to the area and place the friend had at the join. A friend that joined in the
+    tutorial and played on with the host was back at the tutorial's start after its Leave (the user's 11-22 test).
 - **The flags that load puts in play** come from the kept banks: the swap took the new world's from a bank older than
   the kept one.
 - **The form it goes home in.** The session's start records the player's form (GameMan `+0xA90`: 0 body form, 8 soul

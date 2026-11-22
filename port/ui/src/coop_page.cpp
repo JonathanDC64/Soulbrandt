@@ -46,7 +46,8 @@ std::vector<Action> actions_for(co::Mode mode) {
                 {"Join", "Join a friend's game with their invite code.", coop::open_join, never},
                 kSettings};
     if (mode == co::Mode::Join)
-        return {{"Leave co-op", "Go back to your own world, and to your normal characters.", coop::open_leave, never},
+        return {{"Leave co-op", "Go back to your own world where you stand, and to your normal characters.",
+                 coop::open_leave, never},
                 kSettings};
     return {{"Copy code", "Copy the invite code and send it to your friends.", coop::copy_code, coop::no_code},
             {"New code", "Make a new code. The old one stops working.", coop::open_new_code, never},

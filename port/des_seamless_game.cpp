@@ -395,6 +395,7 @@ uint32_t sLeadTrip = 0;              // the host's latest load (a guest)
 bool sLeadRecover = false;           // ... gives the host full HP and MP
 bool sHostFight = false;             // the host is in a boss fight: no join until it's over (a guest; FGHT)
 std::atomic<bool> sFight{false};     // this game's boss fight (the host; kFightMarker), until it's over or a load
+std::atomic<bool> sFriendFight{false};   // this friend's own boss fight (kFightMarker), until it's over or a load
 std::atomic<int> sHostDifficulty{-1};   // the host's enemy difficulty (a guest; DIFF): 0-2, or -1 not heard yet
 std::atomic<int> sHostFixed{0};         // with 2: its scale x100
 std::atomic<int> sHostDamage{0};        // its damage bits (kScaleAttack, kScaleDefense)
@@ -587,15 +588,14 @@ Game sGame;
 
 // A guest's own world while it plays in the host's: its banks from the join (both kinds, world by world, its home
 // world's from the flags in play) with the progress since, its home world (the world of its own flags' copy), and
-// where it stood. Read and written by hooks on the game's threads and by the main thread.
+// its area. Read and written by hooks on the game's threads and by the main thread.
 struct Own {
     std::mutex lock;
     bool kept = false;
     uint32_t home = kNoArea;
-    uint32_t area = kNoArea;    // its area at the join, and where it stood
-    float x = 0, y = 0, z = 0;
-    bool stood = false;
-    bool sent = false;         // its trip home was pointed at area (going_home)
+    uint32_t area = kNoArea;    // its area at the join
+    uint32_t to = kNoArea;      // the area its trip home goes to (going_home)
+    bool sent = false;         // its trip home was pointed at to (going_home)
     bool came_home = false;     // a trip home after a session came in this run (after_world_swap), at home_at
     std::filesystem::file_time_type home_at{};
     std::vector<uint8_t> flags = std::vector<uint8_t>(kFlagBytes);   // its own flags (the trip home's copy, +0x187C)
@@ -1177,27 +1177,45 @@ void forms_tick(ppu_context* ctx, bool arrived)
     }
 }
 
-// The load that takes a guest home (WarpNextStageKick, out of the session) asks for the area it was in, where it
-// stood (the game's trip home reloads the area in play: a phantom of the game's own stands in its own area). Into the
-// game manager's next load: the area (+0x08) and the summoned place (+0x20 and its copies; SetSummonedPos set +0x1C).
-void going_home(uint32_t gm)
+// The load that takes a guest home (WarpNextStageKick, out of the session: a leave, or the session's end) puts it
+// where it stands, in its own world (the user's pick, 11-22). The game's own trip home asks for that already:
+// SetDefaultMapUid(-1) keeps the area in play (the game manager's +0x08) with point -1 (+0x0C: a place), and
+// SetSummonedPos the place (+0x1C, then +0x20 and its copies); its own world's flags for that area come back in
+// after_world_swap. This writes the place and the facing it reads now, for every way home. In a boss fight
+// (sFriendFight), its own world's boss would wake for a player put in its room, so it goes to the area's start
+// instead: the point a death there goes to, SoloPlayDeath_2's SetDefaultMapUid(999 - the block) (0x0044A368; the
+// load finds the point's area, in the same world: from 1-2, the Archstone in the Phalanx room, area 02000000). Until
+// 11-22 it went back to the area and place of its join, which for a friend that joined in the tutorial was the
+// tutorial's start.
+Place player_place();
+void going_home(ppu_context* ctx, uint32_t gm)
 {
     std::lock_guard<std::mutex> l(sOwn.lock);
-    if (!sOwn.kept || sOwn.area == kNoArea || !guest_ok(gm)) return;
-    const uint32_t was = vm_read32(gm + kGmNextArea);
-    vm_write32(gm + kGmNextArea, sOwn.area);
-    vm_write32(gm + kGmNextPoint, 0xFFFFFFFFu);
+    if (!sOwn.kept || !guest_ok(gm)) return;
+    const uint32_t here = vm_read32(gm + kGmNextArea);   // the area in play (SetDefaultMapUid(-1))
+    if (here == kNoArea) return;
     sOwn.sent = true;
-    if (sOwn.stood) {
-        vm_write8(gm + kGmSummonedPlace, 1);
-        for (uint32_t off : kGmPlace) {
-            wrf(gm + off, sOwn.x);
-            wrf(gm + off + 4, sOwn.y);
-            wrf(gm + off + 8, sOwn.z);
-        }
+    sOwn.to = here;   // (a boss fight's point is in the same world: after_world_swap reads only that)
+    if (sFriendFight.load()) {
+        const uint32_t point = 999 - ((here >> 16) & 0xFFu);
+        call_addr(ctx, DES_AT(0x0044A368u), {0, point});   // SetDefaultMapUid(point): the load finds its area
+        vm_write8(gm + kGmSummonedPlace, 0);
+        std::fprintf(stderr, "[coop] going home: in a boss fight, so to the area's start (point %u, from %08X; "
+                             "the load finds the point's area)\n", point, here);
+        return;
     }
-    std::fprintf(stderr, "[coop] going home: area %08X (the game asked for %08X), at %.2f %.2f %.2f\n", sOwn.area, was,
-                 sOwn.x, sOwn.y, sOwn.z);
+    const Place p = player_place();
+    vm_write32(gm + kGmNextPoint, 0xFFFFFFFFu);
+    vm_write8(gm + kGmSummonedPlace, 1);
+    for (uint32_t off : kGmPlace) {
+        wrf(gm + off, p.x);
+        wrf(gm + off + 4, p.y);
+        wrf(gm + off + 8, p.z);
+    }
+    if (std::isfinite(p.yaw))
+        for (uint32_t off : kGmFacing) wrf(gm + off + 4, p.yaw);
+    std::fprintf(stderr, "[coop] going home: where it stands, area %08X, at %.2f %.2f %.2f facing %.2f (it joined in "
+                         "%08X)\n", here, p.x, p.y, p.z, p.yaw, sOwn.area);
 }
 
 
@@ -1266,15 +1284,16 @@ void keep_own_world(uint32_t fb)
         for (uint32_t i = 0; i < kBank2Size; i++)
             sOwn.banks[kWorlds * kBank1Size + sOwn.home * kBank2Size + i] = sOwn.flags[kLocal2 + i];
     }
-    sOwn.stood = des_player_xyz(&sOwn.x, &sOwn.y, &sOwn.z) != 0;
+    sOwn.to = kNoArea;
     sBossRevive = false;
     sKillText = false;
     sKillShown = false;
     sOwn.sent = false;
     sOwn.taken.clear();
     sOwn.kept = true;
-    std::fprintf(stderr, "[coop] flags: this player's own world is kept apart for the session (home world %u, area %08X%s)\n",
-                 sOwn.home, sOwn.area, sOwn.stood ? "" : ", no place");
+    std::fprintf(stderr, "[coop] flags: this player's own world is kept apart for the session (home world %u, "
+                         "area %08X)\n",
+                 sOwn.home, sOwn.area);
 }
 
 // After a load's world swap (0x005098D8) on a guest: its own banks back in place. In a session, the host's flags
@@ -1282,8 +1301,8 @@ void keep_own_world(uint32_t fb)
 // the boss souls this guest took still taken. Out of a session this is the trip home (its own flags already back,
 // 0x00508BA8, its home world's in play): the swap put those in the bank of the world it left, and took the new
 // world's from its bank, which for the world it left is now those; so the new world's come from the kept banks. The
-// trip goes to the area it had at the join (going_home), or else reloads the area in play (+0x3AD0, not yet the new
-// one here). The own world is the game's own again.
+// trip goes to the area going_home picked (where it stands, or the area's start in a boss fight), or else reloads the
+// area in play (+0x3AD0, not yet the new one here). The own world is the game's own again.
 void after_world_swap(uint32_t fb, bool in_session)
 {
     std::lock_guard<std::mutex> l(sOwn.lock);
@@ -1291,7 +1310,7 @@ void after_world_swap(uint32_t fb, bool in_session)
     for (uint32_t i = 0; i < kWorlds * kBank1Size; i++) vm_write8(fb + kBank1 + i, sOwn.banks[i]);
     for (uint32_t i = 0; i < kWorlds * kBank2Size; i++) vm_write8(fb + kBank2 + i, sOwn.banks[kWorlds * kBank1Size + i]);
     if (!in_session) {
-        const uint32_t to = sOwn.sent ? sOwn.area : vm_read32(fb + kFlagsArea);
+        const uint32_t to = sOwn.sent && sOwn.to != kNoArea ? sOwn.to : vm_read32(fb + kFlagsArea);
         const uint32_t w = world_of(to);
         if (w < kWorlds) {
             for (uint32_t i = 0; i < kBank1Size; i++) vm_write8(fb + i, sOwn.banks[w * kBank1Size + i]);
@@ -1504,7 +1523,6 @@ enum { kOwnSaveNone, kOwnSaveAsked, kOwnSaveSaving };
 std::atomic<int> sOwnSave{kOwnSaveNone};
 std::atomic<bool> sOwnSaveWrote{false};    // this save's flags were its own world's
 std::atomic<bool> sOwnSaveTyped{false};    // and its type the form it goes home in
-std::atomic<bool> sFriendFight{false};     // this friend's game is in a boss fight (kFightMarker), until it's over or a load
 std::atomic<uint32_t> sOwnSaveFlags{0};    // guest memory for the flags' copy (kOwnSaveFlagsSize)
 std::atomic<bool> sOwnSaveGameAsked{false};   // its game asked for a save (one a phantom's gate skips): its own follows
 std::atomic<int> sOwnSavesWritten{0};      // own saves written with its own world, in this run
@@ -3787,7 +3805,7 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
             break;
         }
         if (m != co::Mode::Join || !guest_ok(sm) || vm_read32(sm + kSmState) != 0) break;   // only out of a session
-        going_home(game_manager());
+        going_home(ctx, game_manager());
         break;
     }
     default:

@@ -319,7 +319,8 @@ void restart_alone() {
     restart_with({"DES_SEAMLESS=", "DES_SEAMLESS_CODE=", "DES_SEAMLESS_MODS_OK="});
 }
 
-// A guest's leave: its game goes back to its own world and saves there (des_seamless_game.cpp), then starts again.
+// A guest's leave: its game goes back to its own world where it stands (in a boss fight, to the area's start) and
+// saves there (des_seamless_game.cpp's going_home), then starts again.
 // Leave now doesn't wait for the trip home: the game saves the guest's progress where it stands if it can save there
 // (else at home, at once), and the window starts the game again when that save is written.
 class LeavingWindow final : public Modal {
@@ -351,7 +352,7 @@ void open_leaving() {
     now_pressed = false;
     push_document(std::make_unique<LeavingWindow>(Modal::Props{
         .title = "Leaving seamless co-op",
-        .bodyRml = "Going back to your own world, then to your normal characters.",
+        .bodyRml = "Going back to your own world where you stand, then to your normal characters.",
         .actions = {ModalAction{.label = "Leave now",
                                 .onPressed =
                                     [](Modal& m) {
@@ -372,7 +373,8 @@ void open_leave() {
     const bool guest = co::status().mode == co::Mode::Join;
     push_document(std::make_unique<Modal>(Modal::Props{
         .title = "Leave seamless co-op?",
-        .bodyRml = guest ? "Your game saves in your own world, then starts again on your normal characters."
+        .bodyRml = guest ? "Your game saves where you stand, in your own world, then starts again on your normal "
+                           "characters."
                          : "The game starts again on your normal characters. Your friends go back to their own "
                            "worlds.",
         .actions = {ModalAction{.label = "Cancel", .onPressed = close_action},
