@@ -5,6 +5,7 @@
 #include "coop_window.hpp"
 #include "event.hpp"
 #include "input.hpp"
+#include "settings_page.hpp"
 #include "sound.hpp"
 #include "ui.hpp"
 
@@ -26,7 +27,7 @@ void set_class(Rml::Element* e, const char* name, bool on) {
 struct Action {
     const char* label;
     const char* brief;  // the strip's line while it has the focus
-    void (*press)();
+    void (*press)();    // none: Settings, which opens co-op's settings over the page
     bool (*disabled)();
 };
 
@@ -34,18 +35,25 @@ bool never() {
     return false;
 }
 
+// Co-op's settings (settings_page.hpp's Scope::Coop), last in every mode.
+constexpr Action kSettings{"Settings", "Change co-op's settings, the same ones as in Settings > Network.", nullptr,
+                           never};
+
 // The actions for co-op's mode now, in order.
 std::vector<Action> actions_for(co::Mode mode) {
     if (mode == co::Mode::Off)
         return {{"Host", "Host a game, and send your friends the invite code.", coop::open_host, never},
-                {"Join", "Join a friend's game with their invite code.", coop::open_join, never}};
+                {"Join", "Join a friend's game with their invite code.", coop::open_join, never},
+                kSettings};
     if (mode == co::Mode::Join)
-        return {{"Leave co-op", "Go back to your own world, and to your normal characters.", coop::open_leave, never}};
+        return {{"Leave co-op", "Go back to your own world, and to your normal characters.", coop::open_leave, never},
+                kSettings};
     return {{"Copy code", "Copy the invite code and send it to your friends.", coop::copy_code, coop::no_code},
             {"New code", "Make a new code. The old one stops working.", coop::open_new_code, never},
             {"Public address", "Give the address the internet sees, when your router can't.",
              coop::open_public_address, never},
-            {"Leave co-op", "Go back to your normal characters.", coop::open_leave, never}};
+            {"Leave co-op", "Go back to your normal characters.", coop::open_leave, never},
+            kSettings};
 }
 
 // A guest's one line on how the connection is (in the strip: no box holds a single line); "" when there is more to
@@ -201,6 +209,12 @@ void CoopPage::press() {
     if (mFocus < 0 || mFocus >= static_cast<int>(list.size())) return;
     if (list[mFocus].disabled()) {
         play_sound(kSoundWarning);
+        return;
+    }
+    if (!list[mFocus].press) {
+        mShell.open_over([](Rml::Element* host, menu::PageHost& shell) -> std::unique_ptr<menu::Page> {
+            return std::make_unique<SettingsPage>(host, shell, SettingsPage::Scope::Coop);
+        });
         return;
     }
     list[mFocus].press();

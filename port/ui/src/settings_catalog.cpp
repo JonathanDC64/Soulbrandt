@@ -12,6 +12,7 @@
 #endif
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <initializer_list>
@@ -515,7 +516,9 @@ std::vector<TabDesc> make_tabs() {
                 {{"", "Original (every 6th frame)"}, {"15", "Smoother (at least 15 a second)"}},
                 "How often your position goes to other players. Smoother makes you look less laggy on their screens."),
         }},
-        {"Seamless co-op", {
+        // Seamless co-op's rows in two: the host's game (only the host's setting counts there, for everyone in it),
+        // and a friend's own (each player's, in a host's world). coop_tabs() shows both on the co-op screen.
+        {std::string(kCoopHeading) + kCoopHost, {
             {.label = "Players when you host", .key = "DES_SEAMLESS_PLAYERS",
                 .kind = ChoiceRow{
                     .choices = {{"2", "2: you and a friend"}, {"3", "3: you and two friends"},
@@ -524,6 +527,24 @@ std::vector<TabDesc> make_tabs() {
                 .help = "The most players in a co-op game you host (Seamless co-op, in the menu), you included. One more "
                         "waits, and joins as soon as a place frees up. A change counts at once; players already here "
                         "stay.<br/><br/>The original game plays three at most in co-op."},
+            choice("Enemy difficulty", "DES_SEAMLESS_DIFFICULTY",
+                {{"", "Vanilla", true}, {"bosses", "Scaled like bosses"}, {"1.5", "x1.5"}, {"2", "x2"},
+                    {"2.5", "x2.5"}, {"3", "x3"}, {"3.5", "x3.5"}, {"4", "x4"}},
+                "How much health enemies have in a co-op game you host. Vanilla: only a boss gets more, at its fog "
+                "gate, when blue phantoms are there. Scaled like bosses: every enemy gets more with each player, x1.5 "
+                "with two players, x2 with three and x2.5 with four. x1.5 to x4: that much, however many play. "
+                "Bosses get the same, or their own if it is more."
+                "<br/><br/>The host's choice counts for everyone in its game. A change counts at once."),
+            toggle("Scale enemy attack power", "DES_SEAMLESS_DIFFICULTY_ATTACK",
+                "Enemies' hits on players do as much more as Enemy difficulty gives them health: at x2, twice the "
+                "damage. Off with Vanilla.<br/><br/>The host's choice counts for everyone in its game. A change "
+                "counts at once."),
+            toggle("Scale enemy defenses", "DES_SEAMLESS_DIFFICULTY_DEFENSE",
+                "Players' hits on enemies do as much less as Enemy difficulty gives them health: at x2, half the "
+                "damage. Off with Vanilla.<br/><br/>The host's choice counts for everyone in its game. A change "
+                "counts at once."),
+        }},
+        {std::string(kCoopHeading) + kCoopJoin, {
             toggle("Your glow", "DES_SEAMLESS_GLOW",
                 "Whether the other players see your blue phantom glow while you are in a host's world. Off: they see "
                 "you as you look in your own world. A change counts at once."),
@@ -736,6 +757,23 @@ std::vector<TabDesc> make_tabs() {
 const std::vector<TabDesc>& tabs() {
     static const std::vector<TabDesc> sTabs = make_tabs();
     return sTabs;
+}
+
+const std::vector<TabDesc>& coop_tabs() {
+    static const std::vector<TabDesc> sCoop = [] {
+        TabDesc coop{"Co-op", {}};
+        const std::string head = kCoopHeading;
+        for (const TabDesc& tab : tabs())
+            for (const SectionDesc& section : tab.sections)
+                if (tab.title == "Network" && section.title.rfind(head, 0) == 0) {
+                    SectionDesc s = section;
+                    s.title = section.title.substr(head.size());   // "when you host" -> "When you host"
+                    if (!s.title.empty()) s.title[0] = (char)std::toupper((unsigned char)s.title[0]);
+                    coop.sections.push_back(std::move(s));
+                }
+        return std::vector<TabDesc>{std::move(coop)};
+    }();
+    return sCoop;
 }
 
 std::string choice_label(const Choice& c) {

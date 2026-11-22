@@ -148,6 +148,19 @@ set).
   watches, it goes home (with the game's own message for a lost session) and joins again from there.
 - **Bosses get more health with friends,** as in the original game: half as much again with one friend, double with
   two. Three friends get double too (the original has nothing for three, so a boss had its solo health).
+- **Enemy difficulty.** Settings > Network > Enemy difficulty (or Settings on the Seamless co-op screen) is the
+  host's choice, and counts for everyone in its game. **Vanilla** (the default) is the game's own: only bosses get
+  more health. **Scaled like bosses** gives every enemy more health with each player in the session: x1.5 with two
+  players, x2 with three, x2.5 with four. **x1.5 to x4** gives that much, however many play. A boss gets the same,
+  or its own when that is more. The health changes as players come and go.
+  - **Scale enemy attack power** (off by default): enemies' hits on players do that much more damage, x2 at x2.
+  - **Scale enemy defenses** (off by default): players' hits on enemies do that much less, half at x2 (1 at least).
+  - Both count only with a scale (not with Vanilla), and only for a hit's HP damage: a guard's stamina loss and a
+    boss part's damage (the Tower Knight's legs) stay the game's own.
+- **Settings on the Seamless co-op screen** shows co-op's own settings (the Seamless co-op rows of Settings > Network)
+  on a screen of their own, in both looks, in two groups. **When you host:** the host's game uses only the host's
+  settings, for everyone in it (the most players, the enemy difficulty); a friend's own don't count there.
+  **When you join:** each player's own, in a host's world (its glow). Settings > Network has the same two groups.
 - **When the host dies,** everyone goes back to the start together. There the friends see the host's rolls, attacks
   and other moves again. Before, a friend that was alive could see the host stuck in a weapon swap after that.
 - **Enemies stay where they belong after a load.** Before, an enemy that stood near a player as the group moved to
@@ -1054,6 +1067,9 @@ side by their times.
 | `DES_SEAMLESS_UPNP=0` | The host leaves the router alone (the port forwarded by hand). |
 | `DES_SEAMLESS_ADDRESS=ip` | The host's public IPv4 address, for the code, when the router doesn't give it. Co-op's Public address keeps it in settings.ini; a report shows only whether it is set. |
 | `DES_SEAMLESS_PLAYERS=n` | The most players a host takes, itself included: 2 to 4 (4 when unset). Settings > Network keeps it in settings.ini. One more connects but waits: the host answers its ask for the room with FULL, and it joins once the host answers with the room again (the room server also refuses a join past the limit, `max_players`). |
+| `DES_SEAMLESS_DIFFICULTY=bosses` | The host's enemy difficulty: every enemy's health scaled by the players in the session, x1.5 with two, x2 with three, x2.5 with four (a boss keeps its own doping when that is more). `1.5` to `4`: that scale with any number of players. Unset: the game's own. Settings > Network > Enemy difficulty keeps it in settings.ini; a change counts at once in the host's game and within 2 s in its guests' (DIFF, with each READY). A guest's own setting is not used in a host's game. |
+| `DES_SEAMLESS_DIFFICULTY_ATTACK=1` | With a scale: enemies' hits on players do that many times the HP damage (the hit's worked-out damage, 0x0028B228). The host's, as above. |
+| `DES_SEAMLESS_DIFFICULTY_DEFENSE=1` | With a scale: players' hits on enemies do the HP damage divided by it, 1 at least. The host's, as above. With `DES_DEVLOG=1`, each scaled hit is in the log. |
 | `DES_SEAMLESS_GLOW=0` | The other players (and this one) see this player without its blue phantom glow in a session. Settings > Network > Your glow keeps it in settings.ini; a change counts within 2 s (GLOW). |
 | `DES_SEAMLESS_GLOW_COLOR=RRGGBB` | This player's glow colour in a session, for the others and itself (unset: the game's blue). Settings > Network > Your glow colour keeps it in settings.ini; a change counts within 2 s (GLOW). |
 | `DES_SEAMLESS_STUN` | Unset: a host whose router gives no public address asks Google's STUN server (`stun.l.google.com:19302`) for it. `0`: never. `host:port`: that server instead. settings.ini can set it too. |

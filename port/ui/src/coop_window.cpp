@@ -9,6 +9,7 @@
 #include "crash_report.hpp"
 #include "event.hpp"
 #include "menu_model.hpp"
+#include "menu_pages.hpp"
 #include "mods.hpp"
 #include "osk_window.hpp"
 #include "platform.hpp"
@@ -513,6 +514,9 @@ std::unique_ptr<Modal> make_coop_window() {
         }
         actions.push_back({.label = "Leave co-op", .onPressed = [](Modal&) { open_leave(); }});
     }
+    // Co-op's settings alone, over the window (the Seamless co-op page's Settings, in DeS UI)
+    actions.push_back(
+        {.label = "Settings", .onPressed = [](Modal&) { push_document(menu::screen_alone("Co-op settings")); }});
     return std::make_unique<CoopWindow>(Modal::Props{
         .title = "Seamless co-op",
         .bodyRml = body(s),

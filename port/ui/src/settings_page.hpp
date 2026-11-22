@@ -19,6 +19,10 @@
 //   menu-peek > menu-peek-prev(.none), menu-peek-row > menu-name, menu-value (a row's), menu-peek-next(.none),
 //               menu-peek-line
 // The state of the model (settings_model.hpp) sets the classes; the rows' values come from settings_rows.hpp.
+//
+// Scope::Coop is co-op's settings on their own (Settings on the Seamless co-op screen): the one tab of
+// settings_catalog.hpp's coop_tabs, without the tab bar, titled Co-op settings, opening where it was left as Settings
+// does.
 #pragma once
 
 #include "menu_page.hpp"
@@ -39,10 +43,11 @@ class ScopedEventListener;
 
 class SettingsPage final : public menu::Page {
 public:
-    SettingsPage(Rml::Element* host, menu::PageHost& shell);
+    enum class Scope { All, Coop };
+    SettingsPage(Rml::Element* host, menu::PageHost& shell, Scope scope = Scope::All);
     ~SettingsPage() override;
 
-    std::string title() const override { return "Settings"; }
+    std::string title() const override { return mScope == Scope::Coop ? "Co-op settings" : "Settings"; }
     void update() override;
     bool command(menu::Command command, bool down) override;
     bool back() override;
@@ -103,6 +108,8 @@ private:
 
     Rml::Element* mHost;
     menu::PageHost& mShell;
+    Scope mScope;
+    const std::vector<catalog::TabDesc>& mCatalog;  // the tabs shown: catalog::tabs, or coop_tabs
     menu::SettingsModel mModel;
     Rml::Element* mTabs = nullptr;
     Rml::Element* mRows = nullptr;

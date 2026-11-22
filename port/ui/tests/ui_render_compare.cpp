@@ -1183,6 +1183,19 @@ void open_coop(const des::seamless::Status& s, int focus) {
     if (auto* page = dynamic_cast<ui::CoopPage*>(menu_shell().page())) page->focus_action(focus);
 }
 
+// Co-op's settings as Settings on Co-op opens them, with co-op as that made-up status: over the Co-op window, alone in
+// the menu's frame (Alpha UI); over the Co-op page (a look with looks.hpp's pages), its Settings pressed.
+void open_coop_settings(const des::seamless::Status& s) {
+    ui::SettingsPage::forget_place();
+    open_coop(s, 0);
+    if (auto* page = dynamic_cast<ui::CoopPage*>(menu_shell().page())) {
+        page->focus_action(9);  // (the last: Settings)
+        page->command(ui::menu::Command::Confirm, true);
+    } else {
+        ui::push_document(ui::menu::screen_alone("Co-op settings"));
+    }
+}
+
 // A question as it is asked over its page: Host or Join over Co-op (not in co-op), a player's over Players, Quit over
 // the start screen (nothing played there, so no lost-progress line).
 void open_ask(const std::string& which) {
@@ -1634,6 +1647,8 @@ int main(int argc, char** argv) {
         open_coop({}, 0);
         ui::coop::open_mods_warning({"Texture Pack", "Rebalance", "Brighter Torches", "Quiet Menus"}, nullptr);
     }, {}});
+    // Co-op's settings alone, over the host's Co-op window (its Settings).
+    pages.push_back({"coop-settings", 1280, 720, false, 1.f, false, [] { open_coop_settings(standin_host()); }, {}});
     // A question with named answers: Public address, over the host's Co-op.
     pages.push_back({"coop-address", 1280, 720, false, 1.f, false, [] {
         open_coop(standin_host(), 2);
@@ -1765,6 +1780,11 @@ int main(int argc, char** argv) {
                          in_band([] { open_coop(standin_guest(false), 0); }), {}});
         pages.push_back({"des-coop-lost", 1280, 720, false, 1.f, false,
                          in_band([] { open_coop(standin_guest(true), 0); }), {}});
+        // Settings on the host's page, with the focus, and the co-op settings it opens over the page.
+        pages.push_back({"des-coop-host-settings", 1280, 720, false, 1.f, false,
+                         in_band([] { open_coop(standin_host(), 9); }), {}});
+        pages.push_back({"des-coop-settings", 1280, 720, false, 1.f, false,
+                         in_band([] { open_coop_settings(standin_host()); }), {}});
         // A question with named answers, as rows, Cancel under them: Public address, over the host's page.
         pages.push_back({"des-coop-address", 1280, 720, false, 1.f, false, in_band([] {
             open_coop(standin_host(), 2);

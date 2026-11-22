@@ -114,6 +114,7 @@ DES_REGION_ADDR(0x00273D38, 0x00271D98)  /* hook des_move_post */
 DES_REGION_ADDR(0x00273D4C, 0x00271DAC)  /* return address in 0x00273D38 */
 DES_REGION_ADDR(0x0027882C, 0x0027688C)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x002802E0, 0x0027E3E8)  /* call */
+DES_REGION_ADDR(0x0028033C, 0x0027E444)  /* hook des_coop_hook: the HP update's base, before its rates (enemy difficulty) */
 DES_REGION_ADDR(0x00280724, 0x0027E82C)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x00280C78, 0x0027ED80)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x00280E64, 0x0027EF6C)  /* hook des_dev_hook */
@@ -121,6 +122,7 @@ DES_REGION_ADDR(0x00280F88, 0x0027F090)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x002818D0, 0x0027F9D8)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x00286614, 0x0028464C)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x0028B224, 0x0028925C)  /* hook des_dev_hook */
+DES_REGION_ADDR(0x0028B228, 0x00289260)  /* hook des_coop_hook: a hit's damage after its calculation (enemy difficulty) */
 DES_REGION_ADDR(0x002977C0, 0x002957F8)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x002986B8, 0x002966F0)  /* call */
 DES_REGION_ADDR(0x00299B74, 0x00297BAC)  /* hook des_coop_hook: an NPC's setup after lbz r0,0xE8(r9) (a friend notes the NPCs it sets up as the host's) */
