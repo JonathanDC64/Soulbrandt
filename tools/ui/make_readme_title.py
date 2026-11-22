@@ -1,36 +1,42 @@
 #!/usr/bin/env python3
-"""The README's title: assets/brand/soulbrandt-title.webp, the logo with its soul flame over rising smoke, as on the
+"""The README's title: assets/brand/soulbrandt-title.avif, the logo with its soul flame over rising smoke, as on the
 start screen. It runs the start screen's own maths (port/ui/src/fog_shader.hpp's "start" smoke and
 port/ui/src/flame_shader.hpp's "logo" flame, the flame from port/ui/res/img/soulbrandt-logo-map.png) with numpy, puts
 the letters (port/ui/res/img/soulbrandt-logo.png) over them, and makes the frames loop: the last LOOP_BLEND seconds
 fade into the frames before the first. Run it again when the logo, the smoke or the flame changes:
 
-    python tools/ui/make_readme_title.py [--seconds 6] [--fps 15] [--scale 1.0] [--quality 82] [--out <file>]
+    python tools/ui/make_readme_title.py [--seconds 6] [--fps 30] [--scale 1.5] [--quality 80] [--out <file>]
 
-An animated WebP, not a GIF: the smoke's soft greys need more than a GIF's 256 colours (they band), and the WebP is
-about a tenth of the size. --out <name>.gif still writes a GIF. It needs numpy and Pillow, so CI doesn't run it; the
-picture is committed as it comes out. Nothing in it comes from the game: the smoke and the flame are this project's
-shaders, the letters its logo.
+An animated AVIF: AV1 codes each frame from the one before, so it is about a tenth of an animated WebP's size, and the
+dark smoke shows no blocks (a WebP has them below quality 97, at 4 MB or more; a GIF's 256 colours band). Beside it,
+soulbrandt-title.webp is a still of the first frame, which the README shows where AVIF can't be shown. --out
+<name>.webp or <name>.gif writes an animated WebP or GIF instead. The scale is 1.5 times the size in dp, so the
+README, which shows it 580 wide, stays sharp on high-density screens.
+
+It needs numpy and a Pillow that writes AVIF (11.2 or newer), so CI doesn't run it; the pictures are committed as they
+come out. Nothing in them comes from the game: the smoke and the flame are this project's shaders, the letters its
+logo.
 """
 import argparse
 import pathlib
 import sys
 
 import numpy as np
-from PIL import Image
+from PIL import Image, features
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 LOGO = ROOT / "port" / "ui" / "res" / "img" / "soulbrandt-logo.png"
 MAP = ROOT / "port" / "ui" / "res" / "img" / "soulbrandt-logo-map.png"
-OUT = ROOT / "assets" / "brand" / "soulbrandt-title.webp"
+OUT = ROOT / "assets" / "brand" / "soulbrandt-title.avif"
 
-# The picture, in dp (the start screen's units: 720 dp is a 16:9 window's height). The logo is 440 x 156 dp as on the
-# start screen, its flame's box (the map's 560 x 276 dp and 100 dp above for the flame) as there too.
-W_DP, H_DP = 1000.0, 400.0
+# The picture, in dp (the start screen's units: 720 dp is a 16:9 window's height): the logo, 440 x 156 dp as on the
+# start screen, and its flame, which reaches about 75 dp above the letters and 15 dp past their other sides, with
+# about 50 dp of smoke round that.
+W_DP, H_DP = 580.0, 340.0
 LOGO_DP = (440.0, 156.0)
+LETTERS_AT = ((W_DP - LOGO_DP[0]) / 2, 122.0)
 ELEM_DP = (560.0, 376.0)              # flame_shader.hpp: the logo with 60 dp round it and 160 above
-ELEM_AT = ((W_DP - ELEM_DP[0]) / 2, 12.0)
-LETTERS_AT = (ELEM_AT[0] + 60.0, ELEM_AT[1] + 160.0)
+ELEM_AT = (LETTERS_AT[0] - 60.0, LETTERS_AT[1] - 160.0)   # (its top, where the flame doesn't reach, is cut off)
 TINT = np.array([0xF7, 0xFB, 0xFF], np.float32) / 255.0   # des.rcss: image-color #f7fbff
 LOOP_BLEND = 1.5                      # seconds at the end that fade into the start
 
@@ -188,7 +194,10 @@ class Title:
         # The flame's element.
         self.ex, self.ey = round(ELEM_AT[0] * scale), round(ELEM_AT[1] * scale)
         self.ew, self.eh = round(ELEM_DP[0] * scale), round(ELEM_DP[1] * scale)
-        ys, xs = np.mgrid[0:self.eh, 0:self.ew].astype(np.float32)
+        # (the part of it inside the picture)
+        self.e0x, self.e1x = max(0, -self.ex), min(self.ew, self.w - self.ex)
+        self.e0y, self.e1y = max(0, -self.ey), min(self.eh, self.h - self.ey)
+        ys, xs = np.mgrid[self.e0y:self.e1y, self.e0x:self.e1x].astype(np.float32)
         self.el_uv = ((xs + 0.5) / self.ew, (ys + 0.5) / self.eh)
         self.flame_map = sampler(Image.open(MAP).convert("RGB"))
         # The letters, premultiplied, at their size here.
@@ -200,17 +209,16 @@ class Title:
         self.letters = pre[..., :3] * TINT
         self.letters_a = pre[..., 3:]
         self.lx, self.ly = round(LETTERS_AT[0] * scale), round(LETTERS_AT[1] * scale)
-        # The dark round the logo and its flame, at the top and in the corners (des.rcss's fades and vignette, made for
-        # a banner): the logo stands on black as on the start screen, the smoke round it.
+        # The dark behind the letters and their flame, so the logo stands on black as on the start screen, the smoke
+        # round it, and a soft edge.
         ys, xs = np.mgrid[0:self.h, 0:self.w].astype(np.float32)
-        cx, cy = (self.lx + lw / 2), (self.ly + lh / 2) - 40.0 * scale
-        d = np.sqrt(((xs - cx) / (430.0 * scale)) ** 2 + ((ys - cy) / (200.0 * scale)) ** 2)
-        behind = smoothstep(1.0, 0.25, d) * 0.97
-        top = np.clip(1.0 - ys / (self.h * 0.45), 0.0, 1.0) * 0.6
-        vx, vy = (xs - self.w / 2) / (self.w / 2), (ys - self.h * 0.45) / (self.h * 0.55)
+        cx, cy = (self.lx + lw / 2), (self.ly + lh / 2) - 25.0 * scale
+        d = np.sqrt(((xs - cx) / (300.0 * scale)) ** 2 + ((ys - cy) / (140.0 * scale)) ** 2)
+        behind = smoothstep(1.0, 0.3, d) * 0.95
+        vx, vy = (xs - self.w / 2) / (self.w / 2), (ys - self.h / 2) / (self.h / 2)
         v = np.sqrt(vx ** 2 + vy ** 2) / np.sqrt(2)
-        vignette = np.clip((v - 0.3) / 0.7, 0.0, 1.0) * 0.55
-        self.fog_keep = ((1.0 - behind) * (1.0 - top) * (1.0 - vignette))[..., None]
+        vignette = np.clip((v - 0.45) / 0.55, 0.0, 1.0) * 0.5
+        self.fog_keep = ((1.0 - behind) * (1.0 - vignette))[..., None]
 
     def frame(self, seconds):
         a = fog(self.fog_uv[0], self.fog_uv[1], seconds)
@@ -218,7 +226,7 @@ class Title:
         rgb = (np.float32(0.894) * a)[..., None] * np.array([1.0, 1.0, 0.886 / 0.894], np.float32)
         rgb = rgb * self.fog_keep
         light = flame(self.el_uv[0], self.el_uv[1], seconds, self.flame_map)
-        rgb[self.ey:self.ey + self.eh, self.ex:self.ex + self.ew] += light
+        rgb[self.ey + self.e0y:self.ey + self.e1y, self.ex + self.e0x:self.ex + self.e1x] += light
         lh, lw = self.letters.shape[:2]
         box = rgb[self.ly:self.ly + lh, self.lx:self.lx + lw]
         rgb[self.ly:self.ly + lh, self.lx:self.lx + lw] = self.letters + box * (1.0 - self.letters_a)
@@ -308,13 +316,17 @@ def write_gif(frames, out, fps, keep_near):
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--seconds", type=float, default=6.0)
-    ap.add_argument("--fps", type=float, default=15.0)
-    ap.add_argument("--scale", type=float, default=1.0)
-    ap.add_argument("--quality", type=int, default=82, help="the WebP's quality, 0 to 100")
+    ap.add_argument("--fps", type=float, default=30.0)
+    ap.add_argument("--scale", type=float, default=1.5)
+    ap.add_argument("--quality", type=int, default=80, help="the AVIF's or WebP's quality, 0 to 100")
     ap.add_argument("--keep", type=float, default=4.0,
                     help="GIF only: a pixel within this much (of 255) stays as it was")
     ap.add_argument("--out", type=pathlib.Path, default=OUT)
     args = ap.parse_args()
+    kind = args.out.suffix.lower()
+    if kind == ".avif" and not features.check("avif"):
+        print("this Pillow can't write AVIF: update it (11.2 or newer), or use --out <name>.webp", file=sys.stderr)
+        return 1
 
     title = Title(args.scale)
     count = round(args.seconds * args.fps)
@@ -334,12 +346,18 @@ def main() -> int:
     print(file=sys.stderr)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    if args.out.suffix.lower() == ".gif":
+    every = dict(save_all=True, append_images=frames[1:], duration=round(1000 / args.fps), loop=0)
+    if kind == ".gif":
         write_gif(frames, args.out, args.fps, args.keep)
+    elif kind == ".webp":
+        frames[0].save(args.out, "WEBP", quality=args.quality, method=6, **every)
     else:
-        frames[0].save(args.out, "WEBP", save_all=True, append_images=frames[1:], duration=round(1000 / args.fps),
-                       loop=0, quality=args.quality, method=6)
-    print(f"{args.out}: {title.w} x {title.h}, {count} frames, {args.out.stat().st_size / 1e6:.1f} MB")
+        frames[0].save(args.out, "AVIF", quality=args.quality, speed=4, **every)
+        # The still for a viewer without AVIF (the README's <picture> falls back to it).
+        still = args.out.with_suffix(".webp")
+        frames[0].save(still, "WEBP", quality=95, method=6)
+        print(f"{still}: the first frame, {still.stat().st_size / 1e6:.2f} MB")
+    print(f"{args.out}: {title.w} x {title.h}, {count} frames, {args.out.stat().st_size / 1e6:.2f} MB")
     return 0
 
 
