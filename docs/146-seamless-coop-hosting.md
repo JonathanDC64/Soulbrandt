@@ -113,8 +113,9 @@ set).
 - **Items are each player's own.** A friend sees the items lying in the area and gets drops from dead enemies, as the
   host does. Each player has its own copy: one player's pickup leaves the others' where it was. An item a friend
   takes is also gone in its own world.
-- **Light walls** (the fog you press Cross at and walk through, outside boss rooms) are gone for everyone once
-  one player walks through.
+- **Light walls** (the fog you press Cross at and walk through, outside boss rooms): a friend can walk through too,
+  not only the host. The host's walk takes the wall away for everyone; a friend's takes it away in the friend's
+  game only, and the host walks through it as usual. A boss's fog is as in the game: the host walks in first.
 - **Boss kills keep everyone together:** no rating screen, nobody sent home, and the boss room's walls drop. The
   host's room stays open, during a boss fight and after it, so a friend can always join again.
 - **A friend who joins during a boss fight** fights the boss too. Before, in 1-1, Phalanx wasn't in its game: it
@@ -894,6 +895,19 @@ their first instruction):
   `m08_01` leaves it revived where it fell. The levels' other trips are the boss Archstones' back to the Nexus, which
   a friend can't start in a session.
 - The light walls a player walks through (press Cross, a walk, then the wall is gone) are gone in every player's game.
+  The walk's prompt outside boss rooms (`OnDistanceActionAttribute(..., HELPID_GO_TO_IN, ..., possible_chr_type,
+  everytime)`, or `ATTR_HOST + ATTR_LIVE + ATTR_GREY`) was the host's alone; it is offered to a blue phantom too
+  (`+ ATTR_WHITE`): 1-1's three, one each in 1-2 and 1-3, three each in 2-1, 2-2, 4-1 and 4-2
+  (`light_walls_for_friends`). Its handler doesn't check who walks, so in the friend's game its walk runs as the
+  host's: the walk, the wall dropped, the wall's flag (a progress flag in 2-1 and 2-2). It doesn't reach the host's
+  game: there the wall and its prompt stay until the host walks through (scripted, 11-21).
+  In the other games the wall's handler plays the walk on the walker's character and marks the wall passed
+  (`Luafunc_PlaySynchroAnimation`'s true branch, then a return). The areas made for sessions drop the wall for them
+  through the game's wall-delete sync (`LuaCallStart`). The tutorial's (`m08_01`'s 14291) drops it with a direct call
+  in the walker's game alone, as the tutorial has no co-op: the others lost the fog, the prompt and the event, but
+  kept the wall itself, so they couldn't pass. The edit makes the same call in the true branch, between
+  `NotNetMessage_begin` and `_end`, wherever a handler drops its wall by a direct call to a function with
+  `SetColiEnable(..., false)` and has no `LuaCallStart`; only 14291 matches.
   In the other games the wall's handler plays the walk on the walker's character and marks the wall passed
   (`Luafunc_PlaySynchroAnimation`'s true branch, then a return). The areas made for sessions drop the wall for them
   through the game's wall-delete sync (`LuaCallStart`). The tutorial's (`m08_01`'s 14291) drops it with a direct call

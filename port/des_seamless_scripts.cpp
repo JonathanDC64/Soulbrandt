@@ -26,7 +26,8 @@
 //     still gets "You can't return during multiplayer.", at the Nexus's stones too (they had no session check);
 //   - a boss's soul: a blue phantom may take its own, as the host takes its own;
 //   - the wandering ghosts' sightings are each player's own (local_wander_loops);
-//   - a light wall one player walks through is gone in every player's game (walls_for_watchers);
+//   - a light wall one player walks through is gone in every player's game (walls_for_watchers), and a friend may walk
+//     through one that isn't a boss's, not only the host (light_walls_for_friends);
 //   - a boss that wakes only for the player who walks through its fog wakes for one put in its room too
 //     (standby_in_the_room);
 //   - the room is never locked (LockSession), here or at a kill in global_event.lua, so a friend can always join again;
@@ -493,6 +494,25 @@ int walls_for_watchers(std::string& t)
     std::sort(adds.begin(), adds.end());
     for (auto a = adds.rbegin(); a != adds.rend(); ++a) t.insert(a->first, a->second);
     return (int)adds.size();
+}
+
+// The light walls that aren't a boss's (1-1's three, one each in 1-2 and 1-3, three each in 2-1, 2-2, 4-1 and 4-2): each
+// area's script offers the walk through one only to the host, alive or a soul
+// (OnDistanceActionAttribute(<id>, LOCAL_PLAYER or 10000, <wall>, "OnEvent_<id>", ..., HELPID_GO_TO_IN, ...,
+// possible_chr_type or ATTR_HOST + ATTR_LIVE + ATTR_GREY, everytime)). A friend got no prompt and waited for the host to
+// walk through first. It is offered to a blue phantom too (ATTR_WHITE). Its handler has no check of who walks, so a
+// friend's walk runs as the host's does in the host's game: the walk, the wall dropped, the wall's flag set (in 2-1 and
+// 2-2 a progress flag, kept for the friend's own world). It doesn't reach the host's game (11-21): there the wall stays
+// until the host walks through it, and that walk drops it in every game, as before. A boss's fog is a region's prompt
+// (OnPlayerActionInRegionAttribute) and stays as it is: the host walks in first. Returns the number of edits.
+int light_walls_for_friends(std::string& t)
+{
+    const std::regex wall("(OnDistanceActionAttribute\\(\\s*\\d+\\s*,\\s*(?:LOCAL_PLAYER|10000)\\s*,\\s*\\d+\\s*,\\s*\"\\w+\"\\s*,"
+                          "[^,\\n]*,\\s*HELPID_GO_TO_IN\\s*,[^,\\n]*,[^,\\n]*,\\s*)(possible_chr_type|ATTR_HOST\\s*\\+\\s*ATTR_LIVE\\s*\\+"
+                          "\\s*ATTR_GREY)(\\s*,\\s*everytime\\s*\\))");
+    const auto n = std::distance(std::sregex_iterator(t.begin(), t.end(), wall), std::sregex_iterator());
+    if (n) t = std::regex_replace(t, wall, "$1$2 + ATTR_WHITE$3");
+    return (int)n;
 }
 
 // A boss that wakes only in the game of the player who walks through its fog. Phalanx (1-1) is drawn and can be hit
@@ -1268,6 +1288,8 @@ int edit_area(std::string& t, bool nexus)
     n += local_wander_loops(t);
     // The light walls: one a player walks through is gone in every player's game (walls_for_watchers)
     n += walls_for_watchers(t);
+    // ... and a friend may walk through the light walls that aren't a boss's, not only the host (light_walls_for_friends)
+    n += light_walls_for_friends(t);
     // A boss that wakes only for the player who walked through its fog wakes for a player put in its room too
     n += standby_in_the_room(t);
     // A friend in a session goes with its host, not on an area script's trip of its own (no_travel_alone)
