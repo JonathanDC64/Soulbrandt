@@ -2638,13 +2638,23 @@ bool friend_stands(std::string* why = nullptr)
     return up;
 }
 
-// Each frame on the host: the two flags its scripts read (0 out of a session). Its death, in the log.
+// Each frame on the host: the two flags its scripts read (0 out of a session). Its death, in the log, and the setting
+// as it starts hosting and at each change (11-22: a tester's host death took everyone back twice in a session, as the
+// setting's Everyone goes back does; the setting was back on its default by the report, and the log didn't say when it
+// had changed).
 void host_death_flags(bool hosting, bool world)
 {
     static bool was_dead = false;
+    static int said = -1;   // the setting as the log last gave it (-1: not yet; once a run, as rooms come and go)
     const uint32_t fb = flag_base();
     if (!guest_ok(fb)) return;
     const bool alone = hosting && host_respawns_alone();
+    if (hosting && said != (alone ? 1 : 0)) {
+        std::fprintf(stderr, "[coop] when the host dies (Settings, When you die as host): %s%s\n",
+                     alone ? "it respawns alone while a friend stands" : "everyone goes back with it",
+                     said < 0 ? "" : " (the setting changed)");
+        said = alone ? 1 : 0;
+    }
     const uint32_t pc = player_chr();
     const bool dead = hosting && world && guest_ok(pc) && (int32_t)vm_read32(pc + kChrHp) <= 0;
     std::string why;
@@ -2654,7 +2664,8 @@ void host_death_flags(bool hosting, bool world)
     if (dead && !was_dead) {
         sHostFightDeath = hosting && sFight.load();
         if (!alone)
-            std::fprintf(stderr, "[coop] the host died: everyone goes back with it (the setting)\n");
+            std::fprintf(stderr, "[coop] the host died: everyone goes back with it (the setting: When you die as host, "
+                                 "Everyone goes back)\n");
         else
             std::fprintf(stderr, "[coop] the host died: %s, so %s (%s)\n", up ? "a friend stands" : "no friend stands",
                          up ? "it respawns alone (after the boss, in a boss fight)" : "everyone goes back with it",
