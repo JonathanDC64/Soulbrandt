@@ -403,6 +403,7 @@ struct Place { float x = 0, y = 0, z = 0, yaw = NAN; };   // yaw: the facing (pl
 struct Ready {
     uint32_t trip = 0, area = kNoArea;
     Place arrived, now;
+    Place beside{NAN, NAN, NAN, NAN};   // ground the host stood on a moment ago, for a join (x NaN: none; send_ready)
     std::vector<uint8_t> record;     // the host's area's dead characters (empty: not known)
     uint32_t count = 0;              // READYs received
 };
@@ -478,7 +479,10 @@ void on_message(uint32_t from, const uint8_t* d, uint32_t n)
         r.area = get32(d + 8);
         r.arrived = {getf(d + 12), getf(d + 16), getf(d + 20), getf(d + 24)};
         r.now = {getf(d + 28), getf(d + 32), getf(d + 36), getf(d + 40)};
-        if (n == 44 + kRecordSize) r.record.assign(d + 44, d + n);
+        const size_t rest = n - 44;   // the dead record, then the place beside the host (16 bytes)
+        if (rest == kRecordSize || rest == kRecordSize + 16) r.record.assign(d + 44, d + 44 + kRecordSize);
+        if (rest == 16 || rest == kRecordSize + 16)
+            r.beside = {getf(d + n - 16), getf(d + n - 12), getf(d + n - 8), getf(d + n - 4)};
         r.count = sReady.count + 1;
         sReady = std::move(r);
     } else if (!std::memcmp(d, kMsgWhere, 4)) {
@@ -2505,9 +2509,23 @@ void enemy_damage(ppu_context* ctx)
         std::fprintf(stderr, "[coop] enemy difficulty: %s, %d -> %d (scale x%.2f)\n", what, d, nd, n / 100.0);
 }
 
+// The host's trail (trail_tick): places the game counted as ground under its player lately, oldest first.
+std::deque<Place> sTrail;
+
+// Where a joining friend goes: the newest place of the trail 1 to 4 m across from where the host stands now, and
+// within 1.5 m of its height. x NaN: none (the host hasn't moved that far since its load).
+Place beside_place(const Place& now)
+{
+    for (auto it = sTrail.rbegin(); it != sTrail.rend(); ++it) {
+        const float across = std::hypot(it->x - now.x, it->z - now.z);
+        if (across >= 1.0f && across <= 4.0f && std::fabs(it->y - now.y) <= 1.5f) return *it;
+    }
+    return Place{NAN, NAN, NAN, NAN};
+}
+
 // The host tells its guests where it is: its area, where it arrived (a respawn's place), where it stands (a join's),
-// each with its facing, and which of its area's characters are dead (a respawn's or a follow's load kills them as a
-// join's does).
+// each with its facing, which of its area's characters are dead (a respawn's or a follow's load kills them as a
+// join's does), and ground it stood on a moment ago, beside it (a join's place, beside_place).
 void send_ready(ppu_context* ctx, uint32_t sm, uint32_t trip, const Place& arrived)
 {
     const Place now = player_place();
@@ -2522,6 +2540,11 @@ void send_ready(ppu_context* ctx, uint32_t sm, uint32_t trip, const Place& arriv
     }
     const std::vector<uint8_t> rec = dead_record(ctx);
     b.insert(b.end(), rec.begin(), rec.end());
+    const Place beside = beside_place(now);
+    putf(b, beside.x);
+    putf(b, beside.y);
+    putf(b, beside.z);
+    putf(b, now.yaw);
     send_flags(sm);
     send_qwc();
     send_difficulty();
@@ -2715,9 +2738,33 @@ void keep_dead_for_respawn(ppu_context* ctx, uint32_t sm)
                          "dead characters stay dead\n", to, here, marked);
 }
 
+// The host's trail, kept each frame in the world (cleared at a load): the place the game counts as the last ground
+// under the player, the bloodstain's source (*(chr + 0x640) + 0x24, host_to_stain), each time it has moved 0.5 m;
+// the newest 32. A death by a fall puts its stain there, so it is only ever ground the player stood on, never air
+// over an edge or inside a wall. A join put the friend 1 m along +x from the host until 11-23: from a host standing on
+// 1-1's walls (-79.80 59.75 -58.49) that was inside the wall, and the friend fell out of the map and died (a tester's
+// report); standing at the host's spot held.
+void trail_tick(bool world)
+{
+    if (!world) {
+        sTrail.clear();
+        return;
+    }
+    const uint32_t pc = player_chr();
+    const uint32_t src = guest_ok(pc) ? rd(pc + kChrStainSource) : 0;
+    if (!guest_ok(src)) return;
+    const Place p{rdf(src + kSrcPlace), rdf(src + kSrcPlace + 4), rdf(src + kSrcPlace + 8), NAN};
+    if (!std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.z)) return;
+    if (!sTrail.empty() && std::hypot(p.x - sTrail.back().x, p.y - sTrail.back().y, p.z - sTrail.back().z) < 0.5f)
+        return;
+    sTrail.push_back(p);
+    if (sTrail.size() > 32) sTrail.pop_front();
+}
+
 void host_tick(ppu_context* ctx, uint32_t sm, uint32_t gm, uint32_t st, bool world)
 {
     host_death_flags(st == kStateHost, world);
+    trail_tick(world);
     Game& g = sGame;
     bool asked, where;
     {
@@ -3078,8 +3125,17 @@ void guest_load_step(ppu_context* ctx)
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
     Place at = trip || !joined ? r.now : r.arrived;
-    float side = 1.0f;   // beside the host's place
+    float side = 1.0f;   // beside the host's place (a follow's or a respawn's: where the host arrived)
     const char* where = joined && !trip ? "arrived" : "stands";
+    if (!trip && !joined) {   // a join: on ground the host stood on a moment ago (trail_tick), else on its own spot
+        side = 0.0f;
+        if (std::isfinite(r.beside.x) && std::isfinite(r.beside.y) && std::isfinite(r.beside.z)) {
+            at = {r.beside.x, r.beside.y, r.beside.z, r.now.yaw};
+            where = "stood a moment ago (this friend goes there, beside it)";
+        } else {
+            where = "stands (this friend goes on its spot: it has stood nowhere else near it)";
+        }
+    }
     if (stain && sGame.stain_map == r.area) {
         at = sGame.stain;   // right on its own bloodstain, facing the way it faced when it died
         if (!std::isfinite(at.yaw)) at.yaw = r.now.yaw;

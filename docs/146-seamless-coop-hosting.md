@@ -98,7 +98,8 @@ set).
 **In the game:**
 
 - **Joining needs no sign.** Once the host stands in an area, a friend's game joins by itself, wherever the friend
-  is. The friend loads the host's area and arrives beside the host as a blue phantom, facing the way the host faces. A friend watching a cutscene
+  is. The friend loads the host's area and arrives beside the host as a blue phantom, on ground the host stood on a
+  moment ago, facing the way the host faces. A friend watching a cutscene
   in its own world (an area's opening one, say) goes when the cutscene ends: the game's load waits for it.
 - **Body form or soul form.** A friend joins in the form it has. In the host's world it is a blue phantom either way,
   with its form's health: full in body form, half in soul form (as the game gives a summoned soul). A friend in body
@@ -379,6 +380,16 @@ host. So the same step serves:
 - a follow: when the host's own load starts, the friends start a summoned reload, which waits on the loading screen
   until the host has arrived;
 - a respawn after a friend's death.
+
+**Where a join puts the friend.** On ground the host stood on a moment ago, 1 to 4 m from where it stands now and
+within 1.5 m of its height. The host keeps a trail: the place the game counts as the last ground under its player,
+the bloodstain's source (`*(chr + 0x640) + 0x24`, the place a death by a fall puts its stain), each time it has
+moved 0.5 m, the newest 32, cleared at each load. Its `REDY` carries the newest such place after the dead record
+(16 bytes: x, y, z, the host's yaw; x NaN when there is none). With none (the host hasn't moved that far since its
+load), the friend goes on the host's own spot. Until 11-23 a join put the friend 1 m along +x from the host, unchecked:
+a tester's host stood on 1-1's walls (-79.80 59.75 -58.49), 1 m along +x was inside the wall, and the friend fell
+out of the map until it died. A follow and a respawn still go 1 m beside where the host arrived: an Archstone, an
+area's start or a door, open ground.
 
 The facing goes with the place. A summoned reload takes its facing from a rotation beside each place (`gm+0x30`,
 `+0xA50`, `+0xAF0`: x, y, z, w, with y the yaw), which the game left at zero, so a friend always arrived facing one
