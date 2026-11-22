@@ -108,8 +108,8 @@ set).
 - **Archstones:** the host can use them during co-op, and the group travels with it. A friend still gets "You can't
   return during multiplayer.", at the Nexus's stones too. No multiplayer wall closes the way back to an Archstone
   (in 1-2, the Phalanx room's wall to 1-2), so the host is never shut in with the Archstone after a death.
-- **The White Eye Stone** takes a friend home as its own trip home does (in body form, its own world back); co-op
-  then joins the host again a few seconds later. Leave co-op is the way out of co-op.
+- **The White Eye Stone** can't be used by a friend during co-op: Leave co-op is the way out of co-op. (Before, it
+  took the friend home, and co-op joined the host again a few seconds later.) The host's use is as in the game.
 - **Items are each player's own.** A friend sees the items lying in the area and gets drops from dead enemies, as the
   host does. Each player has its own copy: one player's pickup leaves the others' where it was. An item a friend
   takes is also gone in its own world.
@@ -632,6 +632,13 @@ alive.
   a friend's blue phantom (type 1) into an alive player of its own world (type 0), which the rest of co-op doesn't
   count as a friend: the next frame sets type 1 again (`SetChrType`'s native, US 0x00445F30) and body form, as a
   boss kill revives it.
+- **The White Eye Stone** (goods 9999). A blue phantom's use runs `OnLeaveMagic` ("Return to your own world?",
+  then `OnLeaveMenu_Yes`: `LeaveSession`, and home), which co-op took as a trip home and followed with a join. The
+  game's use check (US 0x0059DFD8) reads the row's byte for the player's type: `enable_live` `+0x18` (body form),
+  `enable_gray` `+0x19`, `enable_white` `+0x1A`, `enable_black` `+0x1B`. Each frame a friend is in a session its
+  row's `enable_white` is 0; out of a session, and on the host, the row is the disc's. The host's use is
+  `OnThxKickOut`: each friend's game runs `OnBeThxKickOut` (its message, then `OnLeave_Limit` 5 s later: the flag
+  rollback and the trip home), and co-op's join then brings it back, as after any trip home.
 - **Bloodstains.** The game keeps one per character, in its save: the record at the game data's `+0x1C` (its souls
   at `+0x1C`, -1 once taken back), and a "shown" byte at the game data's `+0x18`. A friend's death runs
   `UpDateBloodMark` (in the replaced `PartyGhostDeath_1`), as `SoloPlayDeath_2` does for the host, and the touch

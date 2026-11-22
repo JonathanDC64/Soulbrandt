@@ -619,37 +619,72 @@ void body_health(ppu_context* ctx)
     call_addr(ctx, DES_AT(0x00439358u), {0});                   // RequestFullRecover
 }
 
-// The Stone of Ephemeral Eyes (goods 1021) in a session. Its row (EQUIP_PARAM_GOODS_ST, the param table 3:
-// 0x005A5920(3, 0) -> +0x20 the param's data, rows {id, offset, name} from +0x30) allows it in soul form only
-// (enable_gray, +0x19) and never in multiplayer (enable_multi, +0x1C: 0). In a session every player in soul form may
-// use it: multiplayer is allowed, and a friend in soul form (a blue phantom, enable_white +0x1A) may too. Out of a
-// session the row is as the disc has it. The game reads the row when the item is used, so it is set each frame.
+// A goods item's row (EQUIP_PARAM_GOODS_ST, the param table 3: 0x005A5920(3, 0) -> +0x20 the param's data, rows {id,
+// offset, name} from +0x30): 0 while the params aren't in yet, 1 if the disc has no such row. The bytes that say who
+// may use the item, by the player's type (0x0059DFD8): enable_live +0x18 (body form), enable_gray +0x19 (soul form),
+// enable_white +0x1A (a blue phantom), enable_black +0x1B (a black phantom); and enable_multi +0x1C (in multiplayer).
+// The game reads the row when the item is used, so a change to it is made each frame.
+constexpr uint32_t kGoodsWhite = 0x1A, kGoodsMulti = 0x1C;
+uint32_t goods_row(ppu_context* ctx, uint32_t id)
+{
+    const uint32_t p = call_addr(ctx, DES_AT(0x005A5920u), {3, 0});
+    const uint32_t data = guest_ok(p) ? rd(p + 0x20) : 0;
+    static const char kName[] = "EQUIP_PARAM_GOODS_ST";
+    bool named = guest_ok(data);
+    for (int k = 0; named && kName[k]; ++k) named = vm_read8(data + 0xC + k) == (uint8_t)kName[k];
+    if (!named) return 0;
+    const uint32_t count = vm_read16(data + 0xA);
+    for (uint32_t r = 0; r < count && r < 4096; ++r)
+        if (rd(data + 0x30 + 12 * r) == id) {
+            const uint32_t row = data + rd(data + 0x30 + 12 * r + 4);
+            if (guest_ok(row)) return row;
+        }
+    return 1;   // not on this disc: never looked for again
+}
+
+// The Stone of Ephemeral Eyes (goods 1021) in a session. Its row allows it in soul form only (enable_gray) and never
+// in multiplayer (enable_multi: 0). In a session every player in soul form may use it: multiplayer is allowed, and a
+// friend in soul form (a blue phantom, enable_white) may too. Out of a session the row is as the disc has it.
 constexpr uint32_t kStone = 1021;
 void stone_tick(ppu_context* ctx, bool session, bool friend_soul)
 {
     static uint32_t row = 0;
     static uint8_t disc_white = 0, disc_multi = 0;
     if (!row) {
-        const uint32_t p = call_addr(ctx, DES_AT(0x005A5920u), {3, 0});
-        const uint32_t data = guest_ok(p) ? rd(p + 0x20) : 0;
-        static const char kName[] = "EQUIP_PARAM_GOODS_ST";
-        bool named = guest_ok(data);
-        for (int k = 0; named && kName[k]; ++k) named = vm_read8(data + 0xC + k) == (uint8_t)kName[k];
-        if (!named) return;
-        const uint32_t count = vm_read16(data + 0xA);
-        for (uint32_t r = 0; r < count && r < 4096; ++r)
-            if (rd(data + 0x30 + 12 * r) == kStone) row = data + rd(data + 0x30 + 12 * r + 4);
-        if (!guest_ok(row)) {
-            row = 1;   // not on this disc: never looked for again
-            return;
-        }
-        disc_white = vm_read8(row + 0x1A);
-        disc_multi = vm_read8(row + 0x1C);
+        row = goods_row(ctx, kStone);
+        if (row <= 1) return;
+        disc_white = vm_read8(row + kGoodsWhite);
+        disc_multi = vm_read8(row + kGoodsMulti);
     }
     if (row == 1) return;
     const uint8_t white = friend_soul ? 1 : disc_white, multi = session ? 1 : disc_multi;
-    if (vm_read8(row + 0x1A) != white) vm_write8(row + 0x1A, white);
-    if (vm_read8(row + 0x1C) != multi) vm_write8(row + 0x1C, multi);
+    if (vm_read8(row + kGoodsWhite) != white) vm_write8(row + kGoodsWhite, white);
+    if (vm_read8(row + kGoodsMulti) != multi) vm_write8(row + kGoodsMulti, multi);
+}
+
+// The White Eye Stone (goods 9999). A blue phantom's use is global_event.lua's OnLeaveMagic: "Return to your own
+// world?", then OnLeaveMenu_Yes leaves the session and sends it home. In co-op that was a trip home like any other,
+// and co-op joined the host again a few seconds later; Leave co-op is the way out. So a friend in a session can't use
+// it: its row says no to a blue phantom (enable_white 0), and the game refuses the use as for any item it can't use
+// there. The host's use (it sends the phantoms home: OnThxKickOut) and the row out of a session are as on the disc.
+constexpr uint32_t kWhiteEye = 9999;
+void white_eye_tick(ppu_context* ctx, bool friend_in)
+{
+    static uint32_t row = 0;
+    static uint8_t disc_white = 0;
+    static bool told = false;
+    if (!row) {
+        row = goods_row(ctx, kWhiteEye);
+        if (row <= 1) return;
+        disc_white = vm_read8(row + kGoodsWhite);
+    }
+    if (row == 1) return;
+    const uint8_t white = friend_in ? 0 : disc_white;
+    if (vm_read8(row + kGoodsWhite) != white) vm_write8(row + kGoodsWhite, white);
+    if (friend_in != told)
+        std::fprintf(stderr, "[coop] the White Eye Stone: %s\n",
+                     friend_in ? "not usable in the session" : "as the game has it");
+    told = friend_in;
 }
 
 // The player's own bloodstain in a session. At each load the global script's ParamInitialize (0x0044A660) shows it
@@ -2393,6 +2428,7 @@ extern "C" void des_seamless_tick(ppu_context* ctx)
         const bool session = (m == co::Mode::Host && st == kStateHost) ||
                              (m == co::Mode::Join && st == kStateClient && own_kept());
         stone_tick(ctx, session, m == co::Mode::Join && session && !body_form());
+        white_eye_tick(ctx, m == co::Mode::Join && st == kStateClient);
         stain_tick(ctx, session && world);
         // A friend whose ending started keeps its own world apart no more (ending_started), but stays in the session,
         // and keeps its glow and colour, until its game leaves after the ending's cutscene (11-16: its colour went to
