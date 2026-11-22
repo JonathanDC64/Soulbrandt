@@ -12,7 +12,8 @@
 //   - a blue phantom's death keeps it in the session: it comes back where the host last arrived, and in a boss fight
 //     it first watches until the fight ends (the boss dead, or the host dead: then it goes back with the host); out
 //     of the session meanwhile, it goes home;
-//   - the cutscenes keep their solo mode in a session: each player skips its own;
+//   - the cutscenes keep their solo mode in a session (des_seamless_game.cpp's cut_tick then leaves the skip of one the
+//     host plays too to the host);
 //   - no multiplayer wall closes the way back to an Archstone (the host may use them in a session);
 //   - a boss's extra health counts a third blue phantom (a party of four) as two: x2, the game's most.
 // Each area's script:
@@ -189,9 +190,11 @@ bool edit_global(std::string& t, const std::string& nl)
     if (!replace_in(t, "MissionSuccessed", "proxy:RecallMenuEvent( 0, 8933 );", "--SEAMLESS proxy:RecallMenuEvent( 0, 8933 );"))
         return false;
     // OnEvent_4034 (the session connected): the cutscenes keep their solo mode. REMO_FLAG is the mode every
-    // RequestRemo passes. A map's scripts start with 0, 4034 makes it 2 (multiplayer: a guest can't skip one, and the
-    // host's skip ends only its own), and 4035 (the session's end, and BlockClear2_3Leave above) makes it 0 again. In
-    // 0, as the ones asked for before 4034 (an area's opening) already were in a session, each player skips its own.
+    // RequestRemo passes. A map's scripts start with 0, 4034 makes it 2 (multiplayer: the game's skip refuses it, in
+    // every game, and no game's skip reaches another's), and 4035 (the session's end, and BlockClear2_3Leave above)
+    // makes it 0 again. In 0, as the ones asked for before 4034 (an area's opening) already were in a session, each
+    // player could skip its own; des_seamless_game.cpp's cut_tick gives a friend's copy of one the host plays too the
+    // 2 while the host's plays, and ends it when the host skips (one only the friend sees stays the friend's to skip).
     if (!replace_in(t, "OnEvent_4034", "REMO_FLAG = 2;",
                     "REMO_FLAG = 0; --SEAMLESS each player's cutscenes are its own"))
         return false;
