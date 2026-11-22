@@ -148,6 +148,10 @@ set).
   its own bloodstain in the boss's room, where it can take its souls back at once. Before, it came back at the area's
   start. If everyone dies, it goes back with everyone. If the connection to the host is lost while it watches, it
   goes home (with the game's own message for a lost session) and joins again from there.
+- **A friend whose death sent everyone back comes back normally the next time.** A friend could be the last one
+  standing, with the host waiting dead in a boss fight. Its death then took everyone back. Before 11-23, its next
+  death in that area never brought it back: it lay dead (or died again and again) until the host went to another
+  area.
 - **Bosses get more health with friends,** as in the original game: half as much again with one friend, double with
   two. Three friends get double too (the original has nothing for three, so a boss had its solo health).
 - **Enemy difficulty.** Settings > Network > Enemy difficulty (or Settings on the Seamless co-op screen) is the
@@ -909,9 +913,20 @@ their first instruction):
   - A blue phantom's death keeps it in the session: a summoned reload instead of the trip home, and no recall
     (`PartyGhostDeath_1` goes on to `_2` after a second, even after a boss kill).
   - In a boss fight, `PartyGhostDeath_2` waits: it looks again each second while `SeamlessBossFight` is set and
-    `ClearBoss` isn't. Two timer slots take turns, so a handler never sets up its own slot. Once the host has died
-    (`HostDead` sets `SeamlessHostDown`), it asks for full health and leaves the load to the host's respawn, which
+    `ClearBoss` isn't. Two timer slots take turns, so a handler never sets up its own slot. Once the host's death
+    takes everyone back (flag 20297, below), it asks for full health and leaves the load to the host's respawn, which
     takes everyone back.
+  - Flag 20297 says that the host's death takes everyone back, until this guest has followed that load. Just before
+    the host's scripts send the guests' `HostDead` (`OnEvent_4000` with the setting's Everyone goes back, or
+    `SeamlessHostWait` with no friend standing), they set flag 19995 (past the game's last flag). The host's flag
+    hook then sends its guests the number of its next load (`ALLB`). Each frame, a guest's game sets 20297 while
+    that load is ahead of the last load it followed. It is one of the game's high flags, as 20298 and 20299 are.
+    - Before 11-23, `HostDead` set a script value, `SeamlessHostDown`, and nothing cleared it.
+    - The last friend standing could die while the host waited in a boss fight. The host's load then came at once,
+      and the friend followed it before `HostDead` reached its game, so `HostDead` came in the new area's scripts.
+    - That friend's next death there left its respawn to a host load that never came. It lay dead, died again, and
+      so on, until the host's next load that took it along. A tester waited 3 minutes, until the host went to the
+      Nexus (11-22).
   - A death in a boss fight comes back at the bloodstain. `PartyGhostDeath_1` notes whether `SeamlessBossFight` was
     set at the death (`SeamlessFightDeath`). If so, `PartyGhostDeath_2` sets flag 19993 just before its reload (past
     the game's last flag, as 19999 for the ending). The flag hook then reads the stain's record, which the death's
