@@ -173,6 +173,11 @@ void MenuShell::show() {
             for (size_t i = 0; i < entries.size(); i++)
                 if (entries[i].title == mAlone) alone = static_cast<int>(i);
             if (alone >= 0) choose_entry(alone);
+            else if (mAlone == "Co-op settings")  // (the Co-op window's Settings: co-op's alone, in its entry)
+                open_page("Seamless co-op",
+                          [](Rml::Element* host, menu::PageHost& shell) -> std::unique_ptr<menu::Page> {
+                              return std::make_unique<SettingsPage>(host, shell, SettingsPage::Scope::Coop);
+                          });
             else open_settings();
         }
     }

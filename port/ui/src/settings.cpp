@@ -119,6 +119,12 @@ constexpr Def kDefs[] = {
     {"DES_SEAMLESS_INTRO", "", Apply::Restart},
     {"DES_SEAMLESS_STUN", "", Apply::Restart},
     {"DES_SEAMLESS_PLAYERS", "4", Apply::Live},    // the most players a seamless co-op host takes, itself included: 2-4
+    // seamless co-op, the host's (it counts for its guests too): "bosses" = every enemy's health scaled by the players,
+    // as a boss's is (des_seamless_game.cpp's enemy_health), "1.5" to "4" = by that; "" = the game's own. With a
+    // scale, "1" scales the enemies' attacks and defenses by as much too (enemy_damage).
+    {"DES_SEAMLESS_DIFFICULTY", "", Apply::Live},
+    {"DES_SEAMLESS_DIFFICULTY_ATTACK", "0", Apply::Live},
+    {"DES_SEAMLESS_DIFFICULTY_DEFENSE", "0", Apply::Live},
     {"DES_SEAMLESS_GLOW", "1", Apply::Live},       // seamless co-op: "0" = the other players see this one without its phantom glow
     {"DES_SEAMLESS_GLOW_COLOR", "", Apply::Live},  // seamless co-op: this player's glow colour, "RRGGBB"; "" = the game's blue
     {"glow_hue_custom", "30", Apply::UiOnly},      // Your glow colour's Custom hue (0-350), kept while a named colour is on

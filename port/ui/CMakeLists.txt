@@ -294,6 +294,15 @@ if(MSVC)
   target_compile_options(report_addresses_check PRIVATE /EHsc /W3)
 endif()
 
+# log_runs.hpp on its own (tests/log_runs_check.cpp): the runs the logs keep (des.log and coop.log, and the four before
+# each). CI runs it on both (host.yml). Built on demand:
+#   cmake --build <build> --target log_runs_check, then log_runs_check
+add_executable(log_runs_check EXCLUDE_FROM_ALL tests/log_runs_check.cpp)
+target_include_directories(log_runs_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+if(MSVC)
+  target_compile_options(log_runs_check PRIVATE /EHsc /W3)
+endif()
+
 # shader_cache.cpp on its own (tests/shader_cache_check.cpp): the menus' shaders kept compiled between starts. A stored
 # one comes back only for exactly the input it was made from, and only whole: every byte of a file changed in turn,
 # cut short at every length, another input, another format, the other kind of bytecode. CI runs it on both (host.yml).
