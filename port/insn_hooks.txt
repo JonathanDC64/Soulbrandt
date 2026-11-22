@@ -313,3 +313,11 @@
 0x00272A88=des_coop_hook   # bl 0x0052A610 in an enemy's souls for this game's player (0x00272938; r3 1 for a guest, which halves them): a friend gets the full souls
 0x0044A5E4=des_coop_hook   # bl 0x0052A5B0 (the session's member count) in SetClearBonus's native 0x0044A4B8 (above 0, a boss's souls are cut to 75% for the host, 25% for a blue phantom): everyone gets the full souls
 0x004117E4=des_coop_hook   # bl 0x009204A0 in RecvGlobalQwc's 0x004117C0 (the Nexus script) returned: a friend plays in the host's world tendency
+0x0020FB8C=des_coop_hook   # lbz r0,0xACA(r9) in the save request 0x0020FB78 (0 skips the ask, as on a phantom): a friend's game asked for a save, so its own follows
+0x0020FBB8=des_coop_hook   # lbz r0,0xACA(r9) in the save request 0x0020FBA8: the same
+0x00411958=des_coop_hook   # the nop after bl 0x0044C678 in the scripts' SaveRequest (0x00411930): it asks only for a living player or a soul, so a friend's (a blue phantom's) ask is noted here: its own save follows
+0x004119E0=des_coop_hook   # the same in SaveRequest_Profile (0x004119B8)
+0x002117E8=des_coop_hook   # lbz r0,0xACA(r9) in the save step 0x002117A8 (0 drops the save asked for, as on a phantom): a friend's own save goes through
+0x00211548=des_coop_hook   # stw r29,0xD8(r1) before bl 0x0090E4B0, the character's writer, in the save's build 0x002112F8 (the player's game data: its character's +0x49C): a friend's save has the form it goes home in, not a blue phantom's
+0x00211550=des_coop_hook   # the nop after that bl: the type back
+0x00509678=des_coop_hook   # stdu at the start of the flags' writer 0x00509678 (r3 the flags): a friend's save writes its own world's flags
