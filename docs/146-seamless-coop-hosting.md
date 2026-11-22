@@ -990,6 +990,12 @@ thread and keeps trying), and for a room code `PSNR_ROOM`, `PSNR_VERSION` (co-op
    (or after 2 minutes, or on **Leave now**) it starts the game again. Back or Esc doesn't close that window.
    Scripted, with keys sent to the window as a friend in the host's Nexus: Esc there kept it, and the game started
    again once, after the save; three presses of Leave now within 0.2 s started it once.
+   After a leave from a boss fight the game asks for no save at home: its save gate (`+0xACA`) is 1, but nothing sets
+   `+0xA97`. So the window waited its 2 minutes and the game started again with nothing saved (a tester's leave 9 s
+   into the Phalanx fight, 11-21). Now, home with no save asked for or written after 5 s, the leave asks for one as
+   the game's own are asked for. Checked with two copies (11-21, the Tower Knight's fight on the pinned save, the
+   friend leaving 9 s in): before, "not home and saved after 2 minutes"; with the change, "saved at home; done" 10 s
+   after the Leave, the save in the friend's own Nexus, in body form, with its own flags.
 
 A Leave outside a session:
 - **During a load,** for example while the game is taking the friend home itself after the host's game closed, it

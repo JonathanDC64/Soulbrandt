@@ -1115,12 +1115,16 @@ void after_world_swap(uint32_t fb, bool in_session)
 // (SetSummonedPos, SetDefaultMapUid(-1)), in the form it had before the join (SetChrTypeDataGreyNext), with a load
 // (WarpNextStageKick).
 // Its game saves once home: the leave is done when the save folder has a file written since the arrival and the
-// game's save is over (save_idle).
+// game's save is over (save_idle). After a leave from a boss fight the game asks for no save at home (its save gate,
+// +0xACA, is 1, but nothing sets +0xA97: 11-21, 9 s into the Tower Knight's fight), so the leave waited its 2 minutes
+// and the game started again with nothing saved. So home with no save asked for or written after kHomeSaveGrace, the
+// leave asks for it as the game's own are asked for (+0xA97). One the game asks for as well is only a second save.
 enum { kLeaveNone, kLeaveAsked, kLeaveOut, kLeaveGoing, kLeaveHome, kLeaveDone };
 std::atomic<int> sLeave{kLeaveNone};
+constexpr auto kHomeSaveGrace = std::chrono::seconds(5);
 struct LeaveState {   // the game thread's only
-    bool seen = false;
-    std::chrono::steady_clock::time_point asked{};
+    bool seen = false, save_asked = false;
+    std::chrono::steady_clock::time_point asked{}, home{};
     std::filesystem::file_time_type home_at{};
 };
 LeaveState sLeaveState;
@@ -1193,6 +1197,7 @@ void leave_tick(ppu_context* ctx, uint32_t st, bool world)
                 // again next frame
             } else if (unsaved) {
                 s.home_at = home;
+                s.home = now;
                 sLeave = kLeaveHome;
                 std::fprintf(stderr, "[coop] leave: back home from the session; waiting for the game's save\n");
             } else {
@@ -1211,13 +1216,22 @@ void leave_tick(ppu_context* ctx, uint32_t st, bool world)
     } else if (lv == kLeaveGoing) {
         if (!own_kept() && st == 0 && world) {   // the trip home's load is done (after_world_swap)
             s.home_at = std::filesystem::file_time_type::clock::now();
+            s.home = now;
             sLeave = kLeaveHome;
             std::fprintf(stderr, "[coop] leave: home; waiting for the game's save\n");
         }
     } else if (lv == kLeaveHome) {
-        if (saved_since(s.home_at) && save_idle()) {   // a save since the arrival, and finished
+        const bool idle = save_idle();
+        if (saved_since(s.home_at) && idle) {   // a save since the arrival, and finished
             sLeave = kLeaveDone;
             std::fprintf(stderr, "[coop] leave: saved at home; done\n");
+        } else if (!s.save_asked && idle && world && now - s.home > kHomeSaveGrace) {
+            const uint32_t gm = game_manager();
+            if (guest_ok(gm)) {
+                vm_write8(gm + kGmSaveAsked, 1);
+                s.save_asked = true;
+                std::fprintf(stderr, "[coop] leave: home, and the game asked for no save; asked for it\n");
+            }
         }
     }
 }
