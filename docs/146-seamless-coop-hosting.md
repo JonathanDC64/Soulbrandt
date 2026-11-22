@@ -116,13 +116,14 @@ set).
 - **Archstones:** the host can use them during co-op, and the group travels with it. A friend still gets "You can't
   return during multiplayer.", at the Nexus's stones too. No multiplayer wall closes the way back to an Archstone
   (in 1-2, the Phalanx room's wall to 1-2), so the host is never shut in with the Archstone after a death.
-- **The White Eye Stone** takes a friend home as its own trip home does (in body form, its own world back); co-op
-  then joins the host again a few seconds later. Leave co-op is the way out of co-op.
+- **The White Eye Stone** can't be used by a friend during co-op: Leave co-op is the way out of co-op. (Before, it
+  took the friend home, and co-op joined the host again a few seconds later.) The host's use is as in the game.
 - **Items are each player's own.** A friend sees the items lying in the area and gets drops from dead enemies, as the
   host does. Each player has its own copy: one player's pickup leaves the others' where it was. An item a friend
   takes is also gone in its own world.
-- **Light walls** (the fog you press Cross at and walk through, outside boss rooms) are gone for everyone once
-  one player walks through.
+- **Light walls** (the fog you press Cross at and walk through, outside boss rooms): a friend can walk through too,
+  not only the host. Whoever walks through takes the wall away for everyone, and it stays gone in the host's world.
+  A boss's fog is as in the game: the host walks in first.
 - **Boss kills keep everyone together:** no rating screen, nobody sent home, and the boss room's walls drop. The
   host's room stays open, during a boss fight and after it, so a friend can always join again.
 - **A friend who joins during a boss fight** fights the boss too. Before, in 1-1, Phalanx wasn't in its game: it
@@ -195,7 +196,9 @@ set).
   start. Of the ones the Nexus plays as you arrive (your first visit, the Maiden's return, the seal lifting once all
   five worlds are cleared), a friend sees only the newest one the host has seen, so its Nexus is the host's. The
   final area's cutscenes play for everyone when they happen, never again later.
-- **Skipping a cutscene** (START, then Cross) works for everyone and skips only your own: the others' go on.
+- **Skipping a cutscene** (START, then Cross): a cutscene the host is watching too is the host's to skip, and the
+  host's skip ends it for everyone; a friend's skip does nothing then. A cutscene only you see (a Nexus cutscene the
+  host has seen) you skip yourself, as you do the rest of one that ended first on the host's screen.
 - **The Monumental's question:** whoever talks to the Monumental answers it. Once the other Archstones open, they open
   in every player's world. His story plays only for the one who hears it: when a friend hears it first, the host then
   gets his later lines and his question, not the story.
@@ -674,6 +677,20 @@ alive.
   a friend's blue phantom (type 1) into an alive player of its own world (type 0), which the rest of co-op doesn't
   count as a friend: the next frame sets type 1 again (`SetChrType`'s native, US 0x00445F30) and body form, as a
   boss kill revives it.
+- **The White Eye Stone** (goods 9999). A blue phantom's use runs `OnLeaveMagic` ("Return to your own world?",
+  then `OnLeaveMenu_Yes`: `LeaveSession`, and home), which co-op took as a trip home and followed with a join. The
+  game's use check (US 0x0059DFD8) reads the row's byte for the player's type: `enable_live` `+0x18` (body form),
+  `enable_gray` `+0x19`, `enable_white` `+0x1A`, `enable_black` `+0x1B`. Each frame a friend is in a session its
+  row's `enable_white` is 0; out of a session, and on the host, the row is the disc's. The host's use is
+  `OnThxKickOut`: each friend's game runs `OnBeThxKickOut` (its message, then `OnLeave_Limit` 5 s later: the flag
+  rollback and the trip home), and co-op's join then brings it back, as after any trip home.
+- **Cutscenes the host plays too** (`cut_tick`). The cutscene player (US `*0x01B3A28C`) plays the one in its first
+  slot (`+0x28`, its mode at `+0x2C`); `*(cutscene + 0x18) + 0x3C` is its id. The game's skip (US 0x001A2BB0, and
+  the same test at 0x001A14A0) sets the cutscene's skip byte (`*(cutscene + 0x18) + 0x38`) only when the mode has
+  no 2 in it (`REMO_FLAG`'s multiplayer value) and the cutscene is under way (`+0xD9`). The host tells its friends
+  the id it plays (`CUTS`, at each change and with each `READY`) and that it skipped it (`SKIP`, when its skip byte
+  is set). A friend's copy of the same id gets the 2 in its mode while the host's plays, and its skip byte when the
+  host's skip comes, once it is under way. When the host's ends first, the friend's mode is put back.
 - **Bloodstains.** The game keeps one per character, in its save: the record at the game data's `+0x1C` (its souls
   at `+0x1C`, -1 once taken back), and a "shown" byte at the game data's `+0x18`. A friend's death runs
   `UpDateBloodMark` (in the replaced `PartyGhostDeath_1`), as `SoloPlayDeath_2` does for the host, and the touch
@@ -870,9 +887,11 @@ their first instruction):
   - The cutscenes keep their solo mode in a session. Every `RequestRemo(scene, REMO_FLAG, event, 1)` passes the
     global `REMO_FLAG` as the cutscene's mode. It is 0 when a map's scripts start, `OnEvent_4034` (the session
     connected) makes it 2, and `OnEvent_4035` (the session's end) makes it 0 again. A cutscene asked for in mode 2 (a
-    boss's at its fog, any asked for after the session connected) can't be skipped on a friend's game, and the host's
-    skip ends only the host's. Ones asked for before 4034, such as an area's opening, were already mode 0 in a session
-    and each player skips its own. `OnEvent_4034` now sets 0, so every cutscene works that way.
+    boss's at its fog, any asked for after the session connected) can't be skipped: the game's skip (US 0x001A2BB0)
+    refuses a mode with 2 in it, in every game, and no game's skip reaches another's. Ones asked for before 4034, such
+    as an area's opening, were already mode 0 in a session
+    and each player skips its own. `OnEvent_4034` now sets 0, so every cutscene works that way; the program then
+    gives the skip of one the host plays too to the host (below).
   - No multiplayer wall. When a session connects past an area's first part, `OnEvent_4034` has the host's game close
     the way back to that part's Archstone (`Lua_MultiWall`). The Archstone stands in the last boss's room, and the
     wall is that room's exit, 1996 minus the block (1-2 is block 1: 1995, the Phalanx room's way to 1-2). Only
@@ -937,6 +956,17 @@ their first instruction):
   `m08_01` leaves it revived where it fell. The levels' other trips are the boss Archstones' back to the Nexus, which
   a friend can't start in a session.
 - The light walls a player walks through (press Cross, a walk, then the wall is gone) are gone in every player's game.
+  The walk's prompt outside boss rooms (`OnDistanceActionAttribute(..., HELPID_GO_TO_IN, ..., possible_chr_type,
+  everytime)`, or `ATTR_HOST + ATTR_LIVE + ATTR_GREY`) was the host's alone; it is offered to a blue phantom too
+  (`+ ATTR_WHITE`): 1-1's three, one each in 1-2 and 1-3, three each in 2-1, 2-2, 4-1 and 4-2
+  (`light_walls_for_friends`). Its handler doesn't check who walks, so in the friend's game its walk runs as the
+  host's: the walk, the wall dropped, the wall's flag (a progress flag in 2-1 and 2-2). The wall's delete
+  (`LuaCallStart(<id>, 1)`) reaches the other games and drops it there too, but sets no flag. So after a friend's
+  walk the host's flag stayed clear, and the wall was back for everyone at the host's next load (two copies, 11-22).
+  The walker's game now also sends `LuaCallStart(7600000 + <id>, 76)`, outside `NotNetMessage`, and each other
+  game's `SEAMLESS_WallPassed_<id>` sets the flags the walk sets for another player there (2-2's 572 sets 571's
+  too) and drops the walls (`light_walls_for_all`). It has an ID of its own: the delete's `DeleteEvent(<id>)` removes
+  every handler of `<id>`, so under `<id>` it ran only when it came before the delete (one run in three).
   In the other games the wall's handler plays the walk on the walker's character and marks the wall passed
   (`Luafunc_PlaySynchroAnimation`'s true branch, then a return). The areas made for sessions drop the wall for them
   through the game's wall-delete sync (`LuaCallStart`). The tutorial's (`m08_01`'s 14291) drops it with a direct call

@@ -184,6 +184,8 @@ constexpr char kMsgHere[4] = {'H', 'E', 'R', 'E'};
 // u32 the same load: this game emptied its queues of the area syncs after it (sync_read), so it reads what the others
 // send from now on (resend_own)
 constexpr char kMsgSync[4] = {'S', 'Y', 'N', 'C'};
+constexpr char kMsgCut[4] = {'C', 'U', 'T', 'S'};    // u32: the id of the cutscene the host plays, 0 none (cut_tick)
+constexpr char kMsgSkip[4] = {'S', 'K', 'I', 'P'};   // u32: the host skipped the cutscene of that id
 constexpr uint32_t kRoomMax = 0x200;
 
 bool guest_ok(uint32_t a) { return a >= 0x00010000u && a < 0xF0000000u; }
@@ -383,6 +385,8 @@ struct Qwc { bool have = false; uint32_t w[kQwcWords] = {}; };
 Qwc sHostQwc;                        // the host's tendency in use (QWC, a guest)
 Qwc sOwnQwc;                         // have: the host's in use is in place on this guest (w: the log's own values)
 std::atomic<bool> sResendOwn{false}; // another game said SYNC: this game's characters' states go out again
+std::atomic<uint32_t> sHostCut{0};   // the cutscene the host plays (a guest; CUTS)
+std::atomic<uint32_t> sHostSkip{0};  // the host skipped the cutscene of this id, not yet done here (a guest; SKIP)
 
 float getf(const uint8_t* p)
 {
@@ -434,6 +438,10 @@ void on_message(uint32_t from, const uint8_t* d, uint32_t n)
         const uint32_t trip = get32(d + 4);
         while (sHere.size() >= 8) sHere.erase(sHere.begin());   // (the oldest loads: none waits on them now)
         sHere[trip].insert(from);
+    } else if (!std::memcmp(d, kMsgCut, 4) && n >= 8) {
+        sHostCut = get32(d + 4);
+    } else if (!std::memcmp(d, kMsgSkip, 4) && n >= 8) {
+        sHostSkip = get32(d + 4);
     } else if (!std::memcmp(d, kMsgSync, 4) && n >= 8) {
         std::fprintf(stderr, "[coop] load %u: another player reads this area's syncs now; this game's characters' "
                      "states go out again\n", get32(d + 4));
@@ -621,37 +629,169 @@ void body_health(ppu_context* ctx)
     call_addr(ctx, DES_AT(0x00439358u), {0});                   // RequestFullRecover
 }
 
-// The Stone of Ephemeral Eyes (goods 1021) in a session. Its row (EQUIP_PARAM_GOODS_ST, the param table 3:
-// 0x005A5920(3, 0) -> +0x20 the param's data, rows {id, offset, name} from +0x30) allows it in soul form only
-// (enable_gray, +0x19) and never in multiplayer (enable_multi, +0x1C: 0). In a session every player in soul form may
-// use it: multiplayer is allowed, and a friend in soul form (a blue phantom, enable_white +0x1A) may too. Out of a
-// session the row is as the disc has it. The game reads the row when the item is used, so it is set each frame.
+// A goods item's row (EQUIP_PARAM_GOODS_ST, the param table 3: 0x005A5920(3, 0) -> +0x20 the param's data, rows {id,
+// offset, name} from +0x30): 0 while the params aren't in yet, 1 if the disc has no such row. The bytes that say who
+// may use the item, by the player's type (0x0059DFD8): enable_live +0x18 (body form), enable_gray +0x19 (soul form),
+// enable_white +0x1A (a blue phantom), enable_black +0x1B (a black phantom); and enable_multi +0x1C (in multiplayer).
+// The game reads the row when the item is used, so a change to it is made each frame.
+constexpr uint32_t kGoodsWhite = 0x1A, kGoodsMulti = 0x1C;
+uint32_t goods_row(ppu_context* ctx, uint32_t id)
+{
+    const uint32_t p = call_addr(ctx, DES_AT(0x005A5920u), {3, 0});
+    const uint32_t data = guest_ok(p) ? rd(p + 0x20) : 0;
+    static const char kName[] = "EQUIP_PARAM_GOODS_ST";
+    bool named = guest_ok(data);
+    for (int k = 0; named && kName[k]; ++k) named = vm_read8(data + 0xC + k) == (uint8_t)kName[k];
+    if (!named) return 0;
+    const uint32_t count = vm_read16(data + 0xA);
+    for (uint32_t r = 0; r < count && r < 4096; ++r)
+        if (rd(data + 0x30 + 12 * r) == id) {
+            const uint32_t row = data + rd(data + 0x30 + 12 * r + 4);
+            if (guest_ok(row)) return row;
+        }
+    return 1;   // not on this disc: never looked for again
+}
+
+// The Stone of Ephemeral Eyes (goods 1021) in a session. Its row allows it in soul form only (enable_gray) and never
+// in multiplayer (enable_multi: 0). In a session every player in soul form may use it: multiplayer is allowed, and a
+// friend in soul form (a blue phantom, enable_white) may too. Out of a session the row is as the disc has it.
 constexpr uint32_t kStone = 1021;
 void stone_tick(ppu_context* ctx, bool session, bool friend_soul)
 {
     static uint32_t row = 0;
     static uint8_t disc_white = 0, disc_multi = 0;
     if (!row) {
-        const uint32_t p = call_addr(ctx, DES_AT(0x005A5920u), {3, 0});
-        const uint32_t data = guest_ok(p) ? rd(p + 0x20) : 0;
-        static const char kName[] = "EQUIP_PARAM_GOODS_ST";
-        bool named = guest_ok(data);
-        for (int k = 0; named && kName[k]; ++k) named = vm_read8(data + 0xC + k) == (uint8_t)kName[k];
-        if (!named) return;
-        const uint32_t count = vm_read16(data + 0xA);
-        for (uint32_t r = 0; r < count && r < 4096; ++r)
-            if (rd(data + 0x30 + 12 * r) == kStone) row = data + rd(data + 0x30 + 12 * r + 4);
-        if (!guest_ok(row)) {
-            row = 1;   // not on this disc: never looked for again
-            return;
-        }
-        disc_white = vm_read8(row + 0x1A);
-        disc_multi = vm_read8(row + 0x1C);
+        row = goods_row(ctx, kStone);
+        if (row <= 1) return;
+        disc_white = vm_read8(row + kGoodsWhite);
+        disc_multi = vm_read8(row + kGoodsMulti);
     }
     if (row == 1) return;
     const uint8_t white = friend_soul ? 1 : disc_white, multi = session ? 1 : disc_multi;
-    if (vm_read8(row + 0x1A) != white) vm_write8(row + 0x1A, white);
-    if (vm_read8(row + 0x1C) != multi) vm_write8(row + 0x1C, multi);
+    if (vm_read8(row + kGoodsWhite) != white) vm_write8(row + kGoodsWhite, white);
+    if (vm_read8(row + kGoodsMulti) != multi) vm_write8(row + kGoodsMulti, multi);
+}
+
+// The White Eye Stone (goods 9999). A blue phantom's use is global_event.lua's OnLeaveMagic: "Return to your own
+// world?", then OnLeaveMenu_Yes leaves the session and sends it home. In co-op that was a trip home like any other,
+// and co-op joined the host again a few seconds later; Leave co-op is the way out. So a friend in a session can't use
+// it: its row says no to a blue phantom (enable_white 0), and the game refuses the use as for any item it can't use
+// there. The host's use (it sends the phantoms home: OnThxKickOut) and the row out of a session are as on the disc.
+constexpr uint32_t kWhiteEye = 9999;
+void white_eye_tick(ppu_context* ctx, bool friend_in)
+{
+    static uint32_t row = 0;
+    static uint8_t disc_white = 0;
+    static bool told = false;
+    if (!row) {
+        row = goods_row(ctx, kWhiteEye);
+        if (row <= 1) return;
+        disc_white = vm_read8(row + kGoodsWhite);
+    }
+    if (row == 1) return;
+    const uint8_t white = friend_in ? 0 : disc_white;
+    if (vm_read8(row + kGoodsWhite) != white) vm_write8(row + kGoodsWhite, white);
+    if (friend_in != told)
+        std::fprintf(stderr, "[coop] the White Eye Stone: %s\n",
+                     friend_in ? "not usable in the session" : "as the game has it");
+    told = friend_in;
+}
+
+// Cutscenes in a session. The cutscene player (*0x01B3A28C; des_options.cpp) plays the one in its first slot (+0x28:
+// the cutscene, +0x2C the mode the script asked for, RequestRemo's REMO_FLAG); *(cutscene + 0x18) + 0x3C is its id.
+// The game's skip (START, then Cross: 0x001A2BB0) sets the playing cutscene's skip byte (*(cutscene + 0x18) + 0x38)
+// when the mode has no 2 in it (the multiplayer mode: "no skip in multiplayer") and the cutscene is under way (+0xD9).
+// The scripts ask in mode 0 in a session (des_seamless_scripts.cpp), so each player skipped only its own copy.
+// Now one the host plays too is the host's to skip: the host tells its guests the id it plays (CUTS, at each change and
+// with each READY) and that it skipped it (SKIP). A friend's copy of that cutscene gets the 2 while the host's plays,
+// so the friend's skip does nothing, and the host's skip sets the friend's skip byte as the game's own skip does. A
+// cutscene the host isn't playing (a Nexus cutscene the host has seen) stays the friend's to skip, as does the end of
+// one whose copy the host's game finished first.
+constexpr uint32_t kRemoMan = 0x01B3A28Cu;
+constexpr uint32_t kRemoFirst = 0x28, kRemoMode = 0x2C, kRemoUnderWay = 0xD9;   // the cutscene player
+constexpr uint32_t kRemoSkip = 0x38, kRemoId = 0x3C;                            // *(cutscene + 0x18)
+constexpr uint32_t kRemoNoSkip = 2;
+uint32_t sCutTold = 0;                // the id this host last told (main thread)
+
+struct Cut {
+    uint32_t man = 0, at = 0, id = 0;   // at: the cutscene (0: none), its id
+    uint32_t in = 0;                    // *(at + 0x18)
+};
+Cut cut_now()
+{
+    Cut c;
+    c.man = rd(DES_AT(kRemoMan));
+    c.at = guest_ok(c.man) ? rd(c.man + kRemoFirst) : 0;
+    c.in = guest_ok(c.at) ? rd(c.at + 0x18) : 0;
+    if (!guest_ok(c.in)) c.at = c.in = 0;
+    else c.id = rd(c.in + kRemoId);
+    return c;
+}
+
+void send_cut()
+{
+    std::vector<uint8_t> b;
+    put32(b, sCutTold);
+    send(kMsgCut, b);
+}
+
+void cut_tick(bool host, bool guest)
+{
+    static uint32_t skip_told = 0;               // the host: the cutscene whose skip it told
+    static uint32_t held = 0, held_mode = 0;     // a guest: the host's cutscene playing here, and its mode before
+    static bool held_set = false;                // whether this game gave it the 2
+    const Cut c = cut_now();
+    if (!c.at) skip_told = 0;
+    auto give_back = [&](bool say) {   // the mode as the script asked, while that cutscene is still the one playing
+        if (held_set && held == c.at && rd(c.man + kRemoMode) == (held_mode | kRemoNoSkip)) {
+            vm_write32(c.man + kRemoMode, held_mode);
+            if (say) std::fprintf(stderr, "[coop] cutscene %u: the host's is over; the rest is yours to skip\n", c.id);
+        }
+        held = 0;
+        held_set = false;
+    };
+    if (host) {
+        if ((c.at ? c.id : 0) != sCutTold) {
+            sCutTold = c.at ? c.id : 0;
+            send_cut();
+        }
+        if (c.at && vm_read8(c.in + kRemoSkip) && skip_told != c.at) {
+            skip_told = c.at;
+            std::vector<uint8_t> b;
+            put32(b, c.id);
+            send(kMsgSkip, b);
+            std::fprintf(stderr, "[coop] cutscene %u: skipped; the friends' copies end too\n", c.id);
+        }
+    } else {
+        sCutTold = skip_told = 0;
+    }
+    if (!guest) {
+        sHostCut = 0;
+        sHostSkip = 0;
+        if (held) give_back(false);
+        return;
+    }
+    const uint32_t host_id = sHostCut.load();
+    const bool shared = c.at && host_id && c.id == host_id;
+    if (held && (held != c.at || !shared)) give_back(held == c.at);   // the host's copy is over, or this one is
+    if (shared && !held) {
+        held = c.at;
+        held_mode = rd(c.man + kRemoMode);
+        held_set = !(held_mode & kRemoNoSkip);   // (a script's own mode with no skip is left as it is)
+        if (held_set) vm_write32(c.man + kRemoMode, held_mode | kRemoNoSkip);
+        std::fprintf(stderr, "[coop] cutscene %u: the host plays it too; only the host skips it\n", c.id);
+    }
+    uint32_t skip = sHostSkip.load();
+    if (!skip) return;
+    if (c.at && c.id == skip) {
+        if (vm_read8(c.man + kRemoUnderWay)) {   // as the game's skip: once the cutscene is under way
+            vm_write8(c.in + kRemoSkip, 1);
+            sHostSkip.compare_exchange_strong(skip, 0u);
+            std::fprintf(stderr, "[coop] cutscene %u: the host skipped it; skipped here too\n", c.id);
+        }
+    } else if (host_id != skip) {   // neither game plays it now: nothing left to skip
+        sHostSkip.compare_exchange_strong(skip, 0u);
+    }
 }
 
 // The player's own bloodstain in a session. At each load the global script's ParamInitialize (0x0044A660) shows it
@@ -2069,6 +2209,7 @@ void send_ready(ppu_context* ctx, uint32_t sm, uint32_t trip, const Place& arriv
     b.insert(b.end(), rec.begin(), rec.end());
     send_flags(sm);
     send_qwc();
+    send_cut();   // (a guest that joined during the host's cutscene)
     send(kMsgReady, b);
 }
 
@@ -2621,6 +2762,8 @@ extern "C" void des_seamless_tick(ppu_context* ctx)
         const bool session = (m == co::Mode::Host && st == kStateHost) ||
                              (m == co::Mode::Join && st == kStateClient && own_kept());
         stone_tick(ctx, session, m == co::Mode::Join && session && !body_form());
+        white_eye_tick(ctx, m == co::Mode::Join && st == kStateClient);
+        cut_tick(m == co::Mode::Host && st == kStateHost, m == co::Mode::Join && st == kStateClient);
         stain_tick(ctx, session && world);
         // A friend whose ending started keeps its own world apart no more (ending_started), but stays in the session,
         // and keeps its glow and colour, until its game leaves after the ending's cutscene (11-16: its colour went to
