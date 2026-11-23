@@ -188,7 +188,9 @@ void open_join_answer(const std::string& code, const co::JoinCheck::Result& r) {
 }
 
 // While the code is tried: what the check does, drawn again as it goes; then, once it's over, the restart (the host's
-// game answered), or the answer's window in its place. Cancel (or Back) ends the check.
+// game answered), or the answer's window in its place. Cancel (or Back) ends the check. A yes says so for a second
+// before the restart: on a fast link the check takes a few milliseconds, and the first play test (11-23) saw the
+// game start again the instant it pressed Paste and join, with no word that the code had been tried.
 class JoinCheckWindow final : public Modal {
 public:
     JoinCheckWindow(Props props, std::unique_ptr<co::JoinCheck> check, std::string code)
@@ -198,6 +200,12 @@ public:
 
     void update() override {
         const auto now = std::chrono::steady_clock::now();
+        if (!mJoinCode.empty() && !pending_close() && now >= mJoinAt) {
+            const std::string code = mJoinCode;
+            mJoinCode.clear();
+            pop();
+            join_now(code);
+        }
         if (mCheck && now >= mNext && !pending_close()) {
             mNext = now + std::chrono::milliseconds(100);
             const co::JoinCheck::Result r = mCheck->result();
@@ -214,16 +222,21 @@ public:
                              : r.is == co::JoinCheck::Is::Fight ? "the host is in a boss fight"
                                                                 : r.text.c_str());
                 const std::string code = mCode;
-                pop();
                 if (r.is == co::JoinCheck::Is::Ok) {
-                    join_now(code);
+                    set_body(escape("Found your friend's game. Starting co-op..."));
+                    mJoinCode = code;
+                    mJoinAt = now + std::chrono::seconds(1);
                 } else {
+                    pop();
                     if (r.is == co::JoinCheck::Is::Failed) play_sound(kSoundItemDisable);
                     open_join_answer(code, r);
                 }
             }
         }
-        if (pending_close()) mCheck.reset();   // (Back or Esc: the check ends with the window)
+        if (pending_close()) {   // (Back or Esc: the check, or the restart it was about to make, ends with the window)
+            mCheck.reset();
+            mJoinCode.clear();
+        }
         Modal::update();
     }
 
@@ -232,6 +245,8 @@ private:
     std::string mCode;
     std::chrono::steady_clock::time_point mNext{};
     std::string mShown;
+    std::string mJoinCode;                           // a yes: the code it starts again with, at mJoinAt
+    std::chrono::steady_clock::time_point mJoinAt{};
 };
 
 // Tries the code (des_seamless.h's JoinCheck) with the name and the server a join will use.
