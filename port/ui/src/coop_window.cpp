@@ -718,6 +718,10 @@ void before_restart(std::function<void(const std::vector<std::string>&)> restart
 void open_join() {
     ui::open_join();
 }
+
+void join_code(const std::string& code) {
+    ui::join_with(code, "No code to join with (DES_UI_JOIN_CODE).");
+}
 void copy_code() {
     copy_code_now();
 }
