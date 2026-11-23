@@ -31,6 +31,7 @@
 // (savedata-coop beside the normal one), so a co-op session never writes the normal characters.
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -125,7 +126,9 @@ public:
         std::string text;   // what it does now, while it runs; why not, in plain words, when Failed
         bool again = true;  // Failed: trying again may help (not with another version, or a key the host refused)
     };
-    explicit JoinCheck(psnr_join_check* jc, std::string name) : mCheck(jc), mName(std::move(name)) {}
+    // port: the host's room server port the texts name (a direct code's own, else the default)
+    JoinCheck(psnr_join_check* jc, std::string name, uint16_t port)
+        : mCheck(jc), mName(std::move(name)), mPort(port) {}
     ~JoinCheck();
     JoinCheck(const JoinCheck&) = delete;
     JoinCheck& operator=(const JoinCheck&) = delete;
@@ -134,6 +137,7 @@ public:
 private:
     psnr_join_check* mCheck;
     std::string mName;
+    uint16_t mPort;
 };
 
 // A check of a code check_code took (its clean form), with the online name and the endpoint (DES_SEAMLESS_INTRO's

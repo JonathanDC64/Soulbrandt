@@ -951,6 +951,7 @@ std::unique_ptr<JoinCheck> check_join(const std::string& code, const std::string
     if (name.empty()) return no("Set your online name first (Settings > Network), then join.");
     psnr_join_check_config cfg{};
     std::string server;
+    uint16_t port = kDefaultPort;   // (for the texts: a direct code's own port)
     if (net_code_kind(code.c_str()) == NET_CODE_ROOM) {
         net_room_code rc{};
         if (net_room_decode(code.c_str(), &rc) != 0) return no("That code has a typo. Check it against your friend's.");
@@ -967,6 +968,7 @@ std::unique_ptr<JoinCheck> check_join(const std::string& code, const std::string
         char ip[16];
         std::snprintf(ip, sizeof ip, "%u.%u.%u.%u", inv.ip[0], inv.ip[1], inv.ip[2], inv.ip[3]);
         server = std::string(ip) + ":" + std::to_string(inv.port);
+        port = inv.port;
         net_invite_key_blob(inv.key, cfg.key);
     }
     cfg.server = server.c_str();
@@ -978,7 +980,7 @@ std::unique_ptr<JoinCheck> check_join(const std::string& code, const std::string
     std::memset(cfg.key, 0, sizeof cfg.key);
     if (!jc) return no("The game couldn't try the code. Try again.");
     std::fprintf(stderr, "[coop] the join check: trying the %s code\n", cfg.room ? "room" : "direct");
-    return std::make_unique<JoinCheck>(jc, name);
+    return std::make_unique<JoinCheck>(jc, name, port);
 }
 
 JoinCheck::~JoinCheck() { psnr_join_check_end(mCheck); }
@@ -1004,7 +1006,7 @@ JoinCheck::Result JoinCheck::result() const {
         return r;
     }
     r.is = Is::Failed;
-    const std::string p = std::to_string(kDefaultPort);
+    const std::string p = std::to_string(mPort);
     if (st.err == PSNR_JOIN_ERR_NAME_TAKEN) {
         r.text = "Someone in your friend's game already plays as "" + mName + "". Change your online name (Settings "
                  "> Network), then try again.";
