@@ -4,6 +4,7 @@
 
 #include "crc32.hpp"
 #include "host.hpp"
+#include "host_pads.hpp"
 #include "log_runs.hpp"
 #include "mods.hpp"
 #include "portable.hpp"
@@ -29,7 +30,6 @@
 #include <intrin.h>
 #include <psapi.h>
 #include <setupapi.h>  // (the graphics card's PCI Express link, system_info)
-#include <xinput.h>
 #include <io.h>
 #include <objbase.h>
 #include <shellapi.h>
@@ -76,7 +76,6 @@ extern char** environ;
 extern "C" void ps3_setenv(const char* name, const char* value);  // boot_main.cpp: through the getenv cache
 extern "C" void ps3_diag_report(FILE* out, unsigned sample_sec);   // boot_main.cpp: what every thread is doing
 extern "C" void* rsx_d3d12_device(void);                           // the D3D12 backend's device, or null
-extern "C" int pad_hid_sony_poll(void* out, int max);              // the DualSense / DualShock 4 reader
 extern "C" int cellPad_host_controller(int i, char* id, int idn, char* name, int namen);  // cellPad.h: the i-th pad
 extern "C" unsigned ppu_boot_frames_presented(void);               // boot_main.cpp: the game's frames so far
 
@@ -1415,17 +1414,14 @@ void platform_facts(std::ostringstream& o, bool game_process) {
           << " where its data is\n";
     }
     {
-        // Gamepads: XInput slots that answer, and the DualSense / DualShock 4 reader's pads.
-        int xinput = 0;
-        for (DWORD i = 0; i < XUSER_MAX_COUNT; i++) {
-            XINPUT_STATE st{};
-            if (XInputGetState(i, &st) == ERROR_SUCCESS) xinput++;
-        }
-        alignas(8) uint8_t hid[4][64];  // (room for 4 of pad_hid_sony.h's PadHidSonyState, 28 bytes each)
-        const int sony = pad_hid_sony_poll(hid, 4);
+        // Gamepads: every pad the game's input reads (XInput or SDL, and the DualSense / DualShock 4 reader).
+        CellPadHostPad pads[8];
+        const int n = cellPad_host_pads(pads, 8);
+        std::string ids;
+        for (int i = 0; i < n; i++) ids += std::string(i ? ", " : " (") + pads[i].id + (i + 1 == n ? ")" : "");
         char layout[KL_NAMELENGTH] = "";
         GetKeyboardLayoutNameA(layout);
-        o << "Gamepads: " << xinput << " XInput, " << sony << " DualSense or DualShock 4; keyboard layout " << layout << "\n";
+        o << "Gamepads: " << n << ids << "; keyboard layout " << layout << "\n";
     }
     if (game_process) o << other_modules();
 }
