@@ -3543,6 +3543,8 @@ static void roster_frame(co::Mode m, uint32_t sm, uint32_t st, bool world)
         f.wait_fight = sGame.fight_wait;
     }
     f.leaving = f.joining && sLeave.load() != kLeaveNone;
+    if (sLeave.load() == kLeaveDone) f.joining = false;   // (left: it says nothing more, so the others drop it as they do a
+                                                          // closed game, whether or not this one restarts)
     f.area = world ? vm_read32(sm + kSmArea) : 0xFFFFFFFFu;
     co::roster_tick(f);
 }

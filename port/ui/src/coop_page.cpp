@@ -160,6 +160,7 @@ void CoopPage::build() {
         }));
     }
     mInfo = append(page, "coop-info");
+    mInfo->SetClass("keep-clear", true);  // (no crystal lizard over it: host.cpp, draw_lizard)
     mListeners.push_back(std::make_unique<ScopedEventListener>(mInfo, Rml::EventId::Click, [this](Rml::Event& e) {
         if (coop::copy_pressed(e.GetTargetElement())) mNext = {};  // (a code's Copy button: "Copied" at once)
     }));
