@@ -117,8 +117,13 @@ std::string info_rml(const co::Status& s) {
     if (!s.lan_code.empty() && (s.code.empty() || s.lan_code != s.code) && s.show_direct)
         b += "<info-head><info-line>On your own network: <info-lan>" + escape(s.lan_code) + "</info-lan></info-line>" +
              coop::copy_button("lan") + "</info-head>";
-    if (const std::string who = coop_session::page_rml(s.max_players); !who.empty())
-        return b + (s.show_direct ? "<info-rule/>" : "") + who;  // (each player, in place of the count)
+    if (const std::string who = coop_session::page_rml(s.max_players); !who.empty()) {
+        // (once anyone is in or waiting: who first, then the codes, in place of the count)
+        const std::string rule = "<info-rule/>";
+        if (b.size() >= rule.size() && b.compare(b.size() - rule.size(), rule.size(), rule) == 0)
+            b.resize(b.size() - rule.size());
+        return who + rule + b;
+    }
     b += std::string(s.show_direct ? "<info-rule/>" : "") + "<info-line>Players: " +
          std::to_string(s.players > 0 ? s.players : 1) + " of " + std::to_string(s.max_players) +
          " (Settings &gt; Network).";
