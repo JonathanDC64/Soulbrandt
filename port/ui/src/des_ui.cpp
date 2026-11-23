@@ -48,6 +48,7 @@
 #include "setup_screens.hpp"
 #include "setup_window.hpp"
 #include "players_window.hpp"
+#include "host_pads.hpp"
 #include "trophy_toasts.hpp"
 #include "ui.hpp"
 #include "updates.hpp"
@@ -55,10 +56,6 @@
 #include "version.hpp"
 #include "../../des_rsx_route.h"  // the renderer calls below: through rsx_out in a PS3RECOMP_RSX_HAL build
 #include "../../des_seamless.h"
-
-#ifdef _WIN32
-#include <xinput.h>  // (read_xinput)
-#endif
 
 #include <algorithm>
 #include <atomic>
@@ -103,17 +100,6 @@ int rsx_d3d12_borderless(void);
 void cellPad_set_host_hold(int hold);
 extern volatile unsigned g_pad0_buttons;  // pad 0 as the game last read it (CELL_PAD_CTRL_* layout)
 
-typedef struct {  // as pad_hid_sony.h has it, field for field: the poll fills an array of these
-    unsigned short buttons;    // CELL_PAD_CTRL_*
-    unsigned char lx, ly, rx, ry;  // 0-255, centre 128, up = 0
-    unsigned char l2, r2;
-    unsigned char slot;        // the pad, for its vibration
-    unsigned char extra;       // its buttons beyond the PS3's (pad_map.h's PAD_EXTRA_*: back buttons, Fn, mute)
-    float raw[4];              // its sticks as it reports them (Windows)
-} PadHidSonyState;
-// (The runtime writes whole entries of its own size: an array of a smaller copy overflows with a second pad.)
-static_assert(sizeof(PadHidSonyState) == 28, "pad_hid_sony.h's PadHidSonyState");
-int pad_hid_sony_poll(PadHidSonyState* out, int max);
 int cellPad_host_pads_on(void);  // cellPad.h: 0 while the game ignores the pads (PAD_FOCUS_ONLY in the background)
 int cellPad_host_glyph_device(void);  // cellPad.h: what the game was last used with (PAD_GLYPH_*, pad_glyph.h)
 int cellPad_host_controller(int i, char* id, int idn, char* name, int namen);  // cellPad.h: the i-th port's pad
@@ -442,8 +428,8 @@ int wndproc(void*, void* hwnd_, unsigned msg, unsigned long long wp, long long l
     }
 }
 
-// ---- Gamepads: XInput and the Sony HID reader, merged (the same readers the game's pad uses; off Windows the reader
-// gives SDL's pads) ----
+// ---- Gamepads: every pad the game's input reads (cellPad_host_pads: XInput or SDL, and the Sony HID reader),
+// merged ----
 
 float pick(float a, float b) {
     return std::abs(a) >= std::abs(b) ? a : b;
@@ -451,108 +437,37 @@ float pick(float a, float b) {
 
 // The pad the menus read alone: the one Settings > Controls > Controller picks (PAD_CONTROLLER), while it is connected,
 // as the game then reads it alone (cellPad.c puts it on port 0). Otherwise, Automatic or with the picked pad away, the
-// menus read every pad. So a second device that holds a button nobody presses can be left out of the menus too.
-struct PadOnly {
-    bool on = false;
-    int xinput = -1;  // the XInput user ("controllerN" on Windows)
-    int hid = -1;     // the HID reader's slot ("playstationN"; off Windows "controllerN", SDL's controller slot)
-};
-
-PadOnly pad_only() {
-    PadOnly o;
+// menus read every pad (empty). So a second device that holds a button nobody presses can be left out of the menus too.
+std::string pad_only() {
     const char* want = std::getenv("PAD_CONTROLLER");  // (the Controller row is live: settings.cpp sets it)
-    if (!want || !*want || !std::strcmp(want, "auto")) return o;
+    if (!want || !*want || !std::strcmp(want, "auto")) return {};
     char id[16];
-    if (!cellPad_host_controller(0, id, int(sizeof id), nullptr, 0) || std::strcmp(id, want) != 0) return o;
-    const int k = want[std::strlen(want) - 1] - '1';  // (a name cellPad gave: "controller1".."controller4", ...)
-    if (!std::strncmp(want, "playstation", 11)) {
-        o.hid = k;
-    } else {
-#ifdef _WIN32
-        o.xinput = k;
-#else
-        o.hid = k;
-#endif
-    }
-    o.on = true;
-    return o;
+    if (!cellPad_host_controller(0, id, int(sizeof id), nullptr, 0) || std::strcmp(id, want) != 0) return {};
+    return want;
 }
 
-#ifdef _WIN32
-unsigned xinput_to_cell(WORD b) {
-    unsigned c = 0;
-    if (b & XINPUT_GAMEPAD_DPAD_UP) c |= kUp;
-    if (b & XINPUT_GAMEPAD_DPAD_DOWN) c |= kDown;
-    if (b & XINPUT_GAMEPAD_DPAD_LEFT) c |= kLeft;
-    if (b & XINPUT_GAMEPAD_DPAD_RIGHT) c |= kRight;
-    if (b & XINPUT_GAMEPAD_START) c |= kStart;
-    if (b & XINPUT_GAMEPAD_BACK) c |= kSelect;
-    if (b & XINPUT_GAMEPAD_LEFT_THUMB) c |= kL3;
-    if (b & XINPUT_GAMEPAD_RIGHT_THUMB) c |= kR3;
-    if (b & XINPUT_GAMEPAD_LEFT_SHOULDER) c |= kL1;
-    if (b & XINPUT_GAMEPAD_RIGHT_SHOULDER) c |= kR1;
-    if (b & XINPUT_GAMEPAD_A) c |= kCross;
-    if (b & XINPUT_GAMEPAD_B) c |= kCircle;
-    if (b & XINPUT_GAMEPAD_X) c |= kSquare;
-    if (b & XINPUT_GAMEPAD_Y) c |= kTriangle;
-    return c;
-}
-
-// XInput's pads, into `pad`. Polls XInput slots only while a slot answers: a missing pad's XInputGetState is
-// slow, so empty slots are retried once a second.
-void read_xinput(ui::input::PadState& pad, bool& neutral, const PadOnly& only) {
-    static clock_type::time_point sNextScan[XUSER_MAX_COUNT]{};
-    const auto now = clock_type::now();
-    for (DWORD i = 0; i < XUSER_MAX_COUNT; i++) {
-        if (only.on && int(i) != only.xinput) continue;
-        if (now < sNextScan[i]) continue;
-        XINPUT_STATE st{};
-        if (XInputGetState(i, &st) != ERROR_SUCCESS) {
-            sNextScan[i] = now + std::chrono::seconds(1);
-            continue;
-        }
-        const XINPUT_GAMEPAD& g = st.Gamepad;
-        unsigned b = xinput_to_cell(g.wButtons);
-        if (g.bLeftTrigger > 100) b |= kL2;
-        if (g.bRightTrigger > 100) b |= kR2;
-        pad.buttons |= b;
-        const float lx = std::clamp(g.sThumbLX / 32767.0f, -1.0f, 1.0f);
-        const float ly = std::clamp(-g.sThumbLY / 32767.0f, -1.0f, 1.0f);
-        pad.lx = pick(pad.lx, lx);
-        pad.ly = pick(pad.ly, ly);
-        if (b || g.bLeftTrigger > 30 || g.bRightTrigger > 30 || std::abs(g.sThumbLX) > 8000 || std::abs(g.sThumbLY) > 8000 ||
-            std::abs(g.sThumbRX) > 8000 || std::abs(g.sThumbRY) > 8000)
-            neutral = false;
-    }
-}
-#else
-void read_xinput(ui::input::PadState&, bool&, const PadOnly&) {}  // (off Windows SDL's pads come through the HID reader)
-#endif
-
-// The pads: XInput's and the HID reader's, merged (or the one pad_only names).
+// The pads, merged (or the one pad_only names).
 ui::input::PadState read_pads(bool& neutral) {
     ui::input::PadState pad;
     neutral = true;
     if (ui::settings::no_user_input()) return pad;  // PS3_NO_USER_INPUT: no pad of the user's is read
     if (!cellPad_host_pads_on()) return pad;         // PAD_FOCUS_ONLY, with the window in the background
     pad.glyph = cellPad_host_glyph_device();          // (the menus' prompts: input.hpp's menu_device)
-    const PadOnly only = pad_only();
-    read_xinput(pad, neutral, only);
-    PadHidSonyState hid[4];
-    const int n = pad_hid_sony_poll(hid, 4);
+    const std::string only = pad_only();
+    CellPadHostPad pads[8];
+    const int n = cellPad_host_pads(pads, 8);
     for (int i = 0; i < n; i++) {
-        if (only.on && int(hid[i].slot) != only.hid) continue;
-        unsigned b = hid[i].buttons;
-        if (hid[i].l2 > 100) b |= kL2;
-        if (hid[i].r2 > 100) b |= kR2;
+        const CellPadHostPad& p = pads[i];
+        if (!only.empty() && only != p.id) continue;
+        unsigned b = p.buttons;
+        if (p.l2 > 100) b |= kL2;
+        if (p.r2 > 100) b |= kR2;
         pad.buttons |= b;
-        pad.extra |= hid[i].extra;  // (XInput has none)
-        pad.lx = pick(pad.lx, (hid[i].lx - 128) / 127.0f);
-        pad.ly = pick(pad.ly, (hid[i].ly - 128) / 127.0f);
+        pad.extra |= p.extra;
+        pad.lx = pick(pad.lx, (p.lx - 128) / 127.0f);
+        pad.ly = pick(pad.ly, (p.ly - 128) / 127.0f);
         const auto off = [](unsigned char v) { return std::abs(int(v) - 128) > 32; };
-        if (b || hid[i].extra || hid[i].l2 > 30 || hid[i].r2 > 30 || off(hid[i].lx) || off(hid[i].ly) || off(hid[i].rx) ||
-            off(hid[i].ry))
-            neutral = false;
+        if (b || p.extra || p.l2 > 30 || p.r2 > 30 || off(p.lx) || off(p.ly) || off(p.rx) || off(p.ry)) neutral = false;
     }
     if (ui::stick_preview_takes_left()) pad.lx = pad.ly = 0.f;  // (being tried out in Settings: the D-pad moves the menu)
     return pad;
@@ -581,24 +496,13 @@ std::string held_inputs() {
             std::snprintf(b, sizeof b, "key 0x%02X%s%s", vk, name.empty() ? "" : " ", name.c_str());
             add(b);
         }
-#ifdef _WIN32
-    for (DWORD i = 0; i < XUSER_MAX_COUNT; i++) {
-        XINPUT_STATE st{};
-        if (XInputGetState(i, &st) != ERROR_SUCCESS) continue;
-        const XINPUT_GAMEPAD& g = st.Gamepad;
-        std::snprintf(b, sizeof b, "XInput %lu: buttons 0x%04X, triggers %u %u, sticks %d %d %d %d",
-                      (unsigned long)i, unsigned(g.wButtons), unsigned(g.bLeftTrigger), unsigned(g.bRightTrigger),
-                      g.sThumbLX, g.sThumbLY, g.sThumbRX, g.sThumbRY);
-        add(b);
-    }
-#endif
-    PadHidSonyState hid[4];
-    const int n = pad_hid_sony_poll(hid, 4);
+    CellPadHostPad pads[8];
+    const int n = cellPad_host_pads(pads, 8);
     for (int i = 0; i < n; i++) {
-        std::snprintf(b, sizeof b, "HID pad %u: buttons 0x%04X, extra 0x%02X, triggers %u %u, sticks %u %u %u %u",
-                      unsigned(hid[i].slot), unsigned(hid[i].buttons), unsigned(hid[i].extra), unsigned(hid[i].l2),
-                      unsigned(hid[i].r2), unsigned(hid[i].lx), unsigned(hid[i].ly), unsigned(hid[i].rx),
-                      unsigned(hid[i].ry));
+        const CellPadHostPad& p = pads[i];
+        std::snprintf(b, sizeof b, "%s: buttons 0x%04X, extra 0x%02X, triggers %u %u, sticks %u %u %u %u", p.id,
+                      unsigned(p.buttons), unsigned(p.extra), unsigned(p.l2), unsigned(p.r2), unsigned(p.lx),
+                      unsigned(p.ly), unsigned(p.rx), unsigned(p.ry));
         add(b);
     }
     return s.empty() ? "nothing now" : s;

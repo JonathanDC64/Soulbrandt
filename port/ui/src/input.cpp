@@ -5,6 +5,7 @@
 #include "input.hpp"
 
 #include "host.hpp"
+#include "host_pads.hpp"
 #include "menu_pad.hpp"
 #include "settings.hpp"
 #include "ui.hpp"
@@ -219,6 +220,9 @@ bool on_steam_deck() noexcept {
 
 PadSupport pad_support() noexcept {
 #ifdef _WIN32
+    if (cellPad_host_reader_sdl())
+        return {"SDL game controllers, DualSense, DualShock 4",
+                "Xbox, PlayStation, Switch, Steam and other controllers SDL knows, over USB or Bluetooth."};
     return {"XInput, DualSense, DualShock 4", "Xbox controllers, DualSense and DualShock 4, over USB or Bluetooth."};
 #else
     return {"SDL game controllers", "Xbox, PlayStation and other controllers SDL knows, over USB or Bluetooth."};

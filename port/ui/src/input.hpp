@@ -1,5 +1,6 @@
 // Adapted from Dusklight (CC0), src/dusk/ui/input.hpp, by way of FFCCEOT-Recomp. Adapted for Demon's Souls: the
-// gamepad comes from the port's own pad readers (XInput and the Sony HID reader) as a polled state, not as events.
+// gamepad comes from the runtime's pad readers (cellPad_host_pads: XInput or SDL, and the Sony HID reader) as a
+// polled state, not as events.
 #pragma once
 
 #include "prompts.hpp"
