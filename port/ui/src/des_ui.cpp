@@ -30,6 +30,7 @@
 #include "mods.hpp"
 #include "mouse.hpp"
 #include "net_notices.hpp"
+#include "coop_notices.hpp"
 #include "osk_window.hpp"
 #include "overlay.hpp"
 #include "perf_overlay.hpp"
@@ -700,11 +701,12 @@ void push_documents() {
     ui::push_document(std::make_unique<ui::MenuShell>(), false);
     if (sStartScreen) ui::push_document(std::make_unique<ui::Prelaunch>());
 
-    // DES_UI_OPEN=menu | settings | trophies | mods | players | coop | coop-host | coop-join | coop-settings | privacy |
-    // osk | setup | setup-run: open one at startup
+    // DES_UI_OPEN=menu | settings | trophies | mods | players | coop | coop-host | coop-join | coop-join-code |
+    // coop-settings | privacy | osk | setup | setup-run: open one at startup
     // (for screenshots and tests; privacy is the note as Settings > Network shows it; coop-host and coop-join are
     // Seamless co-op with Host's or Join's first question over it, as a press opens it: the notice, the mods warning;
-    // coop-settings is co-op's settings alone, as the Co-op window's Settings opens them).
+    // coop-join-code is Join with DES_UI_JOIN_CODE's code, as Join's window takes it, with no question first: the
+    // check, then the restart; coop-settings is co-op's settings alone, as the Co-op window's Settings opens them).
     // setup is setup's start screen over the game (docs/88: its own window comes with the split host), with
     // DES_SETUP_GAME's folders to begin with; setup-run runs the setup engine at once, on those folders.
     if (const char* open = std::getenv("DES_UI_OPEN"); open && *open) {
@@ -722,6 +724,11 @@ void push_documents() {
             ui::push_document(ui::menu::screen_alone("Seamless co-op"));
             if (!std::strcmp(open, "coop-host")) ui::coop::open_host();
             else ui::coop::open_join();
+        }
+        else if (!std::strcmp(open, "coop-join-code")) {
+            ui::push_document(ui::menu::screen_alone("Seamless co-op"));
+            const char* code = std::getenv("DES_UI_JOIN_CODE");
+            ui::coop::join_code(code ? code : "");
         }
         else if (!std::strcmp(open, "privacy"))
             ui::push_document(std::make_unique<ui::PrivacyWindow>(ui::PrivacyWindow::Mode::Read));
@@ -1154,6 +1161,7 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
     if (!sActive && !sStartScreen && !gameMenu && !chordEdge && !shot && !sQueued.load(std::memory_order_acquire) &&
         !sOpenPending && !sReportCountdown && !(prework && !sPreworkShown) && !privacy && !sCloseRequested.load() &&
         !sOskPending.load(std::memory_order_acquire) && !ui::trophies::pending() && !ui::net_notices::pending() &&
+        !ui::coop_notices::pending() &&
         !sHangNotice.load(std::memory_order_relaxed) &&
         !sCustomServerNotice.load(std::memory_order_relaxed) && !sModsNotice.load(std::memory_order_relaxed) &&
         !ui::report::saved_notice_pending() && ui::perf::mode() == ui::perf::Mode::Off) {
@@ -1169,6 +1177,7 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
         if (sCloseRequested.exchange(false) && ui::app().quit) ui::app().quit();  // nothing to ask with
         if (sOskPending.exchange(false)) apply_osk_request(false);
         ui::trophies::discard();  // (the unlocks are saved; only the pop-ups are lost)
+        ui::coop_notices::discard();  // (the co-op log has them)
         sHangNotice.store(false);
         sCustomServerNotice.store(false);
         sModsNotice.store(false);
@@ -1225,6 +1234,7 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
     if (ui::OskWindow* osk = ui::active_osk()) osk->on_pad(pad.buttons);
     ui::trophies::drain();
     ui::net_notices::drain();
+    ui::coop_notices::drain();   // seamless co-op's joins, leaves, deaths
     ui::update();
     sStartUp.store(ui::is_prelaunch_open());
 

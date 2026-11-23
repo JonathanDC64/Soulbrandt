@@ -49,9 +49,25 @@ so.
 
 1. Copy your friend's invite code.
 2. Open **Seamless co-op**, choose **Join**, then **Paste and join**, or **Type code** to type it (with a keyboard or
-   the controller). Either kind of code works. The game starts again on your co-op characters.
-3. Until it gets in, Co-op says how the join goes ("Finding the host's game...", or what is in the way, below), and
-   the game keeps trying: after 10 s, 30 s, then every minute.
+   the controller). Either kind of code works.
+3. The game first tries the code, the way the join will: "Finding your friend's game...", then "Reaching your
+   friend's game...", usually a second or two, at most about 25 s. Once your friend's game answers, yours starts again
+   on your co-op characters and joins. If it can't get through, you stay where you are and the window says why, with
+   **Try again** where that may help:
+   - no game is hosting with this code (a typo, an old code, or the host isn't hosting yet);
+   - your friend's game is another version;
+   - the server that finds your friend's game can't be reached (a room code), or the code's address doesn't answer (a
+     direct code);
+   - your two networks block a direct connection (your friend can open port 36100, or one of you can host);
+   - your friend's game didn't accept the code (it has a new one);
+   - someone there already plays under your online name;
+   - a room code with no server to introduce the games (Settings > Network > Server), or no online name.
+
+   If your friend's game is full, it asks whether to join anyway and wait for a place; if your friend is in a boss
+   fight, that you join once it's over. **Cancel** stops the check at any time.
+4. Until it gets in, Co-op says how the join goes ("Finding the host's game...", or what is in the way, below), and
+   the game keeps trying: after 10 s, 30 s, then every minute. That covers the rare join that fails after a check got
+   through (the host closed its game during the restart).
 
 **Who is in the session:** while you host, or once you have joined, **Seamless co-op** lists everyone in the
 session (docs/169):
@@ -71,6 +87,31 @@ where they stand (in a boss fight, to that area's start, as a death would), and 
 host's leave sends its friends back to theirs the same way. Then the game starts again on your normal characters. A
 friend's **Leave now**, while that is under way, doesn't wait for the trip: the game saves where the friend stands
 (in a boss fight, at the area's start as soon as it gets there), then starts again, so nothing is lost.
+
+**Notices.** While you play, short notes at the corner of the screen say what happens in the session (11-23):
+- **to a friend:** that it joined ("You joined StoneA's world."), that the host's game is full or in a boss fight and
+  it joins once there is a place or the fight is over, that the connection to the host's game was lost (it goes back
+  to its own world, and joins again once the host's game is back), and a join that can't get through (Co-op's own
+  line, with where to leave);
+- **to the host:** who joined its world, who waits to join and why (full, or its boss fight); also when friends can't use its room code (the server that introduces players can't be reached or has no place),
+  when its code is spent, and when a friend's game found it but couldn't get through;
+- **to everyone in the session:** a player joined, left co-op, or its game stopped answering (it closed, or its
+  connection dropped: 12 s with no word from it).
+
+Deaths and returns ("X died.", "X is back.", how the host comes back after its death) are written but not shown
+for now (11-23, after the first play test): `kDeathNotices` in `des_seamless_notice.cpp` turns them on.
+
+The same text within a minute shows once, at most six wait, and none shows during a load or a cutscene: they wait
+until it is over (and go after 90 s). Each one is in the co-op log too (`[coop] notice:`). **Settings > Network >
+Seamless co-op: on your screen > Co-op notices** (also on the Seamless co-op screen's Settings) turns them off, at
+once. One notice shows with it off too: co-op that didn't start ("Hosting didn't start: the room server did not
+start: ...", the room server's port taken, mods on, no online name, a bad code), since it blocks co-op and the player
+would otherwise only see it in the menu.
+
+The names come from the games themselves. Each co-op game sends `NAME` (its online name, its player id, and whether it
+is in the session, the host, dead, waiting for a place or for the host's boss fight, and the host's way back after its
+death) through the room server, at once when that changes and every 3 s; each game compares a player's `NAME` with its
+last one (`des_seamless_notice.cpp`). The game's own member list keeps the names only inside its id objects.
 
 **A friend's game saves as it goes.** In the host's world, a friend's game saves its own character when the game
 would save it (as the host's game does: a light wall passed, a boss's door opened, and the game's own moments), soon
@@ -367,6 +408,23 @@ room number names the room at the endpoint; the key goes only to the host's game
 
 A friend's game rejects anything else with "That isn't an invite code: it has 15 or 16 letters and digits."
 
+**The check before the restart** (11-23; before, Join restarted at once, and a code that couldn't work showed only
+in the Co-op window after the restart, with another restart to leave). ps3recomp's `psnr_join_check` (`psnr_host.h`)
+makes the join's own try once from the menu, on a UDP socket and threads of its own, so the game's P2P port and
+connection stay as they are, and never over TLS (a room server has none):
+- a room code: the lookup at the endpoint, the punching raced against TCP, and `HELLO` with the key, the same steps as
+  the join (np_psnr.c's `rc_run`);
+- a direct code: TCP to the code's address (up to 10 s), then `HELLO`;
+- then `ROM?`, as a joining game asks: the host's game answers with `FGHT` (in a boss fight), then `ROOM` or `FULL`.
+  No answer within 5 s (the host's game in a load) counts as a yes.
+
+It uses the name and the endpoint the join will (settings.cpp's `seamless_name`, `seamless_endpoint`). The host's
+room server counts it as a player for those seconds (its window may show "Waiting to join: 1"), and a wrong key as one
+wrong key, as the join itself. Its punch goes out from another local port than the join's, so the router's mapping
+differs: a check that got through almost always means the join does, and through a router where neither can, both
+fail. The rest stays as it was: if the host closes its game during the restart, the join keeps trying and Co-op says
+how it goes.
+
 **Who can join.** The room server (ps3recomp's `psnr_host`) is the only thing the router opens. The game's own
 online server runs on this PC's loopback only. Every connection must say `HELLO` with the key, as a 32-byte blob
 made from it, within 10 s; without it, nothing else is answered. So:
@@ -539,6 +597,7 @@ alive.
 | `STAT` | any | flags (1 in the session, 2 host, 4 dead, 8 soul, 16 loading, 32 cutscene, 64 boss fight, 128 waits: full, 256 waits: boss fight, 512 leaving), area, HP, most HP, its ping to the host (ms, -1 none), the online name | who is in the session (des_seamless_roster.cpp): at once on a change of flags or area, and every 2 s |
 | `PNG?` | friend | its nonce, a count | time the round trip: send it back |
 | `PNG!` | host | that nonce and count | the answer, from the host's next frame, to every game; the friend whose nonce it is takes the round trip |
+| `NAME` | any | its state, its player id, its online name | who it is and how it is, at once on a change and every 3 s: the notices (below) |
 
 **The flags** (event flags: bit `n & 7` of byte `n >> 3`, 17,024 of them):
 - **Each world has its own flags,** flags 0-3,199 and 8,192-12,287; the rest (bosses, for one) are shared by every
@@ -1263,6 +1322,12 @@ host's boss kill while the friend was away don't count in the friend's world.
   - ps3recomp answers the game's `LeaveRoom` as left when the room's connection is lost (the room server has let the
     friend go). Before, the call failed with no connection, and the game tried again every 15 s, each time with the
     box.
+  - Out of a session (it ended, or a join failed), the friend asks the host for its room and place again (`ROM?`,
+    `HER?`), and its next join waits for the answer. The room data it held can be a room that is gone: on 11-22 (a
+    tester's log) the host's game stopped answering and its room went, and the friend, home and still connected to
+    the host's game, joined that room 1.9 s later; the connection's loss came 0.4 s after, and the join failed with
+    "Failed to join the session.". A host that left its room and opened another got a first join to the old room the
+    same way (err `0x80022B13`). A host that is gone doesn't answer, so no join goes before np_psnr sees it gone.
 - **A friend kicked out of the room** (`0x1103`): the game leaves that room, again every 15 s while that fails, each
   time with "The session has ended.". The room server has taken the friend out already, so it answers "not in the
   room". ps3recomp answers a leave of a room the friend was kicked out of as left, and a leave takes down only the

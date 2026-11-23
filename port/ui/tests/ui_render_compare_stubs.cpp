@@ -3,6 +3,7 @@
 // inert, as the runtime's host_stubs.c is for what its modules take from the PPU loader.
 #include "../../des_seamless.h"
 #include "../../des_seamless_roster.h"
+#include "../../des_seamless_notice.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -121,4 +122,6 @@ std::string area_label(uint32_t area) {
     if ((area >> 24) == 1) return "The Nexus";
     return "Boletarian Palace 1-" + std::to_string(((area >> 16) & 0xFF) + 1);  // (the made-up players are there)
 }
+bool notices_waiting() { return false; }
+std::vector<Notice> take_notices() { return {}; }
 }  // namespace des::seamless
