@@ -65,6 +65,7 @@
 //   - Whether an area item was taken is read from the guest's own world, not from the host's flags in play: a guest
 //     sees the items it hasn't taken, wherever it took them. One it takes is kept in its own world, as a boss's soul is.
 #include "des_seamless.h"
+#include "des_seamless_notice.h"   // the co-op notices (NAME)
 
 #include "ps3emu/ppu_lift.h"
 #include "ps3emu/psnr_host.h"
@@ -457,6 +458,7 @@ void putf(std::vector<uint8_t>& b, float f)
 void on_message(uint32_t from, const uint8_t* d, uint32_t n)
 {
     if (n < 4) return;
+    if (co::notice_message(from, d, n)) return;   // a NAME (des_seamless_notice.cpp)
     std::lock_guard<std::mutex> g(sMsgLock);
     if (!std::memcmp(d, kMsgRoom, 4) && n > 4 && n - 4 <= kRoomMax) {
         sRoom.assign(d + 4, d + n);
@@ -2686,6 +2688,7 @@ void host_death_flags(bool hosting, bool world)
                          : sHostFightDeath.load() ? "it respawns alone once the boss is dead (a boss fight)"
                                                   : "it respawns alone",
                          why.empty() ? "no other player here" : why.c_str());
+        co::notice_host_died(alone, up, sHostFightDeath.load());
     }
     was_dead = dead;
 }
@@ -3482,6 +3485,23 @@ static void state_line(uint32_t sm, uint32_t st)
     last = st;
 }
 
+// This game's state for the co-op notices (des_seamless_notice.h), each frame. Its death as it was before a load (the
+// player's character comes and goes there): a respawn is back once it stands in the world again.
+static void notice_frame(co::Mode m, uint32_t st, bool world)
+{
+    static bool dead = false;
+    co::NoticeFrame f;
+    f.hosting = m == co::Mode::Host;
+    f.joining = m == co::Mode::Join;
+    f.in_session = f.hosting ? st == kStateHost : st == kStateClient && sGame.arrived;
+    const uint32_t pc = player_chr();
+    if (world && guest_ok(pc)) dead = (int32_t)vm_read32(pc + kChrHp) <= 0;
+    f.dead = f.in_session && dead;
+    f.player_id = guest_ok(pc) ? vm_read32(pc + 0x498) : 0;
+    f.hold = !world || des_cutscene_playing();
+    co::notices_tick(f);
+}
+
 // From des_menu_tick, every frame, on the game's main thread.
 extern "C" void des_seamless_tick(ppu_context* ctx)
 {
@@ -3563,6 +3583,7 @@ extern "C" void des_seamless_tick(ppu_context* ctx)
             it = make_again(ctx, sm, *it, false) ? sBackWaiting.erase(it) : std::next(it);
     for (const uint32_t id : back)
         if (!make_again(ctx, sm, id, true)) sBackWaiting.insert(id);
+    notice_frame(m, st, world);
 }
 
 // Whether this guest's own world has flag (world: the one it is in play for). Under sOwn.lock.

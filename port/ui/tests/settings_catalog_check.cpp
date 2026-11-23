@@ -261,17 +261,18 @@ void check_restart_names() {
     check(settings::restart_pending().empty(), "changed back, something still waits");
 }
 
-// Co-op's settings on their own (the Seamless co-op screen's Settings): one tab of two sections, "When you host" and
-// "When you join", each with the rows of the Network tab's section of that heading, in its order. The host's rows are
-// the ones whose setting counts in the host's game for everyone (the players, the enemies' health).
+// Co-op's settings on their own (the Seamless co-op screen's Settings): one tab of three sections, "When you host",
+// "When you join" and "On your screen", each with the rows of the Network tab's section of that heading, in its
+// order. The host's rows are the ones whose setting counts in the host's game for everyone (the players, the enemies'
+// health); Co-op notices is each player's own, hosting or joining.
 void check_coop_tab() {
     g_where = "coop_tabs";
     const std::vector<catalog::TabDesc>& coop = catalog::coop_tabs();
-    check(coop.size() == 1 && coop[0].sections.size() == 2, "not one tab of two sections");
-    if (coop.size() != 1 || coop[0].sections.size() != 2) return;
-    const char* const heads[2] = {catalog::kCoopHost, catalog::kCoopJoin};
-    const char* const titles[2] = {"When you host", "When you join"};
-    for (int k = 0; k < 2; k++) {
+    check(coop.size() == 1 && coop[0].sections.size() == 3, "not one tab of three sections");
+    if (coop.size() != 1 || coop[0].sections.size() != 3) return;
+    const char* const heads[3] = {catalog::kCoopHost, catalog::kCoopJoin, catalog::kCoopScreen};
+    const char* const titles[3] = {"When you host", "When you join", "On your screen"};
+    for (int k = 0; k < 3; k++) {
         const catalog::SectionDesc& c = coop[0].sections[(size_t)k];
         check(c.title == titles[k], "section " + std::to_string(k) + " is headed '" + c.title + "'");
         bool found = false;
@@ -296,6 +297,8 @@ void check_coop_tab() {
               has(0, "DES_SEAMLESS_DIFFICULTY_ATTACK") && has(0, "DES_SEAMLESS_DIFFICULTY_DEFENSE"),
           "a host's row not under When you host");
     check(has(1, "DES_SEAMLESS_GLOW") && !has(0, "DES_SEAMLESS_GLOW"), "the glow not under When you join");
+    check(has(2, "coop_notices") && !has(0, "coop_notices") && !has(1, "coop_notices"),
+          "Co-op notices not under On your screen");
 }
 
 // The Game tab's Language rows shown on a disc of region r, and its heading.

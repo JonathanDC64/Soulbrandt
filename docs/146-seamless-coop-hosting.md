@@ -59,6 +59,31 @@ host's leave sends its friends back to theirs the same way. Then the game starts
 friend's **Leave now**, while that is under way, doesn't wait for the trip: the game saves where the friend stands
 (in a boss fight, at the area's start as soon as it gets there), then starts again, so nothing is lost.
 
+**Notices.** While you play, short notes at the corner of the screen say what happens in the session (11-23):
+- **to a friend:** that it joined ("You joined StoneA's world."), that the host's game is full or in a boss fight and
+  it joins once there is a place or the fight is over, that the connection to the host's game was lost (it goes back
+  to its own world, and joins again once the host's game is back), and a join that can't get through (Co-op's own
+  line, with where to leave);
+- **to the host:** who joined its world, who waits to join and why (full, or its boss fight); also when friends can't use its room code (the server that introduces players can't be reached or has no place),
+  when its code is spent, and when a friend's game found it but couldn't get through;
+- **to everyone in the session:** a player joined, left co-op, or its game stopped answering (it closed, or its
+  connection dropped: 12 s with no word from it).
+
+Deaths and returns ("X died.", "X is back.", how the host comes back after its death) are written but not shown
+for now (11-23, after the first play test): `kDeathNotices` in `des_seamless_notice.cpp` turns them on.
+
+The same text within a minute shows once, at most six wait, and none shows during a load or a cutscene: they wait
+until it is over (and go after 90 s). Each one is in the co-op log too (`[coop] notice:`). **Settings > Network >
+Seamless co-op: on your screen > Co-op notices** (also on the Seamless co-op screen's Settings) turns them off, at
+once. One notice shows with it off too: co-op that didn't start ("Hosting didn't start: the room server did not
+start: ...", the room server's port taken, mods on, no online name, a bad code), since it blocks co-op and the player
+would otherwise only see it in the menu.
+
+The names come from the games themselves. Each co-op game sends `NAME` (its online name, its player id, and whether it
+is in the session, the host, dead, waiting for a place or for the host's boss fight, and the host's way back after its
+death) through the room server, at once when that changes and every 3 s; each game compares a player's `NAME` with its
+last one (`des_seamless_notice.cpp`). The game's own member list keeps the names only inside its id objects.
+
 **A friend's game saves as it goes.** In the host's world, a friend's game saves its own character when the game
 would save it (as the host's game does: a light wall passed, a boss's door opened, and the game's own moments), soon
 after each arrival and boss kill, and at least every 90 s. Not in a boss fight, while dead, in a load or in a
@@ -523,6 +548,7 @@ alive.
 | `FLGS` | host | area, offset, up to 1,000 bytes of its event flags | the host's flags, in three parts, before each `REDY` |
 | `FLAG` | host | flag, area | a progress flag was set in the host's world |
 | `FLAG` | friend | flag, area | the Archstones' seal was opened by this friend: the host's world takes it |
+| `NAME` | any | its state, its player id, its online name | who it is and how it is, at once on a change and every 3 s: the notices (below) |
 
 **The flags** (event flags: bit `n & 7` of byte `n >> 3`, 17,024 of them):
 - **Each world has its own flags,** flags 0-3,199 and 8,192-12,287; the rest (bosses, for one) are shared by every

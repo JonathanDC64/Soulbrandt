@@ -1,6 +1,7 @@
 // Written for Demon's Souls. Seamless co-op: the host's room server, the invite code, and the game's own online
 // server answered inside the process (des_seamless.h).
 #include "des_seamless.h"
+#include "des_seamless_notice.h"   // notice_start_failed
 
 #include "ps3emu/net_invite.h"
 #include "ps3emu/net_stun.h"
@@ -791,6 +792,7 @@ std::string check_code(const std::string& text, std::string* clean) {
 
 void held(const std::string& why) {
     std::fprintf(stderr, "[coop] seamless co-op off: %s\n", why.c_str());
+    notice_start_failed(mode() == Mode::Host, why);
     std::lock_guard<std::mutex> g(sLock);
     sStatus = Status{};
     sStatus.mode = mode();
@@ -806,6 +808,7 @@ bool start(const std::string& name, std::string* why) {
     }
     auto fail = [&](const std::string& reason) {
         std::fprintf(stderr, "[coop] seamless co-op off: %s\n", reason.c_str());
+        if (m != Mode::Off) notice_start_failed(m == Mode::Host, reason);
         std::lock_guard<std::mutex> g(sLock);
         sStatus.error = reason;
         if (why) *why = reason;

@@ -30,6 +30,7 @@
 #include "mods.hpp"
 #include "mouse.hpp"
 #include "net_notices.hpp"
+#include "coop_notices.hpp"
 #include "osk_window.hpp"
 #include "overlay.hpp"
 #include "perf_overlay.hpp"
@@ -1154,6 +1155,7 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
     if (!sActive && !sStartScreen && !gameMenu && !chordEdge && !shot && !sQueued.load(std::memory_order_acquire) &&
         !sOpenPending && !sReportCountdown && !(prework && !sPreworkShown) && !privacy && !sCloseRequested.load() &&
         !sOskPending.load(std::memory_order_acquire) && !ui::trophies::pending() && !ui::net_notices::pending() &&
+        !ui::coop_notices::pending() &&
         !sHangNotice.load(std::memory_order_relaxed) &&
         !sCustomServerNotice.load(std::memory_order_relaxed) && !sModsNotice.load(std::memory_order_relaxed) &&
         !ui::report::saved_notice_pending() && ui::perf::mode() == ui::perf::Mode::Off) {
@@ -1169,6 +1171,7 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
         if (sCloseRequested.exchange(false) && ui::app().quit) ui::app().quit();  // nothing to ask with
         if (sOskPending.exchange(false)) apply_osk_request(false);
         ui::trophies::discard();  // (the unlocks are saved; only the pop-ups are lost)
+        ui::coop_notices::discard();  // (the co-op log has them)
         sHangNotice.store(false);
         sCustomServerNotice.store(false);
         sModsNotice.store(false);
@@ -1225,6 +1228,7 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
     if (ui::OskWindow* osk = ui::active_osk()) osk->on_pad(pad.buttons);
     ui::trophies::drain();
     ui::net_notices::drain();
+    ui::coop_notices::drain();   // seamless co-op's joins, leaves, deaths
     ui::update();
     sStartUp.store(ui::is_prelaunch_open());
 
