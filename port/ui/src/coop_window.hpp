@@ -33,6 +33,9 @@ void open_mods_warning(const std::vector<std::string>& names, void (*then)());
 // same set.
 void before_restart(std::function<void(const std::vector<std::string>&)> restart);
 void open_join();
+// Join with this code as Join's window takes it (the check, then the restart), with no question before it: for
+// DES_UI_OPEN=coop-join-code's tests.
+void join_code(const std::string& code);
 void copy_code();
 bool no_code();
 void open_new_code();

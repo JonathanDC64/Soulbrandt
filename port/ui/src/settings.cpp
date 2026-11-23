@@ -692,8 +692,7 @@ static void apply_seamless() {
         std::fprintf(stderr, "[coop] mods on%s: %s\n", ok && *ok ? ", accepted" : " (no warning: not started from "
                      "the Co-op window)", mods::join(names, ", ").c_str());
     }
-    const std::string name = env_set("PS3_NP_ONLINE_ID") ? std::string(std::getenv("PS3_NP_ONLINE_ID"))
-                                                         : effective("DES_NET_NAME");
+    const std::string name = seamless_name();
     if (!net_name_ok(name)) {
         sNetStatus = name.empty() ? "Off: no online name" : "Off: the online name is not valid";
         std::fprintf(stderr, "[ui] seamless co-op: off, %s (Settings > Network)\n",
@@ -705,19 +704,9 @@ static void apply_seamless() {
     int port = std::atoi(effective("DES_NET_P2P_PORT").c_str());
     if (port < kNetP2pPortMin || port > kNetP2pPortMax) port = kNetP2pPortDefault;
     set_net_knob("PS3_NET_P2P_PORT", std::to_string(port));
-    // The endpoint: settings.ini's (or the environment's) when it names one or says 0, else the Server row's. A test
-    // run never reaches the project's server unless it says so, as for online.
-    std::string intro = trim(effective("DES_SEAMLESS_INTRO"));
-    if (intro.empty() && harness_run()) {
-        intro = "0";
+    const std::string intro = seamless_endpoint();
+    if (intro == "0" && trim(effective("DES_SEAMLESS_INTRO")).empty() && harness_run())
         std::fprintf(stderr, "[ui] seamless co-op: no room code in a test run unless DES_SEAMLESS_INTRO is given\n");
-    }
-    if (intro.empty()) {
-        const NetServer* s = net_server(effective("DES_NET_SERVER"));
-        const bool ours = s && *s->address &&
-                          (s->key == std::string_view("project") || s->key == std::string_view("local"));
-        intro = ours ? std::string(s->address) + ":" + std::to_string(kNetPsnrPort) : "0";
-    }
     set_net_knob("DES_SEAMLESS_INTRO", intro);
     if (const std::string stun = trim(effective("DES_SEAMLESS_STUN")); !stun.empty())
         set_net_knob("DES_SEAMLESS_STUN", stun);
@@ -899,6 +888,24 @@ void write_in_use() {
 }
 
 }  // namespace
+
+std::string seamless_name() {
+    return env_set("PS3_NP_ONLINE_ID") ? std::string(std::getenv("PS3_NP_ONLINE_ID")) : effective("DES_NET_NAME");
+}
+
+// The endpoint: settings.ini's (or the environment's) when it names one or says 0, else the Server row's. A test run
+// never reaches the project's server unless it says so, as for online.
+std::string seamless_endpoint() {
+    std::string intro = trim(effective("DES_SEAMLESS_INTRO"));
+    if (intro.empty() && harness_run()) return "0";
+    if (intro.empty()) {
+        const NetServer* s = net_server(effective("DES_NET_SERVER"));
+        const bool ours = s && *s->address &&
+                          (s->key == std::string_view("project") || s->key == std::string_view("local"));
+        intro = ours ? std::string(s->address) + ":" + std::to_string(kNetPsnrPort) : "0";
+    }
+    return intro;
+}
 
 void load_and_apply_env() {
     for (const Def& d : kDefs) {

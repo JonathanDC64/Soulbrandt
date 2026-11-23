@@ -49,9 +49,25 @@ so.
 
 1. Copy your friend's invite code.
 2. Open **Seamless co-op**, choose **Join**, then **Paste and join**, or **Type code** to type it (with a keyboard or
-   the controller). Either kind of code works. The game starts again on your co-op characters.
-3. Until it gets in, Co-op says how the join goes ("Finding the host's game...", or what is in the way, below), and
-   the game keeps trying: after 10 s, 30 s, then every minute.
+   the controller). Either kind of code works.
+3. The game first tries the code, the way the join will: "Finding your friend's game...", then "Reaching your
+   friend's game...", usually a second or two, at most about 25 s. Once your friend's game answers, yours starts again
+   on your co-op characters and joins. If it can't get through, you stay where you are and the window says why, with
+   **Try again** where that may help:
+   - no game is hosting with this code (a typo, an old code, or the host isn't hosting yet);
+   - your friend's game is another version;
+   - the server that finds your friend's game can't be reached (a room code), or the code's address doesn't answer (a
+     direct code);
+   - your two networks block a direct connection (your friend can open port 36100, or one of you can host);
+   - your friend's game didn't accept the code (it has a new one);
+   - someone there already plays under your online name;
+   - a room code with no server to introduce the games (Settings > Network > Server), or no online name.
+
+   If your friend's game is full, it asks whether to join anyway and wait for a place; if your friend is in a boss
+   fight, that you join once it's over. **Cancel** stops the check at any time.
+4. Until it gets in, Co-op says how the join goes ("Finding the host's game...", or what is in the way, below), and
+   the game keeps trying: after 10 s, 30 s, then every minute. That covers the rare join that fails after a check got
+   through (the host closed its game during the restart).
 
 **To leave:** **Seamless co-op** > **Leave co-op**. A friend's game first takes them back to their own world, right
 where they stand (in a boss fight, to that area's start, as a death would), and saves what the group did there; the
@@ -378,6 +394,23 @@ room number names the room at the endpoint; the key goes only to the host's game
 (28) and a check (4). The check catches most typos ("That code has a typo").
 
 A friend's game rejects anything else with "That isn't an invite code: it has 15 or 16 letters and digits."
+
+**The check before the restart** (11-23; before, Join restarted at once, and a code that couldn't work showed only
+in the Co-op window after the restart, with another restart to leave). ps3recomp's `psnr_join_check` (`psnr_host.h`)
+makes the join's own try once from the menu, on a UDP socket and threads of its own, so the game's P2P port and
+connection stay as they are, and never over TLS (a room server has none):
+- a room code: the lookup at the endpoint, the punching raced against TCP, and `HELLO` with the key, the same steps as
+  the join (np_psnr.c's `rc_run`);
+- a direct code: TCP to the code's address (up to 10 s), then `HELLO`;
+- then `ROM?`, as a joining game asks: the host's game answers with `FGHT` (in a boss fight), then `ROOM` or `FULL`.
+  No answer within 5 s (the host's game in a load) counts as a yes.
+
+It uses the name and the endpoint the join will (settings.cpp's `seamless_name`, `seamless_endpoint`). The host's
+room server counts it as a player for those seconds (its window may show "Waiting to join: 1"), and a wrong key as one
+wrong key, as the join itself. Its punch goes out from another local port than the join's, so the router's mapping
+differs: a check that got through almost always means the join does, and through a router where neither can, both
+fail. The rest stays as it was: if the host closes its game during the restart, the join keeps trying and Co-op says
+how it goes.
 
 **Who can join.** The room server (ps3recomp's `psnr_host`) is the only thing the router opens. The game's own
 online server runs on this PC's loopback only. Every connection must say `HELLO` with the key, as a 32-byte blob

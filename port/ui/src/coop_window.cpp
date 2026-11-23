@@ -1,7 +1,8 @@
 // The Co-op window (coop_window.hpp). One modal: what co-op is and Host / Join when off; the invite code, the router's
 // answer and the players while hosting; Leave while in a game. The host's part is drawn again each half second (the
 // router answers a few seconds after the start, and players come and go). Each code has a small Copy button beside it,
-// besides the window's Copy code.
+// besides the window's Copy code. Join tries the code first (JoinCheckWindow), and starts the game again into co-op
+// only once the host's game answered.
 #include "coop_window.hpp"
 
 #include "ack.hpp"
@@ -146,7 +147,139 @@ void open_host_now() {
     }));
 }
 
-// Join with a code the player pasted or typed; a toast says why not if it doesn't read as one.
+void open_join_check(const std::string& code);
+
+// Into co-op with a code the check got through with.
+void join_now(const std::string& code) {
+    start_coop({"DES_SEAMLESS=join", "DES_SEAMLESS_CODE=" + code});
+}
+
+// The check's answer, when it is not a plain yes: a question (full, a boss fight) or why not, with Try again where it
+// may help. Cancel is first, as in every question here.
+void open_join_answer(const std::string& code, const co::JoinCheck::Result& r) {
+    std::vector<ModalAction> actions{ModalAction{.label = "Cancel", .onPressed = close_action}};
+    std::string title, body;
+    if (r.is == co::JoinCheck::Is::Full) {
+        title = "Your friend's game is full";
+        body = "It has all the players your friend takes. Join anyway and wait for a place? You join as soon as one "
+               "frees up.";
+        actions.push_back({.label = "Join and wait", .onPressed = [code](Modal&) { join_now(code); }});
+    } else if (r.is == co::JoinCheck::Is::Fight) {
+        title = "Your friend is in a boss fight";
+        body = "No one joins during one, as in the original game. You join as soon as it's over.";
+        actions.push_back({.label = "Join", .onPressed = [code](Modal&) { join_now(code); }});
+    } else {
+        title = "Couldn't join your friend's game";
+        body = "<modal-warning>" + escape(r.text) + "</modal-warning>";
+        if (r.again)
+            actions.push_back({.label = "Try again",
+                               .onPressed = [code](Modal& m) {
+                                   play_sound(kSoundItemChange);
+                                   m.pop();
+                                   open_join_check(code);
+                               }});
+    }
+    push_document(std::make_unique<Modal>(Modal::Props{
+        .title = title,
+        .bodyRml = body,
+        .actions = std::move(actions),
+        .focusAction = r.is == co::JoinCheck::Is::Failed && r.again ? 1 : 0,
+    }));
+}
+
+// While the code is tried: what the check does, drawn again as it goes; then, once it's over, the restart (the host's
+// game answered), or the answer's window in its place. Cancel (or Back) ends the check. A yes says so for a second
+// before the restart: on a fast link the check takes a few milliseconds, and the first play test (11-23) saw the
+// game start again the instant it pressed Paste and join, with no word that the code had been tried.
+class JoinCheckWindow final : public Modal {
+public:
+    JoinCheckWindow(Props props, std::unique_ptr<co::JoinCheck> check, std::string code)
+        : Modal(std::move(props)), mCheck(std::move(check)), mCode(std::move(code)) {}
+
+    void stop() { mCheck.reset(); }
+
+    void update() override {
+        const auto now = std::chrono::steady_clock::now();
+        if (!mJoinCode.empty() && !pending_close() && now >= mJoinAt) {
+            const std::string code = mJoinCode;
+            mJoinCode.clear();
+            pop();
+            join_now(code);
+        }
+        if (mCheck && now >= mNext && !pending_close()) {
+            mNext = now + std::chrono::milliseconds(100);
+            const co::JoinCheck::Result r = mCheck->result();
+            if (r.is == co::JoinCheck::Is::Running) {
+                if (r.text != mShown) {
+                    mShown = r.text;
+                    set_body(escape(r.text));
+                }
+            } else {
+                mCheck.reset();
+                std::fprintf(stderr, "[ui] co-op: the join check: %s\n",
+                             r.is == co::JoinCheck::Is::Ok      ? "the host's game answered, joining"
+                             : r.is == co::JoinCheck::Is::Full  ? "the host's game is full"
+                             : r.is == co::JoinCheck::Is::Fight ? "the host is in a boss fight"
+                                                                : r.text.c_str());
+                const std::string code = mCode;
+                if (r.is == co::JoinCheck::Is::Ok) {
+                    set_body(escape("Found your friend's game. Starting co-op..."));
+                    mJoinCode = code;
+                    mJoinAt = now + std::chrono::seconds(1);
+                } else {
+                    pop();
+                    if (r.is == co::JoinCheck::Is::Failed) play_sound(kSoundItemDisable);
+                    open_join_answer(code, r);
+                }
+            }
+        }
+        if (pending_close()) {   // (Back or Esc: the check, or the restart it was about to make, ends with the window)
+            mCheck.reset();
+            mJoinCode.clear();
+        }
+        Modal::update();
+    }
+
+private:
+    std::unique_ptr<co::JoinCheck> mCheck;
+    std::string mCode;
+    std::chrono::steady_clock::time_point mNext{};
+    std::string mShown;
+    std::string mJoinCode;                           // a yes: the code it starts again with, at mJoinAt
+    std::chrono::steady_clock::time_point mJoinAt{};
+};
+
+// Tries the code (des_seamless.h's JoinCheck) with the name and the server a join will use.
+void open_join_check(const std::string& code) {
+    std::string why;
+    std::unique_ptr<co::JoinCheck> check =
+        co::check_join(code, settings::seamless_name(), settings::seamless_endpoint(), &why);
+    if (!check) {
+        play_sound(kSoundItemDisable);
+        co::JoinCheck::Result r;
+        r.is = co::JoinCheck::Is::Failed;
+        r.text = why;
+        r.again = false;
+        open_join_answer(code, r);
+        return;
+    }
+    const std::string first = check->result().text;
+    push_document(std::make_unique<JoinCheckWindow>(
+        Modal::Props{
+            .title = "Joining your friend's game",
+            .bodyRml = escape(first),
+            .actions = {ModalAction{.label = "Cancel",
+                                    .onPressed =
+                                        [](Modal& m) {
+                                            static_cast<JoinCheckWindow&>(m).stop();
+                                            close_action(m);
+                                        }}},
+        },
+        std::move(check), code));
+}
+
+// Join with a code the player pasted or typed; a toast says why not if it doesn't read as one. Then the check, before
+// the restart.
 void join_with(const std::string& text, const char* if_empty) {
     std::string code;
     const std::string why = co::check_code(text, &code);
@@ -155,13 +288,15 @@ void join_with(const std::string& text, const char* if_empty) {
         toast("warning", text.empty() ? if_empty : why);
         return;
     }
-    start_coop({"DES_SEAMLESS=join", "DES_SEAMLESS_CODE=" + code});
+    play_sound(kSoundItemChange);
+    open_join_check(code);
 }
 
 void open_join_now() {
     push_document(std::make_unique<Modal>(Modal::Props{
         .title = "Join seamless co-op?",
-        .bodyRml = "Copy your friend's invite code, then paste it or type it. The game starts again in their world.",
+        .bodyRml = "Copy your friend's invite code, then paste it or type it. Once their game answers, yours starts "
+                   "again in their world.",
         .actions = {ModalAction{.label = "Cancel", .onPressed = close_action},
                     ModalAction{.label = "Type code",
                                 .onPressed = [](Modal&) {
@@ -597,6 +732,10 @@ void before_restart(std::function<void(const std::vector<std::string>&)> restart
 
 void open_join() {
     ui::open_join();
+}
+
+void join_code(const std::string& code) {
+    ui::join_with(code, "No code to join with (DES_UI_JOIN_CODE).");
 }
 void copy_code() {
     copy_code_now();
