@@ -169,7 +169,8 @@ set).
   **When you join:** each player's own, in a host's world (its glow). Settings > Network has the same two groups.
 - **When the host dies,** it respawns alone at the area's start, as a friend does, while a friend is still standing.
   The friends play on where they are, enemies that are dead stay dead, and the living ones keep the damage they took
-  (2026-11-22; before, they came back with full health for everyone). In a boss fight the host first waits, dead,
+  and stay where they are (2026-11-22; before, they came back with full health, and later at their spawn, for
+  everyone). The same goes for a friend's own respawn. In a boss fight the host first waits, dead,
   until the boss is dead, then comes back at its own bloodstain in the boss's room, as a friend does, where it can
   take its souls back at once (the boss's souls too, if it died before the boss). Only when no friend is standing
   (everyone is dead) does everyone go back to the start together, with the enemies back. Settings > Network > When
@@ -973,12 +974,18 @@ their first instruction):
     block 0 of the same world. A respawn into another world keeps no record. No LEAD goes out, and no sync hold. Once
     back, it places its guests again (requeue) and they make its character again (its BACK), as after a guest's
     respawn.
-  - The enemies alive keep their health. The load sets the world up again, so each one came back with its full
-    health in the host's game, and the host's game then gave that to its friends' games too (11-22, two copies
-    in 1-1: a hollow at 42 of 78 HP was at 78 in both). At the same end of `WarpNextStageKick` the host's game
-    notes each living enemy's HP below its most, by its place in the world's list (the place the dead-character
-    record counts, 0x002977C0); at its arrival it puts that HP back, the same part of the most HP. A friend's
-    own respawn needs none: its game takes the host's health for the area's enemies.
+  - The enemies alive keep their health and their places. A respawn's load sets the world up again in the game
+    that respawns, so each enemy alive came back at its spawn with its full health there. The host's game gives
+    its health to its friends' games, and each game runs the characters the host shares out to it, which the
+    others follow, so that went to every game (11-22, two copies in 1-1: a hollow at 42 of 78 HP was at 78 in
+    both after the host's lone respawn; a hollow that had chased the host 30 m was at its spawn in both after a
+    friend's respawn, and another after the host's). The respawning game notes each living enemy by its place in
+    the world's list (the place the dead-character record counts, 0x002977C0), with its HP and where it stands;
+    at its arrival it puts each one back where it stood with the game's LoadChrPos (0x00273BE0), and the host's
+    game its HP too, the same part of the most HP. The host notes them at the same end of `WarpNextStageKick`; a
+    friend's game notes them every 8th frame it is in the host's world (its respawn's load has no step of its own
+    before the world goes) and puts them back after its own respawn in the same world. A friend's game leaves the
+    health to the host's, which gives it.
   - A host that died in a boss fight (`sFight`, flag 19994, at its death) comes back at its own bloodstain
     (`host_to_stain`, at the same end of `WarpNextStageKick`): the load goes to the stain's map, to a place (point
     -1 and the summoned place `+0x1C`, as a friend's trip home), facing the way it died. `SoloPlayDeath_2` runs its
