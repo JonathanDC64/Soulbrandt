@@ -572,6 +572,8 @@ struct Game {
     bool connected = false;   // a guest: connected to the room server (the host's game) at least once
     bool host_gone = false;   // a guest: that connection lost since; said once
     bool home_wait = false;   // a guest: its game is taking it home (flag 4047): no join until it's there; said once
+    bool in_session = false;  // a guest: in a session (or joining one) last frame
+    bool fresh_wait = false;  // a guest: out of one since, the host asked again; the next join waits for its answer
     bool room_sent = false;   // the host: this room's data made and sent
     bool fight_told = false;  // the host: the boss fight its guests were last told of (FGHT)
     bool fight_wait = false;  // a guest out of the session: holding its join for the host's boss fight
@@ -3067,6 +3069,29 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
     // leaving: no join again; and once out of the session (LeaveSession), no follow, requeue or BACK either, while
     // the session state still says client
     if (st == 0) sAllBackTrip = 0;   // (the next session's host counts its loads anew)
+    // Out of a session (it ended, or a join failed): the host's room data and place this game holds are from before.
+    // The host's room may be gone, or another one, so they are asked for again and the next join waits for the host's
+    // answer. A join with them failed with "Failed to join the session.": 11-22, a tester's log, the host's game stopped
+    // answering, its room went (the game's OnRoomDisappeared), and 1.9 s after this game was home, still connected
+    // to the host's game, it joined that room; the connection's loss came 0.4 s later. And a host that left its room
+    // and opened another: the first join after went to the old one (err 0x80022B13), the next one, asked again, in.
+    if (st != 0) {
+        g.in_session = true;
+    } else if (g.in_session) {
+        g.in_session = false;
+        g.fresh_wait = true;
+        g.asked_at = 0;
+        {
+            std::lock_guard<std::mutex> l(sMsgLock);
+            sRoom.clear();
+            sReady = Ready();
+            sHostFight = false;
+        }
+        send(kMsgAsk);     // (the room's data, and FGHT if the host is in a boss fight)
+        send(kMsgWhere);   // (a READY now, if the host stands in its world)
+        std::fprintf(stderr, "[coop] out of the session: the host is asked for its room and place again; a join waits "
+                             "for its answer\n");
+    }
     {   // the host died and its load that takes everyone back hasn't been followed here yet (ALLB; kAllBackMarker)
         const uint32_t fb = flag_base();
         if (guest_ok(fb))
@@ -3146,6 +3171,9 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
                 g.asked_at = 0;
                 send(kMsgAsk);
             }
+            // (after a session: the join goes once the answer is here, not at the next 20 s; at a high frame rate the
+            // 150 frames standing can pass before the host's next READY)
+            if (g.fresh_wait && g.calm >= 150) g.calm = 149;
             return;
         }
         bool fight;
@@ -3166,6 +3194,7 @@ void guest_tick(ppu_context* ctx, uint32_t sm, uint32_t st, bool world)
         if (g.calm == 150 || (g.calm > 150 && (g.calm - 150) % 1200 == 0)) {
             // in either form: the session's check of a joined guest lets a friend in body form stay (0x0053EA2C)
             g.tries++;
+            g.fresh_wait = false;
             join(ctx, sm, data);
             if (g.tries % 2 == 0) {   // the host may have opened another room since: ask for its data again
                 std::lock_guard<std::mutex> l(sMsgLock);

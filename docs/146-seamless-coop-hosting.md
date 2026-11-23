@@ -1247,6 +1247,12 @@ host's boss kill while the friend was away don't count in the friend's world.
   - ps3recomp answers the game's `LeaveRoom` as left when the room's connection is lost (the room server has let the
     friend go). Before, the call failed with no connection, and the game tried again every 15 s, each time with the
     box.
+  - Out of a session (it ended, or a join failed), the friend asks the host for its room and place again (`ROM?`,
+    `HER?`), and its next join waits for the answer. The room data it held can be a room that is gone: on 11-22 (a
+    tester's log) the host's game stopped answering and its room went, and the friend, home and still connected to
+    the host's game, joined that room 1.9 s later; the connection's loss came 0.4 s after, and the join failed with
+    "Failed to join the session.". A host that left its room and opened another got a first join to the old room the
+    same way (err `0x80022B13`). A host that is gone doesn't answer, so no join goes before np_psnr sees it gone.
 - **A friend kicked out of the room** (`0x1103`): the game leaves that room, again every 15 s while that fails, each
   time with "The session has ended.". The room server has taken the friend out already, so it answers "not in the
   room". ps3recomp answers a leave of a room the friend was kicked out of as left, and a leave takes down only the
