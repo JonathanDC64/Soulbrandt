@@ -930,6 +930,118 @@ bool start(const std::string& name, std::string* why) {
     return true;
 }
 
+// The Join window's check (des_seamless.h). The ask and the answers are the game side's messages (des_seamless_game.cpp:
+// kMsgAsk, kMsgRoom, kMsgFull, kMsgFight): a 4-letter tag, then little-endian fields.
+namespace {
+constexpr char kAsk[4] = {'R', 'O', 'M', '?'};
+
+bool tag_is(const uint8_t* d, uint32_t n, const char* tag) { return n >= 4 && !std::memcmp(d, tag, 4); }
+
+// The host's game answered the ask: its room or that it is full (a boss fight comes before either).
+int answer_complete(const uint8_t* d, uint32_t n, void*) { return tag_is(d, n, "ROOM") || tag_is(d, n, "FULL"); }
+}  // namespace
+
+std::unique_ptr<JoinCheck> check_join(const std::string& code, const std::string& name, const std::string& endpoint,
+                                      std::string* why) {
+    auto no = [&](const std::string& reason) {
+        if (why) *why = reason;
+        std::fprintf(stderr, "[coop] the join check: not tried, %s\n", reason.c_str());
+        return std::unique_ptr<JoinCheck>();
+    };
+    if (name.empty()) return no("Set your online name first (Settings > Network), then join.");
+    psnr_join_check_config cfg{};
+    std::string server;
+    if (net_code_kind(code.c_str()) == NET_CODE_ROOM) {
+        net_room_code rc{};
+        if (net_room_decode(code.c_str(), &rc) != 0) return no("That code has a typo. Check it against your friend's.");
+        if (endpoint.empty() || endpoint == "0")
+            return no("A room code needs the server that introduces players, and this game has none (Settings > "
+                      "Network > Server). Ask your friend for the direct code instead.");
+        server = endpoint.find(':') == std::string::npos ? endpoint + ":" + std::to_string(kEndpointPort) : endpoint;
+        cfg.room = rc.room;
+        cfg.version = kSeamlessVersion;
+        net_invite_key_blob(rc.key, cfg.key);
+    } else {
+        net_invite inv{};
+        if (net_invite_decode(code.c_str(), &inv) != 0) return no("That code has a typo. Check it against your friend's.");
+        char ip[16];
+        std::snprintf(ip, sizeof ip, "%u.%u.%u.%u", inv.ip[0], inv.ip[1], inv.ip[2], inv.ip[3]);
+        server = std::string(ip) + ":" + std::to_string(inv.port);
+        net_invite_key_blob(inv.key, cfg.key);
+    }
+    cfg.server = server.c_str();
+    cfg.online_id = name.c_str();
+    cfg.ask = kAsk;
+    cfg.ask_len = sizeof kAsk;
+    cfg.answered = answer_complete;
+    psnr_join_check* jc = psnr_join_check_start(&cfg);
+    std::memset(cfg.key, 0, sizeof cfg.key);
+    if (!jc) return no("The game couldn't try the code. Try again.");
+    std::fprintf(stderr, "[coop] the join check: trying the %s code\n", cfg.room ? "room" : "direct");
+    return std::make_unique<JoinCheck>(jc, name);
+}
+
+JoinCheck::~JoinCheck() { psnr_join_check_end(mCheck); }
+
+JoinCheck::Result JoinCheck::result() const {
+    psnr_join_check_status st{};
+    psnr_join_check_get(mCheck, &st);
+    Result r;
+    if (!st.done) {
+        r.text = st.state == PSNR_JOIN_LOOKING ? "Finding your friend's game..." : "Reaching your friend's game...";
+        return r;
+    }
+    if (st.state == PSNR_JOIN_CONNECTED) {
+        // the answers in order: a boss fight's FGHT (u32 1 or 0) first, then the room or FULL
+        bool full = false, fight = false;
+        for (int i = 0; i < st.answers; i++) {
+            uint8_t b[PSNR_APP_MAX];
+            const uint32_t n = psnr_join_check_answer(mCheck, i, b, sizeof b);
+            if (tag_is(b, n, "FULL")) full = true;
+            else if (tag_is(b, n, "FGHT") && n >= 8) fight = b[4] != 0;
+        }
+        r.is = full ? Is::Full : fight ? Is::Fight : Is::Ok;
+        return r;
+    }
+    r.is = Is::Failed;
+    const std::string p = std::to_string(kDefaultPort);
+    if (st.err == PSNR_JOIN_ERR_NAME_TAKEN) {
+        r.text = "Someone in your friend's game already plays as "" + mName + "". Change your online name (Settings "
+                 "> Network), then try again.";
+        return r;
+    }
+    switch (st.state) {
+    case PSNR_JOIN_NO_ROOM:
+    case PSNR_JOIN_GONE:
+        r.text = "No game is hosting with this code. Check it, or ask your friend for it again.";
+        break;
+    case PSNR_JOIN_OTHER_VERSION:
+        r.text = "Your friend's game is another version. You both need the same version.";
+        r.again = false;
+        break;
+    case PSNR_JOIN_NO_SERVER:
+        r.text = "Can't reach the server that finds your friend's game. Check your internet connection, or ask your "
+                 "friend for the direct code.";
+        break;
+    case PSNR_JOIN_SLOW:
+        r.text = "The server that finds your friend's game is busy. Try again in a few seconds.";
+        break;
+    case PSNR_JOIN_UNREACHABLE:
+        r.text = "Your friend's game can't be reached at this code's address. Ask whether their port " + p +
+                 " is open, or ask for their room code.";
+        break;
+    case PSNR_JOIN_REFUSED:
+        r.text = "Your friend's game didn't accept this code. Ask your friend for it again.";
+        r.again = false;
+        break;
+    default:   // PSNR_JOIN_NO_WAY
+        r.text = "Your friend's game was found, but your two networks block a direct connection. Your friend can open "
+                 "port " + p + " (TCP and UDP), or one of you can host instead.";
+        break;
+    }
+    return r;
+}
+
 Mode active() { return static_cast<Mode>(sActive.load(std::memory_order_relaxed)); }
 
 int party_size() {

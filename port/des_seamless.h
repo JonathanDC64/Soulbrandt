@@ -31,8 +31,11 @@
 // (savedata-coop beside the normal one), so a co-op session never writes the normal characters.
 #pragma once
 
+#include <memory>
 #include <string>
 #include <vector>
+
+struct psnr_join_check;   // (ps3recomp's ps3emu/psnr_host.h)
 
 namespace des::seamless {
 
@@ -107,6 +110,37 @@ std::string new_code();
 // A code the player typed or pasted, either kind: "" if it reads as one (normalised into *clean, as
 // XXXXX-XXXXX-XXXXX or XXXX-XXXX-XXXX-XXXX), else why not, in plain words.
 std::string check_code(const std::string& text, std::string* clean);
+
+// The Join window's check (coop_window.cpp): the code is tried once before the restart into co-op, the way the join
+// will try it (ps3recomp's psnr_join_check, on a socket of its own, so this game's own network stays as it is). A room
+// code: the server that introduces players finds the host's game, and the two games get through to each other; a
+// direct code: the host's address. Then the host's game gets the key and is asked about its session, as a joining
+// game asks (ROM?): it answers with its room (Ok), that it is full (Full), or first that it is in a boss fight (Fight).
+// With no answer within a few seconds (the host's game in a load), the check counts as Ok. Ended when destroyed.
+class JoinCheck {
+public:
+    enum class Is { Running, Ok, Full, Fight, Failed };
+    struct Result {
+        Is is = Is::Running;
+        std::string text;   // what it does now, while it runs; why not, in plain words, when Failed
+        bool again = true;  // Failed: trying again may help (not with another version, or a key the host refused)
+    };
+    explicit JoinCheck(psnr_join_check* jc, std::string name) : mCheck(jc), mName(std::move(name)) {}
+    ~JoinCheck();
+    JoinCheck(const JoinCheck&) = delete;
+    JoinCheck& operator=(const JoinCheck&) = delete;
+    Result result() const;
+
+private:
+    psnr_join_check* mCheck;
+    std::string mName;
+};
+
+// A check of a code check_code took (its clean form), with the online name and the endpoint (DES_SEAMLESS_INTRO's
+// value, "0" for none) a start into co-op will use. None, with why in plain words, when the join couldn't work at all:
+// no online name, a room code with no server to introduce the games.
+std::unique_ptr<JoinCheck> check_join(const std::string& code, const std::string& name, const std::string& endpoint,
+                                      std::string* why);
 
 // Cheap, for the game side (des_seamless_game.cpp, every frame): co-op started, as the host or as a guest.
 Mode active();
