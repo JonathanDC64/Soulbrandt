@@ -57,6 +57,7 @@
 #include "ui_render_compare_hooks.h"
 
 #include "../../des_seamless.h"
+#include "../../des_seamless_roster.h"
 
 #include <RmlUi/Core.h>
 
@@ -89,6 +90,7 @@ extern "C" void ps3_setenv(const char* name, const char* value) {
 
 namespace des::seamless {
 void set_test_status(const Status& s);  // ui_render_compare_stubs.cpp: what status() and mode() give
+void set_test_session(const std::vector<SessionPlayer>& players, int seconds);  // and what session_players() gives
 }
 
 namespace {
@@ -1239,6 +1241,33 @@ des::seamless::Status standin_host(bool open = true) {
     return s;
 }
 
+// A made-up session (docs/169): the host and a friend in 1-1, a friend dead in 1-2 whose ping is slow, and a game that
+// waits for a place; you is the host (or, with guest, the first friend). Together for 1 h 12 min.
+void standin_session(bool guest) {
+    using des::seamless::SessionPlayer;
+    std::vector<SessionPlayer> v;
+    auto add = [&](const char* name, bool host, bool in, const char* state, uint32_t area, bool soul, int hp, int max,
+                   int ping) {
+        SessionPlayer p;
+        p.name = name;
+        p.host = host;
+        p.in_session = in;
+        p.state = state;
+        p.area = area;
+        p.soul = soul;
+        p.hp = hp;
+        p.hp_max = max;
+        p.ping_ms = ping;
+        v.push_back(p);
+    };
+    add("Ashen_Wanderer", true, true, "Playing", 0x02000000u, false, 742, 742, -1);
+    add("NightOfTheMoon", false, true, "Playing", 0x02000000u, true, 380, 455, 46);
+    add("Kuromaru", false, true, "Dead, back soon", 0x02010000u, true, 0, 512, 212);
+    add("SoftMaiden", false, false, "Waits for a place (the game is full)", 0xFFFFFFFFu, false, 0, 0, -1);
+    v[guest ? 1 : 0].you = true;
+    des::seamless::set_test_session(v, 72 * 60);
+}
+
 // Mods from the stand-in folder (its mods on, none in this run: a restart waits), the focus on Restart now (a page's),
 // and with ask its question as in the game; host: as the host of a co-op session.
 void open_mods_restart(bool ask, bool host) {
@@ -1282,6 +1311,7 @@ void close_pages() {
     ui::updates::set_test_found(nullptr);
     ui::trophy_set::set_test_source({});
     des::seamless::set_test_status({});
+    des::seamless::set_test_session({}, 0);
     ui::players::clear_test_list();
     _putenv_s("DES_MODS_DIR", "");
     ui::SettingsPage::forget_place();  // (Settings opens where it was left: each page starts as at the game's start)
@@ -1642,6 +1672,15 @@ int main(int argc, char** argv) {
     pages.push_back({"coop-room", 1280, 720, false, 1.f, false, [] { open_coop(standin_host(false), 0); }, {}});
     pages.push_back({"coop-joining", 1280, 720, false, 1.f, false,
                      [] { open_coop(standin_guest(false, true), 0); }, {}});
+    // Who is in the session (docs/169), hosting and joined.
+    pages.push_back({"coop-session", 1280, 720, false, 1.f, false, [] {
+        standin_session(false);
+        open_coop(standin_host(), 0);
+    }, {}});
+    pages.push_back({"coop-session-join", 1280, 720, false, 1.f, false, [] {
+        standin_session(true);
+        open_coop(standin_guest(false), 0);
+    }, {}});
     // The warning before Host or Join while mods are on (four made-up mods: two named, +2 more), over Co-op.
     pages.push_back({"coop-mods", 1280, 720, false, 1.f, false, [] {
         open_coop({}, 0);
@@ -1780,6 +1819,19 @@ int main(int argc, char** argv) {
                          in_band([] { open_coop(standin_guest(false), 0); }), {}});
         pages.push_back({"des-coop-lost", 1280, 720, false, 1.f, false,
                          in_band([] { open_coop(standin_guest(true), 0); }), {}});
+        // Who is in the session (docs/169): the host's box (the port open: its longest), and a joined friend's.
+        pages.push_back({"des-coop-session", 1280, 720, false, 1.f, false, in_band([] {
+            standin_session(false);
+            open_coop(standin_host(), 1);
+        }), {}});
+        pages.push_back({"des-coop-session-room", 1280, 720, false, 1.f, false, in_band([] {
+            standin_session(false);
+            open_coop(standin_host(false), 1);
+        }), {}});
+        pages.push_back({"des-coop-session-join", 1280, 720, false, 1.f, false, in_band([] {
+            standin_session(true);
+            open_coop(standin_guest(false), 0);
+        }), {}});
         // Settings on the host's page, with the focus, and the co-op settings it opens over the page.
         pages.push_back({"des-coop-host-settings", 1280, 720, false, 1.f, false,
                          in_band([] { open_coop(standin_host(), 9); }), {}});

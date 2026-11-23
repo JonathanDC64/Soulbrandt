@@ -2322,6 +2322,59 @@ coop-info.long info-code {
     line-height: 34dp;
 }
 
+/* Who is in the session (coop_session.cpp): one line per player between thin dividers, as the game's lists: the name
+   and its mark, what it does, and the ping at the right end. */
+coop-info info-players {
+    display: block;
+    margin: 4dp 0 12dp;
+    border-top: 1dp #3a3833;
+}
+
+coop-info info-player {
+    display: flex;
+    align-items: baseline;
+    padding: 6dp 0 5dp;
+    border-bottom: 1dp #3a3833;
+    font-size: 21dp;
+    line-height: 28dp;
+    letter-spacing: 0.4dp;
+    white-space: nowrap;
+}
+
+coop-info info-name {
+    flex: 1 1 0;
+    overflow: hidden;
+    color: var(--des-tan-light);
+}
+
+coop-info info-mark {
+    font-size: 17dp;
+    color: var(--des-tan-muted);
+}
+
+coop-info info-state {
+    flex: 0 0 172dp;
+    color: var(--des-tan);
+}
+
+coop-info info-state.wide {
+    flex: 0 0 262dp;
+}
+
+coop-info info-ping {
+    flex: 0 0 90dp;
+    text-align: right;
+    color: var(--des-tan);
+}
+
+coop-info info-line.session {
+    margin: 0 0 4dp;
+}
+
+coop-info.long info-player {
+    padding: 4dp 0 3dp;
+}
+
 /* A code's line with its small Copy button at the right end: a small stone button, as the questions' buttons. */
 coop-info info-head {
     display: flex;

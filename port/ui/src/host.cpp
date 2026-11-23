@@ -320,7 +320,8 @@ void draw_cursor() {
 // The crystal lizard dancing in the bottom right corner (above the start screen's footer) while a document is up,
 // unless its row, Crystal lizard (DES_UI_LIZARD), is off: a box of DES_UI_LIZARD_SIZE dp (160), turning
 // DES_UI_LIZARD_SPIN degrees a second (30). In a document it is an element's decorator, shader("model:lizard")
-// (docs/112).
+// (docs/112). Not over a box that keeps the corner clear (class keep-clear: the Seamless co-op box, as tall as the
+// players in the session).
 void draw_lizard(int width, int height) {
     const bool on = row_on("DES_UI_LIZARD");
     static const float size = env_float("DES_UI_LIZARD_SIZE", 160.f, 32.f, 2048.f);
@@ -335,6 +336,18 @@ void draw_lizard(int width, int height) {
     v.at[0] = float(width) - px - 40.f * dp;
     v.at[1] = float(height) - px - 88.f * dp;
     v.size[0] = v.size[1] = px;
+    for (int i = 0; i < s.rml->GetNumDocuments(); ++i) {
+        Rml::ElementDocument* d = s.rml->GetDocument(i);
+        if (!d || !d->IsVisible()) continue;
+        Rml::ElementList boxes;
+        d->QuerySelectorAll(boxes, ".keep-clear");
+        for (Rml::Element* e : boxes) {
+            if (!e->IsVisible(true)) continue;
+            const Rml::Vector2f o = e->GetAbsoluteOffset(Rml::BoxArea::Border);
+            const Rml::Vector2f z = e->GetBox().GetSize(Rml::BoxArea::Border);
+            if (o.x < v.at[0] + px && o.x + z.x > v.at[0] && o.y < v.at[1] + px && o.y + z.y > v.at[1]) return;
+        }
+    }
     s.renderer->draw_model("lizard", v);
 }
 

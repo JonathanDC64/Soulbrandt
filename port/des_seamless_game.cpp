@@ -65,6 +65,7 @@
 //   - Whether an area item was taken is read from the guest's own world, not from the host's flags in play: a guest
 //     sees the items it hasn't taken, wherever it took them. One it takes is kept in its own world, as a boss's soul is.
 #include "des_seamless.h"
+#include "des_seamless_roster.h"   // who is in the session (STAT)
 #include "des_seamless_notice.h"   // the co-op notices (NAME)
 
 #include "ps3emu/ppu_lift.h"
@@ -458,6 +459,7 @@ void putf(std::vector<uint8_t>& b, float f)
 void on_message(uint32_t from, const uint8_t* d, uint32_t n)
 {
     if (n < 4) return;
+    if (co::roster_message(from, d, n)) return;   // a STAT or a ping (des_seamless_roster.cpp)
     if (co::notice_message(from, d, n)) return;   // a NAME (des_seamless_notice.cpp)
     std::lock_guard<std::mutex> g(sMsgLock);
     if (!std::memcmp(d, kMsgRoom, 4) && n > 4 && n - 4 <= kRoomMax) {
@@ -3514,6 +3516,39 @@ static void state_line(uint32_t sm, uint32_t st)
     last = st;
 }
 
+// This game's state for the session panel (des_seamless_roster.h), each frame. Its HP as it was before a load (the
+// player's character comes and goes there).
+static void roster_frame(co::Mode m, uint32_t sm, uint32_t st, bool world)
+{
+    static int hp = 0, most = 0;
+    co::RosterFrame f;
+    f.hosting = m == co::Mode::Host;
+    f.joining = m == co::Mode::Join;
+    f.in_session = f.hosting ? st == kStateHost : st == kStateClient && sGame.arrived;
+    f.world = world;
+    f.cutscene = des_cutscene_playing() != 0;
+    const uint32_t pc = player_chr();
+    if (world && guest_ok(pc)) {
+        hp = (int32_t)vm_read32(pc + kChrHp);
+        most = (int32_t)vm_read32(pc + kChrHp + 4);
+    }
+    f.hp = hp;
+    f.hp_max = most;
+    f.dead = f.in_session && hp <= 0 && most > 0;
+    f.soul = !body_form();
+    f.fight = f.hosting ? sFight.load() : sFriendFight.load();
+    if (f.joining && !f.in_session) {
+        std::lock_guard<std::mutex> l(sMsgLock);
+        f.wait_full = sFull;
+        f.wait_fight = sGame.fight_wait;
+    }
+    f.leaving = f.joining && sLeave.load() != kLeaveNone;
+    if (sLeave.load() == kLeaveDone) f.joining = false;   // (left: it says nothing more, so the others drop it as they do a
+                                                          // closed game, whether or not this one restarts)
+    f.area = world ? vm_read32(sm + kSmArea) : 0xFFFFFFFFu;
+    co::roster_tick(f);
+}
+
 // This game's state for the co-op notices (des_seamless_notice.h), each frame. Its death as it was before a load (the
 // player's character comes and goes there): a respawn is back once it stands in the world again.
 static void notice_frame(co::Mode m, uint32_t st, bool world)
@@ -3612,6 +3647,7 @@ extern "C" void des_seamless_tick(ppu_context* ctx)
             it = make_again(ctx, sm, *it, false) ? sBackWaiting.erase(it) : std::next(it);
     for (const uint32_t id : back)
         if (!make_again(ctx, sm, id, true)) sBackWaiting.insert(id);
+    roster_frame(m, sm, st, world);
     notice_frame(m, st, world);
 }
 

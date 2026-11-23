@@ -1,7 +1,8 @@
 // What the UI's library takes from the game's side (des_boot: boot_main.cpp, ppu_hle.cpp, ppu_loader.cpp, the lift,
-// des_hud.cpp, des_menu_mouse.cpp, des_prework.cpp, des_seamless.cpp), for ui_render_compare, which runs no game:
+// des_hud.cpp, des_menu_mouse.cpp, des_prework.cpp, des_seamless.cpp, des_seamless_roster.cpp), for ui_render_compare, which runs no game:
 // inert, as the runtime's host_stubs.c is for what its modules take from the PPU loader.
 #include "../../des_seamless.h"
+#include "../../des_seamless_roster.h"
 #include "../../des_seamless_notice.h"
 
 #include <cstdint>
@@ -104,6 +105,23 @@ void leave_now() {}
 bool left() { return true; }
 std::vector<Character> characters_to_bring() { return {}; }
 std::string bring_character(int) { return "not in ui_render_compare"; }
+
+// Who is in the session (des_seamless_roster.cpp): none; or as a page set it (set_test_session: made-up players).
+namespace {
+std::vector<SessionPlayer> gTestPlayers;
+int gTestSeconds = 0;
+}  // namespace
+void set_test_session(const std::vector<SessionPlayer>& players, int seconds) {
+    gTestPlayers = players;
+    gTestSeconds = seconds;
+}
+std::vector<SessionPlayer> session_players() { return gTestPlayers; }
+int session_seconds() { return gTestSeconds; }
+std::string area_label(uint32_t area) {
+    if (area == 0xFFFFFFFFu) return "";
+    if ((area >> 24) == 1) return "The Nexus";
+    return "Boletarian Palace 1-" + std::to_string(((area >> 16) & 0xFF) + 1);  // (the made-up players are there)
+}
 bool notices_waiting() { return false; }
 std::vector<Notice> take_notices() { return {}; }
 }  // namespace des::seamless
