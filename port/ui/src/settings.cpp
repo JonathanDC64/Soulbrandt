@@ -151,6 +151,7 @@ constexpr Def kDefs[] = {
     {"menu_hint", "1", Apply::UiOnly},
     {"trophy_popups", "1", Apply::UiOnly},     // trophy_toasts.cpp; off hides the toast, the unlock is still kept
     {"trophy_sound", "1", Apply::UiOnly},      // trophy_toasts.cpp; off = no tune when a trophy is earned
+    {"coop_notices", "1", Apply::UiOnly},      // coop_notices.cpp; off hides seamless co-op's notes (not "didn't start")
     {"DES_CURSOR3D", "1", Apply::Live},        // host.cpp, each frame: 0 = the system's arrow, not the sword (docs/112)
     {"DES_CURSOR_SWORD", "soulbrandt", Apply::Live},  // host.cpp, each frame: which sword (souls_model.hpp's swords());
                                                       // until 0.2.0 the default was moonlight (load_file keeps it)

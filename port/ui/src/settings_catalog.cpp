@@ -571,6 +571,12 @@ std::vector<TabDesc> make_tabs() {
                         "Setting it picks Custom in Your glow colour.",
                 .swatch = [](const std::string&) { return s::hue_hex(s::glow_hue()); }},
         }},
+        {std::string(kCoopHeading) + kCoopScreen, {
+            own_setting(toggle("Co-op notices", "coop_notices",
+                "Short notes while you play: a player joined, left, died or is back, how your join "
+                "went, and who waits to join your game. Off hides them, except a note that co-op didn't start. A "
+                "change counts at once.")),
+        }},
         {"In your world", {
             toggle("Messages", "DES_NET_MESSAGES", "Messages from other players. Off hides all of them, yours too."),
             toggle("Bloodstains", "DES_NET_BLOODSTAINS",

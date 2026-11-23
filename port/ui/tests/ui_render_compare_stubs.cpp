@@ -2,6 +2,7 @@
 // des_hud.cpp, des_menu_mouse.cpp, des_prework.cpp, des_seamless.cpp), for ui_render_compare, which runs no game:
 // inert, as the runtime's host_stubs.c is for what its modules take from the PPU loader.
 #include "../../des_seamless.h"
+#include "../../des_seamless_notice.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -103,4 +104,6 @@ void leave_now() {}
 bool left() { return true; }
 std::vector<Character> characters_to_bring() { return {}; }
 std::string bring_character(int) { return "not in ui_render_compare"; }
+bool notices_waiting() { return false; }
+std::vector<Notice> take_notices() { return {}; }
 }  // namespace des::seamless
