@@ -64,13 +64,13 @@ friend's **Leave now**, while that is under way, doesn't wait for the trip: the 
   it joins once there is a place or the fight is over, that the connection to the host's game was lost (it goes back
   to its own world, and joins again once the host's game is back), and a join that can't get through (Co-op's own
   line, with where to leave);
-- **to the host:** who joined its world, who waits to join and why (full, or its boss fight), and how it comes back
-  after its death ("You respawn alone at the area's start. Your friends play on.", or everyone goes back with it);
-  also when friends can't use its room code (the server that introduces players can't be reached or has no place),
+- **to the host:** who joined its world, who waits to join and why (full, or its boss fight); also when friends can't use its room code (the server that introduces players can't be reached or has no place),
   when its code is spent, and when a friend's game found it but couldn't get through;
-- **to everyone in the session:** a player joined, left co-op, died, is back, or its game stopped answering (it
-  closed, or its connection dropped: 12 s with no word from it), and how the host comes back after its death ("StoneA
-  died and respawns alone. Play on.", "...comes back once the boss is dead", or everyone goes back).
+- **to everyone in the session:** a player joined, left co-op, or its game stopped answering (it closed, or its
+  connection dropped: 12 s with no word from it).
+
+Deaths and returns ("X died.", "X is back.", how the host comes back after its death) are written but not shown
+for now (11-23, after the first play test): `kDeathNotices` in `des_seamless_notice.cpp` turns them on.
 
 The same text within a minute shows once, at most six wait, and none shows during a load or a cutscene: they wait
 until it is over (and go after 90 s). Each one is in the co-op log too (`[coop] notice:`). **Settings > Network >

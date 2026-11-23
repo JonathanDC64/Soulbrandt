@@ -128,6 +128,11 @@ bool friends_in_locked()
     return false;
 }
 
+// Deaths and returns ("X died.", "X is back.", the host's own death) are not shown for now: the user, 11-23,
+// after the first play test ("disable the death related notifications for now"). The games still send their dead
+// state, so turning this on again needs no other change.
+constexpr bool kDeathNotices = false;
+
 // A NAME from another game, against its last one.
 void heard_locked(const Peer& was, bool known, const Peer& p)
 {
@@ -136,7 +141,7 @@ void heard_locked(const Peer& was, bool known, const Peer& p)
     if (sInSession && known) {
         if (!was_in && in && !host) say_locked(false, who(p) + (sHosting ? " joined your world." : " joined."));
         if (was_in && !in && !host) say_locked(false, who(p) + " left co-op.");   // (the host's: the friend's link says)
-        if (was_in && in) {
+        if (was_in && in && kDeathNotices) {
             const bool dead = p.flags & kDead, was_dead = was.flags & kDead;
             if (dead && !was_dead) {
                 const uint32_t how = (p.flags & kDeathMask) >> kDeathShift;
@@ -197,7 +202,7 @@ void notice_host_died(bool alone, bool stands, bool fight)
 {
     std::lock_guard<std::mutex> l(sLock);
     sHostDeath = !alone || !stands ? kDeathAll : fight ? kDeathFight : kDeathAlone;
-    if (!friends_in_locked()) return;   // (alone in its session: its death is the game's own)
+    if (!kDeathNotices || !friends_in_locked()) return;   // (alone in its session: its death is the game's own)
     if (!alone)
         say_locked(false, "Everyone goes back with you (Settings: When you die as host, Everyone goes back).");
     else if (!stands)
