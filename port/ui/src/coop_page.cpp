@@ -2,6 +2,7 @@
 // it asks, are the Co-op window's (coop_window.hpp's coop namespace); this page lays them out as the mock-up's.
 #include "coop_page.hpp"
 
+#include "coop_session.hpp"
 #include "coop_window.hpp"
 #include "event.hpp"
 #include "input.hpp"
@@ -71,7 +72,8 @@ std::string guest_line(const co::Status& s) {
     }
 }
 
-// Beside the actions: what co-op is, or the invite code, the router's answer and the players; "" for no box.
+// Beside the actions: what co-op is, or the invite code, the router's answer and the players (coop_session.hpp: each
+// one, for the host and a joined friend); "" for no box.
 std::string info_rml(const co::Status& s) {
     if (s.mode == co::Mode::Off)
         return "<info-line>One of you hosts. The others join with the host's invite code and follow the host from "
@@ -81,6 +83,7 @@ std::string info_rml(const co::Status& s) {
                "can't tell its internet address asks Google's STUN server for it.</info-line>";
     if (!s.started) return "<info-line class=\"warning\">Co-op did not start: " + escape(s.error) + ".</info-line>";
     if (s.mode == co::Mode::Join) {
+        if (s.link == co::Status::Link::Connected) return coop_session::page_rml(0);  // (who is in it)
         if (!guest_line(s).empty()) return "";
         if (s.link == co::Status::Link::Connecting)
             return "<info-line class=\"warning\">" + escape(s.join) + "</info-line>";
@@ -114,6 +117,8 @@ std::string info_rml(const co::Status& s) {
     if (!s.lan_code.empty() && (s.code.empty() || s.lan_code != s.code) && s.show_direct)
         b += "<info-head><info-line>On your own network: <info-lan>" + escape(s.lan_code) + "</info-lan></info-line>" +
              coop::copy_button("lan") + "</info-head>";
+    if (const std::string who = coop_session::page_rml(s.max_players); !who.empty())
+        return b + (s.show_direct ? "<info-rule/>" : "") + who;  // (each player, in place of the count)
     b += std::string(s.show_direct ? "<info-rule/>" : "") + "<info-line>Players: " +
          std::to_string(s.players > 0 ? s.players : 1) + " of " + std::to_string(s.max_players) +
          " (Settings &gt; Network).";

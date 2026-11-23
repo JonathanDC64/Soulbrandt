@@ -2322,6 +2322,32 @@ coop-info.long info-code {
     line-height: 34dp;
 }
 
+/* Who is in the session (coop_session.cpp): a player's name, then what it does in a smaller line under it. */
+coop-info info-player {
+    display: block;
+    margin: 4dp 0 8dp;
+}
+
+coop-info info-name {
+    display: block;
+    font-size: 17dp;
+    line-height: 23dp;
+    letter-spacing: 0.3dp;
+    color: var(--des-tan-light);
+}
+
+coop-info info-what {
+    display: block;
+    font-size: 15dp;
+    line-height: 20dp;
+    letter-spacing: 0.3dp;
+    color: var(--des-tan-muted);
+}
+
+coop-info.long info-player {
+    margin: 2dp 0 5dp;
+}
+
 /* A code's line with its small Copy button at the right end: a small stone button, as the questions' buttons. */
 coop-info info-head {
     display: flex;

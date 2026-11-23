@@ -6,6 +6,7 @@
 
 #include "ack.hpp"
 #include "app.hpp"
+#include "coop_session.hpp"
 #include "crash_report.hpp"
 #include "event.hpp"
 #include "menu_model.hpp"
@@ -403,7 +404,10 @@ std::string body(const co::Status& s) {
         if (s.link == co::Status::Link::Connecting && !s.join.empty())
             return s.join_warn ? "<modal-warning>" + escape(s.join) + "</modal-warning>" : escape(s.join);
         if (s.link == co::Status::Link::Connecting) return "Reaching the host's game...";
-        if (s.link == co::Status::Link::Connected) return "You're connected to the host's game.";
+        if (s.link == co::Status::Link::Connected) {
+            const std::string who = coop_session::window_rml(0);
+            return who.empty() ? "You're connected to the host's game." : who;
+        }
         if (s.link == co::Status::Link::Fight)
             return "You're connected to the host's game. The host is in a boss fight, and no one joins during one, as "
                    "in the original game. You join as soon as it's over.";
@@ -433,6 +437,8 @@ std::string body(const co::Status& s) {
     if (s.show_direct) b += escape(s.router.empty() ? "Asking your router to open the port..." : s.router);
     if (!s.lan_code.empty() && (s.code.empty() || s.lan_code != s.code) && s.show_direct)
         b += "<br/><br/>On your own network: <b>" + escape(s.lan_code) + "</b>" + coop::copy_button("lan");
+    if (const std::string who = coop_session::window_rml(s.max_players); !who.empty())
+        return b + (s.show_direct ? "<br/><br/>" : "") + who;
     b += std::string(s.show_direct ? "<br/><br/>" : "") + "Players: " +
          std::to_string(s.players > 0 ? s.players : 1) + " of " + std::to_string(s.max_players) +
          " (Settings > Network).";

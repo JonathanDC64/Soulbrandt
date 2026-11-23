@@ -53,6 +53,19 @@ so.
 3. Until it gets in, Co-op says how the join goes ("Finding the host's game...", or what is in the way, below), and
    the game keeps trying: after 10 s, 30 s, then every minute.
 
+**Who is in the session:** while you host, or once you have joined, **Seamless co-op** lists everyone in the
+session (docs/169):
+- each player's name (with Host or You), what they are doing ("Playing", "Loading", "In a cutscene", "In a boss fight",
+  "Dead, back soon", "Leaving co-op"), the area, body or soul form, and HP;
+- a friend's ping to the host's game (the median of its last five), with "slow" above 150 ms;
+- the games that wait to join, and why ("Waits for a place (the game is full)", "Waits for the boss fight to end");
+- one line: how many players (and, for the host, the most it takes), whether joins are open, and how long you have
+  played together.
+
+A game that goes quiet shows "No answer for N s" after 6 s, and drops off after 30 s; one that was leaving or waiting
+drops off after 6 s. The list replaces the host's "Players: 2 of 4" line. A friend sees it in place of "You're
+connected to the host's game."
+
 **To leave:** **Seamless co-op** > **Leave co-op**. A friend's game first takes them back to their own world, right
 where they stand (in a boss fight, to that area's start, as a death would), and saves what the group did there; the
 host's leave sends its friends back to theirs the same way. Then the game starts again on your normal characters. A
@@ -523,6 +536,9 @@ alive.
 | `FLGS` | host | area, offset, up to 1,000 bytes of its event flags | the host's flags, in three parts, before each `REDY` |
 | `FLAG` | host | flag, area | a progress flag was set in the host's world |
 | `FLAG` | friend | flag, area | the Archstones' seal was opened by this friend: the host's world takes it |
+| `STAT` | any | flags (1 in the session, 2 host, 4 dead, 8 soul, 16 loading, 32 cutscene, 64 boss fight, 128 waits: full, 256 waits: boss fight, 512 leaving), area, HP, most HP, its ping to the host (ms, -1 none), the online name | who is in the session (des_seamless_roster.cpp): at once on a change of flags or area, and every 2 s |
+| `PNG?` | friend | its nonce, a count | time the round trip: send it back |
+| `PNG!` | host | that nonce and count | the answer, from the host's next frame, to every game; the friend whose nonce it is takes the round trip |
 
 **The flags** (event flags: bit `n & 7` of byte `n >> 3`, 17,024 of them):
 - **Each world has its own flags,** flags 0-3,199 and 8,192-12,287; the rest (bosses, for one) are shared by every

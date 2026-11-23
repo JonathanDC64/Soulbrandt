@@ -195,6 +195,7 @@ add_executable(des_boot
     "${CMAKE_CURRENT_SOURCE_DIR}/des_seamless_game.cpp"     # seamless co-op in the game: joining, following the host
     "${CMAKE_CURRENT_SOURCE_DIR}/des_seamless_scripts.cpp"  # seamless co-op: the area scripts' edits, in memory
     "${CMAKE_CURRENT_SOURCE_DIR}/des_seamless_save.cpp"     # seamless co-op's own save; bringing a character into it
+    "${CMAKE_CURRENT_SOURCE_DIR}/des_seamless_roster.cpp"   # seamless co-op: who is in the session (STAT), for the panel
 )
 # des_seamless.cpp decrypts the game's requests with the AES in ps3recomp's mbedTLS (built into the runtime).
 set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/des_seamless.cpp" APPEND PROPERTY INCLUDE_DIRECTORIES
