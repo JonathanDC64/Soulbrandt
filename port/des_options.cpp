@@ -3570,6 +3570,11 @@ static void run_defaults()
          * stick starts from the length where the game's own stick zone ends,
          * so the character starts moving at that tilt, without a jump. */
         {"PAD_DEADZONE_ANTI", "37"},
+        /* Settings > Controls > Controller on Automatic: the gamepad used
+         * last plays, with its button icons and vibration (ps3recomp's
+         * cellPad.c puts it on port 0, the only port the game reads). Without
+         * it, the first pad found played and the others did nothing. */
+        {"PAD_FOLLOW", "1"},
         /* The level's busiest frames need ~850k vertices; growing the buffer
          * during play stalled a frame for 100-400 ms (docs/28). */
         {"VP_VB_VERTS", "1572864"},

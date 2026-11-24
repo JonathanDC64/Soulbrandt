@@ -384,8 +384,8 @@ std::vector<TabDesc> make_tabs() {
                         return out;
                     },
                     .blank = "auto"},
-                .help = "The gamepad the game and these menus read, when more than one is connected. Automatic: the "
-                        "game reads the first one found, the menus all of them."},
+                .help = "The gamepad the game and these menus read, when more than one is connected. Automatic: "
+                        "the one you used last plays, and the button icons follow it."},
             toggle("Vibration", "PAD_RUMBLE", "Lets the game make your gamepad vibrate."),
             stick_row("Left stick deadzone", "PAD_DEADZONE_LEFT", 0,
                 "How far you tilt the left stick before it counts, the same on every controller. Default is how the "
