@@ -190,6 +190,7 @@ add_executable(des_boot
     "${CMAKE_CURRENT_SOURCE_DIR}/des_memstat.cpp"           # DES_MEMSTAT: how full the game's heaps get
     "${CMAKE_CURRENT_SOURCE_DIR}/des_pantheon.cpp"         # the checks on Pantheon records from other players
     "${CMAKE_CURRENT_SOURCE_DIR}/des_prework.cpp"           # startup work: the shader cache, behind a progress bar
+    "${CMAKE_CURRENT_SOURCE_DIR}/des_pso_predict.cpp"       # the pipelines the game can ask for, from its files
     "${CMAKE_CURRENT_SOURCE_DIR}/des_route.cpp"             # DES_ROUTE: a walk on the game clock, with screenshots
     "${CMAKE_CURRENT_SOURCE_DIR}/des_seamless.cpp"          # seamless co-op: the host's room server, the invite code
     "${CMAKE_CURRENT_SOURCE_DIR}/des_seamless_game.cpp"     # seamless co-op in the game: joining, following the host
@@ -863,6 +864,7 @@ if(_des_hal)
         "${PS3RECOMP_DIR}/runtime/ppu/tests/boot_main.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/des_options.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/des_prework.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/des_pso_predict.cpp"
         APPEND PROPERTY COMPILE_DEFINITIONS PS3RECOMP_RSX_HAL=1)
     if(TARGET des_ui)
         # The UI's files, which also need rsx_out.h's folder (des_boot's sources have it).
@@ -889,6 +891,7 @@ if(_des_hal)
     add_executable(prework_check EXCLUDE_FROM_ALL
         tests/prework_check.cpp
         des_prework.cpp
+        des_pso_predict.cpp
         "${PS3RECOMP_DIR}/runtime/host/host_stubs.c")   # (what the runtime's modules take from the PPU loader)
     target_include_directories(prework_check PRIVATE
         "${PS3RECOMP_DIR}/include" "${PS3RECOMP_DIR}/runtime/ppu" "${PS3RECOMP_DIR}/libs/video")
