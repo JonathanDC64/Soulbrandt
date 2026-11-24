@@ -101,6 +101,7 @@ void cellPad_set_host_hold(int hold);
 extern volatile unsigned g_pad0_buttons;  // pad 0 as the game last read it (CELL_PAD_CTRL_* layout)
 
 int cellPad_host_pads_on(void);  // cellPad.h: 0 while the game ignores the pads (PAD_FOCUS_ONLY in the background)
+int cellPad_host_keys_out(void);  // cellPad.h: 1 while keys and the mouse stay out of port 0's pad (Steam's layout)
 int cellPad_host_glyph_device(void);  // cellPad.h: what the game was last used with (PAD_GLYPH_*, pad_glyph.h)
 int cellPad_host_controller(int i, char* id, int idn, char* name, int namen);  // cellPad.h: the i-th port's pad
 
@@ -666,6 +667,29 @@ bool ensure_init(int width, int height) {
     return true;
 }
 
+// A key Steam's desktop layout pressed for the pad's controls, which the menus drop. While cellPad keeps the keys out
+// of port 0's pad (cellPad_host_keys_out: a Steam Deck, or a Valve controller with Steam in the background), that
+// layout also presses keys for the controls: the D-pad is the arrow keys too, A Enter, B Escape. The pad already
+// moves the menus (input.cpp), so the key would count a second time (a tester: D-pad right moved two places in the
+// L3+R3 menu). Kept: F1, keys with Ctrl or Alt (pasting), and Backspace, Delete, Home and End while typing (a text
+// field or the on-screen keyboard). Typed characters (Char) always come in.
+bool steam_layout_key(const InputEvent& e, Rml::Context* ctx) {
+    if (e.type != InputEvent::KeyDown && e.type != InputEvent::KeyUp) return false;
+    if (!cellPad_host_keys_out() || is_menu_key(WPARAM(e.a))) return false;
+    if (e.mods & (Rml::Input::KM_CTRL | Rml::Input::KM_ALT)) return false;
+    if (e.a == VK_BACK || e.a == VK_DELETE || e.a == VK_HOME || e.a == VK_END) {
+        if (ui::active_osk()) return false;
+        const Rml::Element* f = ctx ? ctx->GetFocusElement() : nullptr;
+        if (f && (f->GetTagName() == "input" || f->GetTagName() == "textarea")) return false;
+    }
+    static bool said = false;
+    if (!said) {
+        said = true;
+        std::fprintf(stderr, "[ui] the menus leave out the window's keys: Steam's desktop layout presses them for the pad\n");
+    }
+    return true;
+}
+
 void process_queue() {
     std::vector<InputEvent> events;
     {
@@ -675,6 +699,7 @@ void process_queue() {
     }
     Rml::Context* ctx = ui::host::context();
     for (const InputEvent& e : events) {
+        if (steam_layout_key(e, ctx)) continue;
         if (ui::OskWindow* osk = ui::active_osk()) {  // the on-screen keyboard is up: typing goes into it
             if (e.type == InputEvent::Char) {
                 osk->on_char(unsigned(e.a));
