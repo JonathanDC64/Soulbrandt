@@ -1,7 +1,7 @@
 // Written for Demon's Souls. The menus' prompts: which button does what, shown along the bottom ("✕: Open",
 // "○: Back"). Here the buttons each device has for each prompt, as data; a page lists its prompts (Prompt), and the
-// look's style sheet draws them. The buttons follow the game's own prompts (button_pages.cpp): a Nintendo pad reads
-// A B X Y as an Xbox pad does, as SDL names its buttons, and so does a Steam Deck.
+// look's style sheet draws them. The buttons follow the game's own prompts (button_pages.cpp), by where each button
+// sits (SDL3's, positional): an Xbox pad and a Steam Deck read A B X Y, a Nintendo pad B A Y X.
 #pragma once
 
 #include <string>

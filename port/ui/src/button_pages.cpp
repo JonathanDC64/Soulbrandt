@@ -682,15 +682,15 @@ void pad_button(Ctx& c, const Box& b, Kind kind, int p) {
         default: break;   // the D-pad, Select and Start as below
         }
     }
-    const bool x = kind == Kind::Xbox, deck = kind == Kind::SteamDeck;
-    // SDL names a Nintendo pad's buttons by their letters (SDL2's default), so A presses Cross as it does on an Xbox
-    // pad: the same letters, without the colours. A Steam Deck has Xbox's letters too, without the colours, and names
-    // its shoulders and sticks L1 to R3.
+    const bool x = kind == Kind::Xbox, deck = kind == Kind::SteamDeck, nin = kind == Kind::Nintendo;
+    // SDL3 reads the face buttons by where they sit (cellPad: the bottom one is Cross on every pad), so each pad's
+    // letters are the ones at those places: an Xbox pad's A B X Y, and a Nintendo pad's B A Y X (its A on the right,
+    // Circle). A Steam Deck has Xbox's letters, without the colours, and names its shoulders and sticks L1 to R3.
     switch (p) {
-    case kPCross: face(c, b, "A", x ? kXboxA : deck ? kDeckLetter : kLetter); break;
-    case kPCircle: face(c, b, "B", x ? kXboxB : deck ? kDeckLetter : kLetter); break;
-    case kPSquare: face(c, b, "X", x ? kXboxX : deck ? kDeckLetter : kLetter); break;
-    case kPTriangle: face(c, b, "Y", x ? kXboxY : deck ? kDeckLetter : kLetter); break;
+    case kPCross: face(c, b, nin ? "B" : "A", x ? kXboxA : deck ? kDeckLetter : kLetter); break;
+    case kPCircle: face(c, b, nin ? "A" : "B", x ? kXboxB : deck ? kDeckLetter : kLetter); break;
+    case kPSquare: face(c, b, nin ? "Y" : "X", x ? kXboxX : deck ? kDeckLetter : kLetter); break;
+    case kPTriangle: face(c, b, nin ? "X" : "Y", x ? kXboxY : deck ? kDeckLetter : kLetter); break;
     case kPR1: shoulder(c, b, x ? "RB" : deck ? "R1" : "R", false, deck); break;
     case kPR2: shoulder(c, b, x ? "RT" : deck ? "R2" : "ZR", true, deck); break;
     case kPL1: shoulder(c, b, x ? "LB" : deck ? "L1" : "L", false, deck); break;
