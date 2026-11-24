@@ -70,6 +70,7 @@ Tab-separated, in hex:
 | `<TITLE_ID>-<APP_VER>.tsv` | `port/data/pso_index/`, committed | `pso_index.py merge` | The index. A release has it at `<exe folder>/port/data/pso_index/`. |
 | `pso_index_seen.tsv` | the shader cache | the game | The rows this cache has seen. Its first line names the game version. |
 | `pso_index.built` | the shader cache | the game | The hash of the last index built in full. |
+| `pso_predict.tsv` | the shader cache | the game | The predicted rows (next section), with a mark of the files they came from. |
 
 The port looks for the index in the exe's folder and up to three folders above it, as setup looks for its own
 files.
@@ -81,6 +82,8 @@ files.
 | `DES_PSO_INDEX` | the index for the game's version | `<file>`: another index; `0`: none. |
 | `PS3_PSO_INDEX` | 1 | `0`: no recording and no building (ps3recomp). |
 | `PS3_PSO_LIBRARY` | 1 | `0`: no library, so nothing is built ahead. Rows are still recorded, and written at the end. |
+| `DES_PSO_PREDICT` | 1 | `0`: no predicted rows (next section). |
+| `PS3_PSO_WARM` | 1 | The warm-up at a start (ps3recomp): `1` one record per shader, `2` every record, `0` none. |
 
 ## Log lines
 
@@ -238,6 +241,57 @@ test builds, with HDR off:
   game's files. It built the 508 its library lacked in 1.6 s, in the background on 4 threads; the other 99 new
   rows were in the library already.
 
+## Predicted rows (2026-11-23)
+
+The index only has what someone has played, and only the US disc's programs. The game's own files say more:
+every material (`mtd/mtd.mtdbnd`) names its shader and blend mode, and the shader archives hold every program by
+name. `port/des_pso_predict.cpp` turns those into rows:
+
+- The fragment program's name is the material's maps (Spc, Bmp, Mul, Lit), then what a draw picks at run time:
+  shadow receiving, the light type, point lights, and the ghost twin the game draws phantoms with.
+- The vertex program follows from the maps and the skinning. The shadow pass uses the engine's depth program,
+  the alpha-tested one, or the material's own plain program.
+- The light type is the draw's, not the material's: play shows every material with all three types.
+- The blend mode gives the blend and depth states. Both cull modes and both vertex input forms are made.
+- The engine's own passes (post filters, menus, particles, debug text, the executable's programs) have fixed
+  rules.
+
+For one HDR setting that is 43,682 rows. Against the 3,202 rows recorded in play over many sessions (both
+settings), the two settings' rows cover 3,191 (99.7%). The other 11: 9 post-filter draws with a vertex program
+left from another pass, and 2 with fragment programs the game makes at run time.
+
+**Why one row per shader is enough.** Measured on the RTX 5070 Ti (driver 621.24), one thread, a library
+built from an empty one:
+
+| Pipeline | Create | Load from the library |
+|---|---|---|
+| The first in the run with a new pixel shader | 31 ms (median) | 7-25 ms |
+| With a new vertex shader | 41 ms; both new: 72 ms | |
+| Both shaders seen before in the run | 0.56 ms (99% under 1.2 ms) | 0.4 ms |
+
+The cost is the shader's, once a run, whatever pipeline brings it. So the pass keeps one predicted row per
+shader the index's rows do not use: 1,590 rows. The index build puts them in the library and the manifest like
+the index's own. Every start, ps3recomp's warm-up loads one record per shader (`PS3_PSO_WARM=1`). After that,
+any pipeline the game asks for, among the 44,000 or not, has shaders the driver has seen.
+
+**Measured** (regress route, the dev cache, the index file plus the predicted rows):
+
+- First start: 497 new shader texts compiled in 5.5 s on 15 threads (behind the progress bar). The rows were
+  built in the background, and the library grew from 11 to 34 MB.
+- Later starts: the warm-up loaded 1,537 of 7,737 records in 6.0-6.2 s on 4 background threads.
+- The driver keeps each shader it has seen in memory: the game used about 1,700 MB on the route, against
+  about 1,560 MB with the index's shaders alone (one per shader) and 1,620 MB with all of the index's records
+  loaded (the warm-up before the per-shader one).
+- Draws that waited 8 ms or more: 3 to 8, all in the first seconds while the warm-up was still running. With
+  the index alone it was 2 to 7, and 32 with no warm-up.
+
+The rows are made at a start from the game folder's files, so every version of the game gets its own. They
+are kept in `pso_predict.tsv` and made again only when an archive, the material bundle or an
+executable changes. The rows are SDR's whatever `RSX_HDR` says: a row only has to have its shaders.
+
+`des_host --pso-predict <game folder> <EBOOT.elf> <out.tsv> [hdr]` writes all the predicted rows, and
+`tools/des/pso_predict_check.py` checks them against recorded rows (seen files or the index).
+
 ## Limits
 
 - A fragment program with more inline constants than the constant buffer holds has them baked into its text.
@@ -247,5 +301,6 @@ test builds, with HDR off:
   next start does it.
 - The `FP_*` debugging knobs change the shader text. With one of them set, the pipelines built ahead do not
   match, and the draws compile their own, as they do now.
-- Another game version needs its own file. The rows of one version are never used for another.
+- Another game version needs its own file. The rows of one version are never used for another. The predicted
+  rows are made from each disc's own files.
 - Linux: rows are recorded, but nothing is built ahead, because the shader pass is D3DCompile's (Windows only).
