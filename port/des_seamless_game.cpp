@@ -95,6 +95,7 @@ extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
 extern "C" void ds_malloc(ppu_context* ctx);                     // des_heap.cpp: the guest heap
 bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t* out, uint32_t* out_size);  // _scripts.cpp
 int des_seamless_flag_kind(uint32_t world, uint32_t flag);       // _scripts.cpp: 1 progress, 3 a boss kill's, 2 a soul, key or item pickup, 4 a cutscene seen, 5 the Archstones' seal
+std::vector<std::pair<uint32_t, uint32_t>> des_seamless_tale_flags(uint32_t world);   // _scripts.cpp: {seal, tale}
 extern "C" void ps3_indirect_call(ppu_context* ctx);             // ppu_loader.cpp: a call to the guest address in CTR
 extern "C" int des_player_xyz(float* x, float* y, float* z);     // des_options.cpp: 0 with no player
 extern "C" int des_cutscene_playing(void);                       // des_options.cpp: 1 while a cutscene plays
@@ -2585,6 +2586,29 @@ void take_guest_seal(ppu_context* ctx)
     }
 }
 
+// The Monumental's tale ends with the seal's handler (OnEvent_303_1 calls OnEvent_34) and then sets 303, the flag the
+// Maiden in Black checks before she levels anyone. Until 11-24 the seal went to the host's world from a friend who
+// heard the tale (take_guest_seal), but 303 was taken for a cutscene each player sees on its own: the host had the seal
+// and not 303, so nobody could level up there, and the tale can't be heard twice (a tester's report). 303 now goes
+// with the seal; a world left that way is put right here: in the original game, where the seal is open (34), 303 is
+// set too. Through the game's own setter, so in a session des_coop_hook sends it on to the guests. The host or alone,
+// in the world the flags are from.
+void repair_tale(ppu_context* ctx)
+{
+    static unsigned frames = 0;
+    if (++frames % 30) return;
+    const uint32_t fb = flag_base();
+    if (!guest_ok(fb)) return;
+    const uint32_t here = world_of(vm_read32(fb + kFlagsArea));
+    auto in_play = [&](uint32_t flag) { return flag < kFlagCount && ((vm_read8(fb + (flag >> 3)) >> (flag & 7)) & 1); };
+    for (const auto& p : des_seamless_tale_flags(here)) {
+        if (p.second >= kFlagCount || !in_play(p.first) || in_play(p.second)) continue;
+        call_addr(ctx, DES_AT(0x005086F8u), {fb, p.second, 1});
+        std::fprintf(stderr, "[coop] progress: flag %u (the Monumental's tale) was missing with the seal open "
+                     "(%u); set\n", p.second, p.first);
+    }
+}
+
 // The host's death in a session. By default, while a friend stands, the host respawns alone at the area's start as a
 // friend does, its friends play on, and the enemies that are dead stay dead; in a boss fight it first waits until the
 // boss is dead, then comes back at its own bloodstain (host_to_stain). Only when no friend stands (a wipe) does
@@ -2951,6 +2975,7 @@ void host_tick(ppu_context* ctx, uint32_t sm, uint32_t gm, uint32_t st, bool wor
     }
     if (world && !g.was_world) g.arrival = player_place();   // its first frame in the world after a load
     g.was_world = world;
+    if (world && (st == 0 || st == kStateHost)) repair_tale(ctx);
     if (st == 0) {
         g.room_sent = false;
         g.room_frames = 0;

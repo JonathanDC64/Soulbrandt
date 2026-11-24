@@ -282,7 +282,8 @@ set).
   host has seen) you skip yourself, as you do the rest of one that ended first on the host's screen.
 - **The Monumental's question:** whoever talks to the Monumental answers it. Once the other Archstones open, they open
   in every player's world. His story plays only for the one who hears it: when a friend hears it first, the host then
-  gets his later lines and his question, not the story.
+  gets his later lines and his question, not the story. Either way, everyone can level up at the Maiden in Black
+  afterwards.
 
 ### If your friends can't connect
 
@@ -980,6 +981,14 @@ alive.
 - **The Archstones' seal.** The events whose header names the seal (要石の封印), and the flags their handlers set, are
   the seal's. When one is set on a friend, it is kept in the friend's own world and sent to the host (`FLAG`), whose
   world sets it through the game's own flag setter. The host's own, as other progress, goes to its friends.
+  So do the flags set by a function that calls a seal handler: the Monumental's story ends in `OnEvent_303_1`, which
+  calls `OnEvent_34` (the seal) and then sets 303, the flag the Maiden checks before she levels anyone. Until 11-24
+  303 counted as a cutscene each player sees, so a friend who heard the story first gave the host the seal but not
+  303: nobody could level up in the host's world, and the story can't be heard twice (a tester's report). The
+  seal's flags are no longer among the cutscenes either. A world left that way is put right as the host (or a player
+  alone, with co-op on) stands in the Nexus: where 34 is set and 303 isn't, 303 is set through the game's setter,
+  which sends it on to the friends. In the original game 303 is always set once 34 is (and it stays set in New
+  Game+, where the talk opens the seal again).
 
 **The scripts' edits,** in memory, as each script is read (the game's Lua reader and Lua's string reader, hooked at
 their first instruction):
@@ -1410,6 +1419,11 @@ the newer generation, and saves as usual.
   killed Phalanx together, went back to the Nexus, and the friend talked to the Monumental first: his story played
   on the friend's game only, and the host could use the other Archstones afterwards. The host's own talk with him
   then gave his later lines and his question (the friend's answer stays in the friend's copy of the host's world).
+- The Maiden after a friend heard the Monumental's story first (11-24): the host's save from the tester's report
+  (seal open, 303 clear), loaded into the Nexus as host. The log said `flag 303 (the Monumental's tale) was missing
+  with the seal open (34); set`, and the save the game wrote then had 303 set. The Nexus's script now counts 5 flags
+  for the seal (34, 36, 8030, 8802, 303) and 4 cutscenes. A friend hearing the story in a session wasn't re-run;
+  303 takes the seal's path, which the check above covers.
 - A friend's talk is checked as far as the Crestfallen's prompt and first line. Scripted, with the Maiden in Black:
   - with a host who hadn't met the Monumental yet, her prompt and early lines ("The Monumental awaits thee, above.");
   - with a host past the first demon, her level up. The friend answered YES to "Seek Soul Power?", then chose Seek
