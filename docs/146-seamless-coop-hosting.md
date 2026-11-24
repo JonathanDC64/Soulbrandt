@@ -614,7 +614,8 @@ ground its player last stood on: its bloodstain's source (`*(chr + 0x640)`, the 
 which the game moves only while the player stands on something, so it is never air over an edge. Only a place in the
 area's own world counts, so the last area's isn't used before the player has stood in this one. Unstuck's place is
 that ground 90 frames after the load is done (else where the player stands then). The page only asks; on the game's
-next frame `take_move` checks again (boss fight, load, death, cutscene, area, on both ends), and the player is moved
+next frame `take_move` checks again (boss fight, load, death, cutscene, the world, on both ends: the area number changes
+as a player walks from one block of a world to the next, with no load), and the player is moved
 with the game's own LoadChrPos (`place_chr`, `0x00273BE0`), as the level scripts move a character. The other games see
 the move through the usual position syncs. The host's number in the room can be 0, so a player is told apart by
 `you`, not by its number.

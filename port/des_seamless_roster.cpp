@@ -373,7 +373,9 @@ std::string warp_blocked_locked(uint32_t user)   // (under sLock)
     if (p.flags & kDead) return who + " is dead.";
     if (p.flags & kCut) return who + " is in a cutscene.";
     if (p.flags & kFight) return who + " is in a boss fight.";
-    if (p.area != sOwn.area) return who + " is in another area.";
+    // (the same world: one load brings in all its areas, and the area number changes as a player walks from one of its
+    // blocks to the next: 1-2's Archstone, in the Phalanx room, is 02000000 of world 2, its start 02010000)
+    if ((p.area >> 24) != (sOwn.area >> 24)) return who + " is in another area.";
     if (!p.ground) return "Where " + who + " stands isn't known yet.";
     return {};
 }
@@ -381,7 +383,7 @@ std::string warp_blocked_locked(uint32_t user)   // (under sLock)
 std::string unstuck_blocked_locked()   // (under sLock)
 {
     if (std::string own = own_blocked(sOwn); !own.empty()) return own;
-    if (!sOwn.arrived || sOwn.arrival_area != sOwn.area) return "Where you arrived here isn't known yet.";
+    if (!sOwn.arrived || (sOwn.arrival_area >> 24) != (sOwn.area >> 24)) return "Where you arrived here isn't known yet.";
     return {};
 }
 

@@ -44,7 +44,7 @@ struct RosterFrame {
 void roster_tick(const RosterFrame& f);
 
 // Warp and Unstuck (F1 > Seamless co-op; docs/146). Warp takes this player to the ground another player in the session
-// last stood on, in the same area; Unstuck back to where it stood once this area's load was done. Neither in or into a
+// last stood on, in the same world (what one load brings in); Unstuck back to where it stood once that load was done. Neither in or into a
 // boss fight, nor while this player or the other loads, is dead or watches a cutscene. Each in a line, why it can't
 // now ("" when it can); the asks are done on the game's next frame (take_move).
 std::string warp_blocked(uint32_t user);
