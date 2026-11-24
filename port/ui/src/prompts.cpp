@@ -18,7 +18,8 @@ constexpr int kVkEnter = 0x0D, kVkShift = 0x10, kVkEsc = 0x1B;
 constexpr int kVkLeft = 0x25, kVkUp = 0x26, kVkRight = 0x27, kVkDown = 0x28;
 
 // A row per device (Device's order), a button per prompt (Key's order). The pads' pictures name the same buttons (a
-// pad draws its own letters on them: Cross is A on an Xbox pad, a Nintendo pad and a Steam Deck, as SDL names it).
+// pad draws its own letters on them, by where the button sits: Cross, the bottom one, is A on an Xbox pad and a Steam
+// Deck, and B on a Nintendo pad).
 constexpr Glyph kGlyphs[][kKeys] = {
     // Keyboard
     {{"↑ ↓", "arrows up-down", {key(kVkUp), key(kVkDown)}},
@@ -41,8 +42,8 @@ constexpr Glyph kGlyphs[][kKeys] = {
      {"LB", "shoulder", {button("l1")}}, {"RB", "shoulder", {button("r1")}}, {"→", "arrows right", {dpad(kRight)}}},
     // Nintendo
     {{"↑ ↓", "arrows up-down", {dpad(kUpDown)}}, {"← →", "arrows left-right", {dpad(kLeftRight)}},
-     {"A", "face", {button("cross")}}, {"B", "face", {button("circle")}}, {"Y", "face", {button("triangle")}},
-     {"−", "system", {button("select")}}, {"X", "face", {button("square")}}, {"RS", "stick", {button("r3")}},
+     {"B", "face", {button("cross")}}, {"A", "face", {button("circle")}}, {"X", "face", {button("triangle")}},
+     {"−", "system", {button("select")}}, {"Y", "face", {button("square")}}, {"RS", "stick", {button("r3")}},
      {"L", "shoulder", {button("l1")}}, {"R", "shoulder", {button("r1")}}, {"→", "arrows right", {dpad(kRight)}}},
     // Steam Deck
     {{"↑ ↓", "arrows up-down", {dpad(kUpDown)}}, {"← →", "arrows left-right", {dpad(kLeftRight)}},
