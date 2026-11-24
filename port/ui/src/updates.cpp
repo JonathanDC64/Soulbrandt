@@ -1,5 +1,6 @@
 // The launcher's update check (see updates.hpp; the engine's side is tools/setup/des_setup/update.py, docs/105).
 #include "updates.hpp"
+#include "path_utf8.hpp"
 
 #include "app.hpp"
 #include "crash_report.hpp"
@@ -22,8 +23,7 @@ namespace {
 constexpr const char* kInfo = "setup/release-info.txt";  // a player's install's (tools/release/package.py, update.py)
 
 std::string utf8(const std::filesystem::path& p) {
-    const std::u8string s = p.u8string();
-    return std::string(s.begin(), s.end());
+    return path_utf8(p);  // (never throws: path_utf8.hpp)
 }
 
 bool env_set(const char* name) {

@@ -9,6 +9,7 @@
 // on, all ASCII), so a data folder whose path has characters outside the system's code page still reaches them intact
 // (inferred: a tool that reads its arguments in the code page would get '?' for those characters).
 #include "setup_python.hpp"
+#include "path_utf8.hpp"
 
 #include "setup_engine.hpp"
 #include "setup_pc.hpp"
@@ -47,8 +48,7 @@ constexpr const char* kNoDownloader =
 constexpr const char* kUnpackFailed = "Setup could not unpack Python.";
 
 std::string utf8(const std::filesystem::path& p) {
-    const std::u8string s = p.u8string();
-    return std::string(s.begin(), s.end());
+    return path_utf8(p);  // (never throws: path_utf8.hpp)
 }
 
 // ---- What differs by platform ----

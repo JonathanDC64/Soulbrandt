@@ -9,6 +9,7 @@
 // portal has it. SDL3's folder dialog (SDL_ShowOpenFolderDialog) works the same way; this one came first.
 // Where there is no portal: zenity, then kdialog, as SDL3 falls back to them.
 #include "folder_picker.hpp"
+#include "path_utf8.hpp"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -438,9 +439,8 @@ void pick_folder(const std::filesystem::path& start, const std::string& title, v
     std::thread([start, title, owner, done = std::move(done)] {
         PickedFolder out;
         if (scripted_pick(out)) {
-            const std::u8string name = out.folder.u8string();
             std::fprintf(stderr, "[setup] the folder dialog (DES_UI_PICK): %s\n",
-                         out.folder.empty() ? "closed" : std::string(name.begin(), name.end()).c_str());
+                         out.folder.empty() ? "closed" : path_utf8(out.folder).c_str());
             if (done) done(std::move(out));
             return;
         }

@@ -1,5 +1,6 @@
 // Mods (mods.hpp, docs/143): the mods folder, each mod's files and kind, and PS3_VFS_MODS at start.
 #include "mods.hpp"
+#include "path_utf8.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -311,8 +312,7 @@ const char* kind_word(Kind kind) {
 }  // namespace
 
 std::string utf8(const fs::path& path) {
-    const auto s = path.u8string();
-    return std::string(s.begin(), s.end());
+    return path_utf8(path);  // (never throws: path_utf8.hpp)
 }
 
 fs::path from_utf8(const std::string& s) {

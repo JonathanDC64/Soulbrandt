@@ -5,12 +5,15 @@
 // that holds other things gets a folder of setup's own in it, and the program's own folders are refused. And how
 // setup's own files can be missing beside the program (issue #431). And game-folders.txt, the game folders
 // the game ran from (docs/164 section 5). And whether a folder's drive can hold the build (issue #673): on Linux, CI
-// mounts a FAT drive and a noexec one and names them in SETUP_CHECK_FAT_FOLDER and SETUP_CHECK_NOEXEC_FOLDER.
+// mounts a FAT drive and a noexec one and names them in SETUP_CHECK_FAT_FOLDER and SETUP_CHECK_NOEXEC_FOLDER. And
+// path_utf8.hpp: a name that isn't valid UTF-16 as text, never a throw (setup crashed at its start on one).
 //
 // Each case runs in made-up folders under the system's temporary folder, removed at the end. Prints one line a case
 // and "setup_folder_check: N passed, M failed"; exit 1 on a failure. The same on every platform (CI runs it on Windows
 // and Linux, host.yml). Built on demand: cmake --build <build> --target setup_folder_check.
 #include "setup_folder.hpp"
+
+#include "path_utf8.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -382,6 +385,39 @@ int main() {
         std::error_code ec;
         return fs::exists(t / "data" / kGameFoldersFile, ec) ? std::string("a file written") : std::string();
     });
+
+    // ---- Names that aren't valid text (path_utf8.hpp) ----
+    run("utf16_names_as_text", [](const fs::path&) {
+        struct Case {
+            std::u16string in;
+            const char* want;
+        };
+        const Case cases[] = {
+            {u"rpcs3.exe", "rpcs3.exe"},
+            {std::u16string{u'a', char16_t(0xE9)}, "a\xC3\xA9"},
+            {std::u16string{u'a', char16_t(0xD83D), char16_t(0xDE00)}, "a\xF0\x9F\x98\x80"},  // (a pair: one character)
+            {std::u16string{u'a', char16_t(0xD800), u'b'}, "a\xEF\xBF\xBD" "b"},      // a high one alone
+            {std::u16string{char16_t(0xDC00), u'c'}, "\xEF\xBF\xBD" "c"},            // a low one alone
+            {std::u16string{u'd', char16_t(0xDBFF)}, "d\xEF\xBF\xBD"},              // a high one last
+        };
+        for (const Case& c : cases)
+            if (const std::string got = ui::utf8_from_utf16(c.in.data(), c.in.size()); got != c.want)
+                return "a name became " + got + ", not " + c.want;
+        return std::string();
+    });
+#ifdef _WIN32
+    // A file whose name holds an unpaired surrogate, as Windows allows: read back from the folder, its name is text
+    // with U+FFFD (std::filesystem's u8string() throws on it).
+    run("bad_file_name_read_back", [](const fs::path& t) {
+        const fs::path bad = t / std::wstring{L'b', L'a', L'd', wchar_t(0xD800), L'.', L't', L'x', L't'};
+        std::ofstream(bad, std::ios::binary) << "x";
+        std::error_code ec;
+        if (!fs::exists(bad, ec)) return std::string("could not make the file");
+        std::string got;
+        for (const auto& e : fs::directory_iterator(t, ec)) got = ui::path_utf8(e.path().filename());
+        return got == "bad\xEF\xBF\xBD.txt" ? std::string() : "read back as " + got;
+    });
+#endif
 
     // ---- What differs by platform ----
     run("same_folder_by_case", [](const fs::path& t) {

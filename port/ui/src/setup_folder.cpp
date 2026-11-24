@@ -1,6 +1,7 @@
 // Where setup builds the game: the usual folder or the player's choice (see setup_folder.hpp). One fact differs by
 // platform, in one small function: whether two file names that differ only in case are the same name.
 #include "setup_folder.hpp"
+#include "path_utf8.hpp"
 
 #include <cstdio>
 #include <fstream>
@@ -19,8 +20,7 @@ namespace ui::setup {
 namespace {
 
 std::string utf8(const std::filesystem::path& p) {
-    const std::u8string s = p.u8string();
-    return std::string(s.begin(), s.end());
+    return path_utf8(p);  // (never throws: path_utf8.hpp)
 }
 
 std::filesystem::path from_utf8(const std::string& s) {
@@ -232,8 +232,7 @@ bool keep_choice(const std::filesystem::path& usual, const std::filesystem::path
     }
     std::string named = utf8(tidy(folder));
     if (!program.empty() && inside(usual, program) && inside(folder, program)) {
-        const std::u8string rel = tidy(folder).lexically_relative(tidy(usual)).generic_u8string();
-        named.assign(rel.begin(), rel.end());
+        named = path_generic_utf8(tidy(folder).lexically_relative(tidy(usual)));
     }
     std::filesystem::create_directories(usual, ec);
     const auto part = usual / (std::string(kChoiceFile) + ".part");

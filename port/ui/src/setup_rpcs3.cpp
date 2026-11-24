@@ -2,6 +2,7 @@
 // is called, where it keeps its settings and where to look for it; checking a folder and reading the game list's line
 // are the same everywhere.
 #include "setup_rpcs3.hpp"
+#include "path_utf8.hpp"
 #include "setup_pc.hpp"   // kDiscs
 
 #ifdef _WIN32
@@ -14,6 +15,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -29,8 +31,7 @@ namespace {
 constexpr size_t kMaxEntries = 400;           // folders looked at in one folder, at most (as setup_pc.cpp's scan)
 
 std::string utf8(const std::filesystem::path& p) {
-    const std::u8string s = p.u8string();
-    return std::string(s.begin(), s.end());
+    return path_utf8(p);  // (never throws: path_utf8.hpp)
 }
 
 std::filesystem::path from_utf8(const std::string& s) {
@@ -418,7 +419,9 @@ std::filesystem::path program_for(const std::filesystem::path& path) {
 
 }  // namespace
 
-Rpcs3 find_rpcs3(const std::filesystem::path& remembered) {
+namespace {
+
+Rpcs3 find_rpcs3_now(const std::filesystem::path& remembered) {
     std::vector<std::filesystem::path> programs;
     if (const std::string dev = env("RPCS3_DIR"); !dev.empty()) programs.push_back(program_for(dev));
     if (!remembered.empty()) programs.push_back(program_for(remembered));
@@ -434,6 +437,19 @@ Rpcs3 find_rpcs3(const std::filesystem::path& remembered) {
         if (!first.found()) first = r;
     }
     return first;
+}
+
+}  // namespace
+
+// The search runs on its own thread when setup's screens open: an error in it (a name Windows gives that can't be
+// read, a folder that goes away) counts as no RPCS3 found, with a log line, instead of ending setup.
+Rpcs3 find_rpcs3(const std::filesystem::path& remembered) {
+    try {
+        return find_rpcs3_now(remembered);
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "[setup] RPCS3's search stopped: %s\n", e.what());
+        return {};
+    }
 }
 
 Rpcs3 rpcs3_at(const std::filesystem::path& path) {
