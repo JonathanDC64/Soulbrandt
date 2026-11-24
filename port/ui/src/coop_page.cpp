@@ -11,13 +11,11 @@
 #include "ui.hpp"
 
 #include "../../des_seamless.h"
+#include "../../des_seamless_roster.h"
 
 #include <RmlUi/Core.h>
 
-#include "../../des_seamless_roster.h"
-
 #include <algorithm>
-#include <functional>
 
 namespace ui {
 namespace {
@@ -29,12 +27,10 @@ void set_class(Rml::Element* e, const char* name, bool on) {
 }
 
 struct Action {
-    std::string label;
-    std::string brief;                    // the strip's line while it has the focus
-    std::function<void()> press;          // none: Settings, which opens co-op's settings over the page
-    std::function<bool()> disabled;
-    std::function<std::string()> why;     // a disabled one's reason, for the strip in place of the brief (none: brief)
-    bool pick = false;                    // Left and Right pick its player (Warp, with two or more others)
+    const char* label;
+    const char* brief;  // the strip's line while it has the focus
+    void (*press)();    // none: Settings, which opens co-op's settings over the page
+    bool (*disabled)();
 };
 
 bool never() {
@@ -42,69 +38,25 @@ bool never() {
 }
 
 // Co-op's settings (settings_page.hpp's Scope::Coop), last in every mode.
-Action settings_action() {
-    return {"Settings", "Change co-op's settings, the same ones as in Settings > Network.", nullptr, never, nullptr};
-}
+constexpr Action kSettings{"Settings", "Change co-op's settings, the same ones as in Settings > Network.", nullptr,
+                           never};
 
-// The other players in the session, Warp's choice (des_seamless_roster.h).
-std::vector<co::SessionPlayer> warp_targets() {
-    std::vector<co::SessionPlayer> out;
-    for (const co::SessionPlayer& p : co::session_players())
-        if (!p.you && p.in_session) out.push_back(p);
-    return out;
-}
-
-// Warp and Unstuck, for the host and a joined friend. One Warp bar, to the player pick picks (Left and Right pick
-// another: with four players a bar each wouldn't fit beside the box), then Unstuck.
-std::vector<Action> moves(int pick) {
-    std::vector<Action> out;
-    const std::vector<co::SessionPlayer> others = warp_targets();
-    if (!others.empty()) {
-        const int n = static_cast<int>(others.size());
-        const co::SessionPlayer& p = others[((pick % n) + n) % n];
-        const std::string who = p.name.empty() ? std::string("a player") : p.name;
-        const uint32_t user = p.user;
-        out.push_back({"Warp to " + who +
-                           (n > 1 ? " (" + std::to_string(((pick % n) + n) % n + 1) + " of " + std::to_string(n) + ")"
-                                  : std::string()),
-                       "Go to where " + who + " stands, in this area." + (n > 1 ? " Left and Right: another player." : ""),
-                       [user] { co::ask_warp(user); }, [user] { return !co::warp_blocked(user).empty(); },
-                       [user] { return co::warp_blocked(user); }});
-        out.back().pick = n > 1;
-    }
-    out.push_back({"Unstuck", "Go back to where you arrived in this area, as you are now.", co::ask_unstuck,
-                   [] { return !co::unstuck_blocked().empty(); }, co::unstuck_blocked});
-    return out;
-}
-
-// The actions for co-op's mode now, in order (pick: Warp's player).
-std::vector<Action> actions_for(co::Mode mode, int pick) {
+// The actions for co-op's mode now, in order.
+std::vector<Action> actions_for(co::Mode mode) {
     if (mode == co::Mode::Off)
-        return {{"Host", "Host a game, and send your friends the invite code.", coop::open_host, never, nullptr},
-                {"Join", "Join a friend's game with their invite code.", coop::open_join, never, nullptr},
-                settings_action()};
-    std::vector<Action> out;
-    if (mode == co::Mode::Host) {
-        out.push_back({"Copy code", "Copy the invite code and send it to your friends.", coop::copy_code, coop::no_code,
-                       nullptr});
-        out.push_back({"New code", "Make a new code. The old one stops working.", coop::open_new_code, never, nullptr});
-        out.push_back({"Public address", "Give the address the internet sees, when your router can't.",
-                       coop::open_public_address, never, nullptr});
-    }
-    for (Action& a : moves(pick)) out.push_back(std::move(a));
-    out.push_back({"Leave co-op",
-                   mode == co::Mode::Join ? "Go back to your own world where you stand, and to your normal characters."
-                                          : "Go back to your normal characters.",
-                   coop::open_leave, never, nullptr});
-    out.push_back(settings_action());
-    return out;
-}
-
-// The actions' labels, to see when the list changes (a player came or went).
-std::string labels_of(const std::vector<Action>& list) {
-    std::string s;
-    for (const Action& a : list) s += a.label + "\n";
-    return s;
+        return {{"Host", "Host a game, and send your friends the invite code.", coop::open_host, never},
+                {"Join", "Join a friend's game with their invite code.", coop::open_join, never},
+                kSettings};
+    if (mode == co::Mode::Join)
+        return {{"Leave co-op", "Go back to your own world where you stand, and to your normal characters.",
+                 coop::open_leave, never},
+                kSettings};
+    return {{"Copy code", "Copy the invite code and send it to your friends.", coop::copy_code, coop::no_code},
+            {"New code", "Make a new code. The old one stops working.", coop::open_new_code, never},
+            {"Public address", "Give the address the internet sees, when your router can't.",
+             coop::open_public_address, never},
+            {"Leave co-op", "Go back to your normal characters.", coop::open_leave, never},
+            kSettings};
 }
 
 // A guest's one line on how the connection is (in the strip: no box holds a single line); "" when there is more to
@@ -122,8 +74,8 @@ std::string guest_line(const co::Status& s) {
 }
 
 // Beside the actions: what co-op is, or the invite code, the router's answer and the players (coop_session.hpp: each
-// one, for the host and a joined friend); "" for no box.
-std::string info_rml(const co::Status& s) {
+// one, for the host and a joined friend); "" for no box. row: the players' line with the focus (-1 none).
+std::string info_rml(const co::Status& s, int row) {
     if (s.mode == co::Mode::Off)
         return "<info-line>One of you hosts. The others join with the host's invite code and follow the host from "
                "area to area.</info-line>"
@@ -132,7 +84,7 @@ std::string info_rml(const co::Status& s) {
                "can't tell its internet address asks Google's STUN server for it.</info-line>";
     if (!s.started) return "<info-line class=\"warning\">Co-op did not start: " + escape(s.error) + ".</info-line>";
     if (s.mode == co::Mode::Join) {
-        if (s.link == co::Status::Link::Connected) return coop_session::page_rml(0);  // (who is in it)
+        if (s.link == co::Status::Link::Connected) return coop_session::page_rml(0, row, nullptr);  // (who is in it)
         if (!guest_line(s).empty()) return "";
         if (s.link == co::Status::Link::Connecting)
             return "<info-line class=\"warning\">" + escape(s.join) + "</info-line>";
@@ -166,9 +118,12 @@ std::string info_rml(const co::Status& s) {
     if (!s.lan_code.empty() && (s.code.empty() || s.lan_code != s.code) && s.show_direct)
         b += "<info-head><info-line>On your own network: <info-lan>" + escape(s.lan_code) + "</info-lan></info-line>" +
              coop::copy_button("lan") + "</info-head>";
-    if (const std::string who = coop_session::page_rml(s.max_players); !who.empty()) {
-        // (once anyone is in or waiting: who first, then the codes, in place of the count)
+    bool company = false;
+    if (const std::string who = coop_session::page_rml(s.max_players, row, &company); !who.empty()) {
+        // Once anyone is in or waiting: who first, then the codes, in place of the count. The host alone: the codes
+        // first, then its own line (its Unstuck) in place of the count.
         const std::string rule = "<info-rule/>";
+        if (!company) return b + (s.show_direct ? rule : "") + who;
         if (b.size() >= rule.size() && b.compare(b.size() - rule.size(), rule.size(), rule) == 0)
             b.resize(b.size() - rule.size());
         return who + rule + b;
@@ -198,9 +153,7 @@ void CoopPage::build() {
     mMode = static_cast<int>(s.mode);
     Rml::Element* page = append(mHost, "coop-page");
     Rml::Element* box = append(page, "coop-box");
-    const std::vector<Action> list = actions_for(s.mode, mWarpPick);
-    mLabels = labels_of(list);
-    box->SetClass("many", list.size() > 5);  // (shorter bars: des.rcss)
+    const std::vector<Action> list = actions_for(s.mode);
     for (size_t i = 0; i < list.size(); i++) {
         Rml::Element* a = append_text_element(box, "coop-action", list[i].label);
         mActions.push_back(a);
@@ -217,8 +170,23 @@ void CoopPage::build() {
     }
     mInfo = append(page, "coop-info");
     mInfo->SetClass("keep-clear", true);  // (no crystal lizard over it: host.cpp, draw_lizard)
-    mListeners.push_back(std::make_unique<ScopedEventListener>(mInfo, Rml::EventId::Click, [this](Rml::Event& e) {
+    // The players' line under an element of the box, -1 for none.
+    const auto row_at = [](Rml::Element* e) {
+        for (; e; e = e->GetParentNode())
+            if (e->GetTagName() == "info-player") return e->GetAttribute<int>("data-row", -1);
+        return -1;
+    };
+    mListeners.push_back(std::make_unique<ScopedEventListener>(mInfo, Rml::EventId::Click, [this, row_at](Rml::Event& e) {
         if (coop::copy_pressed(e.GetTargetElement())) mNext = {};  // (a code's Copy button: "Copied" at once)
+        else if (const int row = row_at(e.GetTargetElement()); row >= 0) press_row(row);
+    }));
+    mListeners.push_back(std::make_unique<ScopedEventListener>(mInfo, Rml::EventId::Mousemove, [this, row_at](Rml::Event& e) {
+        const int row = row_at(e.GetTargetElement());
+        if (row < 0 || !input::hover_moved() || (mInList && row == mRow)) return;
+        mInList = true;
+        mRow = row;
+        play_sound(kSoundItemFocus);
+        mNext = {};  // (the box again at once, with the focus on that line)
     }));
     mInfoShown = "\x01";  // (none shown yet: a guest's "" too sets the box's class)
     mFocus = std::clamp(mFocus, 0, std::max(0, static_cast<int>(mActions.size()) - 1));
@@ -229,12 +197,14 @@ void CoopPage::build() {
 
 void CoopPage::refresh() {
     const co::Status s = co::status();
-    const std::vector<Action> list = actions_for(s.mode, mWarpPick);
-    if (static_cast<int>(s.mode) != mMode || labels_of(list) != mLabels) {  // (or a player came or went: Warp's)
+    if (static_cast<int>(s.mode) != mMode) {
         build();
         return;
     }
-    if (const std::string rml = info_rml(s); rml != mInfoShown) {
+    const int rows = static_cast<int>(coop_session::picks().size());
+    if (rows == 0) mInList = false;
+    mRow = std::clamp(mRow, 0, std::max(0, rows - 1));
+    if (const std::string rml = info_rml(s, mInList ? mRow : -1); rml != mInfoShown) {
         mInfoShown = rml;
         mInfo->SetInnerRML(rml);
         set_class(mInfo, "none", rml.empty());
@@ -244,6 +214,7 @@ void CoopPage::refresh() {
                   s.mode == co::Mode::Host && !s.room_code.empty() && s.show_direct && !s.code.empty());
     }
     mLine = guest_line(s);
+    const std::vector<Action> list = actions_for(s.mode);
     for (size_t i = 0; i < mActions.size() && i < list.size(); i++)
         set_class(mActions[i], "disabled", list[i].disabled());
 }
@@ -254,9 +225,9 @@ void CoopPage::update() {
         mNext = now + std::chrono::milliseconds(500);
         refresh();
     }
-    if (mFocus != mFocusShown) {
-        mFocusShown = mFocus;
-        for (size_t i = 0; i < mActions.size(); i++) set_class(mActions[i], "focused", static_cast<int>(i) == mFocus);
+    if (const int shown = mInList ? -1 : mFocus; shown != mFocusShown) {  // (none while the focus is on a line)
+        mFocusShown = shown;
+        for (size_t i = 0; i < mActions.size(); i++) set_class(mActions[i], "focused", static_cast<int>(i) == shown);
     }
 }
 
@@ -268,7 +239,7 @@ void CoopPage::move(int by) {
 }
 
 void CoopPage::press() {
-    const std::vector<Action> list = actions_for(co::status().mode, mWarpPick);
+    const std::vector<Action> list = actions_for(co::status().mode);
     if (mFocus < 0 || mFocus >= static_cast<int>(list.size())) return;
     if (list[mFocus].disabled()) {
         play_sound(kSoundWarning);
@@ -283,6 +254,29 @@ void CoopPage::press() {
     list[mFocus].press();
 }
 
+void CoopPage::press_row(int row) {
+    const std::vector<coop_session::Pick> picks = coop_session::picks();
+    if (row < 0 || row >= static_cast<int>(picks.size())) return;
+    mInList = true;
+    mRow = row;
+    if (!picks[row].blocked.empty()) {
+        play_sound(kSoundWarning);
+        mNext = {};
+        return;
+    }
+    play_sound(kSoundClick);
+    coop_session::do_pick(picks[row]);
+    mNext = {};
+}
+
+bool CoopPage::back() {
+    if (!mInList) return false;
+    mInList = false;  // (Back from the lines: to the actions first)
+    play_sound(kSoundItemFocus);
+    mNext = {};
+    return true;
+}
+
 void CoopPage::focus_action(int index) {
     mFocus = std::clamp(index, 0, std::max(0, static_cast<int>(mActions.size()) - 1));
 }
@@ -290,40 +284,65 @@ void CoopPage::focus_action(int index) {
 bool CoopPage::command(menu::Command command, bool down) {
     using menu::Command;
     if (!down) return false;
+    const int rows = static_cast<int>(coop_session::picks().size());
     switch (command) {
-    case Command::Up: move(-1); return true;
-    case Command::Down: move(1); return true;
-    case Command::Confirm: press(); return true;
-    case Command::Left:
-    case Command::Right: {  // Warp's player
-        const std::vector<Action> list = actions_for(co::status().mode, mWarpPick);
-        if (mFocus < 0 || mFocus >= static_cast<int>(list.size()) || !list[mFocus].pick) return false;
-        mWarpPick += command == Command::Right ? 1 : -1;
-        play_sound(kSoundItemFocus);
-        refresh();
+    case Command::Up:
+    case Command::Down: {
+        const int by = command == Command::Up ? -1 : 1;
+        if (!mInList) {
+            move(by);
+            return true;
+        }
+        const int to = std::clamp(mRow + by, 0, std::max(0, rows - 1));
+        if (to != mRow) {
+            mRow = to;
+            play_sound(kSoundItemFocus);
+            mNext = {};
+        }
         return true;
     }
+    case Command::Right:  // to the players' lines
+        if (mInList || rows == 0) return false;
+        mInList = true;
+        mRow = std::clamp(mRow, 0, rows - 1);
+        play_sound(kSoundItemFocus);
+        mNext = {};
+        return true;
+    case Command::Left:  // back to the actions
+        return back();
+    case Command::Confirm:
+        if (mInList) press_row(mRow);
+        else press();
+        return true;
     default: return false;
     }
 }
 
 std::vector<prompts::Prompt> CoopPage::prompts(const std::string& backLabel) const {
     using prompts::Key;
-    const std::vector<Action> list = actions_for(static_cast<co::Mode>(mMode), mWarpPick);
-    if (mFocus >= 0 && mFocus < static_cast<int>(list.size()) && list[mFocus].pick)
-        return {{Key::Move, "Select"}, {Key::Change, "Player"}, {Key::Confirm, "Choose"}, {Key::Back, backLabel}};
+    if (mInList) {
+        const std::vector<coop_session::Pick> picks = coop_session::picks();
+        const bool you = mRow >= 0 && mRow < static_cast<int>(picks.size()) && picks[mRow].you;
+        return {{Key::Move, "Select"}, {Key::Confirm, you ? "Unstuck" : "Warp"}, {Key::Back, "Actions"}};
+    }
+    if (!coop_session::picks().empty())
+        return {{Key::Move, "Select"}, {Key::Right, "Players"}, {Key::Confirm, "Choose"}, {Key::Back, backLabel}};
     return {{Key::Move, "Select"}, {Key::Confirm, "Choose"}, {Key::Back, backLabel}};
 }
 
 std::string CoopPage::strip() const {
     if (const std::string moved = co::last_move(); !moved.empty()) return moved;  // (what a Warp or Unstuck did)
+    if (mInList) {
+        const std::vector<coop_session::Pick> picks = coop_session::picks();
+        if (mRow < 0 || mRow >= static_cast<int>(picks.size())) return "";
+        const coop_session::Pick& p = picks[mRow];
+        if (!p.blocked.empty()) return p.blocked;
+        return p.you ? "Unstuck: go back to where you arrived in this area, as you are now."
+                     : "Warp: go to where " + p.name + " last stood, in this area.";
+    }
     if (!mLine.empty()) return mLine;
-    const std::vector<Action> list = actions_for(static_cast<co::Mode>(mMode), mWarpPick);
-    if (mFocus < 0 || mFocus >= static_cast<int>(list.size())) return "";
-    const Action& a = list[mFocus];
-    if (a.why && a.disabled())
-        if (const std::string why = a.why(); !why.empty()) return why;
-    return a.brief;
+    const std::vector<Action> list = actions_for(static_cast<co::Mode>(mMode));
+    return mFocus >= 0 && mFocus < static_cast<int>(list.size()) ? list[mFocus].brief : "";
 }
 
 }  // namespace ui
