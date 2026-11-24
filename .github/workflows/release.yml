@@ -67,7 +67,7 @@ jobs:
           name: des_host-${{ github.sha }}
           path: host
 
-      # The Linux host folder (des_host, the SDL2, vkd3d and FFmpeg libraries beside it, their licences), for the Linux
+      # The Linux host folder (des_host, the vkd3d and FFmpeg libraries beside it, their licences), for the Linux
       # tarball.
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:

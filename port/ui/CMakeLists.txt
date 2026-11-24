@@ -132,15 +132,25 @@ if(WIN32)
                                                           # driver resets; winhttp: the first Python with no curl,
                                                           # setup_http.cpp; setupapi: the GPU's PCI Express link)
 else()
-  # SDL2 and vkd3d as port/CMakeLists.txt found them (the window, the pads, D3D12 and D3DCompile).
+  # vkd3d as port/CMakeLists.txt found it (D3D12 and D3DCompile). SDL3's headers: the window, the keys and the mouse
+  # are the runtime's SDL3, which the runtime's build names (ps3recomp_runtime_deps.cmake) and des_boot links with it.
+  # A UI built alone (CI's, no runtime beside it) takes the headers of the same pinned release, nothing built.
   if(NOT TARGET PkgConfig::DES_VKD3D_LIBS)
     message(FATAL_ERROR "The wrapper UI off Windows draws through vkd3d: configure with DES_VKD3D=ON (or DES_UI=OFF)")
   endif()
-  if(TARGET SDL2::SDL2)
-    target_link_libraries(des_ui PRIVATE SDL2::SDL2)
+  if(PS3RECOMP_SDL3_INCLUDE_DIRS)
+    target_include_directories(des_ui PRIVATE ${PS3RECOMP_SDL3_INCLUDE_DIRS})
   else()
-    target_include_directories(des_ui PRIVATE ${SDL2_INCLUDE_DIRS})
-    target_link_libraries(des_ui PRIVATE ${SDL2_LIBRARIES})
+    if(NOT EXISTS "${PS3RECOMP_DIR}/cmake/sdl3_dep.cmake")
+      message(FATAL_ERROR "The wrapper UI off Windows needs SDL3's headers: a runtime build, or PS3RECOMP_DIR with "
+                          "cmake/sdl3_dep.cmake (now '${PS3RECOMP_DIR}')")
+    endif()
+    include("${PS3RECOMP_DIR}/cmake/sdl3_dep.cmake")
+    # (Headers only: SDL is configured but never built here, so it needs no window back end's headers, which SDL's
+    # configure otherwise demands.)
+    set(SDL_UNIX_CONSOLE_BUILD ON)
+    ps3recomp_sdl3_available()
+    target_link_libraries(des_ui PRIVATE $<BUILD_INTERFACE:SDL3::Headers>)
   endif()
   # (CMAKE_DL_LIBS: dlopen, for the folder dialog's libdbus, loaded only when the dialog opens; folder_picker.cpp)
   target_link_libraries(des_ui PRIVATE RmlUi::RmlUi PkgConfig::DES_VKD3D_LIBS ${CMAKE_DL_LIBS})

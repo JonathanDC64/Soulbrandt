@@ -27,7 +27,7 @@
 #include "ui.hpp"
 #include "version.hpp"
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include <execinfo.h>
 #include <fcntl.h>
 #include <sched.h>
@@ -320,7 +320,7 @@ void watch_window(std::string txt, std::string title) {
     const std::string text = "A report was saved in " + std::filesystem::path(txt).parent_path().string() +
                              ".\nTo report it, attach the files in that folder to a new issue at " +
                              std::string(report::kRepositoryUrl);
-    if (SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, title.c_str(), text.c_str(), nullptr) != 0)
+    if (!SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, title.c_str(), text.c_str(), nullptr))
         std::fprintf(stderr, "[crash-dialog] no message box either: %s\n", SDL_GetError());
     std::fflush(stderr);
     _exit(0);

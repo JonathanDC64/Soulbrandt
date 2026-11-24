@@ -13,7 +13,7 @@
 #include <dxgi1_6.h>
 #include <shlobj.h>
 #else
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include <unistd.h>
 #endif
 
@@ -208,10 +208,11 @@ Power platform_power() {
 
 Display platform_display() {
     auto* window = static_cast<SDL_Window*>(host::window());
-    const int index = window ? SDL_GetWindowDisplayIndex(window) : 0;
-    SDL_DisplayMode mode{};
-    if (SDL_GetCurrentDisplayMode(index < 0 ? 0 : index, &mode) != 0) return {};
-    return {mode.w, mode.h, mode.refresh_rate};
+    SDL_DisplayID id = window ? SDL_GetDisplayForWindow(window) : 0;
+    if (!id) id = SDL_GetPrimaryDisplay();
+    const SDL_DisplayMode* mode = id ? SDL_GetCurrentDisplayMode(id) : nullptr;
+    if (!mode) return {};
+    return {mode->w, mode->h, int(mode->refresh_rate + 0.5f)};
 }
 
 bool platform_hdr_on(void*) {

@@ -18,7 +18,7 @@
 #ifdef _WIN32
 #include "RmlUi_Platform_Win32.h"
 #else
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #endif
 
 #include <algorithm>
@@ -144,14 +144,14 @@ public:
     }
     void SetMouseCursor(const Rml::String& name) override {
         sCursorName = name;
-        int shape = SDL_SYSTEM_CURSOR_ARROW;
-        if (name == "pointer") shape = SDL_SYSTEM_CURSOR_HAND;
-        else if (name == "text") shape = SDL_SYSTEM_CURSOR_IBEAM;
-        else if (name == "move" || name.rfind("rmlui-scroll", 0) == 0) shape = SDL_SYSTEM_CURSOR_SIZEALL;
-        else if (name == "resize" || name == "nwse-resize") shape = SDL_SYSTEM_CURSOR_SIZENWSE;
-        else if (name == "nesw-resize") shape = SDL_SYSTEM_CURSOR_SIZENESW;
+        int shape = SDL_SYSTEM_CURSOR_DEFAULT;
+        if (name == "pointer") shape = SDL_SYSTEM_CURSOR_POINTER;
+        else if (name == "text") shape = SDL_SYSTEM_CURSOR_TEXT;
+        else if (name == "move" || name.rfind("rmlui-scroll", 0) == 0) shape = SDL_SYSTEM_CURSOR_MOVE;
+        else if (name == "resize" || name == "nwse-resize") shape = SDL_SYSTEM_CURSOR_NWSE_RESIZE;
+        else if (name == "nesw-resize") shape = SDL_SYSTEM_CURSOR_NESW_RESIZE;
         else if (name == "cross") shape = SDL_SYSTEM_CURSOR_CROSSHAIR;
-        else if (name == "unavailable") shape = SDL_SYSTEM_CURSOR_NO;
+        else if (name == "unavailable") shape = SDL_SYSTEM_CURSOR_NOT_ALLOWED;
         mouse::set_cursor(shape);
     }
 
@@ -159,10 +159,11 @@ private:
     const std::chrono::steady_clock::time_point mStart = std::chrono::steady_clock::now();
 };
 
-unsigned dpi_of_window() {  // (what the window's display reports)
-    float dpi = 0.f;
-    const int display = sWindow ? SDL_GetWindowDisplayIndex(static_cast<SDL_Window*>(sWindow)) : 0;
-    if (display < 0 || SDL_GetDisplayDPI(display, nullptr, &dpi, nullptr) != 0 || dpi < 48.f || dpi > 480.f) return 0;
+// The desktop's scale for the window's display, as dots per inch (96 at 100%), as GetDpiForWindow gives on Windows.
+// (SDL3 has no physical DPI; SDL2's was the screen's size in millimetres, which the desktop's scale never followed.)
+unsigned dpi_of_window() {
+    const float dpi = sWindow ? 96.f * SDL_GetWindowDisplayScale(static_cast<SDL_Window*>(sWindow)) : 0.f;
+    if (dpi < 48.f || dpi > 480.f) return 0;
     return unsigned(dpi + 0.5f);
 }
 
