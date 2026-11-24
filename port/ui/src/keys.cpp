@@ -41,7 +41,7 @@ std::string key_name(int vk) {
 
 #include "platform.hpp"
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 extern "C" int cellPad_host_key_down(int vk);  // ps3recomp, libs/input/cellPad.h: SDL's keyboard and mouse state
 
@@ -111,11 +111,11 @@ int modifiers() {
     using namespace Rml::Input;
     const SDL_Keymod m = SDL_GetModState();
     int out = 0;
-    if (m & KMOD_CAPS) out |= KM_CAPSLOCK;
-    if (m & KMOD_NUM) out |= KM_NUMLOCK;
-    if (m & KMOD_SHIFT) out |= KM_SHIFT;
-    if (m & KMOD_CTRL) out |= KM_CTRL;
-    if (m & KMOD_ALT) out |= KM_ALT;
+    if (m & SDL_KMOD_CAPS) out |= KM_CAPSLOCK;
+    if (m & SDL_KMOD_NUM) out |= KM_NUMLOCK;
+    if (m & SDL_KMOD_SHIFT) out |= KM_SHIFT;
+    if (m & SDL_KMOD_CTRL) out |= KM_CTRL;
+    if (m & SDL_KMOD_ALT) out |= KM_ALT;
     return out;
 }
 

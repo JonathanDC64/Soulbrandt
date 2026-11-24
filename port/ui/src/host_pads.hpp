@@ -13,7 +13,7 @@ typedef struct {  // cellPad.h's CellPadHostPad, field for field: cellPad_host_p
 // Every pad of the user's, read now, whatever reads them in this build (XInput or SDL, and the Sony HID reader); it
 // works before the game has started its pads. Returns how many, up to max.
 int cellPad_host_pads(CellPadHostPad* out, int max);
-// 1 when SDL reads the pads in this build (SDL3 on Windows, SDL2 elsewhere), 0 XInput. Sony's pads on Windows are
+// 1 when SDL reads the pads in this build (SDL3: on Windows by default, always elsewhere), 0 XInput. Sony's pads on Windows are
 // read over HID either way.
 int cellPad_host_reader_sdl(void);
 }

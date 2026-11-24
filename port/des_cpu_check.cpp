@@ -14,7 +14,7 @@
 #include <intrin.h>
 #include <windows.h>
 #else
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include <cpuid.h>
 #include <unistd.h>
 #endif

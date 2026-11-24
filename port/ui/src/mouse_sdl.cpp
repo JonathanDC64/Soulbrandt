@@ -19,7 +19,7 @@
 #include "settings.hpp"
 #include "../../des_rsx_route.h"  // the renderer calls below: through rsx_out in a PS3RECOMP_RSX_HAL build
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <atomic>
 #include <cstdio>
@@ -80,7 +80,7 @@ bool buttons_down() {
 void hold(const char* why) {
     if (ui::settings::no_user_input()) return;
     if (sHeld.exchange(true)) return;
-    SDL_SetRelativeMouseMode(SDL_TRUE);
+    if (sWindow) SDL_SetWindowRelativeMouseMode(sWindow, true);
     sDx.store(0);
     sDy.store(0);
     if (log_on()) std::fprintf(stderr, "[mouse] held (%s)\n", why);
@@ -99,7 +99,7 @@ void let_go(const char* why) {
         if (log_on()) std::fprintf(stderr, "[mouse] let go (%s)\n", why);
     }
     if (!sHeld.exchange(false)) return;
-    SDL_SetRelativeMouseMode(SDL_FALSE);
+    if (sWindow) SDL_SetWindowRelativeMouseMode(sWindow, false);
     sDx.store(0);
     sDy.store(0);
     if (log_on()) std::fprintf(stderr, "[mouse] let go (%s)\n", why);
@@ -191,15 +191,16 @@ bool wndproc(void* hwnd, unsigned msg, unsigned long long wp, long long lp, long
         *result = 0;
         return true;
     case WM_DES_CURSOR: {
-        static SDL_Cursor* sCursors[SDL_NUM_SYSTEM_CURSORS] = {};
-        const auto shape = static_cast<SDL_SystemCursor>(wp < SDL_NUM_SYSTEM_CURSORS ? wp : 0);
+        static SDL_Cursor* sCursors[SDL_SYSTEM_CURSOR_COUNT] = {};
+        const auto shape = static_cast<SDL_SystemCursor>(wp < SDL_SYSTEM_CURSOR_COUNT ? wp : 0);
         if (!sCursors[shape]) sCursors[shape] = SDL_CreateSystemCursor(shape);
         if (sCursors[shape]) SDL_SetCursor(sCursors[shape]);
         *result = 0;
         return true;
     }
     case WM_DES_OWN_CURSOR:  // (relative mouse mode, mouse look, hides it whatever this says)
-        SDL_ShowCursor(wp ? SDL_DISABLE : SDL_ENABLE);
+        if (wp) SDL_HideCursor();
+        else SDL_ShowCursor();
         *result = 0;
         return true;
     case WM_SETFOCUS:
@@ -254,11 +255,11 @@ void on_frame() {
 }
 
 void release_now() {
-    if (sHeld.exchange(false)) SDL_SetRelativeMouseMode(SDL_FALSE);
+    if (sHeld.exchange(false) && sWindow) SDL_SetWindowRelativeMouseMode(sWindow, false);
 }
 
 void set_cursor(int shape) {
-    static int sShape = SDL_SYSTEM_CURSOR_ARROW;
+    static int sShape = SDL_SYSTEM_CURSOR_DEFAULT;
     if (shape == sShape) return;
     sShape = shape;
     if (sWindowUp.load()) rsx_d3d12_post_message(WM_DES_CURSOR, (unsigned long long)shape, 0);
@@ -269,7 +270,7 @@ void client_size(void* hwnd, int& width, int& height) {
 }
 
 void hold_buttons(void*, bool down) {
-    SDL_CaptureMouse(down ? SDL_TRUE : SDL_FALSE);
+    SDL_CaptureMouse(down);
 }
 
 }  // namespace ui::mouse

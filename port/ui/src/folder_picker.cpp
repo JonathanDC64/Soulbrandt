@@ -6,7 +6,7 @@
 // Elsewhere: the desktop portal (org.freedesktop.portal.FileChooser, OpenFile with "directory"), which GNOME, KDE and
 // the other desktops answer with their own dialog, inside a Flatpak too. It is asked over D-Bus through libdbus-1,
 // opened when the dialog is first asked for, as SDL opens it: nothing to build against, and every desktop with a
-// portal has it. SDL3's folder dialog works the same way, but the Linux build has SDL2 (docs/76), which has none.
+// portal has it. SDL3's folder dialog (SDL_ShowOpenFolderDialog) works the same way; this one came first.
 // Where there is no portal: zenity, then kdialog, as SDL3 falls back to them.
 #include "folder_picker.hpp"
 

@@ -52,9 +52,12 @@ else()
 endif()
 set_target_properties(ps3recomp_runtime PROPERTIES IMPORTED_LOCATION "${PS3RECOMP_RUNTIME_LIB}")
 # The static libraries built with a runtime that it links, glslang and SPIRV-Tools
-# with PS3RECOMP_RSX_HAL_SPV: ps3recomp's configure lists them in
+# with PS3RECOMP_RSX_HAL_SPV, and SDL3: ps3recomp's configure lists them in
 # ps3recomp_runtime_deps.cmake beside the library, and whatever links the
 # runtime links them after it. A runtime from before that file has none.
+# The file also names SDL3's headers (PS3RECOMP_SDL3_INCLUDE_DIRS), for the
+# port's own SDL code off Windows: the menus' window, keys and mouse use the
+# SDL3 the runtime links, never a second SDL.
 function(des_runtime_deps target lib)
     get_filename_component(_dir "${lib}" DIRECTORY)
     set(_file "${_dir}/ps3recomp_runtime_deps.cmake")
@@ -67,6 +70,9 @@ function(des_runtime_deps target lib)
     # the same file is then listed under two spellings.
     include("${_file}")
     set_property(TARGET ${target} APPEND PROPERTY INTERFACE_LINK_LIBRARIES ${PS3RECOMP_RUNTIME_DEPS})
+    if(PS3RECOMP_SDL3_INCLUDE_DIRS)
+        set(PS3RECOMP_SDL3_INCLUDE_DIRS "${PS3RECOMP_SDL3_INCLUDE_DIRS}" PARENT_SCOPE)
+    endif()
     list(LENGTH PS3RECOMP_RUNTIME_DEPS _n)
     message(STATUS "des_boot: ${target} brings ${_n} static libraries (${_file})")
 endfunction()
@@ -445,15 +451,10 @@ if(WIN32)
     # /O2 chunks that llvm-symbolizer can't (used to locate busy-loop spin addresses).
     target_link_options(des_boot PRIVATE "/MAP:des_boot.map")
 else()
-    # The runtime's own dependencies (a static library carries none): SDL2 for the pad and audio,
-    # threads, dlopen.
-    find_package(SDL2 REQUIRED)
+    # The runtime's own system dependencies (a static library carries none): threads, dlopen. SDL3 comes with the
+    # runtime's static libraries (ps3recomp_runtime_deps.cmake); SDL opens X11, Wayland and the sound servers at run
+    # time.
     find_package(Threads REQUIRED)
-    if(TARGET SDL2::SDL2)
-        target_link_libraries(des_boot PRIVATE SDL2::SDL2)
-    else()
-        target_link_libraries(des_boot PRIVATE ${SDL2_LIBRARIES})
-    endif()
     target_link_libraries(des_boot PRIVATE Threads::Threads ${CMAKE_DL_LIBS} m)
     target_link_options(des_boot PRIVATE "-Wl,-Map=des_boot.map")
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -540,6 +541,23 @@ if(WIN32 OR DES_VKD3D)
     option(DES_UI "Build the wrapper UI (start screen, menu, settings)" ON)
 else()
     option(DES_UI "Build the wrapper UI (start screen, menu, settings)" OFF)
+endif()
+if(NOT WIN32 AND NOT PS3RECOMP_SDL3_INCLUDE_DIRS AND DES_SPLIT)
+    # des_host alone (no runtime in PS3RECOMP_BUILD_DIR): SDL3's headers from the split runtime's file, which is read
+    # again with its libraries below (des_runtime_deps), before the UI and des_cpu_check.cpp need them.
+    set(_des_split_deps "${PS3RECOMP_DIR}/build_split/ps3recomp_runtime_deps.cmake")
+    if(PS3RECOMP_SPLIT_LIB)
+        get_filename_component(_des_split_dir "${PS3RECOMP_SPLIT_LIB}" DIRECTORY)
+        set(_des_split_deps "${_des_split_dir}/ps3recomp_runtime_deps.cmake")
+    endif()
+    if(EXISTS "${_des_split_deps}")
+        include("${_des_split_deps}")
+    endif()
+endif()
+if(NOT WIN32 AND PS3RECOMP_SDL3_INCLUDE_DIRS)
+    # des_cpu_check.cpp's message box: the runtime's SDL3.
+    set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/des_cpu_check.cpp" APPEND PROPERTY
+        INCLUDE_DIRECTORIES ${PS3RECOMP_SDL3_INCLUDE_DIRS})
 endif()
 if(DES_UI)
     add_subdirectory(ui)

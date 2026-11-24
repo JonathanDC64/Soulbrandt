@@ -39,7 +39,7 @@
 #else
 #include "platform.hpp"
 
-#include <SDL.h>  // (the displays, for system_info)
+#include <SDL3/SDL.h>  // (the displays, for system_info)
 #include <dirent.h>
 #include <fcntl.h>
 #include <poll.h>
@@ -1528,7 +1528,7 @@ std::string driver_resets() {
 // The libraries loaded into the game that are neither the system's nor the game's own: overlays, recorders, injectors,
 // as other_modules on Windows. A library outside the system's folders, any LD_PRELOAD one, and a known overlay or
 // Vulkan layer wherever it is (a distribution installs MangoHud or vkBasalt beside the system's libraries). "beside
-// the game" for one in the program's folder (the libraries the download brings, such as SDL2).
+// the game" for one in the program's folder (the libraries the download brings, such as vkd3d's).
 std::string other_modules() {
     const std::string game = exe_dir().string(), module_dir = setup::data_dir().string();
     std::error_code ec;
@@ -1665,10 +1665,13 @@ void platform_facts(std::ostringstream& o, bool game_process) {
     o << "Session: " << (no_desktop() ? "gamescope, no desktop" : "desktop") << ", XDG_SESSION_TYPE=" << env("XDG_SESSION_TYPE")
       << ", XDG_CURRENT_DESKTOP=" << env("XDG_CURRENT_DESKTOP") << ", SteamDeck=" << env("SteamDeck") << "\n";
     if (const char* driver = SDL_GetCurrentVideoDriver()) o << "SDL video driver: " << driver << "\n";
-    for (int i = 0, n = SDL_GetNumVideoDisplays(); i < n; i++) {
-        SDL_DisplayMode m{};
-        if (SDL_GetCurrentDisplayMode(i, &m) == 0)
-            o << "Display " << i + 1 << ": " << m.w << "x" << m.h << " at " << m.refresh_rate << " Hz\n";
+    {
+        int n = 0;
+        SDL_DisplayID* ids = SDL_GetDisplays(&n);
+        for (int i = 0; ids && i < n; i++)
+            if (const SDL_DisplayMode* m = SDL_GetCurrentDisplayMode(ids[i]))
+                o << "Display " << i + 1 << ": " << m->w << "x" << m->h << " at " << m->refresh_rate << " Hz\n";
+        SDL_free(ids);
     }
     {
         // The batteries and the mains in sysfs (a Steam Deck, a laptop); a mouse's or a pad's battery is not one.
@@ -1698,10 +1701,11 @@ void platform_facts(std::ostringstream& o, bool game_process) {
           << " where its data is\n";
     }
     if (SDL_WasInit(SDL_INIT_JOYSTICK)) {
-        int pads = 0;
-        const int sticks = SDL_NumJoysticks();
-        for (int i = 0; i < sticks; i++) pads += SDL_IsGameController(i) ? 1 : 0;
-        o << "Gamepads: " << pads << " SDL game controllers (" << (sticks < 0 ? 0 : sticks) << " joysticks)\n";
+        int pads = 0, sticks = 0;
+        SDL_JoystickID* ids = SDL_GetJoysticks(&sticks);
+        for (int i = 0; ids && i < sticks; i++) pads += SDL_IsGamepad(ids[i]) ? 1 : 0;
+        SDL_free(ids);
+        o << "Gamepads: " << pads << " SDL gamepads (" << sticks << " joysticks)\n";
     }
     if (game_process) o << other_modules();
 }
