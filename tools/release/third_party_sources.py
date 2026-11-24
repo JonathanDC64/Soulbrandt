@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """The source archives of the LGPL libraries a release ships, on a release of their own (docs/54 section 8.6).
 
-The downloads carry FFmpeg's libraries, and the Linux one vkd3d's too. Both are LGPL 2.1 or later, which asks for their
-source to be offered with the binaries. The third-party-sources release holds the exact archives host.yml built them
-from, so that each game release's page has only what a player needs. The versions and SHA-256s are read from host.yml's
-env (VKD3D_VERSION, VKD3D_SHA256, FFMPEG_VERSION, FFMPEG_SHA256), so the two can't drift apart.
+The downloads carry FFmpeg's libraries, the Windows one libusb's, and the Linux one vkd3d's too. All are LGPL 2.1 or
+later, which asks for their source to be offered with the binaries. The third-party-sources release holds the exact
+archives host.yml built them from, so that each game release's page has only what a player needs. The versions and
+SHA-256s are read from host.yml's env (VKD3D_VERSION, VKD3D_SHA256, FFMPEG_VERSION, FFMPEG_SHA256, LIBUSB_VERSION,
+LIBUSB_SHA256), so the two can't drift apart.
 
   third_party_sources.py [--workflow FILE] --check
   third_party_sources.py [--workflow FILE] --out DIR
@@ -42,6 +43,10 @@ SOURCES = {
                ["https://ffmpeg.org/releases/ffmpeg-{v}.tar.xz",
                 "https://github.com/JonathanDC64/ps3recomp/releases/download/ffmpeg-{v}-2/ffmpeg-{v}.tar.xz"],
                "ffmpeg-{v}.tar.xz"),
+    # libusb-1.0.dll beside the Windows host (ps3recomp's cmake/libusb_dep.cmake builds it from this archive)
+    "libusb": ("LIBUSB_VERSION", "LIBUSB_SHA256",
+               ["https://github.com/libusb/libusb/releases/download/v{v}/libusb-{v}.tar.bz2"],
+               "libusb-{v}.tar.bz2"),
 }
 TRIES = 3          # per address
 WAIT_S = (10, 30)  # before the second and the third try

@@ -10,3 +10,4 @@ libavcodec.so.62       # FFmpeg's codec library (MPEG-2 video only), built from 
 libavutil.so.60        # FFmpeg's utility library, likewise
 avcodec-62.dll         # FFmpeg's codec library (MPEG-2 video only), built from its pinned release, beside the Windows host
 avutil-60.dll          # FFmpeg's utility library, likewise
+libusb-1.0.dll         # libusb, built from its pinned release (ps3recomp's cmake/libusb_dep.cmake), beside the Windows host

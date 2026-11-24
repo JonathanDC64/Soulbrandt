@@ -489,17 +489,20 @@ if(WIN32)
 endif()
 add_dependencies(des_boot des_version)
 
-# --- FFmpeg beside the exe (Windows) -------------------------------------------
+# --- FFmpeg and libusb beside the exe (Windows) --------------------------------
 # A Windows runtime build downloads FFmpeg's MPEG-2 video decoder into <its build
 # folder>/ffmpeg-win64/bin (ps3recomp's cmake/ffmpeg_download.cmake). The runtime
 # opens the DLLs by name, so each link copies them beside the exe; without them
 # the movies use Windows' own decoder, which needs the Microsoft Store's MPEG-2
 # Video Extension (docs/110). CI's runtime has its own FFmpeg and no such folder,
-# so nothing is copied there.
+# so nothing is copied there. The runtime build's libusb-win64 has libusb-1.0.dll
+# (ps3recomp's cmake/libusb_dep.cmake): SDL3 opens it for the Switch 2
+# controllers over USB, and goes on without them when it isn't there.
 function(des_copy_ffmpeg_dlls target runtime_dir)
     if(WIN32)
         add_custom_command(TARGET ${target} POST_BUILD
             COMMAND "${CMAKE_COMMAND}" "-DFROM=${runtime_dir}/ffmpeg-win64/bin" "-DTO=$<TARGET_FILE_DIR:${target}>"
+                "-DUSB_FROM=${runtime_dir}/libusb-win64"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CopyFfmpegDlls.cmake"
             VERBATIM)
     endif()
