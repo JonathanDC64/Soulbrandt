@@ -2,8 +2,11 @@
 """The source archives of the LGPL libraries a release ships, on a release of their own (docs/54 section 8.6).
 
 The downloads carry FFmpeg's libraries, the Windows one libusb's, and the Linux one vkd3d's too. All are LGPL 2.1 or
-later, which asks for their source to be offered with the binaries. The third-party-sources release holds the exact
-archives host.yml built them from, so that each game release's page has only what a player needs. The versions and
+later, which asks for their source to be offered with the binaries. Releases of their own hold the exact archives
+host.yml built them from, so that each game release's page has only what a player needs: FFmpeg 8.1.3's and vkd3d
+2.1's are on third-party-sources, and every other archive is on a release named for it, source-<name>-<version>.
+Releases here are immutable once published (GitHub's release immutability), so a new archive cannot be added to an
+existing release: it gets its own, made with the archive attached. The versions and
 SHA-256s are read from host.yml's env (VKD3D_VERSION, VKD3D_SHA256, FFMPEG_VERSION, FFMPEG_SHA256, LIBUSB_VERSION,
 LIBUSB_SHA256), so the two can't drift apart.
 
@@ -11,8 +14,8 @@ LIBUSB_SHA256), so the two can't drift apart.
   third_party_sources.py [--workflow FILE] --out DIR
 
 --check: that release has each archive, by the pinned SHA-256. release.yml stops on a version with no archive there.
---out: downloads each archive into DIR from its own project, checks it, and prints the paths: what to add to the release
-after moving to a new version (gh release upload third-party-sources DIR/*). Each address is tried three times, then the
+--out: downloads each archive into DIR from its own project, checks it, and prints the paths. After moving to a new
+version, make that archive's release with it (the command --check prints). Each address is tried three times, then the
 next one: the project's own site first, then a copy of the same archive (FFmpeg's is attached to the fork's FFmpeg
 release). The SHA-256 decides, so a copy can't change what ships.
 
@@ -30,7 +33,16 @@ import urllib.request
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 HOST_YML = os.path.join(ROOT, ".github", "workflows", "host.yml")
 
-HOME = "https://github.com/JonathanDC64/Soulbrandt/releases/download/third-party-sources"
+HOME = "https://github.com/JonathanDC64/Soulbrandt/releases/download"
+# The archives on the first release, which holds no more (it is immutable): every other one is on its own.
+SHARED = {("vkd3d", "2.1"), ("ffmpeg", "8.1.3")}
+SHARED_TAG = "third-party-sources"
+
+
+def release_tag(name, ver):
+    """The release that holds this archive."""
+    return SHARED_TAG if (name, ver) in SHARED else f"source-{name}-{ver}"
+
 
 # name -> (env key of the version, env key of the SHA-256, URLs with {v} for the version (tried in order), file name
 # with {v})
@@ -102,7 +114,7 @@ def main(argv):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--workflow", default=HOST_YML, help="host.yml, which pins the versions")
     mode = ap.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--check", action="store_true", help="the third-party-sources release has each archive")
+    mode.add_argument("--check", action="store_true", help="each archive is on its release")
     mode.add_argument("--out", help="where the archives go, from their own projects")
     a = ap.parse_args(argv)
     try:
@@ -119,11 +131,12 @@ def main(argv):
             print(f"third_party_sources: {name}: {ver_key} or {sha_key} missing from {a.workflow}", file=sys.stderr)
             return 2
         filename = file.format(v=ver)
+        tag = release_tag(name, ver)
         try:
             if a.check:
                 with tempfile.TemporaryDirectory() as tmp:
-                    fetch_any([f"{HOME}/{filename}"], os.path.join(tmp, filename), sha, name)
-                print(f"ok   {filename} is on the third-party-sources release")
+                    fetch_any([f"{HOME}/{tag}/{filename}"], os.path.join(tmp, filename), sha, name)
+                print(f"ok   {filename} is on the {tag} release")
             else:
                 dest = os.path.join(a.out, filename)
                 fetch_any([u.format(v=ver) for u in urls], dest, sha, name)
@@ -131,8 +144,9 @@ def main(argv):
         except (OSError, ValueError) as e:
             print(f"third_party_sources: {name}: {e}", file=sys.stderr)
             if a.check:
-                print(f"third_party_sources: add {filename} to the third-party-sources release (this script's --out, "
-                      "then gh release upload)", file=sys.stderr)
+                print(f"third_party_sources: make the {tag} release with {filename}: this script's --out DIR, then "
+                      f"gh release create {tag} DIR/{filename} --title \"Source of {name} {ver}\" --notes \"The "
+                      f"source of {name} {ver}, LGPL, as the downloads ship it.\"", file=sys.stderr)
             status = 1
     return status
 

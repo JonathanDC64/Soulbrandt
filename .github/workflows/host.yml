@@ -504,7 +504,7 @@ jobs:
           cp -r "$ff/share/licenses/ffmpeg" dist/host/licenses/
           # libusb-1.0.dll, which SDL3 opens for the Switch 2 controllers over USB (ps3recomp's cmake/libusb_dep.cmake
           # builds it into the runtime's build folder), and its licence, LGPL 2.1. The pin there must be this
-          # workflow's LIBUSB_VERSION and LIBUSB_SHA256 (the third-party-sources release's archive).
+          # workflow's LIBUSB_VERSION and LIBUSB_SHA256 (the archive on the source-libusb-<version> release).
           usb=ps3recomp/build_split/libusb-win64
           [ -f "$usb/libusb-1.0.dll" ] && [ -f "$usb/COPYING" ] || { echo "::error::no libusb-1.0.dll or its COPYING in $usb"; exit 1; }
           grep -q "^set(PS3RECOMP_LIBUSB_VERSION $LIBUSB_VERSION)" ps3recomp/cmake/libusb_dep.cmake \
@@ -513,6 +513,12 @@ jobs:
           cp "$usb/libusb-1.0.dll" dist/host/
           mkdir -p dist/host/licenses/libusb
           cp "$usb/COPYING" dist/host/licenses/libusb/
+          {
+            echo "libusb $LIBUSB_VERSION, unchanged: libusb-1.0.dll, LGPL 2.1 or later."
+            echo "Source: libusb-$LIBUSB_VERSION.tar.bz2 at https://github.com/JonathanDC64/Soulbrandt/releases/tag/source-libusb-$LIBUSB_VERSION,"
+            echo "the same archive as https://github.com/libusb/libusb/releases/download/v$LIBUSB_VERSION/libusb-$LIBUSB_VERSION.tar.bz2 (SHA-256 $LIBUSB_SHA256)."
+            echo "Built from it by ps3recomp's cmake/libusb_dep.cmake. You may replace this DLL with your own build of libusb 1.0."
+          } > dist/host/licenses/libusb/README.txt
           # mbedTLS is compiled into the runtime (TLS to the online server), under Apache-2.0: its licence goes along.
           [ -f ps3recomp/third_party/mbedtls/LICENSE ] || { echo "::error::no licence file for mbedTLS"; exit 1; }
           mkdir -p dist/host/licenses/mbedtls
