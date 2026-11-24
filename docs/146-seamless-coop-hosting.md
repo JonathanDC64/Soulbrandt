@@ -242,6 +242,7 @@ set).
   friends are in the host's world counts in each friend's own world too.
 - **A boss's Demon's Soul is everyone's.** When one player takes it at the boss's Archstone, every other player in
   the session gets it too, unless it already took that soul in its own world. A friend can take it itself as well.
+  A friend who already took it still sees the Archstone after the kill, without its glow or a second soul.
 - **1-2's castle gate opens for friends too.** When the host's world has the demon of another world dead that the
   gate needs, each player sees the gate's cutscene as it walks up to the gate, and then the gate is open in its
   game. Before, if the Tower Knight died during the visit, the gate opened for the host alone, and stayed shut for a
@@ -669,6 +670,13 @@ alive.
   prompt (`DeleteEvent`) and runs the handler without that branch (`SEAMLESS_Give_<id>`): the same items, flag and
   steps after, with no pickup animation. A player whose flag is set (it took the soul in its own world) gets
   nothing.
+- **The Archstone for a player who has the soul** (`stones_for_friends`). A boss kill's handler shows the stone, its
+  glow and its prompt when the soul's flag is clear. In five areas (1-1 to 1-4, and 5-3) its other branch hides the
+  stone ("it goes once taken"). The original game never reaches that branch, because there the boss dies only once.
+  In a session it ran for a friend who had taken that soul in its own world: after Phalanx the friend saw no
+  Archstone while the others did (a tester's report, 11-24). That branch now shows what the first branch shows (the
+  stone, and the second object some areas have) without the glow or the prompt, as every other area's handler does
+  and as the area's start does after a reload.
 - **What the soul's handlers kept for the host** (`soul_steps_for_all`, before `pickups_for_all` copies them): a block
   under `if proxy:IsClient() == false then` in a soul's handlers (`OnEvent_<id>`, `OnEvent_<id>_<k>`) becomes
   `if true then`. In the original a phantom goes home after the boss, so only the host's world went on from there. A
@@ -1516,6 +1524,10 @@ the newer generation, and saves as usual.
   then both put into the gate's region (2250), the friend 3 s after the host. Before, only the host's game played the
   gate's cutscene (scene 20101) and set 571, as in the user's session. With the edit, both games played it and set
   571. Not yet by hand, and not run on the other discs.
+- The Archstone for a friend who has the soul (11-24): the edit, run on its own over every area script, changed one
+  branch in each of 1-1, 1-2, 1-3, 1-4 and 5-3 and nothing else. A load into 1-2 with co-op on read the four
+  Boletaria scripts with one edit more each (49, 24, 23, 20) and played on. A kill with a friend who has the soul
+  wasn't played.
 - The rest of the game's scripts, checked for steps kept for the host (11-15): every area script's 218 `if` lines on
   the host and the client (83 at an area start, 135 in handlers), and the other ways a script tells them apart
   (`IsSession`, `ATTR_NOSESSION`, host-only prompts, `IsNetMessage`, `IsInParty`). Apart from the edits above, the
