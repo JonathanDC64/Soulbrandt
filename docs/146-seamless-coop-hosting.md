@@ -1418,10 +1418,6 @@ the newer generation, and saves as usual.
   killed Phalanx together, went back to the Nexus, and the friend talked to the Monumental first: his story played
   on the friend's game only, and the host could use the other Archstones afterwards. The host's own talk with him
   then gave his later lines and his question (the friend's answer stays in the friend's copy of the host's world).
-- The Archstone for a friend who has the soul (11-24): the edit, run on its own over every area script, changed one
-  branch in each of 1-1, 1-2, 1-3, 1-4 and 5-3 and nothing else. A load into 1-2 with co-op on read the four
-  Boletaria scripts with one edit more each (49, 24, 23, 20) and played on. A kill with a friend who has the soul
-  wasn't played.
 - A friend's talk is checked as far as the Crestfallen's prompt and first line. Scripted, with the Maiden in Black:
   - with a host who hadn't met the Monumental yet, her prompt and early lines ("The Monumental awaits thee, above.");
   - with a host past the first demon, her level up. The friend answered YES to "Seek Soul Power?", then chose Seek
@@ -1514,6 +1510,10 @@ the newer generation, and saves as usual.
   then both put into the gate's region (2250), the friend 3 s after the host. Before, only the host's game played the
   gate's cutscene (scene 20101) and set 571, as in the user's session. With the edit, both games played it and set
   571. Not yet by hand, and not run on the other discs.
+- The Archstone for a friend who has the soul (11-24): the edit, run on its own over every area script, changed one
+  branch in each of 1-1, 1-2, 1-3, 1-4 and 5-3 and nothing else. A load into 1-2 with co-op on read the four
+  Boletaria scripts with one edit more each (49, 24, 23, 20) and played on. A kill with a friend who has the soul
+  wasn't played.
 - The rest of the game's scripts, checked for steps kept for the host (11-15): every area script's 218 `if` lines on
   the host and the client (83 at an area start, 135 in handlers), and the other ways a script tells them apart
   (`IsSession`, `ATTR_NOSESSION`, host-only prompts, `IsNetMessage`, `IsInParty`). Apart from the edits above, the
