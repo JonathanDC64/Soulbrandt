@@ -1668,7 +1668,8 @@ long read_number(const std::string& t, size_t* i)
     return v;
 }
 
-std::vector<uint32_t> progress_flags(const std::string& t, std::vector<uint32_t>* boss, std::vector<uint32_t>* seal)
+std::vector<uint32_t> progress_flags(const std::string& t, std::vector<uint32_t>* boss, std::vector<uint32_t>* seal,
+                                     std::vector<std::pair<uint32_t, uint32_t>>* tale)
 {
     std::set<uint32_t> out, kills, sealed;
     // the functions, by name
@@ -1769,6 +1770,30 @@ std::vector<uint32_t> progress_flags(const std::string& t, std::vector<uint32_t>
         }
         a = e + 1;
     }
+    // ... and what the functions that call a seal handler set (the Nexus's OnEvent_303_1, at the end of the
+    // Monumental's tale: it calls OnEvent_34 and then sets 303, the flag the Maiden checks before she levels anyone).
+    // Those flags go with the seal: a player who has the seal but not 303 can never hear the tale again.
+    std::vector<long> ids;
+    for (long id : seen)
+        if (sealed.count((uint32_t)id)) ids.push_back(id);
+    for (const auto& f : funcs) {
+        bool own = false;   // one of the seal's own handlers
+        for (long id : ids) {
+            const std::string base = "OnEvent_" + std::to_string(id);
+            own = own || f.first == base || f.first.compare(0, base.size() + 1, base + "_") == 0;
+        }
+        if (own) continue;
+        for (long id : ids) {
+            const std::string call = "OnEvent_" + std::to_string(id) + "(";
+            const size_t p = t.find(call, f.second.first + 10);
+            if (p == std::string::npos || p >= f.second.second) continue;
+            std::set<uint32_t> set;
+            set_true(f.second.first, f.second.second, &set);
+            for (uint32_t s : set) {
+                if (sealed.insert(s).second && tale) tale->push_back({(uint32_t)id, s});
+            }
+        }
+    }
     if (seal) seal->assign(sealed.begin(), sealed.end());
     return std::vector<uint32_t>(out.begin(), out.end());
 }
@@ -1844,6 +1869,7 @@ struct Copy {
     std::vector<uint32_t> scenes;     // the cutscenes each player sees: the Nexus's, an area's opening
     std::vector<uint32_t> chain;      // of those, the opening's (the area's start plays one: opening_flags)
     std::vector<uint32_t> seal;       // and the Archstones' seal (the Nexus)
+    std::vector<std::pair<uint32_t, uint32_t>> tale;   // of those, what its caller sets: {the seal's flag, the flag}
     uint32_t pick[2] = {0, 0};        // the Nexus: where the Maiden's two numbers go in the copy (maiden_pick)
 };
 
@@ -1908,6 +1934,7 @@ std::mutex sLock;
 std::map<std::tuple<uint32_t, uint64_t, int>, Copy> sCopies;
 // Each world's flags, from its area scripts (a load reads every area script of its world): sorted, no repeats.
 std::map<uint32_t, std::vector<uint32_t>> sProgress, sBoss, sOwn, sScenes, sSeal;
+std::map<uint32_t, std::vector<std::pair<uint32_t, uint32_t>>> sTale;
 
 void merge(std::vector<uint32_t>& into, const std::vector<uint32_t>& from)
 {
@@ -1924,6 +1951,9 @@ void learn(const Copy& c)   // under sLock
     merge(sOwn[c.world], c.own);
     merge(sScenes[c.world], c.scenes);
     merge(sSeal[c.world], c.seal);
+    auto& tale = sTale[c.world];
+    for (const auto& p : c.tale)
+        if (std::find(tale.begin(), tale.end(), p) == tale.end()) tale.push_back(p);
 }
 
 uint64_t fnv(const std::string& s)
@@ -2012,7 +2042,7 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
         if (i != std::string::npos) c.pick[k] = (uint32_t)(i + at.size() - 4);
     }
     if (!global) {
-        c.progress = progress_flags(t, &c.boss, &c.seal);
+        c.progress = progress_flags(t, &c.boss, &c.seal, &c.tale);
         c.own = own_flags(t);
         // "function Initialize_mXX_": the world is XX - 1
         const char d0 = t[ar + 21], d1 = t[ar + 22];
@@ -2026,6 +2056,10 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
                                           [](uint32_t f) { return std::find(std::begin(kFinalScenes), std::end(kFinalScenes), f) !=
                                                                   std::end(kFinalScenes); }),
                            c.scenes.end());
+        // The seal's flags follow the host's world, not each player's (the tale's end, 303, is a movie's flag too)
+        c.scenes.erase(std::remove_if(c.scenes.begin(), c.scenes.end(),
+                                      [&](uint32_t f) { return std::binary_search(c.seal.begin(), c.seal.end(), f); }),
+                       c.scenes.end());
     }
     if (coop)
         std::fprintf(stderr, "[coop] script %s: %s%s\n", global ? "global_event.lua" : t.substr(ar + 20, 12).c_str(),
@@ -2059,4 +2093,13 @@ int des_seamless_flag_kind(uint32_t world, uint32_t flag)
         return it != m.end() && std::binary_search(it->second.begin(), it->second.end(), flag);
     };
     return has(sBoss) ? 3 : has(sSeal) ? 5 : has(sProgress) ? 1 : has(sOwn) ? 2 : has(sScenes) ? 4 : 0;
+}
+
+// The flags world's seal handlers' callers set ({the seal's flag, the flag}: the Nexus's {34, 303}): where the first
+// is set, the original game has the second set too.
+std::vector<std::pair<uint32_t, uint32_t>> des_seamless_tale_flags(uint32_t world)
+{
+    std::lock_guard<std::mutex> g(sLock);
+    const auto it = sTale.find(world);
+    return it == sTale.end() ? std::vector<std::pair<uint32_t, uint32_t>>() : it->second;
 }
