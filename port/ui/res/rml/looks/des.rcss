@@ -2333,7 +2333,7 @@ coop-info info-players {
 coop-info info-player {
     display: flex;
     align-items: baseline;
-    padding: 6dp 0 5dp;
+    padding: 6dp 8dp 5dp;
     border-bottom: 1dp #3a3833;
     font-size: 21dp;
     line-height: 28dp;
@@ -2372,7 +2372,7 @@ coop-info info-line.session {
 }
 
 coop-info.long info-player {
-    padding: 4dp 0 3dp;
+    padding: 4dp 8dp 3dp;
 }
 
 /* A line in the session moves a player (coop_page.cpp): another player's Warp, your own Unstuck. The line with the
@@ -2394,7 +2394,7 @@ coop-info info-player.pick.focused info-name {
 coop-info info-act {
     display: none;
     position: absolute;
-    right: 0;
+    right: 8dp;
     top: 6dp;
     height: 24dp;
     padding: 0 12dp;
