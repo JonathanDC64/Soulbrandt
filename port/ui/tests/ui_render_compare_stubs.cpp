@@ -122,6 +122,13 @@ std::string area_label(uint32_t area) {
     if ((area >> 24) == 1) return "The Nexus";
     return "Boletarian Palace 1-" + std::to_string(((area >> 16) & 0xFF) + 1);  // (the made-up players are there)
 }
+// Warp and Unstuck: never asked here; Warp as for a player standing in the same area, Unstuck before the arrival
+std::string warp_blocked(uint32_t) { return {}; }
+std::string unstuck_blocked() { return "Where you arrived here isn't known yet."; }
+void ask_warp(uint32_t) {}
+void ask_unstuck() {}
+int take_move(float*, std::string*) { return 0; }
+std::string last_move() { return {}; }
 bool notices_waiting() { return false; }
 std::vector<Notice> take_notices() { return {}; }
 }  // namespace des::seamless

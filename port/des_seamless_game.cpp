@@ -3571,7 +3571,59 @@ static void roster_frame(co::Mode m, uint32_t sm, uint32_t st, bool world)
     if (sLeave.load() == kLeaveDone) f.joining = false;   // (left: it says nothing more, so the others drop it as they do a
                                                           // closed game, whether or not this one restarts)
     f.area = world ? vm_read32(sm + kSmArea) : 0xFFFFFFFFu;
+    // For Warp and Unstuck (des_seamless_roster.h): the ground the player last stood on (its bloodstain's source, as
+    // host_to_stain reads it: only in this area's world, so not the last area's before the player has stood here), and
+    // that ground once the load has been done 3 s (90 frames), else where the player stands then.
+    static int frames = 0;
+    static Place arrival;
+    static uint32_t arrival_area = kNoArea;
+    frames = world ? std::min(frames + 1, 1000) : 0;
+    if (!world) arrival_area = kNoArea;
+    const uint32_t src = world && guest_ok(pc) ? rd(pc + kChrStainSource) : 0;
+    Place ground{NAN, NAN, NAN, NAN};
+    if (guest_ok(src) && world_of(rd(src + kSrcMap)) == world_of(f.area)) {
+        ground.x = rdf(src + kSrcPlace);
+        ground.y = rdf(src + kSrcPlace + 4);
+        ground.z = rdf(src + kSrcPlace + 8);
+    }
+    f.ground = std::isfinite(ground.x) && std::isfinite(ground.y) && std::isfinite(ground.z);
+    if (f.ground) {
+        f.place[0] = ground.x;
+        f.place[1] = ground.y;
+        f.place[2] = ground.z;
+    }
+    if (frames == 90) {
+        arrival = f.ground ? ground : player_place();
+        arrival_area = std::isfinite(arrival.x) && std::isfinite(arrival.y) && std::isfinite(arrival.z) ? f.area : kNoArea;
+        if (arrival_area != kNoArea)
+            std::fprintf(stderr, "[coop] arrived in %08X at %.2f %.2f %.2f (Unstuck's place)\n", f.area, arrival.x,
+                         arrival.y, arrival.z);
+    }
+    f.arrived = arrival_area != kNoArea;
+    f.arrival[0] = arrival.x;
+    f.arrival[1] = arrival.y;
+    f.arrival[2] = arrival.z;
+    f.arrival_area = arrival_area;
     co::roster_tick(f);
+}
+
+// Warp and Unstuck, asked on F1 > Seamless co-op (des_seamless_roster.h): the player goes there through the game's own
+// LoadChrPos (place_chr), as the level scripts move a character, on this frame.
+static void move_tick(ppu_context* ctx)
+{
+    float p[3];
+    std::string what;
+    const int r = co::take_move(p, &what);
+    if (!r) return;
+    const uint32_t pc = player_chr();
+    if (r < 0 || !guest_ok(pc)) {
+        std::fprintf(stderr, "[coop] %s: not now\n", what.c_str());
+        return;
+    }
+    float x = NAN, y = NAN, z = NAN;
+    chr_place(pc, x, y, z);
+    place_chr(ctx, pc, p[0], p[1], p[2]);
+    std::fprintf(stderr, "[coop] %s: from %.2f %.2f %.2f to %.2f %.2f %.2f\n", what.c_str(), x, y, z, p[0], p[1], p[2]);
 }
 
 // This game's state for the co-op notices (des_seamless_notice.h), each frame. Its death as it was before a load (the
@@ -3674,6 +3726,7 @@ extern "C" void des_seamless_tick(ppu_context* ctx)
         if (!make_again(ctx, sm, id, true)) sBackWaiting.insert(id);
     roster_frame(m, sm, st, world);
     notice_frame(m, st, world);
+    if (world) move_tick(ctx);
 }
 
 // Whether this guest's own world has flag (world: the one it is in play for). Under sOwn.lock.
