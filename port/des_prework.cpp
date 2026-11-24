@@ -46,10 +46,11 @@
  * With ps3recomp's portable renderer (PS3RECOMP_RSX_HAL) the pass runs once
  * for each target the runtime has (rsx_shader_precompile.h): d3d12, today's
  * renderer's, as above; dxbc, the new D3D12 path's, into the same .dxbc
- * files; spv, Vulkan's, into <cache>/gpu/spv/. Each later target has its own
- * stamp, <cache>/gpu/precompile_<target>.stamp, which also records its
- * compiler; a target whose stamp is up to date is skipped. It runs off
- * Windows too, where only spv is.
+ * files; spv, Vulkan's, into <cache>/gpu/spv/, only when the renderer is
+ * Vulkan (run_passes). Each later target has its own stamp,
+ * <cache>/gpu/precompile_<target>.stamp, which also records its compiler; a
+ * target whose stamp is up to date is skipped. It runs off Windows too, where
+ * only spv is.
  */
 #include "ps3emu/ps3_knob.h"
 #include "ui/include/des_ui.h"  /* des_ui_privacy_wait */
@@ -571,13 +572,26 @@ int pass_rank(Pass p)
 }
 
 /* run_pass once for each target the runtime has, d3d12 first; a skip stops the rest. The result is the worst of
- * theirs, the counts and seconds their sums. */
+ * theirs, the counts and seconds their sums.
+ *
+ * Vulkan's target (spv) runs only when the renderer is Vulkan: on D3D12 it would add about 12 s to a first start
+ * (4,179 shaders on 15 threads) and 182 MB to the cache, for shaders that are never drawn. A player who picks
+ * Vulkan in Settings gets them at that next start, on the same progress screen (its stamp is not written until
+ * then). The route is the one this process runs, or, in setup's shaders phase, the one a start would pick
+ * (rsx_out_renderer picks it as a start does; the shader index already asks it). The legacy renderer's d3d12
+ * target stays: it compiles the .dxbc files that the dxbc target then finds cached. */
 Pass run_passes(const char* root, const std::string& elf, bool force, void (*poll)(void), rsx_shader_precompile_stats& s)
 {
     Pass all = Pass::Off;
+    const char* const route = rsx_out_renderer();
     for (int t = 0; t < RSX_PRECOMPILE_TARGETS && !s_skip.load(); ++t) {
         const rsx_shader_precompile_sink* k = rsx_shader_precompile_sink_of(t);
         if (!k) continue;
+        if (k->route && same_nocase(k->route, "vulkan") && !same_nocase(route, "vulkan")) {
+            std::fprintf(stderr, "[des] shaders: the %s target waits for the Vulkan renderer (this one is %s)\n",
+                         k->name, route);
+            continue;
+        }
         rsx_shader_precompile_reset();
         rsx_shader_precompile_use(k);
         s_target = t;
