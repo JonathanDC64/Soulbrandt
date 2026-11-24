@@ -1415,6 +1415,74 @@ int poses_for_watchers(std::string& t)
 }
 
 // An area's script: the party walls, the warp-out pose and the Archstones. Returns the number of edits.
+// A boss's Archstone for a player whose own world has the boss's soul already. Each player's soul flag is its own in
+// a session (des_seamless_area_read puts a friend's own in play as the area starts), and a boss kill's handler shows
+// the stone and its pickup when the flag is clear. In five areas (1-1 to 1-4, 5-3) the handler hides the stone when
+// the flag is set ("it goes once taken"), a branch the original game never reaches: there the boss dies only once. A
+// friend who had taken Phalanx's soul in its own world saw no Archstone at the kill, while everyone else did (a
+// tester's report, 11-24). That branch now shows what the other branch shows (the stone, and in some areas a second
+// object), as the other areas do: no glow, no prompt, no second soul. Returns the number of edits.
+int stones_for_friends(std::string& t)
+{
+    const std::string nl = t.find("\r\n") != std::string::npos ? "\r\n" : "\n";
+    std::map<std::string, std::string> stones;   // the soul's event ID -> its object (the stone)
+    const std::regex prompt("OnDistanceActionAttribute\\(\\s*(\\d+)\\s*,[^\\n]*?,\\s*(\\d+)\\s*,\\s*\"OnEvent_(\\d+)\"[^\\n]*?,"
+                            "\\s*10010180\\s*,");
+    for (auto it = std::sregex_iterator(t.begin(), t.end(), prompt); it != std::sregex_iterator(); ++it)
+        if ((*it)[1].str() == (*it)[3].str()) stones[(*it)[1].str()] = (*it)[2].str();
+    // the line at a, its end (at its '\n' or t's end) and its indentation
+    auto line_end = [&](size_t a) { const size_t e = t.find('\n', a); return e == std::string::npos ? t.size() : e; };
+    auto indent_of = [&](size_t a) {
+        size_t i = a;
+        while (i < t.size() && (t[i] == ' ' || t[i] == '\t')) i++;
+        return t.substr(a, i - a);
+    };
+    auto word_at = [&](size_t i, const char* w) {   // w at i, then no letter, digit or '_'
+        const size_t n = std::strlen(w);
+        if (t.compare(i, n, w) != 0) return false;
+        return i + n >= t.size() || !(std::isalnum((unsigned char)t[i + n]) || t[i + n] == '_');
+    };
+    int n = 0;
+    for (const auto& [id, obj] : stones) {
+        const std::regex head("[ \\t]*if\\s+proxy:IsCompleteEvent\\(\\s*" + id + "\\s*\\)\\s*==\\s*false\\s+then\\b");
+        const std::regex hide("(proxy:Set(?:Draw|Coli)Enable\\(\\s*" + obj + "\\s*,\\s*)false(\\s*\\))");
+        const std::regex show("[ \\t]*proxy:Set(?:Draw|Coli)Enable\\(\\s*(\\d+)\\s*,\\s*true\\s*\\)\\s*;[^\\r\\n]*");
+        std::vector<std::pair<size_t, size_t>> heads;   // each such if's line: start, end
+        for (size_t a = 0; a < t.size(); a = line_end(a) + 1) {
+            const size_t e = line_end(a);
+            std::smatch m;
+            const std::string line = t.substr(a, e - a);
+            if (line.find("IsCompleteEvent") != std::string::npos && std::regex_search(line, m, head) &&
+                m.position(0) == 0)
+                heads.emplace_back(a, e);
+        }
+        for (auto h = heads.rbegin(); h != heads.rend(); ++h) {   // from the end, so the earlier ones stay put
+            const std::string in = indent_of(h->first);
+            size_t els = std::string::npos, end = std::string::npos;
+            for (size_t a = h->second + 1; a < t.size(); a = line_end(a) + 1) {
+                if (indent_of(a) != in) continue;   // deeper (or a blank line)
+                const size_t i = a + in.size();
+                if (word_at(i, "else")) els = a;
+                else if (word_at(i, "end")) { end = a; break; }
+                else if (word_at(i, "elseif")) break;
+            }
+            if (els == std::string::npos || end == std::string::npos) continue;
+            const std::string then_part = t.substr(h->second + 1, els - h->second - 1);
+            const size_t eb = line_end(els) + 1;
+            std::string else_part = t.substr(eb, end - eb);
+            if (!std::regex_search(else_part, hide)) continue;
+            std::string extra;   // what the other branch shows, but the stone (its lines here say so)
+            for (auto it = std::sregex_iterator(then_part.begin(), then_part.end(), show); it != std::sregex_iterator();
+                 ++it)
+                if ((*it)[1].str() != obj) extra += it->str() + " --SEAMLESS: as the other branch" + nl;
+            else_part = std::regex_replace(else_part, hide, "$1true$2") + extra;
+            t.replace(eb, end - eb, in + "\t--SEAMLESS: shown, as in the other areas" + nl + else_part);
+            n++;
+        }
+    }
+    return n;
+}
+
 int edit_area(std::string& t, bool nexus)
 {
     int n = 0;
@@ -1538,6 +1606,8 @@ int edit_area(std::string& t, bool nexus)
         if (body.find("10010710") != std::string::npos || body.find("10010720") != std::string::npos)
             ids.insert((*it)[1].str());
     }
+    // A boss's Archstone for a player who has its soul already (stones_for_friends; before the prompts' edits below)
+    n += stones_for_friends(t);
     // A boss's soul (the prompt 10010180 at the Archstone or the boss's remains): a blue phantom may take its own too,
     // and each player's prompt is its own. A prompt is a network event, so one player's pickup would also fire every
     // other player's (they see the pickup animation) and use up their once-only prompt; registered between
