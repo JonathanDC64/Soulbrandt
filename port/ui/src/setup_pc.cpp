@@ -2,6 +2,7 @@
 // the folders to look in, the memory, the power, and the display with its HDR. The scan, the PARAM.SFO reader, the free space and the time
 // estimate are the same everywhere.
 #include "setup_pc.hpp"
+#include "path_utf8.hpp"
 
 #include "setup_engine.hpp"
 
@@ -30,8 +31,7 @@ namespace ui::setup {
 namespace {
 
 std::string utf8(const std::filesystem::path& p) {
-    const std::u8string s = p.u8string();
-    return std::string(s.begin(), s.end());
+    return path_utf8(p);  // (never throws: path_utf8.hpp)
 }
 
 // ---- What differs by platform: the folders to look in, the memory, the power ----

@@ -13,6 +13,7 @@
 // character, with "No profile data found." in the other three slots, and the character loads and saves as usual.
 // The normal save is only read.
 #include "des_seamless.h"
+#include "ui/src/path_utf8.hpp"
 
 #include "des_region.h"
 
@@ -41,8 +42,7 @@ constexpr uint32_t kListKind = 7, kCharacterKind = 0x19;   // the files' first w
 fs::path upath(const std::string& s) { return fs::path(std::u8string(s.begin(), s.end())); }
 
 std::string utf8(const fs::path& p) {
-    const std::u8string u = p.u8string();
-    return std::string(u.begin(), u.end());
+    return ui::path_utf8(p);  // (never throws: ui/src/path_utf8.hpp)
 }
 
 std::string slot_file(int g, int k) {

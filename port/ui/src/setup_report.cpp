@@ -1,5 +1,6 @@
 // A problem report from the setup screens (see setup_report.hpp).
 #include "setup_report.hpp"
+#include "path_utf8.hpp"
 
 #include "report.hpp"
 #include "setup_engine.hpp"
@@ -14,8 +15,7 @@ namespace ui::setup {
 namespace {
 
 std::string utf8(const std::filesystem::path& p) {
-    const std::u8string s = p.u8string();
-    return std::string(s.begin(), s.end());
+    return path_utf8(p);  // (never throws: path_utf8.hpp)
 }
 
 std::filesystem::path from_utf8(const std::string& s) {

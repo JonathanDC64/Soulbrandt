@@ -6,6 +6,7 @@
 // uncovering anything and opens the progress screen over the start screen, still covered, so that the start screen
 // comes back, with its state read again, when the progress screen closes.
 #include "setup_screens.hpp"
+#include "path_utf8.hpp"
 
 #include "app.hpp"
 #include "host.hpp"
@@ -35,8 +36,7 @@ namespace ui {
 namespace {
 
 std::string utf8(const std::filesystem::path& p) {
-    const std::u8string s = p.u8string();
-    return std::string(s.begin(), s.end());
+    return path_utf8(p);  // (never throws: path_utf8.hpp)
 }
 
 std::filesystem::path from_utf8(const std::string& s) {

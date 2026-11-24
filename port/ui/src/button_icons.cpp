@@ -13,6 +13,7 @@
 // - Drawing takes tens of milliseconds, so it happens on this module's thread; the game's page (or the last one drawn)
 //   shows until the new one is ready. Up to six drawn pages are kept, so switching back is at once.
 #include "button_icons.hpp"
+#include "path_utf8.hpp"
 
 #include "button_pages.hpp"
 #include "controls_window.hpp"
@@ -121,8 +122,7 @@ std::vector<bp::Page> load_pages() {
     for (const fs::path& d : dirs) {
         std::vector<uint8_t> ccm, tpf;
         if (!read_file(d / "dsfont24.ccm", ccm) || !read_file(d / "dsfont24.tpf", tpf)) continue;
-        const std::u8string name = d.filename().u8string();
-        const std::string from = d == fonts ? "font" : "font/" + std::string(name.begin(), name.end());
+        const std::string from = d == fonts ? "font" : "font/" + path_utf8(d.filename());
         for (bp::Page& p : bp::read_font(ccm, tpf, from)) {
             const bool again = std::any_of(out.begin(), out.end(), [&](const bp::Page& q) { return q.data == p.data; });
             if (!again) out.push_back(std::move(p));

@@ -2,6 +2,7 @@
 // rail, the heading, a panel with the percent, the time left, the bar and the tasks, then the buttons. The texts are
 // the screen's; the engine's lines say only which phase and step, and what failed (setup_protocol.hpp).
 #include "setup_window.hpp"
+#include "path_utf8.hpp"
 
 #include "input.hpp"
 #include "portable.hpp"
@@ -105,8 +106,7 @@ std::string count_text(const setup::Status& s) {
 }
 
 std::string utf8(const std::filesystem::path& p) {
-    const std::u8string s = p.u8string();
-    return std::string(s.begin(), s.end());
+    return path_utf8(p);  // (never throws: path_utf8.hpp)
 }
 
 std::filesystem::path from_utf8(const std::string& s) {

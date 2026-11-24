@@ -1,6 +1,7 @@
 // The host's side of the setup engine (see setup_engine.hpp). Two facts differ by platform, in small functions: where
 // the local data folder is, and which folder names the runtime's file calls can take.
 #include "setup_engine.hpp"
+#include "path_utf8.hpp"
 
 #include "report.hpp"
 #include "setup_folder.hpp"
@@ -25,8 +26,7 @@ namespace ui::setup {
 namespace {
 
 std::string utf8(const std::filesystem::path& p) {
-    const std::u8string s = p.u8string();
-    return std::string(s.begin(), s.end());
+    return path_utf8(p);  // (never throws: path_utf8.hpp)
 }
 
 std::filesystem::path from_utf8(const std::string& s) {

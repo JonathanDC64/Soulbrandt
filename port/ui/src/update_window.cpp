@@ -1,5 +1,6 @@
 // The update's screen (see update_window.hpp; the engine's side is tools/setup/des_setup/update.py, docs/105).
 #include "update_window.hpp"
+#include "path_utf8.hpp"
 
 #include "app.hpp"
 #include "crash_report.hpp"
@@ -20,8 +21,7 @@ namespace ui {
 namespace {
 
 std::string utf8(const std::filesystem::path& p) {
-    const std::u8string s = p.u8string();
-    return std::string(s.begin(), s.end());
+    return path_utf8(p);  // (never throws: path_utf8.hpp)
 }
 
 // "25 October 2026" from Unix seconds; empty when not known.
