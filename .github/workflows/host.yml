@@ -30,6 +30,11 @@ env:
   FFMPEG_VERSION: 8.1.3
   FFMPEG_SIZE: '11732036'
   FFMPEG_SHA256: 7138d28c96d9d3e3af4ee3d8cad72741f8ffb40da90c1112235dea3ecd3178a3
+  # libusb's release archive, which ps3recomp's cmake/libusb_dep.cmake builds libusb-1.0.dll from (the Windows host
+  # ships it, for SDL3's Switch 2 controllers over USB). The same two values as that file's pin, checked when the
+  # artifact is staged; the third-party-sources release holds the archive (LGPL 2.1, like FFmpeg).
+  LIBUSB_VERSION: 1.0.30
+  LIBUSB_SHA256: fea36f34f9156400209595e300840767ab1a385ede1dc7ee893015aea9c6dbaf
 
 jobs:
   # FFmpeg for the Windows host's movies: libavcodec with only the MPEG-2 video decoder and its parser, and
@@ -497,6 +502,23 @@ jobs:
           done
           [ -d "$ff/share/licenses/ffmpeg" ] || { echo "::error::no licence files for ffmpeg"; exit 1; }
           cp -r "$ff/share/licenses/ffmpeg" dist/host/licenses/
+          # libusb-1.0.dll, which SDL3 opens for the Switch 2 controllers over USB (ps3recomp's cmake/libusb_dep.cmake
+          # builds it into the runtime's build folder), and its licence, LGPL 2.1. The pin there must be this
+          # workflow's LIBUSB_VERSION and LIBUSB_SHA256 (the archive on the source-libusb-<version> release).
+          usb=ps3recomp/build_split/libusb-win64
+          [ -f "$usb/libusb-1.0.dll" ] && [ -f "$usb/COPYING" ] || { echo "::error::no libusb-1.0.dll or its COPYING in $usb"; exit 1; }
+          grep -q "^set(PS3RECOMP_LIBUSB_VERSION $LIBUSB_VERSION)" ps3recomp/cmake/libusb_dep.cmake \
+            && grep -q "URL_HASH SHA256=$LIBUSB_SHA256" ps3recomp/cmake/libusb_dep.cmake \
+            || { echo "::error::ps3recomp's cmake/libusb_dep.cmake does not pin libusb $LIBUSB_VERSION ($LIBUSB_SHA256)"; exit 1; }
+          cp "$usb/libusb-1.0.dll" dist/host/
+          mkdir -p dist/host/licenses/libusb
+          cp "$usb/COPYING" dist/host/licenses/libusb/
+          {
+            echo "libusb $LIBUSB_VERSION, unchanged: libusb-1.0.dll, LGPL 2.1 or later."
+            echo "Source: libusb-$LIBUSB_VERSION.tar.bz2 at https://github.com/JonathanDC64/Soulbrandt/releases/tag/source-libusb-$LIBUSB_VERSION,"
+            echo "the same archive as https://github.com/libusb/libusb/releases/download/v$LIBUSB_VERSION/libusb-$LIBUSB_VERSION.tar.bz2 (SHA-256 $LIBUSB_SHA256)."
+            echo "Built from it by ps3recomp's cmake/libusb_dep.cmake. You may replace this DLL with your own build of libusb 1.0."
+          } > dist/host/licenses/libusb/README.txt
           # mbedTLS is compiled into the runtime (TLS to the online server), under Apache-2.0: its licence goes along.
           [ -f ps3recomp/third_party/mbedtls/LICENSE ] || { echo "::error::no licence file for mbedTLS"; exit 1; }
           mkdir -p dist/host/licenses/mbedtls
@@ -527,9 +549,9 @@ jobs:
           ls -laR dist/host
           find dist/host -type f -exec sha256sum {} +
 
-      - name: No Visual C++ runtime DLL among FFmpeg's imports
+      - name: No Visual C++ runtime DLL among FFmpeg's and libusb's imports
         shell: bash
-        run: python tools/ci/check_host_imports.py dist/host/av*.dll
+        run: python tools/ci/check_host_imports.py dist/host/av*.dll dist/host/libusb-1.0.dll
 
       # The check treats every .exe and .map as holding the compiled game. These two are built from no lift,
       # so a list of their own lets them through (.github/host-files-allow.txt, docs/85 3.3); anything else
