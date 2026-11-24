@@ -26,7 +26,7 @@ release-info.txt, with the program's name in exe=; and release-files.txt, the li
 the update which files are the program's (tools/setup/des_setup/update.py, docs/105).
 
 --linux-host DIR also writes <out>/DemonsSoulsRecomp-<version>-linux.tar.xz, the Linux player's download: the same,
-with DIR's files at the top (host.yml's host-linux folder: des_host, renamed, the SDL2, vkd3d and FFmpeg libraries it
+with DIR's files at the top (host.yml's host-linux folder: des_host, renamed, the vkd3d and FFmpeg libraries it
 finds beside it, and their licences in licenses/). A tar, which keeps the execute bits that a zip unpacked by Python
 loses, with the same fixed dates, owner and modes.
 
