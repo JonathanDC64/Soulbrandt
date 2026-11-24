@@ -711,7 +711,8 @@ void apply(const fs::path& dataDir, const std::optional<std::string>& enabledLis
             std::fprintf(stderr, "[mods]   %s: the game never opens %zu of its files, so they change nothing (%s%s)\n",
                          m.name.c_str(), m.unusedFiles, join(m.unused, ", ").c_str(),
                          m.unusedFiles > m.unused.size() ? ", ..." : "");
-    if (sGameplay) std::fprintf(stderr, "[mods] a gameplay mod is on: this session stays offline\n");
+    if (sGameplay)
+        std::fprintf(stderr, "[mods] a gameplay mod is on: this session stays offline (not in seamless co-op)\n");
 }
 
 const std::vector<Mod>& in_use() {

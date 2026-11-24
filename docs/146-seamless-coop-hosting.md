@@ -117,7 +117,7 @@ The same text within a minute shows once, at most six wait, and none shows durin
 until it is over (and go after 90 s). Each one is in the co-op log too (`[coop] notice:`). **Settings > Network >
 Seamless co-op: on your screen > Co-op notices** (also on the Seamless co-op screen's Settings) turns them off, at
 once. One notice shows with it off too: co-op that didn't start ("Hosting didn't start: the room server did not
-start: ...", the room server's port taken, mods on, no online name, a bad code), since it blocks co-op and the player
+start: ...", the room server's port taken, no online name, a bad code), since it blocks co-op and the player
 would otherwise only see it in the menu.
 
 The names come from the games themselves. Each co-op game sends `NAME` (its online name, its player id, and whether it
