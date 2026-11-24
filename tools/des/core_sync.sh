@@ -13,6 +13,9 @@
 # A file can have several range lines; '#' starts a comment.
 # copy_synced.txt (default beside the manifest; may be missing):
 #   <commit> ported|n/a <note>         a commit dealt with: its entry is left out
+# A merge that isn't listed counts as dealt with when its branch's own commits
+# that change the original (<merge>^1..<merge>^2, merges left out) are all
+# listed: the pull request lists its commits, and its merge needs no line after.
 #
 # It lists the commits since base that change the original (git rev-list
 # --first-parent base..CORE_SYNC_REF, default HEAD: one entry per merged pull
@@ -84,9 +87,21 @@ hunks() {
              print a[1], (a[2] == "" ? 1 : a[2]), b[1], (b[2] == "" ? 1 : b[2]) }'
 }
 
+# 0 when merge $1's branch commits that change FILE are all listed (and there is one at least).
+branch_done() {
+  local p2 b n=0
+  p2=$(g rev-parse --verify --quiet "$1^2") || return 1
+  while read -r b; do
+    [ -n "$b" ] || continue
+    grep -qx "$b" "$TMP/done" || return 1
+    n=$((n + 1))
+  done < <(g rev-list --no-merges "$1^1..$p2" -- "$FILE")
+  [ $n -gt 0 ]
+}
+
 todo=0; done_n=0
 for c in "${COMMITS[@]}"; do
-  if grep -qx "$c" "$TMP/done"; then done_n=$((done_n + 1)); continue; fi
+  if grep -qx "$c" "$TMP/done" || branch_done "$c"; then done_n=$((done_n + 1)); continue; fi
   par=$(g rev-parse --verify --quiet "$c^1") || continue
   hunks "$BASE" "$par" > "$TMP/h1"   # base -> parent
   hunks "$par" "$c" > "$TMP/h2"      # parent -> the commit
