@@ -4,13 +4,17 @@
 // address and Leave co-op while hosting; Leave co-op when joined; and last in each, Settings: co-op's settings opened
 // over the page (settings_page.hpp's Scope::Coop). Beside them, in a box: what co-op is, or the invite code, the
 // router's answer and the players, read again each half second. Each code's line has a small Copy button
-// (coop::copy_button) for the mouse. A guest's one line on the connection goes in the strip, and the box is left out
+// (coop::copy_button) for the mouse. The players' lines in the session move a player (coop_session.hpp's picks):
+// another player's Warp, your own Unstuck. Right takes the focus from the actions to them, Left (or Back) brings it
+// back; a click on a line does its move. A guest's one line on the connection goes in the strip, and the box is left out
 // (class none).
 //
 // Its elements, the same in every look (how they look is the look's sheet):
 //   coop-page > coop-box > coop-action(.focused .disabled)
 //               coop-info(.none .long) > info-head > (info-label | info-line), code-copy(.done)
 //                                  info-label, info-code, info-line(.warning) > info-lan, info-rule
+//                                  info-players > info-player(.pick .focused) > info-name > info-mark, info-state(.wide),
+//                                                 info-ping, info-act(.disabled)
 #pragma once
 
 #include "menu_page.hpp"
@@ -36,7 +40,7 @@ public:
     std::string title() const override { return "Seamless co-op"; }
     void update() override;
     bool command(menu::Command command, bool down) override;
-    bool back() override { return false; }
+    bool back() override;
     std::vector<prompts::Prompt> prompts(const std::string& backLabel) const override;
     std::string strip() const override;
     std::string classes() const override { return "coop"; }
@@ -49,6 +53,7 @@ private:
     void refresh();  // the box, the guest's line and the disabled actions, from co-op's status now
     void move(int by);
     void press();
+    void press_row(int row);  // a player's line: its Warp or Unstuck
 
     Rml::Element* mHost;
     menu::PageHost& mShell;
@@ -57,9 +62,9 @@ private:
     std::vector<std::unique_ptr<ScopedEventListener>> mListeners;
     int mFocus = 0;
     int mFocusShown = -1;
+    bool mInList = false;  // the focus is on the players' lines (mRow), not the actions
+    int mRow = 0;
     int mMode = -1;  // the co-op mode the actions were made for
-    std::string mLabels;  // ... and their labels (Warp's change as players come and go)
-    int mWarpPick = 0;    // Warp's player, of the others in the session (Left and Right)
     std::string mInfoShown;
     std::string mLine;  // a guest's line for the strip, or ""
     std::chrono::steady_clock::time_point mNext{};
