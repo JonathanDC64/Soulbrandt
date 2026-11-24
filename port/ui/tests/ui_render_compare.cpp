@@ -1258,6 +1258,7 @@ void standin_session(bool guest) {
         p.hp = hp;
         p.hp_max = max;
         p.ping_ms = ping;
+        p.user = static_cast<uint32_t>(v.size()) + 1;  // (Warp's)
         v.push_back(p);
     };
     add("Ashen_Wanderer", true, true, "Playing", 0x02000000u, false, 742, 742, -1);

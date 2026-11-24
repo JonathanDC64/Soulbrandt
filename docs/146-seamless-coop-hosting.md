@@ -82,6 +82,16 @@ A game that goes quiet shows "No answer for N s" after 6 s, and drops off after 
 drops off after 6 s. The list replaces the host's "Players: 2 of 4" line. A friend sees it in place of "You're
 connected to the host's game."
 
+**Warp and Unstuck** (F1 > Seamless co-op, for the host and every friend in the session):
+- **Warp to <name>** takes you to where that player last stood on solid ground, in the same area. Anyone can warp to
+  anyone. With two or more others, Left and Right pick who.
+- **Unstuck** takes you back to where you arrived in this area: where you stood once its load was done (the area's
+  start, the Archstone, or beside the host after a join or a respawn). Nothing loads, and your HP, souls and form stay as
+  they are. It works while you host alone too.
+- Neither works in a boss fight or into one, while you or the other player loads, is dead or watches a cutscene, or
+  with the other player in another area. The bar is greyed out then, and the line under the page says why. After a
+  move, the line says what it did for a few seconds.
+
 **To leave:** **Seamless co-op** > **Leave co-op**. A friend's game first takes them back to their own world, right
 where they stand (in a boss fight, to that area's start, as a death would), and saves what the group did there; the
 host's leave sends its friends back to theirs the same way. Then the game starts again on your normal characters. A
@@ -594,10 +604,20 @@ alive.
 | `FLGS` | host | area, offset, up to 1,000 bytes of its event flags | the host's flags, in three parts, before each `REDY` |
 | `FLAG` | host | flag, area | a progress flag was set in the host's world |
 | `FLAG` | friend | flag, area | the Archstones' seal was opened by this friend: the host's world takes it |
-| `STAT` | any | flags (1 in the session, 2 host, 4 dead, 8 soul, 16 loading, 32 cutscene, 64 boss fight, 128 waits: full, 256 waits: boss fight, 512 leaving), area, HP, most HP, its ping to the host (ms, -1 none), the online name | who is in the session (des_seamless_roster.cpp): at once on a change of flags or area, and every 2 s |
+| `STAT` | any | flags (1 in the session, 2 host, 4 dead, 8 soul, 16 loading, 32 cutscene, 64 boss fight, 128 waits: full, 256 waits: boss fight, 512 leaving), area, HP, most HP, its ping to the host (ms, -1 none), the online name, then (from 11-24) x, y, z of the ground its player last stood on (NaN: not known) | who is in the session (des_seamless_roster.cpp), and where Warp goes: at once on a change of flags or area, and every 2 s |
 | `PNG?` | friend | its nonce, a count | time the round trip: send it back |
 | `PNG!` | host | that nonce and count | the answer, from the host's next frame, to every game; the friend whose nonce it is takes the round trip |
 | `NAME` | any | its state, its player id, its online name | who it is and how it is, at once on a change and every 3 s: the notices (below) |
+
+**Warp and Unstuck** (des_seamless_roster.cpp; the page's bars in coop_page.cpp). Each game gives in its `STAT` the
+ground its player last stood on: its bloodstain's source (`*(chr + 0x640)`, the place at `+0x24`, the map at `+0x3C`),
+which the game moves only while the player stands on something, so it is never air over an edge. Only a place in the
+area's own world counts, so the last area's isn't used before the player has stood in this one. Unstuck's place is
+that ground 90 frames after the load is done (else where the player stands then). The page only asks; on the game's
+next frame `take_move` checks again (boss fight, load, death, cutscene, area, on both ends), and the player is moved
+with the game's own LoadChrPos (`place_chr`, `0x00273BE0`), as the level scripts move a character. The other games see
+the move through the usual position syncs. The host's number in the room can be 0, so a player is told apart by
+`you`, not by its number.
 
 **The flags** (event flags: bit `n & 7` of byte `n >> 3`, 17,024 of them):
 - **Each world has its own flags,** flags 0-3,199 and 8,192-12,287; the rest (bosses, for one) are shared by every
@@ -1406,6 +1426,10 @@ the newer generation, and saves as usual.
   Destroyed", then "You Revived", once each). Not run on the other discs.
 - What a friend's talk changes (a conversation heard, a choice made, an item given) stays in its copy of the host's
   world: it is neither kept in the friend's own world nor sent to the host. Only the Archstones' seal is shared.
+- Warp and Unstuck (11-24): two copies on this PC in the Nexus, A hosting and B joined. A walked forward 8 s; B's
+  Warp then took it from 0.02 479.46 -41.81 to -3.30 479.46 -44.73 (A's ground), and Unstuck back to 0.00 479.46
+  -41.69, where it had arrived. The asks came from a test knob in a scratch build, not from the page; the page's bars
+  and the boss fight block weren't played.
 - The Archstones' seal from a friend: checked through its four flags (scripted), and by hand. Host and friend
   killed Phalanx together, went back to the Nexus, and the friend talked to the Monumental first: his story played
   on the friend's game only, and the host could use the other Archstones afterwards. The host's own talk with him

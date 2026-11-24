@@ -20,6 +20,7 @@ struct SessionPlayer {
     bool soul = false;         // soul form
     int hp = 0, hp_max = 0;
     int ping_ms = -1;          // a friend's round trip to the host's game, the median of the last five (-1: none)
+    uint32_t user = 0;         // the other game's number in the room (ask_warp's; the host's may be 0); not for you
 };
 
 // This game's own state, each frame (des_seamless_tick).
@@ -34,8 +35,27 @@ struct RosterFrame {
     bool leaving = false;      // a friend on its way out (leave(): back to its own world first)
     uint32_t area = 0xFFFFFFFFu;
     int hp = 0, hp_max = 0;
+    bool ground = false;       // the ground it last stood on is known (place)
+    float place[3] = {0, 0, 0};
+    bool arrived = false;      // where it stood once this area's load was done is known (arrival, in arrival_area)
+    float arrival[3] = {0, 0, 0};
+    uint32_t arrival_area = 0xFFFFFFFFu;
 };
 void roster_tick(const RosterFrame& f);
+
+// Warp and Unstuck (F1 > Seamless co-op; docs/146). Warp takes this player to the ground another player in the session
+// last stood on, in the same area; Unstuck back to where it stood once this area's load was done. Neither in or into a
+// boss fight, nor while this player or the other loads, is dead or watches a cutscene. Each in a line, why it can't
+// now ("" when it can); the asks are done on the game's next frame (take_move).
+std::string warp_blocked(uint32_t user);
+std::string unstuck_blocked();
+void ask_warp(uint32_t user);
+void ask_unstuck();
+// des_seamless_tick: the move asked for, checked again now. 1: move the player to xyz; -1: it can't any more (what
+// says why); 0: none asked. what: the log's words for the move ("Warp to <name>", "Unstuck").
+int take_move(float* xyz, std::string* what);
+// What the last move did, for the page's strip, for 5 s after it ("" after that, or with none).
+std::string last_move();
 
 // The first thing des_seamless_game.cpp's message handler does: true when the message was a STAT or a ping (taken).
 bool roster_message(uint32_t from, const uint8_t* d, uint32_t n);

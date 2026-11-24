@@ -58,6 +58,8 @@ private:
     int mFocus = 0;
     int mFocusShown = -1;
     int mMode = -1;  // the co-op mode the actions were made for
+    std::string mLabels;  // ... and their labels (Warp's change as players come and go)
+    int mWarpPick = 0;    // Warp's player, of the others in the session (Left and Right)
     std::string mInfoShown;
     std::string mLine;  // a guest's line for the strip, or ""
     std::chrono::steady_clock::time_point mNext{};

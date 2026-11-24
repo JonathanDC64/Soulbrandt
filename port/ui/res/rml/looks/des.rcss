@@ -2228,6 +2228,13 @@ coop-action {
     cursor: pointer;
 }
 
+/* More than five actions (the host with Warp and Unstuck): shorter bars, so seven take the height five did. */
+coop-box.many coop-action {
+    height: 56dp;
+    margin: 0 0 14dp;
+    line-height: 54dp;
+}
+
 coop-action:hover {
     border-color: var(--des-hover-edge);
     decorator: image(/res/img/grain.png repeat left top), linear-gradient(#4c4a45, #393835);
