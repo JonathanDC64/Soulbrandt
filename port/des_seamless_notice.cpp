@@ -14,7 +14,7 @@
 // join line (full, a boss fight, the connection lost, a join that can't get through). The host's own trouble comes from
 // the same window's lines: its room code can't be used (the server that introduces players), its code spent, a friend
 // that found it but couldn't get through. Co-op that didn't start at all (des_seamless.cpp: the room server's port
-// taken, mods on, no online name, a bad code) is the one notice shown with the setting off too: it blocks co-op, and
+// taken, no online name, a bad code) is the one notice shown with the setting off too: it blocks co-op, and
 // the player would otherwise only find out by opening the menu.
 //
 // No spam: the same text again within 60 s is dropped, at most 6 wait, and none shows during a load or a cutscene

@@ -61,4 +61,10 @@ struct ModsState {
 // menus show (input::menu_device): L1 and R1, LB and RB, or Page Up and Page Down.
 std::vector<std::string> mods_good_to_know();
 
+// A gameplay mod's words on the Mods screens. It keeps online play off, not seamless co-op (settings.cpp's
+// apply_seamless plays with any mod), so in co-op the summary's note asks for the same mods in the party instead.
+std::string mods_gameplay_line();  // its line in the list
+// The summary's note while one is on, "" with none. *offline: it keeps this session offline (else co-op is on).
+std::string mods_gameplay_note(bool* offline);
+
 }  // namespace ui
