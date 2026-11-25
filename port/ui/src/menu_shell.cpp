@@ -68,7 +68,12 @@ menu::Command command_of(prompts::Key key) {
 namespace menu {
 
 std::string glyph_rml(prompts::Device device, prompts::Key key) {
-    const prompts::Glyph g = prompts::glyph(device, key);
+    prompts::Glyph g = prompts::glyph(device, key);
+    // Same buttons as the game: when Q or E confirms or goes back (E is Cross in the Souls layout), the tabs show Page
+    // Up and Page Down, which always change them.
+    if (device == prompts::Device::Keyboard && (key == prompts::Key::PrevTab || key == prompts::Key::NextTab) &&
+        (input::menu_key('Q') != 'Q' || input::menu_key('E') != 'E'))
+        g = prompts::page_glyph(key);
     std::string art;
     for (const prompts::Art& a : g.art) art += button_art::rml(device, a);
     return "<menu-glyph class=\"" + std::string(g.classes) + "\">" + art + "<menu-key>" + escape(g.text) +

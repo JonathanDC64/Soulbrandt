@@ -105,6 +105,16 @@ std::string binding_label(const Binding& b);
 // Action t's input `slot` as shown: "Shift + Left button", or "None".
 std::string slot_label(int t, int slot);
 
+// ---- These menus with Same buttons as the game (settings.cpp's menu_follow_buttons) ----
+
+// The pad button each game button reads, as in the game (pad_map), and -1 for the one the Kick takes: menu_pad.hpp's
+// through_map turns a pad's buttons into the game's with it (input.hpp's menu_buttons).
+std::array<signed char, kPadCount> game_button_sources();
+// The key a keyboard key stands for in these menus: Enter for a key that works Cross, Esc for one that works Circle
+// (on its own, without a modifier; a "menu:" one too, since those are the game's menus' own), so it confirms and goes
+// back as it does in the game's menus. 0: it keeps its own meaning, as Enter, Esc, the arrows and F1 always do.
+int menu_key_for(int vk);
+
 // Every gamepad button and key back to the defaults.
 void restore_defaults();
 

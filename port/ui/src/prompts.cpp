@@ -16,6 +16,7 @@ constexpr int kUpDown = 1 | 4, kLeftRight = 2 | 8, kRight = 2;   // the D-pad's 
 // The virtual-key codes of the menus' keys (menu_input.cpp's map: the same keys on every platform).
 constexpr int kVkEnter = 0x0D, kVkShift = 0x10, kVkEsc = 0x1B;
 constexpr int kVkLeft = 0x25, kVkUp = 0x26, kVkRight = 0x27, kVkDown = 0x28;
+constexpr int kVkPageUp = 0x21, kVkPageDown = 0x22;
 
 // A row per device (Device's order), a button per prompt (Key's order). The pads' pictures name the same buttons (a
 // pad draws its own letters on them, by where the button sits: Cross, the bottom one, is A on an Xbox pad and a Steam
@@ -59,6 +60,12 @@ Glyph glyph(Device device, Key key) noexcept {
     const int d = static_cast<int>(device), k = static_cast<int>(key);
     if (d < 0 || d >= int(std::size(kGlyphs)) || k < 0 || k >= kKeys) return {};
     return kGlyphs[d][k];
+}
+
+Glyph page_glyph(Key which) noexcept {
+    static constexpr Glyph kPageUp{"PgUp", "key", {key(kVkPageUp, "PgUp")}};
+    static constexpr Glyph kPageDown{"PgDn", "key", {key(kVkPageDown, "PgDn")}};
+    return which == Key::PrevTab ? kPageUp : which == Key::NextTab ? kPageDown : Glyph{};
 }
 
 Device resolve(std::string_view glyphs, int used, bool deck) noexcept {

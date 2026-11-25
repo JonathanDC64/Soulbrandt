@@ -4,6 +4,7 @@
 // default) is the menu button; Triangle, Square, Select and R3 are P, C, H and Shift (menu_input.hpp).
 #include "input.hpp"
 
+#include "controls_model.hpp"
 #include "host.hpp"
 #include "host_pads.hpp"
 #include "menu_pad.hpp"
@@ -147,6 +148,17 @@ int take_captured_wheel() noexcept {
     return n;
 }
 
+unsigned menu_buttons(unsigned buttons) {
+    if (settings::get_int("menu_follow_buttons") == 0) return buttons;
+    return through_map(buttons, controls::game_button_sources());
+}
+
+int menu_key(int vk) {
+    if (settings::get_int("menu_follow_buttons") == 0) return vk;
+    const int as = controls::menu_key_for(vk);
+    return as ? as : vk;
+}
+
 void update_pad(const PadState& pad, int chord) noexcept {
     auto* context = host::context();
     if (context == nullptr) return;
@@ -158,7 +170,9 @@ void update_pad(const PadState& pad, int chord) noexcept {
     }
     sGameDevice = pad.glyph;
     if (sDevice >= 2 && pad.glyph >= 2) sDevice = pad.glyph;  // (cellPad knows the pad's kind a poll after its press)
-    const PadKeys down = pad_keys(pad, chord, sPadKeys);
+    PadState menu = pad;
+    menu.buttons = menu_buttons(pad.buttons);  // (Same buttons as the game: the game's buttons, else the pad's own)
+    const PadKeys down = pad_keys(menu, chord, sPadKeys);
     const double now = now_seconds();
     for (int k = 0; k < kPadKeyCount; k++) {
         Repeat& r = sRepeats[k];

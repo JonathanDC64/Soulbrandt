@@ -130,6 +130,7 @@ the file keeps the value chosen.
 | Crystal lizard (Interface) | `DES_UI_LIZARD` | 1 / 0 (off: no lizard dancing in the corner of the menus; docs/112) | at once |
 | Show hidden trophies (the Trophies window) | `trophies_show_hidden` | 0 / 1 (1 lists hidden trophies with their names before they are unlocked) | at once |
 | Gamepad menu buttons (Interface) | `pad_menu_chord` | 0 = L3 + R3, 1 = Select + Start | at once |
+| Same buttons as the game (Controls) | `menu_follow_buttons` | 1 / 0 (on: these menus read the gamepad through Change Buttons, and the keys for Cross and Circle work as Enter and Esc; off: the pad's own buttons, Cross confirms and Circle goes back) | at once |
 | Mouse in game menus (experimental) (Controls) | `DES_MENU_MOUSE` | 0 / 1 (on: point and click in the game's own menus; experimental, off by default; docs/114) | at once |
 
 Live values go through `ps3_setenv` (the runtime's getenv cache and
