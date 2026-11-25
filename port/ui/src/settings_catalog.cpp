@@ -122,6 +122,13 @@ constexpr Credit kCredits[] = {
     {"SMAA", "The SMAA anti-aliasing setting. By Jorge Jimenez, Jose I. Echevarria, Belen Masia, Fernando Navarro "
              "and Diego Gutierrez.",
      "MIT", "https://www.iryoku.com/smaa/"},
+    {"SDL", "The controllers, and on Linux the window, keyboard, mouse and sound.", "zlib", "https://www.libsdl.org"},
+    {"libusb", "The Switch 2 controllers over USB (Windows).", "LGPL 2.1 or later", "https://libusb.info"},
+    {"FFmpeg", "The game's movies.", "LGPL 2.1 or later", "https://ffmpeg.org"},
+    {"vkd3d", "The D3D12 renderer on Vulkan (Linux).", "LGPL 2.1 or later", "https://gitlab.winehq.org/wine/vkd3d"},
+    {"glslang, SPIRV-Tools and SPIRV-Headers", "Compiling shaders for the Vulkan renderer.",
+     "BSD-3-Clause, Apache-2.0 and MIT", "https://github.com/KhronosGroup/glslang"},
+    {"volk and Vulkan-Headers", "Loading and calling Vulkan.", "MIT and Apache-2.0", "https://github.com/zeux/volk"},
     {"RPCS3", "A behavioural reference for the PS3 system libraries. No RPCS3 code is copied.", "", ""},
 };
 
