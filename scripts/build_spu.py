@@ -72,6 +72,17 @@ NATIVE_BLOCKS = {
     "spu_0001_at_0176C200": (0x4FBCAB40231BF72B, ["0x4618-0x4730=spu_hook_ring_fetch", "0x4808-0x4818=spu_hook_ring_post",
                                                   "0x8E18-0x8F60=spu_hook_state_diff",
                                                   "0x7348-0x7440=spu_hook_entry_scan"]),
+    # libsynth2's synth (SPU_RATE=11 at run time), the one SPU thread that
+    # mixes every sound: its four hot loops, 99% of its lifted time with the
+    # game at its voice limit. The resampler (0x1090), a 112-byte clear
+    # (0xAC4), the pan (0x63C8) and a gain ramp (0x2C20). On a slower CPU
+    # with many sounds at once the synth fell behind, and the game's stream
+    # mixer played its last 85 ms again and again. SPU_NATIVE_SYNTH=0 turns
+    # them off.
+    "spu_0010_at_01818080": (0x7185893D626B4EFE, ["0x1090-0x1260=spu_hook_synth_resample",
+                                                  "0xAC4-0xAE0=spu_hook_synth_fill",
+                                                  "0x63C8-0x6408=spu_hook_synth_pan",
+                                                  "0x2C20-0x2C50=spu_hook_synth_gain"]),
 }
 
 
