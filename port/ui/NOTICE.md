@@ -15,6 +15,12 @@ About tab of the settings lists the same.
 | [Material Symbols Rounded](https://github.com/google/material-design-icons) | Icons | Apache-2.0 | `res/fonts/MaterialSymbolsRounded-Regular.ttf`, licence in `res/fonts/LICENSE-Apache-2.0.txt` |
 | [Mbed TLS](https://www.trustedfirmware.org/projects/mbed-tls/) 3.6 | TLS to the online server, in the runtime (ps3recomp) | Apache-2.0 | ps3recomp's `third_party/mbedtls`, compiled in; licence in `licenses/mbedtls` of the download |
 | [SMAA](https://www.iryoku.com/smaa/) (reference implementation, iryoku/smaa) | The SMAA anti-aliasing setting (`RSX_AA=2`), in the runtime (ps3recomp) | MIT | ps3recomp's `third_party/smaa`, compiled in; licence in `licenses/smaa` of the download |
+| [SDL](https://www.libsdl.org) 3.4.20 | The controllers (on Windows and Linux), and on Linux also the window, the keyboard and mouse, and the sound, in the runtime (ps3recomp) | zlib | ps3recomp's `cmake/sdl3_dep.cmake` builds it from its pinned source, compiled in; licence in `licenses/sdl3` of the download |
+| [libusb](https://libusb.info) 1.0.30 | The Switch 2 controllers over USB, which SDL opens through it (Windows) | LGPL 2.1 or later | `libusb-1.0.dll` beside the game, unchanged; licence in `licenses/libusb`, source on this project's `source-libusb-1.0.30` release |
+| [FFmpeg](https://ffmpeg.org) 8.1.3 | The game's movies (libavcodec, libavutil) | LGPL 2.1 or later | DLLs (Linux: shared libraries) beside the game, unchanged; licence in `licenses/ffmpeg`, source on this project's `third-party-sources` release |
+| [vkd3d](https://gitlab.winehq.org/wine/vkd3d) 2.1 | The D3D12 renderer on Vulkan (Linux) | LGPL 2.1 or later | Shared libraries beside the game (Linux), unchanged; licence in `licenses/vkd3d`, source on this project's `third-party-sources` release |
+| [glslang](https://github.com/KhronosGroup/glslang), [SPIRV-Tools](https://github.com/KhronosGroup/SPIRV-Tools), [SPIRV-Headers](https://github.com/KhronosGroup/SPIRV-Headers) | Compiling the game's shaders for the Vulkan renderer, in the runtime (ps3recomp) | BSD-3-Clause and others (glslang), Apache-2.0 (SPIRV-Tools), MIT (SPIRV-Headers) | Compiled in; licences in `licenses/glslang`, `licenses/spirv-tools` and `licenses/spirv-headers` |
+| [volk](https://github.com/zeux/volk), [Vulkan-Headers](https://github.com/KhronosGroup/Vulkan-Headers) | Loading and calling Vulkan, in the runtime (ps3recomp) | MIT (volk), Apache-2.0 or MIT (Vulkan-Headers) | Compiled in; licences in `licenses/volk` and `licenses/vulkan-headers` |
 
 Crash reports use Windows' own dbghelp (stack and minidump) and report screenshots its Imaging Component (PNG); both
 are part of Windows, nothing is added.
@@ -23,8 +29,8 @@ Japanese, Chinese and Korean text (the trophy names of the Japanese and Asian di
 the PC: Yu Gothic, Malgun Gothic or Microsoft JhengHei on Windows, Noto Sans CJK (or Droid Sans Fallback, WenQuanYi)
 on Linux. No font for it is bundled (`src/text_fonts.cpp`).
 
-SDL is not used: the gamepads are read with XInput and the runtime's own Sony HID reader, the keyboard and mouse
-through the game window's messages.
+The menus read the controllers through the runtime (SDL 3, above). On Windows the keyboard and mouse come through
+the game window's messages; on Linux through SDL 3.
 
 No art from Dusklight, FFCCEOT-Recomp or the game is used. The fonts and stylesheets are compiled into the executable.
 
