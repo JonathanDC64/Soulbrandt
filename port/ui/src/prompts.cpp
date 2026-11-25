@@ -62,6 +62,35 @@ Glyph glyph(Device device, Key key) noexcept {
     return kGlyphs[d][k];
 }
 
+Glyph button_glyph(Device device, std::string_view name) noexcept {
+    const int d = static_cast<int>(device);
+    if (device == Device::Keyboard || d < 0 || d >= int(std::size(kGlyphs))) return {};
+    // The buttons a prompt already shows on this pad (the face buttons, L1, R1, Select, R3).
+    for (const Glyph& g : kGlyphs[d])
+        if (g.art[0].is == Art::Is::Button && g.art[1].is == Art::Is::None && g.art[0].name == name) return g;
+    // The others, a row per pad device (Device's order from PlayStation): L2, R2, L3, Start.
+    static constexpr Glyph kOthers[][4] = {
+        {{"L2", "shoulder", {button("l2")}}, {"R2", "shoulder", {button("r2")}}, {"L3", "stick", {button("l3")}},
+         {"START", "system", {button("start")}}},
+        {{"LT", "shoulder", {button("l2")}}, {"RT", "shoulder", {button("r2")}}, {"LS", "stick", {button("l3")}},
+         {"Menu", "system", {button("start")}}},
+        {{"ZL", "shoulder", {button("l2")}}, {"ZR", "shoulder", {button("r2")}}, {"LS", "stick", {button("l3")}},
+         {"+", "system", {button("start")}}},
+        {{"L2", "shoulder", {button("l2")}}, {"R2", "shoulder", {button("r2")}}, {"L3", "stick", {button("l3")}},
+         {"Menu", "system", {button("start")}}},
+    };
+    static_assert(std::size(kOthers) == static_cast<size_t>(Device::SteamDeck), "a row per pad device");
+    for (const Glyph& g : kOthers[d - 1])
+        if (g.art[0].name == name) return g;
+    // The D-pad's ways, one at a time.
+    static constexpr Glyph kWays[] = {{"↑", "arrows up", {dpad(1)}}, {"→", "arrows right", {dpad(2)}},
+                                      {"↓", "arrows down", {dpad(4)}}, {"←", "arrows left", {dpad(8)}}};
+    static constexpr std::string_view kWayNames[] = {"up", "right", "down", "left"};
+    for (size_t i = 0; i < std::size(kWays); i++)
+        if (kWayNames[i] == name) return kWays[i];
+    return {};
+}
+
 Glyph page_glyph(Key which) noexcept {
     static constexpr Glyph kPageUp{"PgUp", "key", {key(kVkPageUp, "PgUp")}};
     static constexpr Glyph kPageDown{"PgDn", "key", {key(kVkPageDown, "PgDn")}};

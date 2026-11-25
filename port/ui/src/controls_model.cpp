@@ -503,9 +503,8 @@ std::string slot_label(int t, int slot) {
 
 std::array<signed char, kPadCount> game_button_sources() {
     const PadMap m = pad_map();
-    const int kick = kick_on() ? pad_kick() : -1;
     std::array<signed char, kPadCount> from{};
-    for (int g = 0; g < kPadCount; g++) from[g] = kick >= 0 && m[g] == kick ? -1 : static_cast<signed char>(m[g]);
+    for (int g = 0; g < kPadCount; g++) from[g] = static_cast<signed char>(m[g]);
     return from;
 }
 

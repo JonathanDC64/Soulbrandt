@@ -28,6 +28,10 @@ unsigned menu_buttons(unsigned buttons);
 // The key a keyboard key stands for in the menus: with Same buttons as the game on, Enter for the game's Cross key and
 // Esc for its Circle key (controls_model.hpp's menu_key_for); else, and for every other key, the key itself.
 int menu_key(int vk);
+// The glyph a menu prompt shows for `key` (prompts.hpp's glyph), with Same buttons as the game on: on a pad, the pad
+// button the game's button is on (Cross's prompt shows Circle when Change Buttons swapped them; the D-pad's stay); on
+// the keyboard, Page Up and Page Down for the tabs when Q or E confirms or goes back (prompts.hpp's page_glyph).
+prompts::Glyph menu_glyph(prompts::Device device, prompts::Key key);
 void update_input() noexcept;
 // Lets go of every key the pads hold (the window lost the focus, or a binding is being chosen).
 void reset_input_state() noexcept;

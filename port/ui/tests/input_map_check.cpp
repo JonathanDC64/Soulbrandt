@@ -126,11 +126,11 @@ void check_through_map() {
     const PadKeys k = pad_keys(pad, 0, st);
     check(k[kPadConfirm] && !k[kPadCancel], "swapped: the pad's Circle confirms");
 
-    // The Kick on Select (PAD_MAP kick=select, Forward attack at Own key): nothing presses the game's Select.
-    std::array<signed char, 16> kick = same;
-    kick[0] = -1;
-    check(through_map(kSelect, kick) == 0, "Kick on Select: Select is nothing in the menus");
-    check(through_map(kSelect | kCross, kick) == kCross, "Kick on Select: Cross still confirms");
+    // A game button nothing presses (-1): never down.
+    std::array<signed char, 16> none = same;
+    none[0] = -1;
+    check(through_map(kSelect, none) == 0, "nothing presses Select: never down");
+    check(through_map(kSelect | kCross, none) == kCross, "nothing presses Select: Cross still confirms");
 
     // One pad button for two game buttons (a hand-written PAD_MAP): both go down.
     std::array<signed char, 16> two = same;
@@ -204,6 +204,25 @@ void check_prompts() {
     check(pgUp.text == "PgUp" && pgUp.art[0].code == 0x21, "the tabs' other keys: Page Up");
     check(pgDn.text == "PgDn" && pgDn.art[0].code == 0x22, "the tabs' other keys: Page Down");
     check(ui::prompts::page_glyph(Key::Confirm).text.empty(), "no other key has one");
+    // A pad button's glyph by name (a prompt whose game button Change Buttons moved).
+    using ui::prompts::button_glyph;
+    check(button_glyph(Device::PlayStation, "circle").text == "○", "PlayStation circle");
+    check(button_glyph(Device::PlayStation, "cross").art[0].name == "cross", "PlayStation cross: its art");
+    check(button_glyph(Device::Xbox, "circle").text == "B" && button_glyph(Device::Xbox, "l2").text == "LT",
+          "Xbox B and LT");
+    check(button_glyph(Device::Nintendo, "cross").text == "B" && button_glyph(Device::Nintendo, "start").text == "+",
+          "Nintendo B and +");
+    check(button_glyph(Device::SteamDeck, "r2").text == "R2" && button_glyph(Device::PlayStation, "l3").text == "L3",
+          "Deck R2, PlayStation L3");
+    check(button_glyph(Device::PlayStation, "up").art[0].is == ui::prompts::Art::Is::Dpad &&
+              button_glyph(Device::PlayStation, "up").art[0].code == 1 && button_glyph(Device::Xbox, "left").art[0].code == 8,
+          "the D-pad's ways");
+    check(button_glyph(Device::Keyboard, "cross").text.empty() && button_glyph(Device::PlayStation, "x").text.empty(),
+          "none for the keyboard or an unknown name");
+    for (int d = int(Device::PlayStation); d <= int(Device::SteamDeck); d++)
+        for (const char* b : {"select", "l3", "r3", "start", "up", "right", "down", "left", "l2", "r2", "l1", "r1",
+                              "triangle", "circle", "cross", "square"})
+            check(!button_glyph(Device(d), b).text.empty(), std::string("a glyph for ") + b + " on every pad");
     for (int d = 0; d <= int(Device::SteamDeck); d++)
         for (int k = 0; k < int(Key::Count); k++) {
             const ui::prompts::Glyph g = ui::prompts::glyph(Device(d), Key(k));

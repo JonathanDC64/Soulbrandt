@@ -159,6 +159,24 @@ int menu_key(int vk) {
     return as ? as : vk;
 }
 
+prompts::Glyph menu_glyph(prompts::Device device, prompts::Key key) {
+    const prompts::Glyph g = prompts::glyph(device, key);
+    if (settings::get_int("menu_follow_buttons") == 0) return g;
+    if (device == prompts::Device::Keyboard) {
+        const bool tabs = key == prompts::Key::PrevTab || key == prompts::Key::NextTab;
+        return tabs && (menu_key('Q') != 'Q' || menu_key('E') != 'E') ? prompts::page_glyph(key) : g;
+    }
+    if (g.art[0].is != prompts::Art::Is::Button || g.art[1].is != prompts::Art::Is::None) return g;
+    int game = -1;
+    for (int i = 0; i < controls::kPadCount; i++)
+        if (g.art[0].name == controls::kPadNames[i]) game = i;
+    if (game < 0) return g;
+    const int pad = controls::game_button_sources()[game];
+    if (pad < 0 || pad == game) return g;
+    const prompts::Glyph moved = prompts::button_glyph(device, controls::kPadNames[pad]);
+    return moved.art[0].is == prompts::Art::Is::None ? g : moved;
+}
+
 void update_pad(const PadState& pad, int chord) noexcept {
     auto* context = host::context();
     if (context == nullptr) return;

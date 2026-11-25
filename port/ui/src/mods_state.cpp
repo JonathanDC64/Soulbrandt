@@ -28,8 +28,8 @@ std::vector<std::string> mods_good_to_know() {
     const prompts::Device device = input::menu_device();
     const std::string buttons = device == prompts::Device::Keyboard
                                     ? "Page Up and Page Down"
-                                    : std::string(prompts::glyph(device, prompts::Key::PrevTab).text) + " and " +
-                                          std::string(prompts::glyph(device, prompts::Key::NextTab).text);
+                                    : std::string(input::menu_glyph(device, prompts::Key::PrevTab).text) + " and " +
+                                          std::string(input::menu_glyph(device, prompts::Key::NextTab).text);
     return {
         "Mods are made by players. Back up your save before you try one.",
         "Mods that only change how the game looks or sounds keep online play. Any other mod keeps you offline while "

@@ -591,7 +591,7 @@ void SettingsPage::update_help() {
     // What the help says now: rebuilt only when that changes.
     const bool changedSinceOpen = rows::comparable(*row) && mOpened.count(row->key) &&
                                   mOpened[row->key] != settings::get(row->key);
-    const std::string compareKey(prompts::glyph(input::menu_device(), prompts::Key::Compare).text);
+    const std::string compareKey(input::menu_glyph(input::menu_device(), prompts::Key::Compare).text);
     std::string notes = own_notes(*row);
     if (const std::string lock = rows::lock_note(*row); !lock.empty())
         notes += "<status-badge class=\"warning\">" + escape(lock) + "</status-badge>";
@@ -996,7 +996,7 @@ std::string SettingsPage::strip() const {
     else if (rows::applies(*row) == "After a restart") note = "Applies after a restart.";
     else if (const auto it = mOpened.find(row->key);
              mComparing.empty() && rows::comparable(*row) && it != mOpened.end() && it->second != settings::get(row->key))
-        note = "Hold " + std::string(prompts::glyph(input::menu_device(), prompts::Key::Compare).text) +
+        note = "Hold " + std::string(input::menu_glyph(input::menu_device(), prompts::Key::Compare).text) +
                " to see how it was.";
     return note.empty() ? line : line + " " + note;
 }
