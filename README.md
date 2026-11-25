@@ -43,7 +43,7 @@ The game plays from start to finish (a tester has beaten it), but not every part
 - Seamless co-op (still being tested): play the whole game with up to three friends in the host's world, joined with a room code. No port forwarding needed.
 - Roll in any direction while locked on, not only forward, back, left or right.
 - At the Nexus statue (optional): a stat respec that gives back the souls your levels cost, and a new appearance, name, body or world tendency.
-- Keyboard and mouse, Xbox controllers, DualSense and DualShock 4.
+- Keyboard and mouse, and most controllers: Xbox, DualSense, DualShock 4, Switch Pro, Switch 2 Pro (USB), 8BitDo, the Steam Controller and others.
 
 ## Features
 
@@ -62,12 +62,12 @@ Press **F1** (or **L3 + R3** on a controller) at any time to open the menu. Most
 - Two renderers (Settings > Display > Renderer): DirectX 12 and Vulkan. Windows starts on DirectX 12, except with a GeForce GTX 10 series card or older, which starts on Vulkan. Linux starts on Vulkan.
 
 **Controls**
-- Xbox controllers, DualSense and DualShock 4, over USB or Bluetooth, with vibration. Pick which controller the game uses when several are connected.
+- Xbox controllers, DualSense, DualShock 4, Switch Pro, Switch 2 Pro (over USB), 8BitDo, the Steam Controller and most other gamepads, over USB or Bluetooth, with vibration. With several connected, **Automatic** plays the one you used last and shows its buttons, or you can pick one (Settings > Controls > Controller). Nintendo controllers show their own letters: B (bottom) confirms, A (right) goes back.
 - Keyboard and mouse, laid out like the Souls games on PC. To turn the camera with the mouse, turn on **Mouse look** in Settings > Controls.
 - Change which buttons and keys do what.
 - The game's button prompts show the buttons of the controller you're using, a Steam Deck's among them, or your keys (Settings > Game > Button icons).
 - Keys 1 to 5 switch straight to the item in each of the five item slots, without using it (Settings > Controls > Change Buttons, Keyboard and mouse).
-- The forward attack (the kick) can go on a key or a controller button of its own, so attacking never kicks by accident (Settings > Controls > Forward attack, off by default; the button is the Kick row in Change Buttons > Gamepad). A controller's back buttons, paddles or Share button can kick, when the controller reports them to the game; on Windows, Xbox controllers don't.
+- The forward attack (the kick) can go on a key or a controller button of its own, so attacking never kicks by accident (Settings > Controls > Forward attack, off by default; the button is the Kick row in Change Buttons > Gamepad). A controller's back buttons, paddles or Share button can kick, when the controller reports them to the game; not every controller does.
 - A deadzone for each stick, set as how far you tilt it, with a live picture of the stick (Settings > Controls).
 - Mouse sensitivity, inverted axes, and switching lock-on targets with a flick of the mouse.
 - **Roll in any direction while locked on**: the roll goes where the stick points. It's on by default; turn off **Roll toward the stick** in Settings > Controls for the original's four directions.
@@ -102,7 +102,8 @@ Press **F1** (or **L3 + R3** on a controller) at any time to open the menu. Most
 - Players on every supported version play together. Each keeps their own character and progress: souls, items and key items picked up in the host's world go home with you, bosses you help kill count in your own world too, and every player gets a boss's full souls.
 - No port forwarding: this project's server introduces the games, and they connect to each other directly, through most home routers. The game's data doesn't go through the server. When the host's router lets the game open a port itself (UPnP), or the host gives a public address, the window also shows a direct code, which holds the host's internet address; keep that one private.
 - Mods can be on in co-op. Before Host or Join, the game says how many are on and asks you to accept that they may cause problems.
-- Settings > Network sets how many players you host, and whether the others see your phantom glow, in which colour.
+- **Warp and Unstuck** (F1 > Seamless co-op): pick another player to warp to where they stand, or yourself to go back to where you arrived in the area, with the same HP, souls and form, and no load. Not in or into a boss fight. The same page lists who's in the session, with each player's ping, and notices on screen say when someone joins, leaves or loses the connection.
+- Settings > Network (or **Configure** on the Seamless co-op page) sets how many players you host, the enemies' difficulty for the party, what happens when the host dies, and whether the others see your phantom glow, in which colour.
 - Please report what goes wrong: **Report an issue** includes a log of the session. If someone drops out, send a report from their game and from the host's.
 
 **Mods**
@@ -158,7 +159,7 @@ Linux is newer and less tested than Windows. Players run it on desktop Linux and
 
 macOS is not supported.
 
-On a Steam Deck, keys and the mouse stay out of the game while its controls are on, because Steam's desktop layout presses them too. To use a keyboard on a docked Deck, set `PAD_KEYBOARD_WITH_PAD=1`.
+On a Steam Deck, keys and the mouse stay out of the game while its controls are on, because Steam's desktop layout presses them too. The same goes for a Steam Controller when Steam runs but didn't start the game, on Windows too. To use a keyboard on a docked Deck, set `PAD_KEYBOARD_WITH_PAD=1`.
 
 On a Steam Deck the game runs best with **Manual GPU Clock Control** at **800 MHz** and the **Thermal Power (TDP) Limit** at **15 W** (Quick Access menu > Performance).
 
@@ -184,7 +185,7 @@ This is the technical part. The full notes are in [`docs/`](docs/).
 
 | Windows | Linux |
 |---|---|
-| Visual Studio 2022 Build Tools, LLVM (clang), CMake, Ninja, Python 3, Git Bash | clang or GCC, CMake, Ninja, Python 3, SDL2, Vulkan and FFmpeg development files, vkd3d ([details](docs/76-native-linux.md#building)) |
+| Visual Studio 2022 Build Tools, LLVM (clang), CMake, Ninja, Python 3, Git Bash | clang or GCC, CMake, Ninja, Python 3, the X11, Wayland and sound development files SDL 3 builds against, Vulkan and FFmpeg development files, vkd3d ([details](docs/76-native-linux.md#building)) |
 
 On Windows, step 4 downloads FFmpeg's MPEG-2 video decoder for the game's movies (about 1 MB) and puts it beside `des_boot.exe`. If that download fails, the build says so and goes on, and the movies then need Microsoft's free [MPEG-2 Video Extension](https://apps.microsoft.com/detail/9n95q1zzpmh4) from the Microsoft Store; without either, they play their sound with no picture. (A paid app called "MPEG-2 Video Extensions", from another publisher, is a different thing; you don't need it.)
 
@@ -224,7 +225,7 @@ On Windows, step 4 downloads FFmpeg's MPEG-2 video decoder for the game's movies
    cmake --build ps3recomp/build --target ps3recomp_runtime rsx_shader_precompile
    cmake --build port/build --target des_boot --parallel 4
    ```
-   `PS3RECOMP_RSX_HAL=ON` builds the portable renderer: DirectX 12 through it, the default, and Vulkan beside it (Settings > Display > Renderer). Without it the game runs on the legacy renderer only. Its first configure downloads glslang and SPIRV-Tools at their pinned commits. On Linux, see [docs/76](docs/76-native-linux.md#building).
+   `PS3RECOMP_RSX_HAL=ON` builds the portable renderer: DirectX 12 through it, the default, and Vulkan beside it (Settings > Display > Renderer). Without it the game runs on the legacy renderer only. Its first configure downloads glslang and SPIRV-Tools at their pinned commits, and SDL 3 (the controllers) and, on Windows, libusb at their pinned versions. On Linux, see [docs/76](docs/76-native-linux.md#building).
 5. Copy `tools/des/local.env.example` to `tools/des/local.env`, set `PS3_VFS_ROOT` in it to the folder that holds `PS3_GAME`, and start the game with `tools/des/play.sh`. A direct start of `des_boot.exe` goes through setup instead, and keeps its saves in `port/build/gamedata`.
 
 Everything made from your copy of the game stays in `work/` and `gamedata/`, which git ignores. **Never share your build:** it contains code converted from your game.
@@ -248,7 +249,7 @@ This project contains only its own code, scripts and documentation. It has no ga
 - RPCS3: a reference for how the PS3 behaves (no RPCS3 code is copied)
 - [RmlUi](https://github.com/mikke89/RmlUi) and [FreeType](https://freetype.org) for the menus, adapted from [Dusklight](https://github.com/TwilitRealm/dusklight)'s interface code
 - The [Old Standard TT](https://fonts.google.com/specimen/Old+Standard+TT) font for the DeS UI look's text
-- [SMAA](https://www.iryoku.com/smaa/) for the SMAA setting, [FFmpeg](https://ffmpeg.org) for the movies, and [vkd3d](https://gitlab.winehq.org/wine/vkd3d) and [SDL](https://www.libsdl.org) for Linux
+- [SMAA](https://www.iryoku.com/smaa/) for the SMAA setting, [FFmpeg](https://ffmpeg.org) for the movies, [SDL](https://www.libsdl.org) for the controllers (and on Linux the window and sound), [libusb](https://libusb.info) for the Switch 2 controllers on Windows, and [vkd3d](https://gitlab.winehq.org/wine/vkd3d) for Linux
 
 Settings > About and [`port/ui/NOTICE.md`](port/ui/NOTICE.md) list the menus' parts with their licences. The download's `licenses` folder holds the licences of the libraries shipped beside the program. The source of its LGPL libraries is on releases of their own: FFmpeg and vkd3d on [third-party-sources](https://github.com/JonathanDC64/Soulbrandt/releases/tag/third-party-sources), and libusb (Windows) on [source-libusb-1.0.30](https://github.com/JonathanDC64/Soulbrandt/releases/tag/source-libusb-1.0.30). Each download's `licenses/<library>/README.txt` names its archive.
 
