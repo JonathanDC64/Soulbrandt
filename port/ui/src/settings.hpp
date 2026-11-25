@@ -65,6 +65,11 @@ void store(std::string_view key, const std::string& value);
 bool try_value(std::string_view key, const std::string& value);
 void end_try(std::string_view key);  // the stored value again, applied
 
+// Change Buttons: a Kick button or key was chosen. It kicks only with Forward attack at Own key (DES_KICK=1), so that
+// is set now (and the Kick's PAD_MAP and PAD_KEYS with it), unless it is on already or the environment pins it. True
+// when it changed it: controls_model.cpp then says so in a note.
+bool kick_chosen();
+
 // The variable was set in the environment when the game started (not by settings.ini): it wins over the file.
 bool pinned(std::string_view key);
 std::string pinned_value(std::string_view key);
@@ -161,6 +166,11 @@ bool net_name_ok(std::string_view name);             // 3-16 letters, digits, '-
 // An online name for a player who has none: a word from the game and four digits ("Stonefang-4821"), which
 // net_name_ok accepts. Setup offers it, and the Network tab falls back to it rather than leave the name empty.
 std::string suggest_net_name();
+// Seamless co-op's online name (PS3_NP_ONLINE_ID, else Settings > Network's) and the endpoint that introduces players
+// (DES_SEAMLESS_INTRO's value: "host:port", or "0" for none), as a start into co-op takes them (apply_seamless). The
+// Join window's check uses them before the restart (coop_window.cpp), so it tries what the join will.
+std::string seamless_name();
+std::string seamless_endpoint();
 // The chosen server's address (DES_NET_SERVER, DES_NET_CUSTOM for Custom), or "" when there is none or it is not
 // a valid address.
 std::string net_server_address();

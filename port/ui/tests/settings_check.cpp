@@ -7,10 +7,15 @@
 // gpu-out-* cases are not. And a restart-only setting changed in the menu waits for the next start (restart_pending):
 // not a live one, not one in effect already, not one pinned by the environment. And the Keyboard page's item slot keys
 // (keys_for_pad): DES_ITEM_KEYS from the layout and PAD_KEYS's changes, without wheel notches and without an input a
-// cellPad row has too, and none of the item rows in the PAD_KEYS cellPad reads. And seamless co-op's servers
+// cellPad row has too, and none of the item rows in the PAD_KEYS cellPad reads. And the Gamepad page's Kick row
+// (map_for_pad): with Forward attack at Own key its pad button presses R1 and nothing else, in the PAD_MAP cellPad
+// reads, and DES_KICK_PAD names it; with the original, the row is left out; choosing a Kick (kick_chosen) sets Own
+// key, unless the environment pins Forward attack. And seamless co-op's servers
 // (TEST_SEAMLESS=host stands in for a hosting start): the endpoint for room codes (DES_SEAMLESS_INTRO) from the Server
 // row, settings.ini's or the environment's value winning, and off in a test run; settings.ini's DES_SEAMLESS_STUN. And
-// a gameplay mod (a made-up one with game parameters): it keeps online play off, and not seamless co-op.
+// a gameplay mod (a made-up one with game parameters): it keeps online play off, and not seamless co-op. And the
+// cursor's sword: soulbrandt with no settings.ini, the one a file names, the moonlight (the default until 0.2.0)
+// from a file that names none.
 //
 //   settings_check --row      a build with the row (DES_RSX_VULKAN: port/CMakeLists.txt found the Vulkan route)
 //   settings_check --no-row   a build without it: nothing of it, and settings.ini's RSX_BACKEND is not applied
@@ -231,6 +236,45 @@ int run_case(const std::string& name) {
                                                         : ",2,3,4,6";        // keys-changed: slot 1 none, slot 5 on 6
         check(env("DES_ITEM_KEYS") == want, "DES_ITEM_KEYS " + want + ": " + env("DES_ITEM_KEYS"));
         if (name == "keys-taken") check(pad.find("l2=1|lctrl") != std::string::npos, "L2 keeps 1: " + pad);
+    } else if (name.rfind("kickpad-", 0) == 0) {  // the Kick row's pad button
+        const std::string want_map = name == "kickpad-off"      ? "cross=triangle,triangle=cross"
+                                     : name == "kickpad-paddle" ? "r1=r1|paddle1"
+                                     : name == "kickpad-square" ? "r1=l1,l1=r1,r1=l1|square,square=none"
+                                     : name == "kickpad-env"    ? "r1=r1|misc"
+                                                                : "";   // kickpad-unknown, kickpad-live
+        const std::string want_pad = name == "kickpad-paddle"   ? "paddle1"
+                                     : name == "kickpad-square" ? "square"
+                                     : name == "kickpad-env"    ? "misc"
+                                                                : "";
+        check(env("PAD_MAP") == want_map, "PAD_MAP " + want_map + ": " + env("PAD_MAP"));
+        check(env("DES_KICK_PAD") == want_pad, "DES_KICK_PAD " + want_pad + ": " + env("DES_KICK_PAD"));
+        if (name == "kickpad-live") {   // Forward attack changed in the menu: the button follows at once
+            settings::set("DES_KICK", "1");
+            check(env("PAD_MAP") == "r1=r1|paddle2", "Own key: PAD_MAP r1=r1|paddle2: " + env("PAD_MAP"));
+            check(env("DES_KICK_PAD") == "paddle2", "Own key: DES_KICK_PAD paddle2: " + env("DES_KICK_PAD"));
+            settings::set("DES_KICK", "0");
+            check(env("PAD_MAP").empty() && env("DES_KICK_PAD").empty(),
+                  "the original again: PAD_MAP " + env("PAD_MAP") + ", DES_KICK_PAD " + env("DES_KICK_PAD"));
+            check(settings::get("PAD_MAP") == "kick=paddle2", "the row is kept: " + settings::get("PAD_MAP"));
+        }
+        if (name == "kickpad-chosen") {   // a Kick chosen in Change Buttons at Forward + attack: Own key, and it kicks
+            settings::set("PAD_MAP", "kick=select");   // (as the row writes it, then settings::kick_chosen)
+            check(env("PAD_MAP").empty(), "before: no Kick in PAD_MAP: " + env("PAD_MAP"));
+            check(settings::kick_chosen(), "Forward attack changed");
+            check(settings::get("DES_KICK") == "1" && env("DES_KICK") == "1",
+                  "Own key: DES_KICK " + settings::get("DES_KICK") + ", env " + env("DES_KICK"));
+            check(env("PAD_MAP") == "select=none,r1=r1|select",
+                  "PAD_MAP select=none,r1=r1|select: " + env("PAD_MAP"));
+            check(env("DES_KICK_PAD") == "select", "DES_KICK_PAD select: " + env("DES_KICK_PAD"));
+            check(!settings::kick_chosen(), "on already: no change the second time");
+            check(read_text(std::filesystem::path(data) / "settings.ini").find("DES_KICK = 1") != std::string::npos,
+                  "saved: DES_KICK = 1");
+        }
+        if (name == "kickpad-pinned") {   // Forward attack set in the environment: a Kick chosen leaves it
+            check(!settings::kick_chosen(), "pinned: no change");
+            check(env("DES_KICK") == "0" && env("PAD_MAP").empty() && env("DES_KICK_PAD").empty(),
+                  "still the original: DES_KICK " + env("DES_KICK") + ", PAD_MAP " + env("PAD_MAP"));
+        }
     } else if (name == "coop-mods") {  // a gameplay mod doesn't keep seamless co-op off
         check(ui::mods::gameplay_in_use(), "the mod counts as gameplay");
         check(!settings::net_mods_held(), "not held by the mod");
@@ -251,6 +295,12 @@ int run_case(const std::string& name) {
         check(env("DES_SEAMLESS_INTRO") == want, "DES_SEAMLESS_INTRO " + want + ": " + env("DES_SEAMLESS_INTRO"));
         check(env("DES_SEAMLESS_STUN") == (name == "coop-off" ? "0" : ""), "DES_SEAMLESS_STUN: " +
                                                                                env("DES_SEAMLESS_STUN"));
+    } else if (name.rfind("sword-", 0) == 0) {  // the cursor's sword: a new player's soulbrandt, a player's kept
+        const std::string want = name == "sword-new" ? "soulbrandt" : name == "sword-picked" ? "regalia" : "moonlight";
+        check(settings::get("DES_CURSOR_SWORD") == want, "the sword " + want + ": " + settings::get("DES_CURSOR_SWORD"));
+        settings::store("setup_preset", "balanced");  // (as setup does: settings.ini written, every key in it)
+        const std::string ini = read_text(std::filesystem::path(data) / "settings.ini");
+        check(ini.find("DES_CURSOR_SWORD = " + want + "\n") != std::string::npos, "settings.ini's line");
     } else if (name == "set-saves") {  // the row changed in the menu: kept for the next start, not applied now
         settings::set("RSX_BACKEND", "vulkan");
         check(env("RSX_BACKEND").empty(), "not applied before a restart: " + env("RSX_BACKEND"));
@@ -285,6 +335,14 @@ const Case kCases[] = {
     {"keys-default", nullptr, {}},
     {"keys-taken", "keys_layout = souls\nPAD_KEYS = l2=1|lctrl,item3=shift+3|wheelup\n", {}},   // from before the rows
     {"keys-changed", "keys_layout = souls\nPAD_KEYS = item1=none,item5=6\n", {}},
+    {"kickpad-off", "PAD_MAP = cross=triangle,triangle=cross,kick=paddle1\n", {}},   // Forward attack's original
+    {"kickpad-paddle", "DES_KICK = 1\nPAD_MAP = kick=paddle1\n", {}},
+    {"kickpad-square", "PAD_MAP = r1=l1,l1=r1,kick=square\nDES_KICK = 1\n", {}},     // (DES_KICK after PAD_MAP)
+    {"kickpad-env", nullptr, {{"PAD_MAP", "kick=misc"}, {"DES_KICK", "1"}}},
+    {"kickpad-unknown", "DES_KICK = 1\nPAD_MAP = kick=paddle9\n", {}},
+    {"kickpad-live", "PAD_MAP = kick=paddle2\n", {}},
+    {"kickpad-chosen", "DES_KICK = 0\n", {}},
+    {"kickpad-pinned", "PAD_MAP = kick=select\n", {{"DES_KICK", "0"}}},
     // 0.1.0's settings.ini ("d3d12" whether picked or not), by GPU
     {"gpu-in-1070-saved", "RSX_BACKEND = d3d12\n", {{"DES_RENDERER_GPU_ID", "10de:1b81"}}},        // GTX 1070 (#205, #372)
     {"gpu-in-1060-saved", "RSX_BACKEND = d3d12\n", {{"DES_RENDERER_GPU_ID", "10de:1c03"}}},        // GTX 1060 6GB (#398)
@@ -310,6 +368,11 @@ const Case kCases[] = {
     {"coop-test-run", "DES_NET_NAME = tester\n", {{"TEST_SEAMLESS", "host"}, {"PS3_PIDFILE", "test.pid"}}},
     {"coop-mods", "DES_NET_NAME = tester\n", {{"TEST_SEAMLESS", "host"}}},
     {"online-mods", "DES_NET_NAME = tester\n", {}},
+    {"sword-new", nullptr, {}},                                     // no settings.ini: a new player
+    {"sword-saved", "DES_CURSOR_SWORD = moonlight\n", {}},          // a setup's file from before 0.2.0
+    {"sword-picked", "DES_CURSOR_SWORD = regalia\n", {}},
+    {"sword-old", "RSX_BACKEND = d3d12\n", {}},                     // a file with no sword in it
+    {"sword-empty", "DES_CURSOR_SWORD = \n", {}},
 };
 
 }  // namespace
@@ -333,7 +396,7 @@ int main(int argc, char** argv) {
             {"RSX_BACKEND", "RSX_STATE_DIR", "DES_SETTINGS", "DES_DATA_DIR", "PS3_PIDFILE", "DES_LANGUAGE", "PAD_KEYS",
              "DES_ITEM_KEYS", "TEST_SEAMLESS", "DES_SEAMLESS_INTRO", "DES_SEAMLESS_STUN", "PS3_NP_ONLINE_ID",
              "DES_KIND", "DES_MODS", "DES_MODS_DIR", "PS3_VFS_MODS", "PSNR_SERVER", "PS3_NET_ONLINE",
-             "PS3_NET_P2P_PORT"})
+             "PS3_NET_P2P_PORT", "PAD_MAP", "DES_KICK", "DES_KICK_PAD"})
             ps3_setenv(k, "");
         ps3_setenv("DES_RENDERER_GPU", "Test GPU");  // (not this PC's: a case gives the rule's GPU itself)
         ps3_setenv("DES_RENDERER_GPU_ID", "");

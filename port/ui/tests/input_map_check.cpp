@@ -174,7 +174,9 @@ void check_prompts() {
         }
     check(ui::prompts::glyph(Device::PlayStation, Key::Confirm).text == "✕", "PlayStation confirms with Cross");
     check(ui::prompts::glyph(Device::Xbox, Key::Back).text == "B", "Xbox goes back with B");
-    check(ui::prompts::glyph(Device::Nintendo, Key::Confirm).text == "A", "Nintendo: A, as SDL names it");
+    check(ui::prompts::glyph(Device::Nintendo, Key::Confirm).text == "B" &&
+              ui::prompts::glyph(Device::Nintendo, Key::Back).text == "A",
+          "Nintendo: B confirms and A goes back, the buttons where Cross and Circle are (SDL3's are positional)");
     check(ui::prompts::glyph(Device::Keyboard, Key::Hide).text == "Shift", "the keyboard hides with Shift");
     check(ui::prompts::glyph(Device::Xbox, Key::Help).text == "View", "Xbox's Help is View");
     check(ui::prompts::glyph(Device::SteamDeck, Key::Confirm).text == "A" &&
@@ -209,7 +211,7 @@ void check_prompts() {
           "the keyboard's Move: two arrow keys");
     check(art(Device::Keyboard, Key::Confirm, 0).name == "Enter", "Enter's cap");
     check(art(Device::Xbox, Key::Confirm, 0).name == "cross" && art(Device::Nintendo, Key::Confirm, 0).name == "cross",
-          "A is where Cross is, on an Xbox pad and a Nintendo pad");
+          "Confirm is Cross, on an Xbox pad (A) and a Nintendo pad (B)");
     check(art(Device::PlayStation, Key::Change, 0).is == Art::Is::Dpad && art(Device::PlayStation, Key::Change, 0).code == 10,
           "Change: the D-pad's left and right");
     const Art padRight = art(Device::Xbox, Key::Right, 0), keyRight = art(Device::Keyboard, Key::Right, 0);

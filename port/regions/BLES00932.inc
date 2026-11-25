@@ -70,17 +70,28 @@ DES_REGION_ADDR(0x0015AE10, 0x0015BDD8)  /* call kLoadSouls */
 DES_REGION_ADDR(0x00162D0C, 0x00163BDC)  /* data kGameParamCases */
 DES_REGION_ADDR(0x0017A4A8, 0x0017B390)  /* hook des_coop_hook: the summoned reload's load step */
 DES_REGION_ADDR(0x0017B258, 0x0017C468)  /* call */
+DES_REGION_ADDR(0x00185204, 0x0018608C)  /* code: des_qwc_local, the new-game step's calls of 0x00920FC8 (returns) */
+DES_REGION_ADDR(0x001856BC, 0x00186544)  /* code: des_qwc_local, the new-game step's calls of 0x00920FC8 (returns) */
+DES_REGION_ADDR(0x0018574C, 0x001865D4)  /* code: des_qwc_local, the new-game step's calls of 0x00920FC8 (returns) */
 DES_REGION_ADDR(0x00196158, 0x00196FE0)  /* call */
 DES_REGION_ADDR(0x001D17A0, 0x001D2628)  /* call */
 DES_REGION_ADDR(0x001D1E64, 0x001D2CEC)  /* hook des_phys_rate */
 DES_REGION_ADDR(0x001D35D8, 0x001D4460)  /* call */
 DES_REGION_ADDR(0x001DF83C, 0x001E06C4)  /* hook des_phys_kf */
+DES_REGION_ADDR(0x001E2E00, 0x001E3C88)  /* hook des_rest_gate */
 DES_REGION_ADDR(0x001EF6D0, 0x001F0558)  /* hook des_phys_kf */
 DES_REGION_ADDR(0x001FEAF4, 0x001FF97C)  /* hook des_slide_rate */
 DES_REGION_ADDR(0x001FED50, 0x001FFBD8)  /* hook des_slide_rate */
 DES_REGION_ADDR(0x0020D3C0, 0x0020E248)  /* call des_seamless_game (by address): Tutorial_end's */
 DES_REGION_ADDR(0x0020E788, 0x0020F610)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x0020FB8C, 0x00210A14)  /* hook des_coop_hook: the save request 0x0020FB78's gate (a friend's game asked for a save) */
+DES_REGION_ADDR(0x0020FBB8, 0x00210A40)  /* hook des_coop_hook: the save request 0x0020FBA8's gate (the same) */
 DES_REGION_ADDR(0x002107B8, 0x00211640)  /* call des_seamless_game (by address) */
+DES_REGION_ADDR(0x00211544, 0x002123CC)  /* code read: the save's build before the character's writer (a friend's own save) */
+DES_REGION_ADDR(0x00211548, 0x002123D0)  /* hook des_coop_hook: the character's writer in the save's build (a friend's own save has its own form) */
+DES_REGION_ADDR(0x0021154C, 0x002123D4)  /* code read: the bl to the character's writer (a friend's own save) */
+DES_REGION_ADDR(0x00211550, 0x002123D8)  /* hook des_coop_hook: after the character's writer (the form back) */
+DES_REGION_ADDR(0x002117E8, 0x00212670)  /* hook des_coop_hook: the save step's gate (a friend's own save) */
 DES_REGION_ADDR(0x00217E70, 0x00218CF8)  /* hook des_motion_blur */
 DES_REGION_ADDR(0x002184DC, 0x00219364)  /* hook des_dof */
 DES_REGION_ADDR(0x00226778, 0x00227608)  /* call */
@@ -103,6 +114,7 @@ DES_REGION_ADDR(0x00273D38, 0x00274BE0)  /* hook des_move_post */
 DES_REGION_ADDR(0x00273D4C, 0x00274BF4)  /* return address in 0x00273D38 */
 DES_REGION_ADDR(0x0027882C, 0x002796D4)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x002802E0, 0x00281188)  /* call */
+DES_REGION_ADDR(0x0028033C, 0x002811E4)  /* hook des_coop_hook: the HP update's base, before its rates (enemy difficulty) */
 DES_REGION_ADDR(0x00280724, 0x002815CC)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x00280C78, 0x00281B20)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x00280E64, 0x00281D0C)  /* hook des_dev_hook */
@@ -110,6 +122,7 @@ DES_REGION_ADDR(0x00280F88, 0x00281E30)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x002818D0, 0x00282778)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x00286614, 0x002873EC)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x0028B224, 0x0028BFFC)  /* hook des_dev_hook */
+DES_REGION_ADDR(0x0028B228, 0x0028C000)  /* hook des_coop_hook: a hit's damage after its calculation (enemy difficulty) */
 DES_REGION_ADDR(0x002977C0, 0x00298598)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x002986B8, 0x00299488)  /* call */
 DES_REGION_ADDR(0x00299B74, 0x0029A944)  /* hook des_coop_hook: an NPC's setup after lbz r0,0xE8(r9) (a friend notes the NPCs it sets up as the host's) */
@@ -135,11 +148,17 @@ DES_REGION_ADDR(0x002A6C60, 0x002A7A38)  /* return address in 0x002A6AA8 */
 DES_REGION_ADDR(0x002A6C70, 0x002A7A48)  /* return address in 0x002A6AA8 */
 DES_REGION_ADDR(0x002A6CA8, 0x002A7A80)  /* return address in 0x002A6AA8 */
 DES_REGION_ADDR(0x002B2984, 0x002B375C)  /* hook des_coop_hook: a corpse's drop add after lwz r9,0x8C(r9) (a friend gets drops too) */
+DES_REGION_ADDR(0x002C2848, 0x002C3620)  /* hook des_coop_hook: the constructor of an NPC with a model of its own, the look a visitor's game gives it (a friend keeps the one a body's game gives) */
+DES_REGION_ADDR(0x002C32D8, 0x002C40B0)  /* hook des_coop_hook: the same in its twin */
 DES_REGION_ADDR(0x002C9600, 0x002CA3D8)  /* hook des_coop_hook: message 0x26's read (an area character's place, from the host), held after a load */
 DES_REGION_ADDR(0x002C96A8, 0x002CA480)  /* hook des_coop_hook: message 0x26's read in its loop (the same) */
 DES_REGION_ADDR(0x002C9740, 0x002CA518)  /* hook des_coop_hook: message 4's read (the area characters' states, from the host), held after a load */
 DES_REGION_ADDR(0x002C98C4, 0x002CA69C)  /* hook des_coop_hook: message 0x21's read (the area characters' states, from a member), held after a load */
 DES_REGION_ADDR(0x002C9AEC, 0x002CA8C4)  /* hook des_coop_hook: message 3's read (the area characters' places, from a member), held after a load */
+DES_REGION_ADDR(0x002CA45C, 0x002CB234)  /* hook des_coop_hook: the owned-list lookup's end (whether a character is this game's own) */
+DES_REGION_ADDR(0x002CB178, 0x002CBF50)  /* hook des_coop_hook: the area sync object's set-up for a new area */
+DES_REGION_ADDR(0x002CE440, 0x002CF218)  /* hook des_coop_hook: the area's update, after its send of message 0x21 */
+DES_REGION_ADDR(0x002CE90C, 0x002CF6E4)  /* hook des_coop_hook: the host's share-out of the area's characters */
 DES_REGION_ADDR(0x002D0EB0, 0x002D1C88)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x002D8978, 0x002D9750)  /* call */
 DES_REGION_ADDR(0x002DD368, 0x002DE140)  /* call kUseGoods */
@@ -147,6 +166,12 @@ DES_REGION_ADDR(0x002DDAA8, 0x002DE880)  /* hook des_coop_hook: a character's dr
 DES_REGION_ADDR(0x002DDADC, 0x002DE8B4)  /* hook des_coop_hook: a character's draw update, the material kind's type read (a friend draws an NPC of type 4 as the host does) */
 DES_REGION_ADDR(0x002DDB48, 0x002DE920)  /* hook des_coop_hook: a character's draw update, the draw path's type read (a friend draws an NPC of type 4 as the host does) */
 DES_REGION_ADDR(0x002DDB90, 0x002DE968)  /* hook des_coop_hook: a character's draw update, 0x0025D418's type read (a friend draws an NPC of type 4 as the host does) */
+DES_REGION_ADDR(0x002E09E4, 0x002E17BC)  /* hook des_coop_hook: a character's model update, the phantom draw path's check for type 4 (a friend's NPCs of type 4 drawn as the host draws them) */
+DES_REGION_ADDR(0x002E0A2C, 0x002E1804)  /* hook des_coop_hook: a character's model update, 0x0025D418's type read (a friend's NPCs of type 4 drawn as the host draws them) */
+DES_REGION_ADDR(0x002E0BDC, 0x002E19B4)  /* hook des_coop_hook: a character's main draw object made, the phantom draw path's check for type 4 (a friend's NPCs of type 4 made as the host makes them) */
+DES_REGION_ADDR(0x002E0C20, 0x002E19F8)  /* hook des_coop_hook: a character's main draw object made, 0x0025D418's type read (a friend's NPCs of type 4 made as the host makes them) */
+DES_REGION_ADDR(0x002E0EE0, 0x002E1CB8)  /* hook des_coop_hook: a character's draw objects' build, the phantom draw path's check for type 4 (a friend's NPCs of type 4 built as the host builds them) */
+DES_REGION_ADDR(0x002E0F28, 0x002E1D00)  /* hook des_coop_hook: a character's draw objects' build, 0x0025D418's type read (a friend's NPCs of type 4 built as the host builds them) */
 DES_REGION_ADDR(0x002E1000, 0x002E1DD8)  /* hook des_coop_hook: a character's draw objects' build, the face's type read (a friend's NPCs of type 4 get their faces) */
 DES_REGION_ADDR(0x002EC2B8, 0x002ED090)  /* call */
 DES_REGION_ADDR(0x002EDEB0, 0x002EEC88)  /* hook des_dev_hook */
@@ -156,6 +181,7 @@ DES_REGION_ADDR(0x002F5DB8, 0x002F6B90)  /* hook des_ik_rate */
 DES_REGION_ADDR(0x002FF8F0, 0x003006C8)  /* hook des_roll_dir */
 DES_REGION_ADDR(0x00300BAC, 0x00301984)  /* hook des_kick */
 DES_REGION_ADDR(0x00301C24, 0x003029FC)  /* hook des_roll_dir */
+DES_REGION_ADDR(0x0030C2DC, 0x0030D0B4)  /* hook des_net_sync */
 DES_REGION_ADDR(0x0030C330, 0x0030D108)  /* hook des_net_sync */
 DES_REGION_ADDR(0x0030C378, 0x0030D150)  /* hook des_net_sync */
 DES_REGION_ADDR(0x0030C46C, 0x0030D244)  /* hook des_net_sync */
@@ -178,6 +204,8 @@ DES_REGION_ADDR(0x003E2DF0, 0x003E3BD0)  /* hook des_sun_gate */
 DES_REGION_ADDR(0x003E6330, 0x003E7110)  /* hook des_sun_gate */
 DES_REGION_ADDR(0x003E6518, 0x003E72F8)  /* hook des_sun_gate */
 DES_REGION_ADDR(0x004117E4, 0x004125D4)  /* hook des_coop_hook: after RecvGlobalQwc's online blend (a friend plays in the host's world tendency) */
+DES_REGION_ADDR(0x00411958, 0x00412748)  /* hook des_coop_hook: the scripts' SaveRequest, past its first check (a friend's script asked for a save) */
+DES_REGION_ADDR(0x004119E0, 0x004127D0)  /* hook des_coop_hook: the same in SaveRequest_Profile */
 DES_REGION_ADDR(0x00419670, 0x0041A460)  /* call des_seamless_game (by address): the own bloodstain shown (ParamInitialize's type 0 path) */
 DES_REGION_ADDR(0x00419DCC, 0x0041ABBC)  /* hook des_coop_hook: after a load's world swap of the flags (a guest's own world kept) */
 DES_REGION_ADDR(0x00439358, 0x0043A140)  /* call des_seamless_game (by address) */
@@ -201,13 +229,19 @@ DES_REGION_ADDR(0x004C9C5C, 0x004CAA44)  /* hook des_coop_hook: the talk check a
 DES_REGION_ADDR(0x005086F8, 0x005094F0)  /* hook des_coop_hook: the event flags' set (progress kept for every player) */
 DES_REGION_ADDR(0x00508820, 0x00509618)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00508C00, 0x005099F8)  /* hook des_coop_hook: a guest's join fills its flag copies (its own world's flags kept) */
+DES_REGION_ADDR(0x00509678, 0x0050A470)  /* hook des_coop_hook: the flags' writer (a friend's own save writes its own world's flags) */
 DES_REGION_ADDR(0x0052C2D8, 0x0052D0D0)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00532108, 0x00532F00)  /* call des_seamless_game (by address): a member's P2P message read */
 DES_REGION_ADDR(0x00532358, 0x00533148)  /* call des_seamless_game (by address): the host's P2P message read */
 DES_REGION_ADDR(0x0053B31C, 0x0053C10C)  /* hook des_coop_hook: the session's leave */
+DES_REGION_ADDR(0x0053C1F8, 0x0053CFE8)  /* hook des_coop_hook: the network code's leave (OnIrregularLeaveSession), logged */
+DES_REGION_ADDR(0x0053C208, 0x0053CFF8)  /* hook des_net_script: the session's send to everyone */
+DES_REGION_ADDR(0x0053C66C, 0x0053D45C)  /* hook des_coop_hook: the send's leave, more than 1000 messages waiting, logged */
 DES_REGION_ADDR(0x0053CFE8, 0x0053DDD8)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x0053E368, 0x0053F158)  /* hook des_coop_hook: the session event dispatch's member-left case (a leave during a load taken at once) */
 DES_REGION_ADDR(0x0053EA2C, 0x0053F81C)  /* hook des_coop_hook: the session's check of a joined guest (a friend joins in either form) */
+DES_REGION_ADDR(0x0053EDAC, 0x0053FB9C)  /* hook des_coop_hook: the session update's leave, network memory under 64 KB, logged */
+DES_REGION_ADDR(0x00540A24, 0x00541814)  /* hook des_coop_hook: the send's leave, more than 1000 messages waiting, logged */
 DES_REGION_ADDR(0x00540D90, 0x00541B80)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00541B78, 0x00542968)  /* call des_seamless_game (by address): a connection's P2P message read */
 DES_REGION_ADDR(0x0054E8C0, 0x0054F6B0)  /* hook des_net_show */
@@ -228,7 +262,16 @@ DES_REGION_ADDR(0x005F7254, 0x005F7E9C)  /* hook des_cut_cam */
 DES_REGION_ADDR(0x005F72EC, 0x005F7F34)  /* hook des_cut_cam */
 DES_REGION_ADDR(0x005F7394, 0x005F7FDC)  /* hook des_cut_cam */
 DES_REGION_ADDR(0x005F743C, 0x005F8084)  /* hook des_cut_cam */
+DES_REGION_ADDR(0x00606538, 0x00607180)  /* hook des_coop_hook: a cutscene's copy, its draw object's draw path, the check for type 4 (a friend draws an NPC of type 4 as the host does) */
+DES_REGION_ADDR(0x0060657C, 0x006071C4)  /* hook des_coop_hook: a cutscene's copy, its draw object's draw path, 0x0025D418's type read (a friend draws an NPC of type 4 as the host does) */
+DES_REGION_ADDR(0x00608F04, 0x00609B4C)  /* hook des_coop_hook: a cutscene's copy of a character set up, the +0x6C draw object's phantom material (0x000DC6E0) (a friend draws an NPC of type 4 as the host does) */
+DES_REGION_ADDR(0x00608F38, 0x00609B80)  /* hook des_coop_hook: a cutscene's copy of a character set up, the +0x6C draw object's material kind (0x000DC9C8) (a friend draws an NPC of type 4 as the host does) */
+DES_REGION_ADDR(0x00609020, 0x00609C68)  /* hook des_coop_hook: a cutscene's copy of a character set up, the draw path's check for type 4 (a friend draws an NPC of type 4 as the host does) */
+DES_REGION_ADDR(0x00609068, 0x00609CB0)  /* hook des_coop_hook: a cutscene's copy of a character set up, 0x0025D418's type read (a friend draws an NPC of type 4 as the host does) */
 DES_REGION_ADDR(0x00609338, 0x00609F80)  /* hook des_coop_hook: a cutscene's copy of a character set up (its glow and colour) */
+DES_REGION_ADDR(0x0060936C, 0x00609FB4)  /* hook des_coop_hook: a cutscene's copy of a character set up, the +0x70 draw object's material kind (0x000D81D0) (a friend draws an NPC of type 4 as the host does) */
+DES_REGION_ADDR(0x00609828, 0x0060A470)  /* hook des_coop_hook: a cutscene's copy, its model made, the check for type 4 (a friend draws an NPC of type 4 as the host does) */
+DES_REGION_ADDR(0x0060986C, 0x0060A4B4)  /* hook des_coop_hook: a cutscene's copy, its model made, 0x0025D418's type read (a friend draws an NPC of type 4 as the host does) */
 DES_REGION_ADDR(0x006A2E8C, 0x006A3A9C)  /* hook des_noise_rate */
 DES_REGION_ADDR(0x006A3990, 0x006A45A0)  /* hook des_noise_rate */
 DES_REGION_ADDR(0x00718D84, 0x00719994)  /* hook des_hud_canvas */
@@ -393,6 +436,7 @@ DES_REGION_ADDR(0x019B5040, 0x019B5270)  /* data kToc, the TOC base (r2) */
 DES_REGION_ADDR(0x019D8C88, 0x019D8F08)  /* data kLanguageIndex */
 DES_REGION_ADDR(0x01AD6298, 0x01AD6518)  /* data kFlipModeObj */
 DES_REGION_ADDR(0x01AD62C8, 0x01AD6548)  /* data kStepHeap */
+DES_REGION_ADDR(0x01AD62E8, 0x01AD6568)  /* data kNetPool, the game's network memory */
 DES_REGION_ADDR(0x01AD6358, 0x01AD65D8)  /* data kLocalBase */
 DES_REGION_ADDR(0x01AD6498, 0x01AD6718)  /* data kArenaDebug */
 DES_REGION_ADDR(0x01AD6530, 0x01AD67B0)  /* data kArenaTemp */

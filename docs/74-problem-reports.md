@@ -30,9 +30,9 @@ Code:
 | `environment.txt` | the command line and every port or runtime option set in the environment (`DES_`, `PS3_`, `RSX_`, `SPU_`, `SPURS_`, `GCM_`, `PAD_`, `PPU_`, `AUDIO_`, `VBLANK`, `FIFO_`, `LIBSRE_`, `SAIL_`, `TROPHY_`, `WATCHDOG_`) |
 | `runtime.txt` | the runtime's snapshot (below), sampled over 2 s |
 | `des.log` | the first 120 lines of the log and its last 512 KB |
-| `des.prev.log` | the end of the previous run's log, when that run was in the last 24 h: a freeze or crash the player restarted after |
+| `des.prev.log` to `des.prev4.log` | the end of each of the four runs' logs before it (192 KB of the last, 128 KB of the others), those from the last 24 h: a freeze or crash the player restarted after, and a friend's Leave co-op, which starts the game again twice |
 | `coop.log` | this run's co-op log (below), whole up to its last 4 MB, when the run had co-op |
-| `coop.prev.log` | the co-op log before it, when it is from the last 24 h: a session the player restarted after |
+| `coop.prev.log` to `coop.prev4.log` | the four co-op logs before it (1 MB of the last, 512 KB of the others), those from the last 24 h: sessions the player restarted after |
 | `save/<folder>/...` | the player's save (`report::save_files`): each save folder in the game's save root (`PS3_SAVEDATA_ROOT`, else `gamedata/dev_hdd0/home/00000001/savedata`, as `cellSaveData.c` finds it). Every file except the folder's two pictures (`ICON0.PNG`, `PIC1.PNG`: the game's art, and a save loads without them) and a file the runtime is still writing (`.<name>.tmp`). If the game saved while it was read, it is read again, up to twice, half a second apart. At most 8 MB a file and 32 MB in all; a Demon's Souls save is ten 256 KB files |
 
 To load a reported save, put its folder in a save root of its own and start
@@ -115,8 +115,8 @@ network, the router and the reports made meanwhile.
 - The game's threads do nothing more: the tee threads pick the lines out of
   what they read anyway. A line cut between two reads waits for its end.
 - It is made at the run's first co-op line, so a run without co-op leaves the
-  last session's file as it was. The one before it is kept as
-  `coop.prev.log`. Another copy of the game running at the same time writes
+  last session's file as it was. The four before it are kept as
+  `coop.prev.log` to `coop.prev4.log`, newest first. Another copy of the game running at the same time writes
   `coop.<process>.log`, as it writes `des.<process>.log`.
 - It stops at 32 MB, with a note (`des.log` goes on).
 - What co-op adds to it (`des_seamless_game.cpp`):

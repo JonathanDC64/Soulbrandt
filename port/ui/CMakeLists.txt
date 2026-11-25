@@ -127,20 +127,30 @@ endif()
 # PRIVATE: nothing of RmlUi's (include paths, definitions) reaches des_boot's
 # compile lines, only its link line.
 if(WIN32)
-  target_link_libraries(des_ui PRIVATE des_rmlui_backend RmlUi::RmlUi d3d11 d3d12 d3dcompiler dxgi dxguid xinput shell32
+  target_link_libraries(des_ui PRIVATE des_rmlui_backend RmlUi::RmlUi d3d11 d3d12 d3dcompiler dxgi dxguid shell32
     ole32 user32 dbghelp uuid wevtapi winhttp setupapi)   # (dbghelp: the crash reports' minidump and stack; wevtapi:
                                                           # driver resets; winhttp: the first Python with no curl,
                                                           # setup_http.cpp; setupapi: the GPU's PCI Express link)
 else()
-  # SDL2 and vkd3d as port/CMakeLists.txt found them (the window, the pads, D3D12 and D3DCompile).
+  # vkd3d as port/CMakeLists.txt found it (D3D12 and D3DCompile). SDL3's headers: the window, the keys and the mouse
+  # are the runtime's SDL3, which the runtime's build names (ps3recomp_runtime_deps.cmake) and des_boot links with it.
+  # A UI built alone (CI's, no runtime beside it) takes the headers of the same pinned release, nothing built.
   if(NOT TARGET PkgConfig::DES_VKD3D_LIBS)
     message(FATAL_ERROR "The wrapper UI off Windows draws through vkd3d: configure with DES_VKD3D=ON (or DES_UI=OFF)")
   endif()
-  if(TARGET SDL2::SDL2)
-    target_link_libraries(des_ui PRIVATE SDL2::SDL2)
+  if(PS3RECOMP_SDL3_INCLUDE_DIRS)
+    target_include_directories(des_ui PRIVATE ${PS3RECOMP_SDL3_INCLUDE_DIRS})
   else()
-    target_include_directories(des_ui PRIVATE ${SDL2_INCLUDE_DIRS})
-    target_link_libraries(des_ui PRIVATE ${SDL2_LIBRARIES})
+    if(NOT EXISTS "${PS3RECOMP_DIR}/cmake/sdl3_dep.cmake")
+      message(FATAL_ERROR "The wrapper UI off Windows needs SDL3's headers: a runtime build, or PS3RECOMP_DIR with "
+                          "cmake/sdl3_dep.cmake (now '${PS3RECOMP_DIR}')")
+    endif()
+    include("${PS3RECOMP_DIR}/cmake/sdl3_dep.cmake")
+    # (Headers only: SDL is configured but never built here, so it needs no window back end's headers, which SDL's
+    # configure otherwise demands.)
+    set(SDL_UNIX_CONSOLE_BUILD ON)
+    ps3recomp_sdl3_available()
+    target_link_libraries(des_ui PRIVATE $<BUILD_INTERFACE:SDL3::Headers>)
   endif()
   # (CMAKE_DL_LIBS: dlopen, for the folder dialog's libdbus, loaded only when the dialog opens; folder_picker.cpp)
   target_link_libraries(des_ui PRIVATE RmlUi::RmlUi PkgConfig::DES_VKD3D_LIBS ${CMAKE_DL_LIBS})
@@ -292,6 +302,15 @@ add_executable(report_addresses_check EXCLUDE_FROM_ALL tests/report_addresses_ch
 target_include_directories(report_addresses_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 if(MSVC)
   target_compile_options(report_addresses_check PRIVATE /EHsc /W3)
+endif()
+
+# log_runs.hpp on its own (tests/log_runs_check.cpp): the runs the logs keep (des.log and coop.log, and the four before
+# each). CI runs it on both (host.yml). Built on demand:
+#   cmake --build <build> --target log_runs_check, then log_runs_check
+add_executable(log_runs_check EXCLUDE_FROM_ALL tests/log_runs_check.cpp)
+target_include_directories(log_runs_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+if(MSVC)
+  target_compile_options(log_runs_check PRIVATE /EHsc /W3)
 endif()
 
 # shader_cache.cpp on its own (tests/shader_cache_check.cpp): the menus' shaders kept compiled between starts. A stored

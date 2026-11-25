@@ -20,12 +20,15 @@ Two labels are used below:
 
 > **Built (2026-11-18): Change Tendency at the Nexus statue**, `DES_TENDENCY`, off by default (section 1.12). Each world's tendency, and the character's, can be set to Pure White, White, Neutral, Black or Pure Black.
 
+> **Built (2026-11-20): crystal lizards that get away come back**, `DES_LIZARD_RETURN`, off by default (section 7). A crystal lizard that gets away is back the next time its area loads, without using up one of its returns. Only a kill uses one.
+
 ## Summary
 
 | Feature | Verdict | Effort |
 |---|---|---|
 | Change Appearance | **Built** (section 1.10): `DES_APPEARANCE` adds a row to the statue's menu that opens Edit Appearance. Keeping the changes reloads the Nexus. | Done. |
 | Change Tendency | **Built** (section 1.12): `DES_TENDENCY` adds a row to the statue's menu. It lists the worlds with their levels now, or the character, then the five levels; YES sets the value and saves. | Done. |
+| Crystal lizards that get away | **Built** (section 7): `DES_LIZARD_RETURN` makes a crystal lizard that gets away come back at its area's next load, without using up a return. A kill uses one, as before. | Done. |
 | Change Name and Change Body | **Built** (section 1.11): `DES_IDENTITY`, with `DES_APPEARANCE`, adds both rows. The name goes through the on-screen keyboard. A new body takes off worn armour made only for the other body, opens Edit Appearance, then the Nexus reloads. | Done. |
 | Stat respec | **Built** (section 1.9): `DES_RESPEC` makes the statue in front of the Nexus spawn open a menu whose Respecialization resets to the class, refunds the levels and opens the level-up screen. The Maiden in Black's menu has the same row after Seek Soul Power. | Done. No on-screen prompt at the statue yet. |
 | Use several souls at once | **Built** (section 2.5): `DES_SOULS_AT_ONCE` makes Use on a soul stack ask how many, in Drop's count picker. | Done. |
@@ -792,6 +795,52 @@ Steps 1 and 3 change the save (one level bought, one soul item used). Use the pi
 **4. Diagonal walk while locked on.**
 - Do: locked on, walk up-left and down-right for a few seconds each.
 - Log: whether the legs turn toward the movement, or the character crab-walks with one of four walk cycles.
+
+## 7. Crystal lizards that get away
+
+Asked for on 2026-11-19: an option, off by default, so that a crystal lizard's count goes down only when it is killed, not when it gets away. Built as `DES_LIZARD_RETURN` (Settings > Game > Items, "Escaped crystal lizards come back").
+
+### 7.1 How the game counts them (read, in `global_event.lua`)
+
+- Each area's script sets up each of its crystal lizards with `RegistTokage`. A lizard has an event flag (1-1's first lizard: flag 120) and a count of returns.
+- `RegistTokage` watches for two things, and both call the area's `OnEvent_<flag>`:
+  - the lizard's death;
+  - its EzState message 1000, sent when it burrows away.
+- That handler sets the flag and removes both watches.
+- At each load, in the host's game only: a lizard whose flag is set comes back if it has a return left. The flag is cleared and the count goes down one. With no return left it stays gone.
+- Each boss killed in a world gives each of that world's lizards one return (`ResetTokage`).
+- So in the original game, getting away uses up a return just as a kill does.
+
+### 7.2 The option
+
+- The game's scripts are text, read when the game loads them. `des_seamless_script` (`port/des_seamless_scripts.cpp`) already makes co-op's edits there. The option adds one edit, made with or without co-op: `edit_lizards`.
+- The edit changes only the escape's watch. It calls a handler of its own, which removes the watches and leaves the flag clear. At the next load the lizard is there, and its returns are as they were. A kill works as before.
+- The new watch is registered between `NotNetMessage_begin` and `_end`. Each game handles an escape it sees itself, so another player's game never runs a handler it may not have.
+- If the script isn't as expected, nothing is edited, the lizards work as in the original game, and the log says so. The log line with the option on is `[des] crystal lizards: one that gets away comes back at the next load (DES_LIZARD_RETURN)`.
+- The setting applies at the next load: the game reads `global_event.lua` again at each area load (section 7.3).
+- **In co-op:** what counts is the host's world, and only the host's game changes the count. With a friend in the host's world whose option is off, the friend's game still treats an escape it sees in the original way, and that can reach the host's game and use up a return (inferred, not tested).
+
+### 7.3 Test (2026-11-20)
+
+One copy of the game, offline, from the pinned regression save (a new character), with 1-1's first lizard (entity 250, flag 120, at -15.6, 18.9, -105.7). A test driver:
+1. loads 1-1 and stands 3 m from the lizard for 60 s, so it gets away;
+2. kills every enemy within 1,000 m (`DES_KILLALL`);
+3. loads 1-1 again and kills every enemy;
+4. does the same a third time.
+
+`DES_FLAGWATCH=120` logs the flag.
+
+| Step | Option off (the original game) | Option on |
+|---|---|---|
+| By the lizard | flag 120 set 35 s after arriving: it got away | flag 120 stays clear |
+| Kill all, first load | 318 killed; the lizard isn't one, it had gone | 318 killed, the same |
+| Second load | flag cleared at the load: a return used. Kill all: 310, and flag 120 set, so the lizard was back and died | flag already clear: no return used. Kill all: 310, and flag 120 set |
+| Third load | flag cleared again: a second return used | flag cleared: one return used, for the kill |
+
+- So the lizard came back both times either way, since this save's lizard had returns left. With the option off it used two returns, one for getting away and one for the kill. With it on it used one, for the kill.
+- The count itself wasn't read; the flag's clears at the loads show the returns used.
+- Turning the option on during play (off at the start, on after 1-1 loaded, then 1-1 loaded again) made the edit at that next load.
+- No script error in any run.
 
 ## Appendix: addresses
 

@@ -1,6 +1,6 @@
 # Choosing the controller (2026-11-02)
 
-With more than one gamepad connected, Settings > Controls > **Controller** picks the one the game reads. Automatic, the default, keeps the rule from before.
+With more than one gamepad connected, Settings > Controls > **Controller** picks the one the game reads. Automatic, the default, follows the gamepad used last (section 5, since 2026-11-24).
 
 ## 1. Why
 
@@ -53,3 +53,16 @@ The list is read when the row is drawn, at most twice a second, since naming an 
   - `PAD_CONTROLLER=controller2`: "isn't connected", and the ports were unchanged.
 - **`regress.sh`**: 4 of 4 shots ok.
 - **Not tested here:** real pads, since test runs never read the user's controllers. Neither is the row's look.
+
+## 5. Automatic follows the gamepad used last (2026-11-24)
+
+With a Switch Pro controller and a DualSense both connected, Automatic let only the Pro controller play: SDL found it first, so it was port 0, and the DualSense (read over HID, on the next empty port) did nothing in the game. The button icons stayed the Pro controller's too, since they come from port 0's pad. The menus took both pads, which made it look as if switching worked.
+
+- **Measured:** the game reads only port 0. With both pads connected, `PAD_TRACE=1` counted about 1,000 reads a second on port 0 and none on port 1.
+- **The knob (ps3recomp `cellPad.c`):** `PAD_FOLLOW=1`. With `PAD_CONTROLLER` on auto, the pad used last swaps onto port 0 after each poll, with its device, so its vibration and button icons go with it. The rule is `pad_controller_follow` in `pad_controller.h`, with cases in `test_pad_controller`.
+  - **Used** means a button, a stick past about a third of its way, or a trigger past a quarter. A resting or slightly worn stick doesn't take it.
+  - **Two pads held at once:** the one that plays keeps it until it lets go, so they don't trade places every poll.
+  - **Nothing moves** while the host or the background holds the pads (`PAD_FOCUS_ONLY`).
+  - **The log** says each change: `[cellPad] PAD_FOLLOW: playstation1 plays (port 0, found on port 1)`.
+  - **Off by default in ps3recomp:** a title with a pad for each player must keep them on their own ports.
+- **The port** turns it on (`run_defaults`, `port/des_options.cpp`). A pad picked by name in the row still plays alone, as before.

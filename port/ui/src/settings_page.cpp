@@ -32,15 +32,19 @@ namespace {
 
 // Where Settings was when it last closed, so it opens there again while the game runs (from the F1 menu, the start
 // screen or setup alike): the tab shown, and on each tab the row with the focus, by its label, as rows come and go (a
-// disc's Language).
+// disc's Language). Co-op's settings on their own keep a place of their own.
 struct Place {
     int tab = 0;
     std::vector<std::string> rows;  // per tab; "" for its first row
 };
 
-Place& last_place() {
-    static Place place;
-    return place;
+Place& last_place(SettingsPage::Scope scope) {
+    static Place place, coop;
+    return scope == SettingsPage::Scope::Coop ? coop : place;
+}
+
+const std::vector<catalog::TabDesc>& tabs_of(SettingsPage::Scope scope) {
+    return scope == SettingsPage::Scope::Coop ? catalog::coop_tabs() : catalog::tabs();
 }
 
 using catalog::RowDesc;
@@ -175,12 +179,13 @@ void set_px(Rml::Element* e, Rml::PropertyId id, float px) {
 
 }  // namespace
 
-SettingsPage::SettingsPage(Rml::Element* host, menu::PageHost& shell)
-    : mHost(host), mShell(shell), mModel(static_cast<int>(catalog::tabs().size())) {
+SettingsPage::SettingsPage(Rml::Element* host, menu::PageHost& shell, Scope scope)
+    : mHost(host), mShell(shell), mScope(scope), mCatalog(tabs_of(scope)), mModel(static_cast<int>(mCatalog.size())) {
     for (const settings::Def& d : settings::defs()) mOpened[d.key] = settings::get(d.key);
     mModel.set_help_key(!looks::current().helpPane);  // (and each frame: the look can change while the page shows)
 
     mTabs = append(mHost, "menu-tabs");
+    if (mCatalog.size() < 2) set_display(mTabs, Rml::Style::Display::None);  // (one tab: no bar to change it)
     Rml::Element* body = append(mHost, "menu-body");
     mRows = append(body, "menu-rows");
     mHelp = append(body, "menu-help");
@@ -215,9 +220,9 @@ SettingsPage::SettingsPage(Rml::Element* host, menu::PageHost& shell)
             e.StopPropagation();
         }, true));
     }
-    const Place& place = last_place();
+    const Place& place = last_place(mScope);
     mPlaceRows = place.rows;
-    mPlaceRows.resize(catalog::tabs().size());
+    mPlaceRows.resize(mCatalog.size());
     mModel.set_tab(place.tab);
     build_tab();
 }
@@ -236,7 +241,7 @@ void SettingsPage::listen(Rml::Element* element, Rml::EventId event, std::functi
 
 std::vector<const RowDesc*> SettingsPage::visible_rows(int tab) const {
     std::vector<const RowDesc*> out;
-    const std::vector<catalog::TabDesc>& tabs = catalog::tabs();
+    const std::vector<catalog::TabDesc>& tabs = mCatalog;
     if (tab < 0 || tab >= static_cast<int>(tabs.size())) return out;
     for (const catalog::SectionDesc& s : tabs[tab].sections)
         for (const RowDesc& r : s.rows)
@@ -260,8 +265,8 @@ void SettingsPage::build_tab() {
     mHelpShown.clear();
 
     // The tab bar: the tabs, between the buttons that change them.
-    if (mTabElems.empty()) {
-        const std::vector<catalog::TabDesc>& tabs = catalog::tabs();
+    if (mTabElems.empty() && mCatalog.size() > 1) {
+        const std::vector<catalog::TabDesc>& tabs = mCatalog;
         append(mTabs, "menu-tab-key")->SetClass("prev", true);
         for (size_t t = 0; t < tabs.size(); t++) {
             Rml::Element* e = append_text_element(mTabs, "menu-tab", tabs[t].title);
@@ -274,7 +279,7 @@ void SettingsPage::build_tab() {
         mGlyphsDrawn = false;
     }
 
-    const catalog::TabDesc& tab = catalog::tabs()[mBuiltTab];
+    const catalog::TabDesc& tab = mCatalog[mBuiltTab];
     for (const catalog::SectionDesc& s : tab.sections) {
         bool heading = !s.title.empty() && (!s.when || s.when());
         const size_t bracket = mBrackets.size();
@@ -1002,9 +1007,9 @@ void SettingsPage::closing() {
     settings::save();
 
     // Where it is now, to open there next time: a tab not shown since keeps the row it was to get.
-    Place& place = last_place();
+    Place& place = last_place(mScope);
     place.tab = mModel.tab();
-    place.rows.assign(catalog::tabs().size(), std::string());
+    place.rows.assign(mCatalog.size(), std::string());
     for (size_t t = 0; t < place.rows.size(); t++) {
         if (t < mPlaceRows.size() && !mPlaceRows[t].empty()) {
             place.rows[t] = mPlaceRows[t];
@@ -1017,11 +1022,12 @@ void SettingsPage::closing() {
 }
 
 void SettingsPage::forget_place() {
-    last_place() = Place{};
+    last_place(Scope::All) = Place{};
+    last_place(Scope::Coop) = Place{};
 }
 
 bool SettingsPage::show_tab(const std::string& title) {
-    const std::vector<catalog::TabDesc>& tabs = catalog::tabs();
+    const std::vector<catalog::TabDesc>& tabs = mCatalog;
     for (size_t t = 0; t < tabs.size(); t++)
         if (tabs[t].title == title) {
             mModel.set_tab(static_cast<int>(t));

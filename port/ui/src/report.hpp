@@ -63,13 +63,18 @@ std::string redact(std::string text);
 std::string redact_log(std::string text);
 
 // Sends this process's standard output and error to logs\des.log in the data folder as well as where they went (the
-// previous run's log is kept as des.prev.log). Called once, before main() (crash_report.cpp). Nothing without a data
-// folder.
+// four runs before it are kept as des.prev.log to des.prev4.log, newest first). Called once, before main()
+// (crash_report.cpp). Nothing without a data folder.
 void start_log();
+#ifndef _WIN32
+// Where descriptor 1 or 2 went before start_log took it over (a descriptor of its own, closed when a program is
+// started), -1 when nowhere that still reads it, or `fd` itself when start_log hasn't taken it over.
+int original_output(int fd);
+#endif
 std::filesystem::path log_path();
 // The co-op log, logs\coop.log beside des.log: the session's lines of the log ([coop], the rooms, matching, the
-// network, the router, reports), each with its time (UTC). Made at this run's first such line; the one before it is
-// kept as coop.prev.log. Its path once this run made it, else empty.
+// network, the router, reports), each with its time (UTC). Made at this run's first such line; the four before it are
+// kept as coop.prev.log to coop.prev4.log. Its path once this run made it, else empty.
 std::filesystem::path coop_log_path();
 // Waits (briefly) until what was printed so far is in the log file (a crash, before reading the log).
 void flush_log();
@@ -133,10 +138,10 @@ void flip_hook();
 //   settings.ini    every setting, with its default where it differs, and those set in the environment
 //   environment.txt environment_info()
 //   runtime.txt     the runtime's snapshot: what every thread is doing (ps3_diag_report, 2 s of sampling)
-//   des.log         the log's start and its last 512 KB; des.prev.log the end of the previous run's (a freeze or
-//                   crash the player restarted after), when it is from the last day
-//   coop.log        this run's co-op log whole (its last 4 MB at most); coop.prev.log the session before it, when it
-//                   is from the last day
+//   des.log         the log's start and its last 512 KB; des.prev.log to des.prev4.log the ends of the four runs
+//                   before it (a freeze or crash the player restarted after), those from the last day
+//   coop.log        this run's co-op log whole (its last 4 MB at most); coop.prev.log to coop.prev4.log the four
+//                   sessions before it, those from the last day
 //   save/...        the player's save (save_files)
 // Nothing of the game's files or memory: names, numbers, settings, the log and the save only.
 void send_issue_report(void* back_buffer, unsigned index, int width, int height, std::string session);

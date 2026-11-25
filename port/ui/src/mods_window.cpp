@@ -128,8 +128,8 @@ private:
                   "<mod-check><icon class=\"" + std::string(on ? "check-box" : "check-box-blank") +
                   "\"/></mod-check><mod-text><mod-name>" + escape(m.name) + "</mod-name>";
             if (m.kind == mods::Kind::Gameplay) {
-                rml += "<mod-line class=\"gameplay\"><icon class=\"warning\"/>Changes how the game plays. You play "
-                       "offline while it's on.</mod-line>";
+                rml += "<mod-line class=\"gameplay\"><icon class=\"warning\"/>" + escape(mods_gameplay_line()) +
+                       "</mod-line>";
             } else {
                 rml += "<mod-line>Changes how the game looks or sounds.</mod-line>";
             }
@@ -254,9 +254,10 @@ void ModsWindow::render_summary() {
         rml += "<summary-note class=\"warning\"><icon class=\"mods-restart\"/>Restart the game to use your changes."
                "</summary-note>";
     }
-    if (mods::gameplay_in_use()) {
-        rml += "<summary-note class=\"offline\"><icon class=\"mods-offline\"/>Playing offline: a mod that changes how "
-               "the game plays is on (" + escape(mods::gameplay_names()) + ").</summary-note>";
+    bool offline = false;
+    if (const std::string note = mods_gameplay_note(&offline); !note.empty()) {  // (offline, or in co-op: a note)
+        rml += std::string("<summary-note class=\"") + (offline ? "offline" : "info") + "\"><icon class=\"" +
+               (offline ? "mods-offline" : "mods-info") + "\"/>" + escape(note) + "</summary-note>";
     }
     rml += "</summary-text>";
     mSummary->SetInnerRML(rml);

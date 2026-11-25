@@ -13,6 +13,7 @@
 // - Drawing takes tens of milliseconds, so it happens on this module's thread; the game's page (or the last one drawn)
 //   shows until the new one is ready. Up to six drawn pages are kept, so switching back is at once.
 #include "button_icons.hpp"
+#include "path_utf8.hpp"
 
 #include "button_pages.hpp"
 #include "controls_window.hpp"
@@ -121,8 +122,7 @@ std::vector<bp::Page> load_pages() {
     for (const fs::path& d : dirs) {
         std::vector<uint8_t> ccm, tpf;
         if (!read_file(d / "dsfont24.ccm", ccm) || !read_file(d / "dsfont24.tpf", tpf)) continue;
-        const std::u8string name = d.filename().u8string();
-        const std::string from = d == fonts ? "font" : "font/" + std::string(name.begin(), name.end());
+        const std::string from = d == fonts ? "font" : "font/" + path_utf8(d.filename());
         for (bp::Page& p : bp::read_font(ccm, tpf, from)) {
             const bool again = std::any_of(out.begin(), out.end(), [&](const bp::Page& q) { return q.data == p.data; });
             if (!again) out.push_back(std::move(p));
@@ -269,14 +269,16 @@ bp::Spec make_spec(int device) {
     const int percent = std::atoi(value("RSX_SCALE").c_str());
     s.scale = std::clamp((percent + 99) / 100, 1, 4);
     for (int i = 0; i < 16; i++) s.pad_map[i] = i;
-    // PAD_MAP: "game=pad" pairs, as cellPad reads them.
+    // PAD_MAP: "game=pad" pairs, as cellPad reads them. A pad side naming more than one ("r1=r1|square", the Kick's
+    // button added to R1: settings.cpp's map_for_pad) shows the first, the game button's own.
     const std::string map = value("PAD_MAP");
     for (size_t at = 0; at < map.size();) {
         size_t end = map.find_first_of(", ;", at);
         if (end == std::string::npos) end = map.size();
         const std::string pair = map.substr(at, end - at);
         if (const size_t eq = pair.find('='); eq != std::string::npos) {
-            const int game = pad_index(pair.substr(0, eq)), pad = pad_index(pair.substr(eq + 1));
+            const std::string pad_side = pair.substr(eq + 1);
+            const int game = pad_index(pair.substr(0, eq)), pad = pad_index(pad_side.substr(0, pad_side.find('|')));
             if (game >= 0 && pad >= 0) s.pad_map[game] = pad;
         }
         at = end + 1;

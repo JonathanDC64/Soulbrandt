@@ -70,16 +70,97 @@ menu {
 }
 
 hero {
+    position: relative;  /* (the sword's box over the logo: start-sword#sword-logo) */
     display: flex;
     flex-direction: column;
     align-items: flex-start;
     gap: var(--space-md);
 }
 
+/* The sword (a prototype, start_sword.hpp): one of the game's swords, large and moving, drawn by render_gpu.cpp from
+   the decorator prelaunch.cpp gives one of these. #sword-window is over the window, under the vignette, so the smoke
+   and the corners darken round it; #sword-logo is over the logo, under its letters and its flame. */
+start-sword {
+    display: block;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    decorator: none;
+}
+
+/* The column down the middle (start_sword.cpp's column look): the sword and its soul flame, the top 8% the flame's
+   room. Wide enough for the sword's guard, its halo and the flame's sway; it floats up and down a little, slowly. */
+start-sword#sword-column {
+    left: 50%;
+    width: 300dp;
+    margin-left: -150dp;
+    animation: 6s sine-in-out infinite alternate sword-float;
+}
+
+@keyframes sword-float {
+    from { transform: translateY(-6dp); }
+    to { transform: translateY(6dp); }
+}
+
+/* Behind the choices (start_sword.cpp's crossed look): 680 x 400 dp (start_sword.cpp's kMenuCross and kMenuTips are fractions of it), centred across the
+   choices, its top 145 dp above their middle: 20 dp above the first of six, so nothing in it reaches the logo (30 dp
+   above them). The rest is room round the swords for their halo and flames. The choices are positioned too, so they
+   draw over it. */
+menu-list {
+    position: relative;
+}
+
+#menu-list button {
+    position: relative;
+}
+
+start-sword#sword-menu {
+    left: 50%;
+    top: 50%;
+    width: 680dp;
+    height: 400dp;
+    margin-left: -340dp;
+    margin-top: -145dp;
+    animation: 6s sine-in-out infinite alternate sword-float-small;
+}
+
+/* Beside the title (start_sword.cpp's look 2): the sword's middle line 30 dp past the title's right, the top 80 dp
+   above the title's for the flame, 160 x 276 dp for a title 156 dp high (DeS UI's, looks/des.rcss). This look's title
+   is 280 x 99 dp, so all of it is 0.635 as large. */
+start-sword#sword-title {
+    left: 248dp;
+    top: -51dp;
+    width: 102dp;
+    height: 175dp;
+}
+
+@keyframes sword-float-small {
+    from { transform: translateY(-4dp); }
+    to { transform: translateY(4dp); }
+}
+
+body.still start-sword#sword-column,
+body.still start-sword#sword-menu {
+    animation: none;
+}
+
+/* Which look it is, at the top left (the prototype's: keys pick another). */
+sword-label {
+    display: block;
+    position: absolute;
+    left: 24dp;
+    top: 18dp;
+    font-size: 17dp;
+    color: #a8927a;
+}
+
 /* The name as its logo: white letters on clear, 1320 x 468 (assets/brand/ has the full-size one). Width over height
    stays 2.82, so the letters keep their shape. 99 dp high, 40 more than the name's line was, so the last choice
    still clears the hint below. */
 hero title-logo {
+    position: relative;  /* (drawn after the sword behind it: positioned boxes draw in the document's order) */
     display: block;
     width: 280dp;
     height: 99dp;

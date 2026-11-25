@@ -7,10 +7,11 @@ set(CMAKE_C_STANDARD 17)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Off Windows the UI draws through D3D12 on vkd3d in an SDL window (docs/76): found here the way
-# port/CMakeLists.txt finds them for des_boot.
+# Off Windows the UI draws through D3D12 on vkd3d in the runtime's SDL3 window (docs/76): vkd3d found here the way
+# port/CMakeLists.txt finds it for des_boot, and SDL3's headers from the pinned ps3recomp's cmake/sdl3_dep.cmake
+# (PS3RECOMP_DIR, which ci.yml checks out first).
 if(NOT WIN32)
-  find_package(SDL2 REQUIRED)
+  set(PS3RECOMP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../ps3recomp" CACHE PATH "the pinned ps3recomp")
   find_package(PkgConfig REQUIRED)
   pkg_check_modules(DES_VKD3D_LIBS REQUIRED IMPORTED_TARGET libvkd3d libvkd3d-utils)
 endif()

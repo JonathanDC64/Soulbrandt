@@ -1,8 +1,9 @@
 # 112. The game's own models in the UI: the sword cursor and the crystal lizard
 
 Date: 2026-10-27. Status: first version, for the user to try.
-- While a menu is open, the mouse cursor is one of the game's swords, the **Large Sword of Moonlight** unless the
-  player picks another: the game's own model, drawn live in 3D, with a soft glow about it. Its tip is the cursor's point.
+- While a menu is open, the mouse cursor is one of the game's swords, **Soulbrandt** unless the player picks another:
+  the game's own model, drawn live in 3D, with a soft glow about it. Its tip is the cursor's point. Until 0.2.0 it was
+  the Large Sword of Moonlight, and players from then keep it (section 1.1).
 - The **crystal lizard** dances in the bottom right corner while a menu is open, turning round slowly (once in
   12 s), and it twinkles: its gems flash and star glints come and go on it. That place is for now. In a document it
   is one line of RCSS (section 5).
@@ -20,7 +21,7 @@ set from outside).
 | Knob | Default | What it does |
 |---|---|---|
 | `DES_CURSOR3D` | `1` | `0`: the system's arrow, as before. Its row is Sword cursor. |
-| `DES_CURSOR_SWORD` | `moonlight` | Which sword (section 1.1). Its row is Cursor sword. |
+| `DES_CURSOR_SWORD` | `soulbrandt` | Which sword (section 1.1). Its row is Cursor sword. |
 | `DES_CURSOR_SIZE` | `64` | The sword's length, in dp (the UI's units: pixels at 96 DPI, times the UI scale). Its row is Cursor size. |
 | `DES_CURSOR_SPIN` | `0` | A slow turn about the blade, in degrees a second (`20` is one turn in 18 s). |
 | `DES_CURSOR_GLOW` | `1` | `0`: no glow about the blade (section 4.1). |
@@ -43,8 +44,8 @@ If the game's files are not there, or a model does not read, the log says so onc
 
 | `DES_CURSOR_SWORD` | The sword | File in `parts/` | Brightened | Its glow |
 |---|---|---|---|---|
+| `soulbrandt` | Soulbrandt (the default) | `wp_a_0251` | 2.6 times | pale blue |
 | `moonlight` | Large Sword of Moonlight | `wp_a_0258` | no | pale blue, about the blade |
-| `soulbrandt` | Soulbrandt | `wp_a_0251` | 2.6 times | pale blue |
 | `demonbrandt` | Demonbrandt | `wp_a_0254` | no | red |
 | `regalia` | Northern Regalia | `wp_a_0253` | 1.7 times | pale blue |
 | `stormruler` | Storm Ruler | `wp_a_0256` | 1.5 times | blue |
@@ -55,6 +56,10 @@ If the game's files are not there, or a model does not read, the log says so onc
   (`Look::glow_whole`). In the game these are lit by their surroundings, and with this UI's plain light Soulbrandt
   is near black, so the opaque meshes can be brightened (`Look::solid`, multiplied in as the blended meshes' tint is).
   The numbers were picked by eye against a dark and a light background.
+- **The default is Soulbrandt since 0.2.0** (the sword the port is named for); before, it was the moonlight. Setup
+  writes every setting into `settings.ini`, so a player from before keeps `moonlight`, and a `settings.ini` with no
+  `DES_CURSOR_SWORD` line (from before the row, or edited) reads as `moonlight` too (`settings.cpp`'s `load_file`).
+  Only a new player, with no `settings.ini` yet, gets Soulbrandt. A name that is no sword is the first of the list.
 
 ## 2. Where the models come from
 

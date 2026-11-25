@@ -147,8 +147,10 @@ std::vector<prompts::Prompt> SettingsModel::prompts(std::span<const RowFacts> ro
         out.push_back({Key::Back, "Back"});
         break;
     case Mode::Rows:
-        out.push_back({Key::PrevTab, "", "tabs"});  // (one prompt with the next: L1 R1 Tabs)
-        out.push_back({Key::NextTab, "Tabs", "tabs"});
+        if (mFocus.size() > 1) {  // (one tab: nothing to change to)
+            out.push_back({Key::PrevTab, "", "tabs"});  // (one prompt with the next: L1 R1 Tabs)
+            out.push_back({Key::NextTab, "Tabs", "tabs"});
+        }
         out.push_back({Key::Move, "Select"});
         if (r && r->steps) out.push_back({Key::Change, "Change"});
         if (r && r->enter != RowFacts::Enter::None && !(r->enter == RowFacts::Enter::Read && !mHelpKey) &&

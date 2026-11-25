@@ -5,6 +5,7 @@
 #include "input.hpp"
 
 #include "host.hpp"
+#include "host_pads.hpp"
 #include "menu_pad.hpp"
 #include "settings.hpp"
 #include "ui.hpp"
@@ -38,6 +39,7 @@ PadKeysState sPadKeys;
 bool sPrimed = false;  // the first state after a reset only records what is held (no presses)
 bool sBindingCapture = false;
 unsigned sPadButtons = 0;
+unsigned sPadExtra = 0;
 int sCapturedKey = 0;
 int sCapturedWheel = 0;
 unsigned sReleases = 0;
@@ -121,6 +123,10 @@ unsigned pad_buttons() noexcept {
     return sPadButtons;
 }
 
+unsigned pad_extra_buttons() noexcept {
+    return sPadExtra;
+}
+
 void capture_key(int vk) noexcept {
     sCapturedKey = vk;
 }
@@ -145,6 +151,7 @@ void update_pad(const PadState& pad, int chord) noexcept {
     auto* context = host::context();
     if (context == nullptr) return;
     sPadButtons = pad.buttons;
+    sPadExtra = pad.extra;
     if (sBindingCapture) {
         sync_input_block();
         return;
@@ -213,6 +220,9 @@ bool on_steam_deck() noexcept {
 
 PadSupport pad_support() noexcept {
 #ifdef _WIN32
+    if (cellPad_host_reader_sdl())
+        return {"SDL game controllers, DualSense, DualShock 4",
+                "Xbox, PlayStation, Switch, Steam and other controllers SDL knows, over USB or Bluetooth."};
     return {"XInput, DualSense, DualShock 4", "Xbox controllers, DualSense and DualShock 4, over USB or Bluetooth."};
 #else
     return {"SDL game controllers", "Xbox, PlayStation and other controllers SDL knows, over USB or Bluetooth."};

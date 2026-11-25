@@ -135,6 +135,7 @@ const std::vector<Entry>& entries() {
 
 std::unique_ptr<Document> screen_alone(const std::string& entry) {
     if (entry == "Settings") return std::make_unique<MenuShell>(MenuShell::Standalone{});
+    if (entry == "Co-op settings") return std::make_unique<MenuShell>(MenuShell::Standalone{entry});
     if (looks::current().pages && (entry == "Trophies" || entry == "Mods" || entry == "Seamless co-op"))
         return std::make_unique<MenuShell>(MenuShell::Standalone{entry});
     if (entry == "Trophies") return std::make_unique<TrophiesWindow>();

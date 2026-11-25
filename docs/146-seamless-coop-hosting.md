@@ -49,13 +49,88 @@ so.
 
 1. Copy your friend's invite code.
 2. Open **Seamless co-op**, choose **Join**, then **Paste and join**, or **Type code** to type it (with a keyboard or
-   the controller). Either kind of code works. The game starts again on your co-op characters.
-3. Until it gets in, Co-op says how the join goes ("Finding the host's game...", or what is in the way, below), and
-   the game keeps trying: after 10 s, 30 s, then every minute.
+   the controller). Either kind of code works.
+3. The game first tries the code, the way the join will: "Finding your friend's game...", then "Reaching your
+   friend's game...", usually a second or two, at most about 25 s. Once your friend's game answers, yours starts again
+   on your co-op characters and joins. If it can't get through, you stay where you are and the window says why, with
+   **Try again** where that may help:
+   - no game is hosting with this code (a typo, an old code, or the host isn't hosting yet);
+   - your friend's game is another version;
+   - the server that finds your friend's game can't be reached (a room code), or the code's address doesn't answer (a
+     direct code);
+   - your two networks block a direct connection (your friend can open port 36100, or one of you can host);
+   - your friend's game didn't accept the code (it has a new one);
+   - someone there already plays under your online name;
+   - a room code with no server to introduce the games (Settings > Network > Server), or no online name.
 
-**To leave:** **Seamless co-op** > **Leave co-op**. A friend's game first takes them back to their own world, where
-it saves what the group did; the host's leave sends its friends back to theirs. Then the game starts again on your
-normal characters.
+   If your friend's game is full, it asks whether to join anyway and wait for a place; if your friend is in a boss
+   fight, that you join once it's over. **Cancel** stops the check at any time.
+4. Until it gets in, Co-op says how the join goes ("Finding the host's game...", or what is in the way, below), and
+   the game keeps trying: after 10 s, 30 s, then every minute. That covers the rare join that fails after a check got
+   through (the host closed its game during the restart).
+
+**Who is in the session:** while you host, or once you have joined, **Seamless co-op** lists everyone in the
+session (docs/169):
+- each player's name (with Host or You), what they are doing ("Playing", "Loading", "In a cutscene", "In a boss fight",
+  "Dead, back soon", "Leaving co-op"), the area, body or soul form, and HP;
+- a friend's ping to the host's game (the median of its last five), with "slow" above 150 ms;
+- the games that wait to join, and why ("Waits for a place (the game is full)", "Waits for the boss fight to end");
+- one line: how many players (and, for the host, the most it takes), whether joins are open, and how long you have
+  played together.
+
+A game that goes quiet shows "No answer for N s" after 6 s, and drops off after 30 s; one that was leaving or waiting
+drops off after 6 s. The list replaces the host's "Players: 2 of 4" line. A friend sees it in place of "You're
+connected to the host's game."
+
+**Warp and Unstuck** are on the players' lines of **Seamless co-op** ("In the session"), for the host and every
+friend. Right takes the focus from the actions to the lines (Left or Back brings it back), or point at a line; the
+line then shows its button, and Cross, Enter or a click does it:
+- **Warp**, on another player's line, takes you to where that player last stood on solid ground, in the same area.
+  Anyone can warp to anyone.
+- **Unstuck**, on your own line, takes you back to where you arrived in this area: where you stood once its load was done (the area's
+  start, the Archstone, or beside the host after a join or a respawn). Nothing loads, and your HP, souls and form stay as
+  they are. It works while you host alone too: your own line is under the invite code then.
+- Neither works in a boss fight or into one, while you or the other player loads, is dead or watches a cutscene, or
+  with the other player in another area. The button is greyed out then, and the line at the top says why. After a
+  move, it says what it did for a few seconds.
+
+**To leave:** **Seamless co-op** > **Leave co-op**. A friend's game first takes them back to their own world, right
+where they stand (in a boss fight, to that area's start, as a death would), and saves what the group did there; the
+host's leave sends its friends back to theirs the same way. Then the game starts again on your normal characters. A
+friend's **Leave now**, while that is under way, doesn't wait for the trip: the game saves where the friend stands
+(in a boss fight, at the area's start as soon as it gets there), then starts again, so nothing is lost.
+
+**Notices.** While you play, short notes at the corner of the screen say what happens in the session (11-23):
+- **to a friend:** that it joined ("You joined StoneA's world."), that the host's game is full or in a boss fight and
+  it joins once there is a place or the fight is over, that the connection to the host's game was lost (it goes back
+  to its own world, and joins again once the host's game is back), and a join that can't get through (Co-op's own
+  line, with where to leave);
+- **to the host:** who joined its world, who waits to join and why (full, or its boss fight); also when friends can't use its room code (the server that introduces players can't be reached or has no place),
+  when its code is spent, and when a friend's game found it but couldn't get through;
+- **to everyone in the session:** a player joined, left co-op, or its game stopped answering (it closed, or its
+  connection dropped: 12 s with no word from it).
+
+Deaths and returns ("X died.", "X is back.", how the host comes back after its death) are written but not shown
+for now (11-23, after the first play test): `kDeathNotices` in `des_seamless_notice.cpp` turns them on.
+
+The same text within a minute shows once, at most six wait, and none shows during a load or a cutscene: they wait
+until it is over (and go after 90 s). Each one is in the co-op log too (`[coop] notice:`). **Settings > Network >
+Seamless co-op: on your screen > Co-op notices** (also on the Seamless co-op screen's Settings) turns them off, at
+once. One notice shows with it off too: co-op that didn't start ("Hosting didn't start: the room server did not
+start: ...", the room server's port taken, no online name, a bad code), since it blocks co-op and the player
+would otherwise only see it in the menu.
+
+The names come from the games themselves. Each co-op game sends `NAME` (its online name, its player id, and whether it
+is in the session, the host, dead, waiting for a place or for the host's boss fight, and the host's way back after its
+death) through the room server, at once when that changes and every 3 s; each game compares a player's `NAME` with its
+last one (`des_seamless_notice.cpp`). The game's own member list keeps the names only inside its id objects.
+
+**A friend's game saves as it goes.** In the host's world, a friend's game saves its own character when the game
+would save it (as the host's game does: a light wall passed, a boss's door opened, and the game's own moments), soon
+after each arrival and boss kill, and at least every 90 s. Not in a boss fight, while dead, in a load or in a
+cutscene: a save asked for then comes once it can. That save keeps the friend's own world, not the host's. So if the
+game closes or crashes before a Leave, the friend loses at most the last minute and a half, and alone the character
+plays on from where it stood then, in its own world.
 
 **If the host's game closes,** a friend sees the game's own "The session has ended." about 13 s later and goes back
 to their own world. **Seamless co-op** then says the connection was lost. The friend's game keeps trying to reach the
@@ -89,7 +164,8 @@ set).
 **In the game:**
 
 - **Joining needs no sign.** Once the host stands in an area, a friend's game joins by itself, wherever the friend
-  is. The friend loads the host's area and arrives beside the host as a blue phantom, facing the way the host faces. A friend watching a cutscene
+  is. The friend loads the host's area and arrives beside the host as a blue phantom, on ground the host stood on a
+  moment ago, facing the way the host faces. A friend watching a cutscene
   in its own world (an area's opening one, say) goes when the cutscene ends: the game's load waits for it.
 - **Body form or soul form.** A friend joins in the form it has. In the host's world it is a blue phantom either way,
   with its form's health: full in body form, half in soul form (as the game gives a summoned soul). A friend in body
@@ -97,8 +173,8 @@ set).
   once if it stands, or when it comes back if it is dead. Each friend goes home in the form it has then.
 - **The Stone of Ephemeral Eyes** works during co-op for any player in soul form, the host too: it brings the player
   back in body form, as it does alone. A friend stays a blue phantom. In body form it can't be used, as in the game.
-- **Friends follow the host.** When the host travels (an Archstone, the Nexus, a death), its friends go too: one
-  loading screen, then they stand beside the host again.
+- **Friends follow the host.** When the host travels (an Archstone, the Nexus), its friends go too: one loading
+  screen, then they stand beside the host again. After the host's death they stay where they are (below).
 - **The tutorial's trips are the host's too.** At the end of each part of the tutorial, and when the dragon god ends
   it, a friend goes on with its host: one that gets there first waits there for the host. A friend killed by the
   Vanguard comes back where it fell; when the host dies there, the group goes to the Nexus. Before, a friend whose game
@@ -108,13 +184,14 @@ set).
 - **Archstones:** the host can use them during co-op, and the group travels with it. A friend still gets "You can't
   return during multiplayer.", at the Nexus's stones too. No multiplayer wall closes the way back to an Archstone
   (in 1-2, the Phalanx room's wall to 1-2), so the host is never shut in with the Archstone after a death.
-- **The White Eye Stone** takes a friend home as its own trip home does (in body form, its own world back); co-op
-  then joins the host again a few seconds later. Leave co-op is the way out of co-op.
+- **The White Eye Stone** can't be used by a friend during co-op: Leave co-op is the way out of co-op. (Before, it
+  took the friend home, and co-op joined the host again a few seconds later.) The host's use is as in the game.
 - **Items are each player's own.** A friend sees the items lying in the area and gets drops from dead enemies, as the
   host does. Each player has its own copy: one player's pickup leaves the others' where it was. An item a friend
   takes is also gone in its own world.
-- **Light walls** (the fog you press Cross at and walk through, outside boss rooms) are gone for everyone once
-  one player walks through.
+- **Light walls** (the fog you press Cross at and walk through, outside boss rooms): a friend can walk through too,
+  not only the host. Whoever walks through takes the wall away for everyone, and it stays gone in the host's world.
+  A boss's fog is as in the game: the host walks in first.
 - **Boss kills keep everyone together:** no rating screen, nobody sent home, and the boss room's walls drop. The
   host's room stays open, during a boss fight and after it, so a friend can always join again.
 - **A friend who joins during a boss fight** fights the boss too. Before, in 1-1, Phalanx wasn't in its game: it
@@ -135,12 +212,36 @@ set).
   Cutscenes that show you (the tutorial's opening, for one) show your glow and its colour as you chose them too.
 - **In a boss fight,** a friend who dies first watches until the fight ends. Once the boss is dead, it comes back at
   its own bloodstain in the boss's room, where it can take its souls back at once. Before, it came back at the area's
-  start. If the host dies too, it goes back with everyone. If the connection to the host is lost while it
-  watches, it goes home (with the game's own message for a lost session) and joins again from there.
+  start. If everyone dies, it goes back with everyone. If the connection to the host is lost while it watches, it
+  goes home (with the game's own message for a lost session) and joins again from there.
+- **A friend whose death sent everyone back comes back normally the next time.** A friend could be the last one
+  standing, with the host waiting dead in a boss fight. Its death then took everyone back. Before 11-23, its next
+  death in that area never brought it back: it lay dead (or died again and again) until the host went to another
+  area.
 - **Bosses get more health with friends,** as in the original game: half as much again with one friend, double with
   two. Three friends get double too (the original has nothing for three, so a boss had its solo health).
-- **When the host dies,** everyone goes back to the start together. There the friends see the host's rolls, attacks
-  and other moves again. Before, a friend that was alive could see the host stuck in a weapon swap after that.
+- **Enemy difficulty.** Settings > Network > Enemy difficulty (or Settings on the Seamless co-op screen) is the
+  host's choice, and counts for everyone in its game. **Vanilla** (the default) is the game's own: only bosses get
+  more health. **Scaled like bosses** gives every enemy more health with each player in the session: x1.5 with two
+  players, x2 with three, x2.5 with four. **x1.5 to x4** gives that much, however many play. A boss gets the same,
+  or its own when that is more. The health changes as players come and go.
+  - **Scale enemy attack power** (off by default): enemies' hits on players do that much more damage, x2 at x2.
+  - **Scale enemy defenses** (off by default): players' hits on enemies do that much less, half at x2 (1 at least).
+  - Both count only with a scale (not with Vanilla), and only for a hit's HP damage: a guard's stamina loss and a
+    boss part's damage (the Tower Knight's legs) stay the game's own.
+- **Settings on the Seamless co-op screen** shows co-op's own settings (the Seamless co-op rows of Settings > Network)
+  on a screen of their own, in both looks, in two groups. **When you host:** the host's game uses only the host's
+  settings, for everyone in it (the most players, the enemy difficulty); a friend's own don't count there.
+  **When you join:** each player's own, in a host's world (its glow). Settings > Network has the same two groups.
+- **When the host dies,** it respawns alone at the area's start, as a friend does, while a friend is still standing.
+  The friends play on where they are, enemies that are dead stay dead, and the living ones keep the damage they took
+  and stay where they are (2026-11-22; before, they came back with full health, and later at their spawn, for
+  everyone). The same goes for a friend's own respawn. In a boss fight the host first waits, dead,
+  until the boss is dead, then comes back at its own bloodstain in the boss's room, as a friend does, where it can
+  take its souls back at once (the boss's souls too, if it died before the boss). Only when no friend is standing
+  (everyone is dead) does everyone go back to the start together, with the enemies back. Settings > Network > When
+  you die as host > Everyone goes back makes every death of the host take everyone back, as before (2026-11-21).
+  After the host's respawn, the friends see its rolls, attacks and other moves again.
 - **Enemies stay where they belong after a load.** Before, an enemy that stood near a player as the group moved to
   another area could move the new area's enemy with the same number to its place. In the tutorial that put the
   Vanguard outside its hall: it fell, and "The Demon Was Destroyed" showed before anyone saw it.
@@ -153,6 +254,7 @@ set).
   friends are in the host's world counts in each friend's own world too.
 - **A boss's Demon's Soul is everyone's.** When one player takes it at the boss's Archstone, every other player in
   the session gets it too, unless it already took that soul in its own world. A friend can take it itself as well.
+  A friend who already took it still sees the Archstone after the kill, without its glow or a second soul.
 - **1-2's castle gate opens for friends too.** When the host's world has the demon of another world dead that the
   gate needs, each player sees the gate's cutscene as it walks up to the gate, and then the gate is open in its
   game. Before, if the Tower Knight died during the visit, the gate opened for the host alone, and stayed shut for a
@@ -177,8 +279,9 @@ set).
   people stay as they were, and what the group did is added when you go back.
 - **World tendency.** In the host's world a friend plays in the host's world tendency, as a summoned phantom does in
   the original game. The friend's own tendency doesn't change, and it is in play again when the friend goes back.
-- **Going back:** when the host leaves, its friends go back to their own worlds, where they stood when they joined,
-  and their games save there, each in the form it has then (above).
+- **Going back:** when the host leaves, its friends go back to their own worlds, where they stand (in a boss fight,
+  to that area's start), and their games save there, each in the form it has then (above). Before 11-22 they went
+  back to where they stood when they joined: a friend that joined in the tutorial was back at its start.
 - **The Nexus is shared.** Friends stand in the host's Nexus and see its people as the host does, not as phantoms,
   and can talk to them. The people there and in the areas (Ostrava in 1-1, for one) are the host's, as in the game's
   own co-op. The tutorial's wandering ghosts (white phantoms on the way and in the demon's hall) are ghosts for everyone.
@@ -187,10 +290,13 @@ set).
   start. Of the ones the Nexus plays as you arrive (your first visit, the Maiden's return, the seal lifting once all
   five worlds are cleared), a friend sees only the newest one the host has seen, so its Nexus is the host's. The
   final area's cutscenes play for everyone when they happen, never again later.
-- **Skipping a cutscene** (START, then Cross) works for everyone and skips only your own: the others' go on.
+- **Skipping a cutscene** (START, then Cross): a cutscene the host is watching too is the host's to skip, and the
+  host's skip ends it for everyone; a friend's skip does nothing then. A cutscene only you see (a Nexus cutscene the
+  host has seen) you skip yourself, as you do the rest of one that ended first on the host's screen.
 - **The Monumental's question:** whoever talks to the Monumental answers it. Once the other Archstones open, they open
   in every player's world. His story plays only for the one who hears it: when a friend hears it first, the host then
-  gets his later lines and his question, not the story.
+  gets his later lines and his question, not the story. Either way, everyone can level up at the Maiden in Black
+  afterwards.
 
 ### If your friends can't connect
 
@@ -316,6 +422,23 @@ room number names the room at the endpoint; the key goes only to the host's game
 
 A friend's game rejects anything else with "That isn't an invite code: it has 15 or 16 letters and digits."
 
+**The check before the restart** (11-23; before, Join restarted at once, and a code that couldn't work showed only
+in the Co-op window after the restart, with another restart to leave). ps3recomp's `psnr_join_check` (`psnr_host.h`)
+makes the join's own try once from the menu, on a UDP socket and threads of its own, so the game's P2P port and
+connection stay as they are, and never over TLS (a room server has none):
+- a room code: the lookup at the endpoint, the punching raced against TCP, and `HELLO` with the key, the same steps as
+  the join (np_psnr.c's `rc_run`);
+- a direct code: TCP to the code's address (up to 10 s), then `HELLO`;
+- then `ROM?`, as a joining game asks: the host's game answers with `FGHT` (in a boss fight), then `ROOM` or `FULL`.
+  No answer within 5 s (the host's game in a load) counts as a yes.
+
+It uses the name and the endpoint the join will (settings.cpp's `seamless_name`, `seamless_endpoint`). The host's
+room server counts it as a player for those seconds (its window may show "Waiting to join: 1"), and a wrong key as one
+wrong key, as the join itself. Its punch goes out from another local port than the join's, so the router's mapping
+differs: a check that got through almost always means the join does, and through a router where neither can, both
+fail. The rest stays as it was: if the host closes its game during the restart, the join keeps trying and Co-op says
+how it goes.
+
 **Who can join.** The room server (ps3recomp's `psnr_host`) is the only thing the router opens. The game's own
 online server runs on this PC's loopback only. Every connection must say `HELLO` with the key, as a 32-byte blob
 made from it, within 10 s; without it, nothing else is answered. So:
@@ -348,6 +471,16 @@ host. So the same step serves:
 - a follow: when the host's own load starts, the friends start a summoned reload, which waits on the loading screen
   until the host has arrived;
 - a respawn after a friend's death.
+
+**Where a join puts the friend.** On ground the host stood on a moment ago, 1 to 4 m from where it stands now and
+within 1.5 m of its height. The host keeps a trail: the place the game counts as the last ground under its player,
+the bloodstain's source (`*(chr + 0x640) + 0x24`, the place a death by a fall puts its stain), each time it has
+moved 0.5 m, the newest 32, cleared at each load. Its `REDY` carries the newest such place after the dead record
+(16 bytes: x, y, z, the host's yaw; x NaN when there is none). With none (the host hasn't moved that far since its
+load), the friend goes on the host's own spot. Until 11-23 a join put the friend 1 m along +x from the host, unchecked:
+a tester's host stood on 1-1's walls (-79.80 59.75 -58.49), 1 m along +x was inside the wall, and the friend fell
+out of the map until it died. A follow and a respawn still go 1 m beside where the host arrived: an Archstone, an
+area's start or a door, open ground.
 
 The facing goes with the place. A summoned reload takes its facing from a rotation beside each place (`gm+0x30`,
 `+0xA50`, `+0xAF0`: x, y, z, w, with y the yaw), which the game left at zero, so a friend always arrived facing one
@@ -388,6 +521,46 @@ The players waited on are the game's members with a slot (`+0x38`) that are stil
 during a game's load used to stay in that game's member list (each game now takes such a leave at once, below), but
 the room library had dropped it: its members (`sm+0x11C` to `+0x120`, 0x30 bytes each) start with the word a member
 has at `+8`. Before, the host's game waited on such a friend until it joined again.
+
+**Who moves each character after a load.** A game moves only the area's characters it owns. Each game asks the
+area's sync object (the character manager's `+0x1C0`) whether a character is its own: `0x002955B8` and `0x002CA418`
+look in the object's list at `+0x58`.
+- **A character the game owns** gets its AI controller (`0x002D2270`, the character's `+0x4A0`) and runs its state
+  script.
+- **Another game's character** gets the network controller (`+0x4A4`) and waits for that game's messages. Until they
+  come, an NPC stands in its default pose.
+
+The host shares the characters out every 5 s (`0x002CE2B0`; the timer at `+0x90` starts at 0 when the area is set
+up). The host's share goes into its own list, and each friend's goes out as message `0x15`. A game alone in its
+session uses its claims (`+0x6C`, built in `0x002CDD38`) as its list.
+
+In the game, the host's list carries over from before anyone joined. A seamless load sets up a new area while the
+session is open, so for the area's first 5 s no game owned any character. In the Nexus (11-20) the NPCs stood for
+5.0 s in the host's game and 5.4 s in a friend's, then sat down.
+
+Now, from the area's set-up (`0x002CB178`) until its first share-out (the timer's reset at `0x002CE90C`), the host's
+game also counts its claims as its own (a hook at the lookup's end, `0x002CA45C`), as it would if it were alone. From
+the first share-out on, the game shares the characters out as before. In the host's game the Nexus's NPCs now sit
+from the first frame (their state script ran 8 ms after the area's start).
+
+**A friend gets each character's state again once it reads them.** The game sends a character's animation state
+(message `0x21`) only when it changes:
+- A character's AI step (`0x00308430`) compares the state it runs with its copy in the sync object's table at `+0xC`.
+- On a change it writes the new state there and queues the character for the frame's send (`0x002CBB10`).
+
+An NPC that sat down stays sitting, so a game that missed that one message never gets it. A friend drops what the others
+sent before its load ended (the hold above). With the host's NPCs sitting in its first frames, the friend was often
+still loading, so the NPCs stood for good in its world. That happened in a test (11-20): the Nexus, then 1-1, then back.
+
+Now a game that has emptied those queues says so (`SYNC`). Each other game then sets its copies of the states of the
+characters it runs to -1: its list, and in the host's game before the first share-out its claims. The game's own
+check then sends each state again on the next frame. This happens only while nothing is queued for the send (the list
+at `+0x84` empty, checked by a hook after the send, `0x002CE440`), so a -1 is never sent. Places (message 3) go out
+all the time, so they need nothing.
+
+The game has a catch-up of its own for a member that joins: `0x0053D288` calls `0x00297508`, which calls `0x002CD380`.
+The host then sends message `0x26`, each character's place and state, one character a frame. That message sends the
+table as it is, and the table holds 0 for a character no game runs yet, so it isn't used here.
 
 **A friend that leaves during the host's load.** The session's event dispatch (`0x0053DFD8`) takes a member's leave
 through the game's member-left step (`0x0053B7F8`) only while a byte the game sets during its loads is clear
@@ -430,10 +603,27 @@ alive.
 | `REDY` | host | load count, area, where it arrived and where it stands (each with its facing), its area's dead characters | after each load, every 2 s, and when asked |
 | `HER?` | friend | none | send a `REDY` now (a friend's respawn) |
 | `BACK` | any | its player id | back in the world after a death: make its character again |
+| `DOWN` | friend | its player id, 1 or 0 | 1: it died; 0: it stands (each arrival). The host's death reads it |
 | `HERE` | any | the host's load count | in the world after that load: the area's syncs from this player are current again |
 | `FLGS` | host | area, offset, up to 1,000 bytes of its event flags | the host's flags, in three parts, before each `REDY` |
 | `FLAG` | host | flag, area | a progress flag was set in the host's world |
 | `FLAG` | friend | flag, area | the Archstones' seal was opened by this friend: the host's world takes it |
+| `STAT` | any | flags (1 in the session, 2 host, 4 dead, 8 soul, 16 loading, 32 cutscene, 64 boss fight, 128 waits: full, 256 waits: boss fight, 512 leaving), area, HP, most HP, its ping to the host (ms, -1 none), the online name, then (from 11-24) x, y, z of the ground its player last stood on (NaN: not known) | who is in the session (des_seamless_roster.cpp), and where Warp goes: at once on a change of flags or area, and every 2 s |
+| `PNG?` | friend | its nonce, a count | time the round trip: send it back |
+| `PNG!` | host | that nonce and count | the answer, from the host's next frame, to every game; the friend whose nonce it is takes the round trip |
+| `NAME` | any | its state, its player id, its online name | who it is and how it is, at once on a change and every 3 s: the notices (below) |
+
+**Warp and Unstuck** (des_seamless_roster.cpp; the players' lines in coop_session.cpp and coop_page.cpp; until
+11-24's rework they were bars among the page's actions, which crowded them). Each game gives in its `STAT` the
+ground its player last stood on: its bloodstain's source (`*(chr + 0x640)`, the place at `+0x24`, the map at `+0x3C`),
+which the game moves only while the player stands on something, so it is never air over an edge. Only a place in the
+area's own world counts, so the last area's isn't used before the player has stood in this one. Unstuck's place is
+that ground 90 frames after the load is done (else where the player stands then). The page only asks; on the game's
+next frame `take_move` checks again (boss fight, load, death, cutscene, the world, on both ends: the area number changes
+as a player walks from one block of a world to the next, with no load), and the player is moved
+with the game's own LoadChrPos (`place_chr`, `0x00273BE0`), as the level scripts move a character. The other games see
+the move through the usual position syncs. The host's number in the room can be 0, so a player is told apart by
+`you`, not by its number.
 
 **The flags** (event flags: bit `n & 7` of byte `n >> 3`, 17,024 of them):
 - **Each world has its own flags,** flags 0-3,199 and 8,192-12,287; the rest (bosses, for one) are shared by every
@@ -445,6 +635,41 @@ alive.
   friend's bank and the friend's own flags in play. So after each load in a session the program puts the friend's
   banks back and the host's flags in play. The trip home puts the friend's own flags back (the game's own step),
   and its save then holds its own world.
+- **A friend's own save.** A phantom's game never saves: the save step (0x002117A8) drops each save asked for while
+  the game manager's `+0xACA` is 0, as a load leaves it for a phantom (0x001412FC). A tester's 27 minutes as a friend
+  wrote no save at all (11-21). So a friend's game asks for its own save (`+0xA97`, as the game's own are):
+  - when its game asks for one, as the host's game saves then. The scripts' `SaveRequest` and `SaveRequest_Profile`
+    (42 places: the light walls, the boss doors, a few NPCs, the quit to the title) ask only for a living player or a
+    soul (0x0044C678, 0x0044C5F8), so a blue phantom's ask stops at that check; a hook right after its first call
+    (0x00411958, 0x004119E0) notes it. The game's own two save requests (0x0020FB78, which sets `+0xA97` and `+0xA98`,
+    and 0x0020FBA8, `+0xA97`; 9 callers, the two bindings among them) skip the ask while `+0xACA` is 0; a hook at that
+    gate (0x0020FB8C, 0x0020FBB8) notes the rest;
+  - 10 s after an arrival or a boss kill;
+  - at least every 90 s (`DES_SEAMLESS_SAVE_EVERY`, 0 = none of these: a friend saves at home only).
+
+  The save step lets that one through (a hook at 0x002117E8) until it is over. Two of its parts are the friend's own:
+  - the flags' writer (0x00509678: the flags in play, then the worlds' banks) writes a copy made for the save: its own
+    world's flags, as a trip home would put them in play;
+  - the player's type (game data `+0x8C`) is the form it goes home in (0 body, 8 soul) while the character's writer
+    (0x0090E4B0) runs. Saved as a blue phantom (1), the save loaded alone as one, at half its HP.
+
+  The place is where the friend stands, so alone it plays on from there. It doesn't save in a boss fight, dead, in a
+  load or a cutscene, leaving, or in the ending, where it couldn't stand alone; an ask then waits until it can.
+
+  Checked with two copies (11-21, the friend on a save of its own joining the host in the Nexus, a save every 20 s):
+  the save was written in the host's area with the friend's own flags (4096 and 16140 at 0, the host's at 1) and in
+  body form. Loaded in a copy alone, it put the character where it stood, in body form at full HP (659), in its own
+  world. Before the form's fix it loaded as a blue phantom, at half HP (329).
+
+  Checked again on 11-22 (two copies, both on the pinned save, the friend's 90 s timer set to an hour):
+  - At its game's ask: the same `SaveRequest` (the end of the developer's item give) made one save in the host's
+    game and, in the friend's, "asked for, as its game would have saved now", then "written, with its own world".
+    Before the hook on the bindings the friend's ask stopped at their check and nothing was saved.
+  - 60 s of kills in 1-1 on both made no save in either game: kills alone don't save.
+  - Leave now in the host's world (1-1): its own save where it stood, and "leave now: saved where it stands, with its
+    own world; done" 0.3 s after the press.
+  - Leave now 9 s into the Tower Knight's fight: no save there; home, "leave now: home; asked for the save", and
+    "saved at home; done" 6 s after the press, in body form at full HP with its own flags.
 - **Progress for everyone.** From each area script as it is read, the program lists the progress flags:
   - every flag a boss kill's handlers set (the events whose handler starts the boss clear, `CustomLuaCallStart(4050)`);
   - the flags of a handler that a kill's handler names in quotes (a timer's, `OnKeyTime2(..., "<name>", ...)`), when
@@ -469,6 +694,13 @@ alive.
   prompt (`DeleteEvent`) and runs the handler without that branch (`SEAMLESS_Give_<id>`): the same items, flag and
   steps after, with no pickup animation. A player whose flag is set (it took the soul in its own world) gets
   nothing.
+- **The Archstone for a player who has the soul** (`stones_for_friends`). A boss kill's handler shows the stone, its
+  glow and its prompt when the soul's flag is clear. In five areas (1-1 to 1-4, and 5-3) its other branch hides the
+  stone ("it goes once taken"). The original game never reaches that branch, because there the boss dies only once.
+  In a session it ran for a friend who had taken that soul in its own world: after Phalanx the friend saw no
+  Archstone while the others did (a tester's report, 11-24). That branch now shows what the first branch shows (the
+  stone, and the second object some areas have) without the glow or the prompt, as every other area's handler does
+  and as the area's start does after a reload.
 - **What the soul's handlers kept for the host** (`soul_steps_for_all`, before `pickups_for_all` copies them): a block
   under `if proxy:IsClient() == false then` in a soul's handlers (`OnEvent_<id>`, `OnEvent_<id>_<k>`) becomes
   `if true then`. In the original a phantom goes home after the boss, so only the host's world went on from there. A
@@ -591,6 +823,20 @@ alive.
   a friend's blue phantom (type 1) into an alive player of its own world (type 0), which the rest of co-op doesn't
   count as a friend: the next frame sets type 1 again (`SetChrType`'s native, US 0x00445F30) and body form, as a
   boss kill revives it.
+- **The White Eye Stone** (goods 9999). A blue phantom's use runs `OnLeaveMagic` ("Return to your own world?",
+  then `OnLeaveMenu_Yes`: `LeaveSession`, and home), which co-op took as a trip home and followed with a join. The
+  game's use check (US 0x0059DFD8) reads the row's byte for the player's type: `enable_live` `+0x18` (body form),
+  `enable_gray` `+0x19`, `enable_white` `+0x1A`, `enable_black` `+0x1B`. Each frame a friend is in a session its
+  row's `enable_white` is 0; out of a session, and on the host, the row is the disc's. The host's use is
+  `OnThxKickOut`: each friend's game runs `OnBeThxKickOut` (its message, then `OnLeave_Limit` 5 s later: the flag
+  rollback and the trip home), and co-op's join then brings it back, as after any trip home.
+- **Cutscenes the host plays too** (`cut_tick`). The cutscene player (US `*0x01B3A28C`) plays the one in its first
+  slot (`+0x28`, its mode at `+0x2C`); `*(cutscene + 0x18) + 0x3C` is its id. The game's skip (US 0x001A2BB0, and
+  the same test at 0x001A14A0) sets the cutscene's skip byte (`*(cutscene + 0x18) + 0x38`) only when the mode has
+  no 2 in it (`REMO_FLAG`'s multiplayer value) and the cutscene is under way (`+0xD9`). The host tells its friends
+  the id it plays (`CUTS`, at each change and with each `READY`) and that it skipped it (`SKIP`, when its skip byte
+  is set). A friend's copy of the same id gets the 2 in its mode while the host's plays, and its skip byte when the
+  host's skip comes, once it is under way. When the host's ends first, the friend's mode is put back.
 - **Bloodstains.** The game keeps one per character, in its save: the record at the game data's `+0x1C` (its souls
   at `+0x1C`, -1 once taken back), and a "shown" byte at the game data's `+0x18`. A friend's death runs
   `UpDateBloodMark` (in the replaced `PartyGhostDeath_1`), as `SoloPlayDeath_2` does for the host, and the touch
@@ -668,9 +914,9 @@ alive.
   - after the Nexus script's blend (the hook after `bl 0x009204A0` at US 0x004117E4, in `RecvGlobalQwc`'s
     0x004117C0), which sets `+0x10` from the player's own.
 
-  When the session ends, the friend's own values are put back in play: each one that matched its own saved value at
-  the first write follows that value as it is then, and any other is put back as it was. The own values at `+0x48`
-  are never written.
+  When the session ends, the friend's own values (`+0x48`) are put back in play, as its game sets them at each load
+  out of a session. (Until 11-20 the values in play at the first write were put back instead; after a rejoin those
+  could already be the host's.) The own values at `+0x48` are never written.
 - **Items.** A phantom's game makes no items: the area's items (lying on corpses, made at each load, US 0x0025CAE8)
   and a dead enemy's drop (rolled by each game when the enemy dies, 0x002B2900) are made only when the player type
   the area was loaded for is body form (0) or soul form (8), and a friend is a blue phantom (1). Both reads of that
@@ -681,9 +927,14 @@ alive.
   taken, whether the host has or not. One it takes is kept in its own world (the item list's flag set, from
   0x0025C5EC), as a boss's soul is: its own world doesn't offer it again.
 - **The people (the Nexus's and the areas').** A visitor's game (a phantom's) sets up each person whose character row
-  has byte `0xE8` set in a mode of its own (4), chosen in three places (a person's setup, US 0x002999C8, and its
-  controller's two, 0x002C2588 and 0x002C3018). Such a person has type 4, so the visitor sees a white phantom. On the
-  host, and in the friend's own world, the same people are types 5 and 9.
+  has byte `0xE8` set in a mode of its own (4), chosen in three places, for two kinds of people:
+  - a person with a player's body (`c0000`: Thomas, the Crestfallen, Ostrava): its setup, US 0x002999C8, gives the
+    character's constructor mode 4;
+  - an NPC with a model of its own (Stonefang's smith Ed, `c7131`, and the Dregling merchant, `c7100`): its
+    constructor (0x002C2588, or its twin 0x002C3018) picks type 4 itself.
+
+  Such a person has type 4, so the visitor sees a white phantom. On the host, and in the friend's own world, the same
+  people are types 5 and 9.
   - A friend keeps that mode, as the game's own co-op does.
   - The character's draw update (US 0x002DD920) reads the type four times:
     - the phantom material on or off (0x000D7C58, the hook at 0x002DDAA8 above);
@@ -693,6 +944,30 @@ alive.
 
     Types 5 and 9 read alike at all four. Each read is hooked (0x002DDAA8, 0x002DDADC, 0x002DDB48, 0x002DDB90). On a
     friend, such a person of type 4 reads 9, so the friend sees these people as the host does.
+  - **The draw objects.** The draw objects are made and kept on a phantom's draw path for types 3, 4, 10 and
+    11, each time with a check for 4 and 0x0025D418's value for the type. The model's draw object (`+0x6A0`,
+    0x000DB508) is made by the build of the character's draw objects (0x002E0E60) and kept by its update
+    (0x002E0968). The main one (`+0x6A4`) is made by 0x002E0AE0. With the draw update's reads alone, a friend
+    still saw those people as bright, see-through blue phantoms, where the host sees them solid with a pale
+    tint. In the 11-22 playtest that was the Crestfallen Warrior in the Nexus, and in his first talk's cutscene.
+    Those reads are hooked (0x002E0EE0, 0x002E0F28; 0x002E09E4, 0x002E0A2C; 0x002E0BDC, 0x002E0C20) and read 9
+    the same way. A check for 3, 10 or 11 needs no hook: 9 for 4 can't change it.
+  - **In a cutscene.** A cutscene draws a copy of the person (the copy setup 0x006087B8, as for the players
+    above). For each of its two draw objects the copy reads the type for the phantom material on or off and
+    the material's kind. It then reads it for the draw path's check for 4 and for 0x0025D418. Those reads are
+    hooked (0x00608F04, 0x00608F38, 0x00609020, 0x00609068, 0x00609338 and 0x0060936C) and read 9 the same way.
+    Two later steps of a cut read the type again, for the check for 4 and for 0x0025D418: the copy's model
+    (`+0xD4`, 0x000DB508) in 0x00609550, and its `+0x70` draw object's draw path (0x000D9388) in 0x006060C0.
+    Those are hooked too (0x00609828, 0x0060986C; 0x00606538, 0x0060657C). Before 11-22 the friend saw the
+    Crestfallen Warrior as white smoke in the Nexus cutscene of his first talk (scene 25), and then, with only
+    the copy setup's reads hooked, as a bright, see-through blue phantom.
+  - **The other kind's look.** That draw update is the first kind's only (its draw object is at `+0x6A4`). The
+    second kind's constructor, in its visitor branch, also writes the row's `+0xEC` (7105 for the Dregling merchant,
+    7135 for Ed) to `+0x24` of the character's `+0x18`, where a body's game leaves -1. That value, not the type, draws
+    them as white phantoms: on a friend they were white phantoms in Stonefang from 11-14, when the mode was kept
+    (below), to the 11-19 playtest. With the value kept at -1 they are drawn as on the host while their type still
+    reads 4. The store's value is hooked (after `extsh r0,r0`, 0x002C2848, and 0x002C32D8 in the twin): on a friend
+    it becomes the value already there, so the store changes nothing.
   - **Only these people.** Some characters are set up with mode 4 in every game: the tutorial's developer ghosts
     (`m08_00`'s 400, and `m08_01`'s 401 to 404, white phantoms that walk through the demon's hall and fight each
     other) are type 4 on the host too. Until 11-15 every non-player of type 4 read 9 on a friend, so the friend saw the ghosts as living
@@ -738,6 +1013,14 @@ alive.
 - **The Archstones' seal.** The events whose header names the seal (要石の封印), and the flags their handlers set, are
   the seal's. When one is set on a friend, it is kept in the friend's own world and sent to the host (`FLAG`), whose
   world sets it through the game's own flag setter. The host's own, as other progress, goes to its friends.
+  So do the flags set by a function that calls a seal handler: the Monumental's story ends in `OnEvent_303_1`, which
+  calls `OnEvent_34` (the seal) and then sets 303, the flag the Maiden checks before she levels anyone. Until 11-24
+  303 counted as a cutscene each player sees, so a friend who heard the story first gave the host the seal but not
+  303: nobody could level up in the host's world, and the story can't be heard twice (a tester's report). The
+  seal's flags are no longer among the cutscenes either. A world left that way is put right as the host (or a player
+  alone, with co-op on) stands in the Nexus: where 34 is set and 303 isn't, 303 is set through the game's setter,
+  which sends it on to the friends. In the original game 303 is always set once 34 is (and it stays set in New
+  Game+, where the talk opens the seal again).
 
 **The scripts' edits,** in memory, as each script is read (the game's Lua reader and Lua's string reader, hooked at
 their first instruction):
@@ -748,9 +1031,20 @@ their first instruction):
   - A blue phantom's death keeps it in the session: a summoned reload instead of the trip home, and no recall
     (`PartyGhostDeath_1` goes on to `_2` after a second, even after a boss kill).
   - In a boss fight, `PartyGhostDeath_2` waits: it looks again each second while `SeamlessBossFight` is set and
-    `ClearBoss` isn't. Two timer slots take turns, so a handler never sets up its own slot. Once the host has died
-    (`HostDead` sets `SeamlessHostDown`), it asks for full health and leaves the load to the host's respawn, which
+    `ClearBoss` isn't. Two timer slots take turns, so a handler never sets up its own slot. Once the host's death
+    takes everyone back (flag 20297, below), it asks for full health and leaves the load to the host's respawn, which
     takes everyone back.
+  - Flag 20297 says that the host's death takes everyone back, until this guest has followed that load. Just before
+    the host's scripts send the guests' `HostDead` (`OnEvent_4000` with the setting's Everyone goes back, or
+    `SeamlessHostWait` with no friend standing), they set flag 19995 (past the game's last flag). The host's flag
+    hook then sends its guests the number of its next load (`ALLB`). Each frame, a guest's game sets 20297 while
+    that load is ahead of the last load it followed. It is one of the game's high flags, as 20298 and 20299 are.
+    - Before 11-23, `HostDead` set a script value, `SeamlessHostDown`, and nothing cleared it.
+    - The last friend standing could die while the host waited in a boss fight. The host's load then came at once,
+      and the friend followed it before `HostDead` reached its game, so `HostDead` came in the new area's scripts.
+    - That friend's next death there left its respawn to a host load that never came. It lay dead, died again, and
+      so on, until the host's next load that took it along. A tester waited 3 minutes, until the host went to the
+      Nexus (11-22).
   - A death in a boss fight comes back at the bloodstain. `PartyGhostDeath_1` notes whether `SeamlessBossFight` was
     set at the death (`SeamlessFightDeath`). If so, `PartyGhostDeath_2` sets flag 19993 just before its reload (past
     the game's last flag, as 19999 for the ending). The flag hook then reads the stain's record, which the death's
@@ -765,7 +1059,68 @@ their first instruction):
     (a reload under way) is set, and the phantom holds 4047 from its death until it is back. Before, a session lost
     during the watch left the phantom dead out of the session for good, and co-op doesn't join again until 4047 is
     clear ("on its way home: no join until it is there"; playtest 11-14, the second Tower Knight fight).
-  - The host's death doesn't send the phantoms home; the host's respawn takes them along.
+  - The host's death doesn't send the phantoms home. `OnEvent_4000` no longer sends the guests' `HostDead` at once
+    while flag 20298 is set (the setting, below); `SoloPlayDeath_1` goes on in `SeamlessHostWait`:
+    - while a friend stands (flag 20299), the host respawns alone: it sets flag 19996 (past the game's last flag) and
+      goes on to `SoloPlayDeath_2`. In a boss fight (`SeamlessBossFight`, `ClearBoss` false) it looks again each
+      second (timer slots 6 and 8 in turn, as a friend's watch), so it respawns once the boss is dead;
+    - with no friend standing, it sends the guests' `HostDead` (`LuaCallStart(4000, 1)`) and goes on: the old way,
+      the guests follow its respawn.
+    - The host's HP at 0 (`OnEvent_4000_Hp`) sends call 99999 to every game. Five areas answer it by putting their
+      boss's parts in dead mode 2 (`OnEvent_4000_Hp_1`: `SetDeadMode2`, so the boss's HP stops at 1): 1-1's Phalanx
+      (800-802 and 821), and the bosses of m03_01, m04_00, m05_00 and m06_00. In the original game the host's death
+      reloads everyone, so no one kills the boss after it. While the host respawns alone (flags 20298 and 20299, in a
+      party) the call doesn't go out, so its friends can still kill the boss it waits for. On 11-22 the call still
+      went out: Phalanx stood at 1 HP in both games, and the dead host waited for good.
+  - Flags 20298 and 20299 are two of the game's flags at 20,000 and up: one byte each at the flags' +0x14D0 +
+    (n - 20,000), read by 0x005087A0 through the scripts' flag check 0x0043FC90. No script uses them as flags (the
+    20xxx numbers in the scripts are cutscene, tendency and message ids), and the save doesn't hold them.
+    des_seamless_game.cpp writes them each frame on the host: 20298 = `DES_SEAMLESS_HOST_DEATH` isn't `together`;
+    20299 = another player's character here is alive, and that player's game hasn't said it died (`DOWN`) since it
+    was last back (a friend watching a boss fight, or still in its respawn's load, doesn't stand). Before 11-22 the
+    host's own "seen dead" mark on a friend's character decided it, and only that friend's `BACK` cleared it. In
+    the 11-22 playtest every death of the host took everyone back while the friend stood (it never died); a mark
+    left on its character is the one part of the old check that could stay wrong for a whole session.
+  - The host's death is in the log, with each friend's state: "the host died: a friend stands, so it respawns
+    alone (player 2 stands (HP 329 here))", or "no friend stands, so everyone goes back with it".
+  - Flag 19996 makes the host's next load its lone respawn: at the end of its `WarpNextStageKick`, its world's
+    dead-character record goes into its own slot (0x0020E788(76, record, 1), as a guest's join keeps its own at
+    0x00417560), which that load applies, so the enemies dead stay dead. The load is the game's own respawn, and a
+    world loads all its blocks at once, so it stays in the world: from 1-2 it is the Archstone in the Phalanx room,
+    block 0 of the same world. A respawn into another world keeps no record. No LEAD goes out, and no sync hold. Once
+    back, it places its guests again (requeue) and they make its character again (its BACK), as after a guest's
+    respawn.
+  - The enemies alive keep their health and their places. A respawn's load sets the world up again in the game
+    that respawns, so each enemy alive came back at its spawn with its full health there. The host's game gives
+    its health to its friends' games, and each game runs the characters the host shares out to it, which the
+    others follow, so that went to every game (11-22, two copies in 1-1: a hollow at 42 of 78 HP was at 78 in
+    both after the host's lone respawn; a hollow that had chased the host 30 m was at its spawn in both after a
+    friend's respawn, and another after the host's). The respawning game notes each living enemy by its place in
+    the world's list (the place the dead-character record counts, 0x002977C0), with its HP and where it stands;
+    at its arrival it puts each one back where it stood with the game's LoadChrPos (0x00273BE0), and the host's
+    game its HP too, the same part of the most HP. The host notes them at the same end of `WarpNextStageKick`; a
+    friend's game notes them every 8th frame it is in the host's world (its respawn's load has no step of its own
+    before the world goes) and puts them back after its own respawn in the same world. A friend's game leaves the
+    health to the host's, which gives it.
+  - A host that died in a boss fight (`sFight`, flag 19994, at its death) comes back at its own bloodstain
+    (`host_to_stain`, at the same end of `WarpNextStageKick`): the load goes to the stain's map, to a place (point
+    -1 and the summoned place `+0x1C`, as a friend's trip home), facing the way it died. `SoloPlayDeath_2` runs its
+    `UpDateBloodMark` after that `WarpNextStageKick`, so the stain's record still holds the last death's then. Its
+    source is read instead, as `UpDateBloodMark` (0x00419670) reads it: `*(chr + 0x640)`, the place at `+0x24`, the
+    rotation at `+0x30` and the map at `+0x3C`. A stain in another world than the respawn's: the area's start, as
+    before. In the 11-22 playtest the host came back at the area's start after Phalanx, with the boss's souls in its
+    stain in the boss's room.
+  - Checked with two copies (11-21, the host on the pinned save in 1-2, the friend standing by god mode):
+    - The Tower Knight's fight began at the host's arrival. The host died in it, and no load came in 20 s. The knight
+      killed (a test switch), the host's load came at once: "the host's respawn, alone; the guests stay". The friend
+      stayed in 1-2 and made the host's character again.
+    - The record went into the slot (`+0xB3C` 0x4C) and the respawn's load emptied it. Ordinary enemies the host had
+      killed at its respawn spot were still dead after a second lone respawn there. The knight stayed beaten: his
+      flag (4224) was set before the load, and back at the spot there was no health bar and nothing attacked.
+    - Both dead: the old way, "load 4 started: the guests follow", both back at the start.
+  - Checked again on 11-22 (the tutorial's save, the Nexus, then 1-1): two deaths of the host, each "a friend
+    stands" and alone, the friend staying; then the friend dead and the host dead after it: the friend's `DOWN`
+    came first, "no friend stands", and everyone went back together.
   - `proxy:ClearBossGauge(` also clears `SeamlessBossFight`.
   - A boss's extra health: `Lua_MultiDoping` (and `Lua_MultiDopingm04_02`, for 4-2), at the boss room's first entry,
     gives each boss part effect 7500 (health x1.5) for one blue phantom and 7501 (x2) for two. The count is the
@@ -775,9 +1130,11 @@ their first instruction):
   - The cutscenes keep their solo mode in a session. Every `RequestRemo(scene, REMO_FLAG, event, 1)` passes the
     global `REMO_FLAG` as the cutscene's mode. It is 0 when a map's scripts start, `OnEvent_4034` (the session
     connected) makes it 2, and `OnEvent_4035` (the session's end) makes it 0 again. A cutscene asked for in mode 2 (a
-    boss's at its fog, any asked for after the session connected) can't be skipped on a friend's game, and the host's
-    skip ends only the host's. Ones asked for before 4034, such as an area's opening, were already mode 0 in a session
-    and each player skips its own. `OnEvent_4034` now sets 0, so every cutscene works that way.
+    boss's at its fog, any asked for after the session connected) can't be skipped: the game's skip (US 0x001A2BB0)
+    refuses a mode with 2 in it, in every game, and no game's skip reaches another's. Ones asked for before 4034, such
+    as an area's opening, were already mode 0 in a session
+    and each player skips its own. `OnEvent_4034` now sets 0, so every cutscene works that way; the program then
+    gives the skip of one the host plays too to the host (below).
   - No multiplayer wall. When a session connects past an area's first part, `OnEvent_4034` has the host's game close
     the way back to that part's Archstone (`Lua_MultiWall`). The Archstone stands in the last boss's room, and the
     wall is that room's exit, 1996 minus the block (1-2 is block 1: 1995, the Phalanx room's way to 1-2). Only
@@ -818,6 +1175,14 @@ their first instruction):
   the tutorial's end each game took its own player to the Nexus (now a friend goes with its host, see the next item),
   and the host, still in its locked room, kicked the friend's joins. (The friend's game then kept leaving the room it was kicked from, and the runtime took down each
   room it joined after that; fixed in ps3recomp, see "A friend kicked out of the room" below.)
+- No join during the host's boss fight, as in the original, where that lock kept everyone out once the fight began.
+  The scripts mark a fight with flag 19994 (past the game's last flag), set at the boss's health bar
+  (`SetBossGauge`) and cleared at its clearing (`ClearBossGauge`); a load of the host's ends it too. The host's game
+  tells its guests when its fight begins and ends (message `FGHT`, u32 1 or 0), and again with each ask for its room
+  during one. A guest out of the session (a first join, or a rejoin after a drop) holds its join until the fight is
+  over; the Co-op window says "The host is in a boss fight. You join as soon as it's over." Before this (11-20), a
+  friend that rejoined during the Tower Knight's fight was in the room in the host's game but not in the fight in its
+  own: no boss there.
 - No trip of a friend's own: each `proxy:WarpNextStage(...);` in an area's script (not the Nexus's, whose stones have
   their own check above) runs only when `proxy:IsSession() == false or proxy:IsClient() == false`. In the game's own
   co-op such a trip ends a client's session: at the area's teardown, a client that didn't ask for a summoned reload
@@ -834,6 +1199,17 @@ their first instruction):
   `m08_01` leaves it revived where it fell. The levels' other trips are the boss Archstones' back to the Nexus, which
   a friend can't start in a session.
 - The light walls a player walks through (press Cross, a walk, then the wall is gone) are gone in every player's game.
+  The walk's prompt outside boss rooms (`OnDistanceActionAttribute(..., HELPID_GO_TO_IN, ..., possible_chr_type,
+  everytime)`, or `ATTR_HOST + ATTR_LIVE + ATTR_GREY`) was the host's alone; it is offered to a blue phantom too
+  (`+ ATTR_WHITE`): 1-1's three, one each in 1-2 and 1-3, three each in 2-1, 2-2, 4-1 and 4-2
+  (`light_walls_for_friends`). Its handler doesn't check who walks, so in the friend's game its walk runs as the
+  host's: the walk, the wall dropped, the wall's flag (a progress flag in 2-1 and 2-2). The wall's delete
+  (`LuaCallStart(<id>, 1)`) reaches the other games and drops it there too, but sets no flag. So after a friend's
+  walk the host's flag stayed clear, and the wall was back for everyone at the host's next load (two copies, 11-22).
+  The walker's game now also sends `LuaCallStart(7600000 + <id>, 76)`, outside `NotNetMessage`, and each other
+  game's `SEAMLESS_WallPassed_<id>` sets the flags the walk sets for another player there (2-2's 572 sets 571's
+  too) and drops the walls (`light_walls_for_all`). It has an ID of its own: the delete's `DeleteEvent(<id>)` removes
+  every handler of `<id>`, so under `<id>` it ran only when it came before the delete (one run in three).
   In the other games the wall's handler plays the walk on the walker's character and marks the wall passed
   (`Luafunc_PlaySynchroAnimation`'s true branch, then a return). The areas made for sessions drop the wall for them
   through the game's wall-delete sync (`LuaCallStart`). The tutorial's (`m08_01`'s 14291) drops it with a direct call
@@ -864,6 +1240,26 @@ their first instruction):
   handler in the Nexus that takes or gives back the player's control ignore a call from another game
   (`param:IsNetMessage()`); only 90 and 91 match. Checked with two copies: the friend held the stick through the
   host's level-up and moved the whole time (before: no movement for those 20 s).
+- The Nexus's Archstones ignore another player's touch. A touch is a network event, so its handler ran in every
+  player's game: when the host touched a stone, a friend's game said "You can't return during multiplayer." (the
+  guest check above), and a friend's touch ran the host's handler. Each stone's handler now starts with
+  `if param:IsNetMessage() == true then return; end`, as the levels' stones do.
+- The poses a player's own script plays on that player show in the other players' games too: an Archstone's touch
+  (8283), the trip home after it (8284) and a sword pulled out (8290: Stormbringer, the Nexus's last sword and three
+  more). In the original no phantom saw a player use an Archstone, and a pull runs only in the puller's game, so the
+  other games never played them; a friend saw the host stand still at the stone and then the loading screen
+  (playtest 11-20). After each live `PlayAnimation(10000 or LOCAL_PLAYER, <pose>)` (70 in the areas' scripts) the edit
+  sends `LuaCallStartPlus(4013, <area's key>, <pose>)`, unless the handler runs for another player's message. Each
+  area's `SEAMLESS_Pose` (registered as it starts) plays it on the sender's character, `GetPlayID() + 10001`, as the
+  game's own pose sync does, and does nothing in the sender's game. That sync (`Luafunc_PlaySynchroAnimation`) isn't
+  used, as it would play the pose a second time in the sender's game, under the script's own `OnChrAnimEnd` watch of
+  it. The send goes out from inside `NotNetMessage` blocks too: the call's network send checks `proxy+0x65`, and
+  `NotNetMessage_begin` sets `proxy+0x64`. The key is the area's (7600 + 10 x world + block): the trip home's pose,
+  sent just before the trip, reached the friend's game 2 s after its follow had loaded 1-1, and played on the host
+  there as it arrived. No handler in the next area takes the old key, so the friend sees the touch and then the
+  load. Checked with two copies at the Boletaria stone: the host's game sent both poses; the friend's game played the
+  touch on the host's character (the stone's green light in its frames) and nothing in 1-1; the friend's own touch
+  gave it the "can't return" message and nothing in the host's game. The swords' pulls weren't run.
 
 The edited copies are cached by the original's size and hash, so a script read again costs nothing.
 
@@ -884,6 +1280,9 @@ side by their times.
 | `DES_SEAMLESS_UPNP=0` | The host leaves the router alone (the port forwarded by hand). |
 | `DES_SEAMLESS_ADDRESS=ip` | The host's public IPv4 address, for the code, when the router doesn't give it. Co-op's Public address keeps it in settings.ini; a report shows only whether it is set. |
 | `DES_SEAMLESS_PLAYERS=n` | The most players a host takes, itself included: 2 to 4 (4 when unset). Settings > Network keeps it in settings.ini. One more connects but waits: the host answers its ask for the room with FULL, and it joins once the host answers with the room again (the room server also refuses a join past the limit, `max_players`). |
+| `DES_SEAMLESS_DIFFICULTY=bosses` | The host's enemy difficulty: every enemy's health scaled by the players in the session, x1.5 with two, x2 with three, x2.5 with four (a boss keeps its own doping when that is more). `1.5` to `4`: that scale with any number of players. Unset: the game's own. Settings > Network > Enemy difficulty keeps it in settings.ini; a change counts at once in the host's game and within 2 s in its guests' (DIFF, with each READY). A guest's own setting is not used in a host's game. |
+| `DES_SEAMLESS_DIFFICULTY_ATTACK=1` | With a scale: enemies' hits on players do that many times the HP damage (the hit's worked-out damage, 0x0028B228). The host's, as above. |
+| `DES_SEAMLESS_DIFFICULTY_DEFENSE=1` | With a scale: players' hits on enemies do the HP damage divided by it, 1 at least. The host's, as above. With `DES_DEVLOG=1`, each scaled hit is in the log. |
 | `DES_SEAMLESS_GLOW=0` | The other players (and this one) see this player without its blue phantom glow in a session. Settings > Network > Your glow keeps it in settings.ini; a change counts within 2 s (GLOW). |
 | `DES_SEAMLESS_GLOW_COLOR=RRGGBB` | This player's glow colour in a session, for the others and itself (unset: the game's blue). Settings > Network > Your glow colour keeps it in settings.ini; a change counts within 2 s (GLOW). |
 | `DES_SEAMLESS_STUN` | Unset: a host whose router gives no public address asks Google's STUN server (`stun.l.google.com:19302`) for it. `0`: never. `host:port`: that server instead. settings.ini can set it too. |
@@ -901,15 +1300,26 @@ thread and keeps trying), and for a room code `PSNR_ROOM`, `PSNR_VERSION` (co-op
 `OnRoomDisappeared`, then `OnLeave_Limit`), through the same natives:
 1. leave the session (`LeaveSession`), and ask for the player's own flags back at the next load
    (`SetFlagInitState(2)`);
-2. once out of the session: back to where the player stood before the join (`SetSummonedPos`,
-   `SetDefaultMapUid(-1)`), in the form it had before the join (`SetChrTypeDataGreyNext`), with a load
-   (`WarpNextStageKick`);
+2. once out of the session: back to its own world where the player stands (`SetSummonedPos`,
+   `SetDefaultMapUid(-1)`; in a boss fight the area's start, below), in the form it had before the join
+   (`SetChrTypeDataGreyNext`), with a load (`WarpNextStageKick`);
 3. at home, the game saves by itself. The Seamless co-op window waits for a file written in the co-op save after the arrival
    and for the game's save to finish: no save asked for (GameMan `+0xA97`, `+0xA98`) and its save task idle
    (`+0xAA4` back at 0). A save writes PARAM.SFO first and the data after, so a new file alone is too early. Then
-   (or after 2 minutes, or on **Leave now**) it starts the game again. Back or Esc doesn't close that window.
+   (or after 2 minutes) it starts the game again. Back or Esc doesn't close that window.
+   **Leave now** (`leave_now`) ends the leave once a save holds the friend's progress. Before 11-22 it started the
+   game again at once, and what the friend did since its last save was lost. Still in the host's world where its own
+   save can be made (not in a boss fight, dead, in a load or a cutscene), the leave makes that save where the friend
+   stands and is done once it is written. Else it goes home as a Leave does, and at home asks for the save at once
+   (no wait for the game's own). The window then says it is saving, and the button is off.
    Scripted, with keys sent to the window as a friend in the host's Nexus: Esc there kept it, and the game started
    again once, after the save; three presses of Leave now within 0.2 s started it once.
+   After a leave from a boss fight the game asks for no save at home: its save gate (`+0xACA`) is 1, but nothing sets
+   `+0xA97`. So the window waited its 2 minutes and the game started again with nothing saved (a tester's leave 9 s
+   into the Phalanx fight, 11-21). Now, home with no save asked for or written after 5 s, the leave asks for one as
+   the game's own are asked for. Checked with two copies (11-21, the Tower Knight's fight on the pinned save, the
+   friend leaving 9 s in): before, "not home and saved after 2 minutes"; with the change, "saved at home; done" 10 s
+   after the Leave, the save in the friend's own Nexus, in body form, with its own flags.
 
 A Leave outside a session:
 - **During a load,** for example while the game is taking the friend home itself after the host's game closed, it
@@ -923,10 +1333,18 @@ takes only the ones that come while it is in the session, once the join has kept
 host's boss kill while the friend was away don't count in the friend's world.
 
 **Going home** (a friend's leave, or the host gone):
-- **To where the friend stood.** The game's trip home reloads the area in play: a phantom of the game's own is always
-  summoned into its own area. A friend here may have joined from anywhere, so at the end of `WarpNextStageKick` (out of
-  a session, before the trip home) the load is pointed at the area and place the friend had at the join (the game
-  manager's next area, `+0x08`, and summoned place, `+0x20`).
+- **Where the friend stands** (the user's pick, 11-22: always, with no option). The game's trip home asks for that
+  already: `SetDefaultMapUid(-1)` keeps the area in play (the game manager's next area, `+0x08`) with point -1
+  (`+0x0C`: a place), and `SetSummonedPos` the place (`+0x1C`, then `+0x20` and its copies). At the end of
+  `WarpNextStageKick` (out of a session, before the trip home, `going_home`) the place and the facing are written
+  from where the player stands, for every way home (a Leave, the host gone, the session's end).
+  - **In a boss fight** (`sFriendFight`: flag 19994 in the friend's own game, from the boss's health bar to its
+    clearing), the friend's own world's boss would wake for a player put in its room, alone. So the load goes to the
+    area's start: the point a death there goes to, `SoloPlayDeath_2`'s `SetDefaultMapUid(999 - GetLastBlockId())`,
+    here 999 minus the area's block, through the same native (US 0x0044A368), which finds the point's area (from
+    1-2: the Archstone in the Phalanx room, area 02000000).
+  - Before 11-22 the load went to the area and place the friend had at the join. A friend that joined in the
+    tutorial and played on with the host was back at the tutorial's start after its Leave (the user's 11-22 test).
 - **The flags that load puts in play** come from the kept banks: the swap took the new world's from a bank older than
   the kept one.
 - **The form it goes home in.** The session's start records the player's form (GameMan `+0xA90`: 0 body form, 8 soul
@@ -945,6 +1363,12 @@ host's boss kill while the friend was away don't count in the friend's world.
   - ps3recomp answers the game's `LeaveRoom` as left when the room's connection is lost (the room server has let the
     friend go). Before, the call failed with no connection, and the game tried again every 15 s, each time with the
     box.
+  - Out of a session (it ended, or a join failed), the friend asks the host for its room and place again (`ROM?`,
+    `HER?`), and its next join waits for the answer. The room data it held can be a room that is gone: on 11-22 (a
+    tester's log) the host's game stopped answering and its room went, and the friend, home and still connected to
+    the host's game, joined that room 1.9 s later; the connection's loss came 0.4 s after, and the join failed with
+    "Failed to join the session.". A host that left its room and opened another got a first join to the old room the
+    same way (err `0x80022B13`). A host that is gone doesn't answer, so no join goes before np_psnr sees it gone.
 - **A friend kicked out of the room** (`0x1103`): the game leaves that room, again every 15 s while that fails, each
   time with "The session has ended.". The room server has taken the friend out already, so it answers "not in the
   room". ps3recomp answers a leave of a room the friend was kicked out of as left, and a leave takes down only the
@@ -1023,10 +1447,20 @@ the newer generation, and saves as usual.
   Destroyed", then "You Revived", once each). Not run on the other discs.
 - What a friend's talk changes (a conversation heard, a choice made, an item given) stays in its copy of the host's
   world: it is neither kept in the friend's own world nor sent to the host. Only the Archstones' seal is shared.
+- Warp and Unstuck (11-24): two copies on this PC in the Nexus, A hosting and B joined. A walked forward 8 s; B's
+  Warp then took it from 0.02 479.46 -41.81 to -3.30 479.46 -44.73 (A's ground), and Unstuck back to 0.00 479.46
+  -41.69, where it had arrived. The asks came from a test knob in a scratch build, not from the page; the page's buttons
+  and the boss fight block weren't played. The user then warped by hand both ways in two copies on one PC (as bars),
+  and Unstuck worked alone and in the session.
 - The Archstones' seal from a friend: checked through its four flags (scripted), and by hand. Host and friend
   killed Phalanx together, went back to the Nexus, and the friend talked to the Monumental first: his story played
   on the friend's game only, and the host could use the other Archstones afterwards. The host's own talk with him
   then gave his later lines and his question (the friend's answer stays in the friend's copy of the host's world).
+- The Maiden after a friend heard the Monumental's story first (11-24): the host's save from the tester's report
+  (seal open, 303 clear), loaded into the Nexus as host. The log said `flag 303 (the Monumental's tale) was missing
+  with the seal open (34); set`, and the save the game wrote then had 303 set. The Nexus's script now counts 5 flags
+  for the seal (34, 36, 8030, 8802, 303) and 4 cutscenes. A friend hearing the story in a session wasn't re-run;
+  303 takes the seal's path, which the check above covers.
 - A friend's talk is checked as far as the Crestfallen's prompt and first line. Scripted, with the Maiden in Black:
   - with a host who hadn't met the Monumental yet, her prompt and early lines ("The Monumental awaits thee, above.");
   - with a host past the first demon, her level up. The friend answered YES to "Seek Soul Power?", then chose Seek
@@ -1061,8 +1495,15 @@ the newer generation, and saves as usual.
   - In the Nexus (the after-tutorial saves), the friend's game noted the 14 people the host's game sets up, so
     Thomas and the others still read 9.
   - The shots didn't catch the ghost itself on screen: it fades in for about 10 s at a time.
-- Closing the game window as a friend: the session is lost and nothing from it is saved (the game only saves at
-  home).
+- Stonefang's merchant and smith (11-19, two copies, scripted, a save from the 11-15 co-op session, the friend
+  following the host to 2-1, the merchant seen from 3 m by both):
+  - Before (a scratch switch, same build), the friend saw the Dregling merchant as a white phantom. The value at
+    `+0x24` of his `+0x18` was 7105 on the friend's game and -1 on the host's.
+  - With the store's value kept, the friend saw him as the host does, with -1 there and his type still 4. Ed's store
+    was kept the same way (7135 not written); he wasn't looked at.
+  - Not checked with the change: the talk prompts of the two.
+- Closing the game window as a friend: the session is lost, and what the friend did since its last own save (at most
+  90 s before) with it. Before 11-21 nothing from the session was saved (the game saved only at home).
 - The tutorial's demon (the Vanguard, `m08_01`) offered its soul only outside a session (`ATTR_NOSESSION`; the
   game has no co-op there), so with a friend nobody got it. Its prompt is now offered with or without a session, to
   each player, like the other bosses'. Checked on the script (both of its registrations change, and only those); not
@@ -1112,6 +1553,10 @@ the newer generation, and saves as usual.
   then both put into the gate's region (2250), the friend 3 s after the host. Before, only the host's game played the
   gate's cutscene (scene 20101) and set 571, as in the user's session. With the edit, both games played it and set
   571. Not yet by hand, and not run on the other discs.
+- The Archstone for a friend who has the soul (11-24): the edit, run on its own over every area script, changed one
+  branch in each of 1-1, 1-2, 1-3, 1-4 and 5-3 and nothing else. A load into 1-2 with co-op on read the four
+  Boletaria scripts with one edit more each (49, 24, 23, 20) and played on. A kill with a friend who has the soul
+  wasn't played.
 - The rest of the game's scripts, checked for steps kept for the host (11-15): every area script's 218 `if` lines on
   the host and the client (83 at an area start, 135 in handlers), and the other ways a script tells them apart
   (`IsSession`, `ATTR_NOSESSION`, host-only prompts, `IsNetMessage`, `IsInParty`). Apart from the edits above, the

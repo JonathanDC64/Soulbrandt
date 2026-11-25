@@ -1,6 +1,7 @@
 // The host's side of the setup engine (see setup_engine.hpp). Two facts differ by platform, in small functions: where
 // the local data folder is, and which folder names the runtime's file calls can take.
 #include "setup_engine.hpp"
+#include "path_utf8.hpp"
 
 #include "report.hpp"
 #include "setup_folder.hpp"
@@ -25,8 +26,7 @@ namespace ui::setup {
 namespace {
 
 std::string utf8(const std::filesystem::path& p) {
-    const std::u8string s = p.u8string();
-    return std::string(s.begin(), s.end());
+    return path_utf8(p);  // (never throws: path_utf8.hpp)
 }
 
 std::filesystem::path from_utf8(const std::string& s) {
@@ -131,7 +131,14 @@ Folders& folders() {
         const auto shared = base.empty() ? base : base / kFolderName;
         // A portable install (issue #364, docs/45 section 4.4): beside the player's data, in data\ beside the program.
         const auto program = report::portable() ? report::program_dir() : std::filesystem::path{};
-        return find_folders(from_utf8(env("DES_SETUP_DATA")), shared, program);
+        // DES_SETUP_DATA as an absolute path, against the folder the program started in (issue #667: a relative one
+        // reached setup as it was, and the lift, which runs its tools in the source tree, looked for the game there)
+        std::filesystem::path given = from_utf8(env("DES_SETUP_DATA"));
+        std::error_code ec;
+        if (!given.empty() && given.is_relative()) {
+            if (auto abs = std::filesystem::absolute(given, ec); !ec) given = abs.lexically_normal();
+        }
+        return find_folders(given, shared, program);
     }();
     return f;
 }

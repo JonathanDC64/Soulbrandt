@@ -27,9 +27,10 @@
 #include "ui.hpp"
 #include "version.hpp"
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include <execinfo.h>
 #include <fcntl.h>
+#include <sched.h>
 #include <spawn.h>
 #include <sys/syscall.h>
 #include <sys/wait.h>
@@ -99,8 +100,19 @@ std::vector<std::string>& started_arguments() {
     static std::vector<std::string> args;
     return args;
 }
+// And the CPUs it could run on (the player's own limit, if any): a new process gets those of the thread that starts
+// it, not the program's (start_again).
+struct StartedCpus {
+    cpu_set_t set;
+    bool known = false;
+};
+StartedCpus& started_cpus() {
+    static StartedCpus cpus;
+    return cpus;
+}
 __attribute__((constructor)) void save_start() {
     for (char** e = environ; e && *e; ++e) started_environment().emplace_back(*e);
+    started_cpus().known = sched_getaffinity(0, sizeof(cpu_set_t), &started_cpus().set) == 0;
     std::ifstream cmdline("/proc/self/cmdline", std::ios::binary);  // the arguments, each ended by a 0
     for (std::string arg; std::getline(cmdline, arg, '\0');) started_arguments().push_back(arg);
 }
@@ -308,7 +320,7 @@ void watch_window(std::string txt, std::string title) {
     const std::string text = "A report was saved in " + std::filesystem::path(txt).parent_path().string() +
                              ".\nTo report it, attach the files in that folder to a new issue at " +
                              std::string(report::kRepositoryUrl);
-    if (SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, title.c_str(), text.c_str(), nullptr) != 0)
+    if (!SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, title.c_str(), text.c_str(), nullptr))
         std::fprintf(stderr, "[crash-dialog] no message box either: %s\n", SDL_GetError());
     std::fflush(stderr);
     _exit(0);
@@ -460,14 +472,42 @@ bool start_again(const std::vector<std::string>& set, bool play) {
     envp.push_back(nullptr);
     for (std::string& a : args) argv.push_back(a.data());
     argv.push_back(nullptr);
+    // What the new one gets of this one's files: standard output and error as they were when this one started (a
+    // terminal, the desktop's journal), not the log's pipe that report::start_log put there, which nothing reads once
+    // this one has closed (after 1 MB in it, the new one's every thread that prints would wait: #670). Nothing else
+    // either: no lock on des.log, no end of that pipe.
+    posix_spawn_file_actions_t files;
+    posix_spawn_file_actions_init(&files);
+    for (int fd : {1, 2}) {
+        const int original = report::original_output(fd);
+        if (original < 0) posix_spawn_file_actions_addopen(&files, fd, "/dev/null", O_WRONLY, 0);
+        else if (original != fd) posix_spawn_file_actions_adddup2(&files, original, fd);
+    }
+    posix_spawn_file_actions_addclosefrom_np(&files, 3);
     // The program's file where it was started (report::program_now, read at the start): after an update that path
     // holds the new version, while /proc/self/exe follows this one's file into .previous/. /proc/self/exe only if
     // the path cannot be started.
+    // The new one runs on the CPUs this one started with: this thread is put on them while it starts it, then back.
+    // A new process gets the CPUs of the thread that starts it, and this is often the one that draws and runs the
+    // menus' presses, which RSX_CORE (on by default) puts alone on one CPU (ps3recomp's plat_core_reserve). Every
+    // game the Co-op window's Host, Join or Leave started ran on that one CPU: a tester's i5-12400F (12 CPUs) got
+    // about 35 fps in co-op where it gets 240 alone, the game 1.00 core busy with its threads waiting for a CPU, and
+    // RSX_CORE "not used here" (11-23).
+    cpu_set_t was;
+    const bool moved = started_cpus().known && sched_getaffinity(0, sizeof was, &was) == 0 &&
+                       !CPU_EQUAL(&was, &started_cpus().set) &&
+                       sched_setaffinity(0, sizeof(cpu_set_t), &started_cpus().set) == 0;
     pid_t child = 0;
     const std::string exe = report::program_now().string();
-    if ((exe.empty() || posix_spawn(&child, exe.c_str(), nullptr, nullptr, argv.data(), envp.data()) != 0) &&
-        posix_spawn(&child, "/proc/self/exe", nullptr, nullptr, argv.data(), envp.data()) != 0)
-        return false;
+    const bool started =
+        (!exe.empty() && posix_spawn(&child, exe.c_str(), &files, nullptr, argv.data(), envp.data()) == 0) ||
+        posix_spawn(&child, "/proc/self/exe", &files, nullptr, argv.data(), envp.data()) == 0;
+    posix_spawn_file_actions_destroy(&files);
+    if (moved) sched_setaffinity(0, sizeof was, &was);
+    if (started && moved)
+        std::fprintf(stderr, "[ui] the game starts again on the %d CPU(s) it started with, not this thread's %d\n",
+                     CPU_COUNT(&started_cpus().set), CPU_COUNT(&was));
+    if (!started) return false;
     // A test run's PS3_PIDFILE (each process appends itself, late in its boot): the new one goes in now, so the script
     // that started this one sees the game at once, to wait for it or stop it.
     if (const char* pids = std::getenv("PS3_PIDFILE"); pids && *pids)

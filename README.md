@@ -1,12 +1,27 @@
 <div align="center">
 
-# Soulbrandt
+<picture>
+  <source srcset="assets/brand/soulbrandt-title.avif" type="image/avif">
+  <img src="assets/brand/soulbrandt-title.webp" alt="Soulbrandt" width="580">
+</picture>
 
 **Demon's Souls, running natively on PC.**
 
 [![release](https://img.shields.io/github/v/release/JonathanDC64/Soulbrandt?filter=v%2A&sort=semver&display_name=tag&label=release&color=orange)](https://github.com/JonathanDC64/Soulbrandt/releases/latest)
 [![downloads](https://img.shields.io/github/downloads/JonathanDC64/Soulbrandt/latest/total?label=downloads&color=brightgreen)](https://github.com/JonathanDC64/Soulbrandt/releases/latest)
+[![stars](https://img.shields.io/github/stars/JonathanDC64/Soulbrandt?style=flat&label=stars&color=yellow)](https://github.com/JonathanDC64/Soulbrandt/stargazers)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![last commit](https://img.shields.io/github/last-commit/JonathanDC64/Soulbrandt/master?label=last%20commit)](https://github.com/JonathanDC64/Soulbrandt/commits/master)
+[![issues](https://img.shields.io/github/issues/JonathanDC64/Soulbrandt?label=issues)](https://github.com/JonathanDC64/Soulbrandt/issues)
 [![Discord](https://img.shields.io/discord/1565536292324769832?label=Discord&logo=discord&logoColor=white&color=5865F2)](https://discord.gg/BzmwDeca8s)
+
+[![Windows x64](https://img.shields.io/badge/Windows%20x64-0078D6)](#what-you-need)
+[![Linux x64](https://img.shields.io/badge/Linux%20x64-FCC624?logo=linux&logoColor=black)](#linux)
+[![Steam Deck](https://img.shields.io/badge/Steam%20Deck-1A9FFF?logo=steamdeck&logoColor=white)](#linux)
+[![DirectX 12](https://img.shields.io/badge/DirectX%2012-107C10)](#features)
+[![Vulkan](https://img.shields.io/badge/Vulkan-AC162C?logo=vulkan&logoColor=white)](#features)
+
+**[Download the latest release](https://github.com/JonathanDC64/Soulbrandt/releases/latest)** · [How to play](#how-to-play) · [What you need](#what-you-need) · [Release notes](https://github.com/JonathanDC64/Soulbrandt/releases) · [Build from source](#building-from-source) · [Report an issue](#problems)
 
 </div>
 
@@ -92,7 +107,7 @@ Press **F1** (or **L3 + R3** on a controller) at any time to open the menu. Most
 
 **Mods**
 - Put mods in the mods folder (Mods in the menu or on the start screen, then Open the mods folder) and turn each one on or off there. Mods for the PS3 game or RPCS3 that replace the game's files work, and the game's own files are never changed.
-- A mod that changes how the game plays keeps you offline, so you never meet players without it. Mods that only change the look or sound keep online play.
+- A mod that changes how the game plays keeps you offline, so you never meet players without it. Mods that only change the look or sound keep online play. Seamless co-op works with any mod; everyone in the party should have the same ones.
 - When two mods change the same thing, the one higher in the list wins; the arrows on each mod move it. The list is kept in `mods\load_order.txt`, which mod managers can use too (docs/143).
 - After you turn mods on or off, **Restart now** restarts the game with them and goes straight back into your game. Closing the menu with mod changes waiting asks whether to restart.
 
@@ -124,7 +139,7 @@ These steps are for the release download.
    - **Import from RPCS3**: setup finds the game in RPCS3's list and has your RPCS3 unlock its files. It can bring your save, trophies and some settings across too. If RPCS3 has several copies, setup lets you pick one.
    - **I have decrypted files**: your disc copy, plus the 27 files you decrypted yourself (`EBOOT.elf` and the `.sdat` files).
    - **Show me how**: step by step, with free tools only.
-4. Start the build. It runs on your PC and can take a while; setup shows an estimate first. You can stop it and carry on later. Setup builds in AppData on Windows (`~/.local/share` on Linux) and needs about 4 GB free there; to build on another drive, press **Change** next to **Build folder** first.
+4. Start the build. It runs on your PC and can take a while; setup shows an estimate first. You can stop it and carry on later. Setup builds in AppData on Windows (`~/.local/share` on Linux) and needs about 4 GB free there; to build on another drive, press **Change** next to **Build folder** first. On Linux that drive must be formatted for Linux: setup can't build on a FAT32 or exFAT drive.
 5. Pick a preset: **Original** plays as on the PS3; **Enhanced** sets 60 fps, a resolution that fits your display, SMAA, 16x anisotropic filtering, fullscreen, and HDR when Windows has HDR on for your display. Then a few choices (HDR among them, on Windows) and your online name. You can change anything later in Settings.
 
 Then press **Play**.
@@ -235,7 +250,7 @@ This project contains only its own code, scripts and documentation. It has no ga
 - The [Old Standard TT](https://fonts.google.com/specimen/Old+Standard+TT) font for the DeS UI look's text
 - [SMAA](https://www.iryoku.com/smaa/) for the SMAA setting, [FFmpeg](https://ffmpeg.org) for the movies, and [vkd3d](https://gitlab.winehq.org/wine/vkd3d) and [SDL](https://www.libsdl.org) for Linux
 
-Settings > About and [`port/ui/NOTICE.md`](port/ui/NOTICE.md) list the menus' parts with their licences. The download's `licenses` folder holds the licences of the libraries shipped beside the program. The source of its LGPL libraries, FFmpeg and vkd3d, is on [their own release](https://github.com/JonathanDC64/Soulbrandt/releases/tag/third-party-sources).
+Settings > About and [`port/ui/NOTICE.md`](port/ui/NOTICE.md) list the menus' parts with their licences. The download's `licenses` folder holds the licences of the libraries shipped beside the program. The source of its LGPL libraries is on releases of their own: FFmpeg and vkd3d on [third-party-sources](https://github.com/JonathanDC64/Soulbrandt/releases/tag/third-party-sources), and libusb (Windows) on [source-libusb-1.0.30](https://github.com/JonathanDC64/Soulbrandt/releases/tag/source-libusb-1.0.30). Each download's `licenses/<library>/README.txt` names its archive.
 
 ## License
 

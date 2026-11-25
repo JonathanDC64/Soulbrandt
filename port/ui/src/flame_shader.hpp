@@ -20,7 +20,8 @@
 //   m_time   seconds times the look's speed (the flame's motion)    m_clock  seconds (the flicker)
 //   m_color  the light's colour, its strength                       m_shape  reach, width, flicker, the room above
 //   m_box    the map's box in dp at 1280 x 720                     m_dither x: 1, or 0 when it is drawn small (the
-//                                                                            scaling up dithers then)
+//                                                                            scaling up dithers then); y: a dark
+//                                                                            flame; z: its edge fade, dp (0 none)
 #define DES_UI_HLSL_FLAME R"(
 cbuffer Flame : register(b0) {
     float4x4 m_transform; float2 m_translate; float m_time; float m_clock; float4 m_color; float4 m_shape; float4 m_box;
@@ -50,7 +51,20 @@ float4 main(PS_IN i) : SV_Target {
     float3 m = flame_map(q);
     float above = smoothstep(-0.05, 0.15, f - m.b * 0.35);
     float flick = lerp(1.0, 0.55 + 0.9 * (0.5 + 0.5 * gnoise(float3(q * m_box.xy * 0.035, m_clock * 2.3))), m_shape.z);
-    float3 light = m_color.rgb * S * flick * (f * tongues * above * 9.0 + m.r * 0.45 + m.b * 0.2 * R);
+    float amount = S * flick * (f * tongues * above * 9.0 + m.r * 0.45 + m.b * 0.2 * R);
+    // A map of its own (the start screen's swords, m_dither.z dp): it fades out that far inside the element's edges,
+    // so no edge of the box shows as a line.
+    if (m_dither.z > 0.0) {
+        float2 edge = min(i.uv, 1.0 - i.uv) * float2(m_box.x, m_box.y / (1.0 - m_shape.w));
+        amount *= smoothstep(0.0, m_dither.z, min(edge.x, edge.y));
+    }
+    if (m_dither.y > 0.5) {
+        // A dark flame (m_dither.y): it takes light away, as much as the flame would give, and its fringe (where it
+        // thins out) has a little of the colour, so it shows on black too.
+        float a = saturate(amount);
+        return float4(m_color.rgb * (a * (1.0 - a) * 1.2), a * 0.92) * i.color.a;
+    }
+    float3 light = m_color.rgb * amount;
     // A dither where there is light, so the glow doesn't band on black.
     light += hash33(floor(float3(i.position.xy, 5.0))).x * (0.5 / 255.0) * m_dither.x *
              step(1.0 / 255.0, max(light.r, max(light.g, light.b)));
@@ -69,11 +83,15 @@ struct Look {
     float width;     // how much its tongues waver, 0 to 2
     float speed;     // how fast it moves (its clock runs this much faster)
     float flicker;   // 0 steady, 1 flickering
+    bool dark = false;  // it takes light away (a black flame), its colour only at its fringe
 };
 
 // "logo", the start screen's (picked 2026-11-17): a soul's pale blue light, tall and slow.
 inline constexpr Look kLooks[] = {
     {"logo", {0.70f, 0.84f, 1.00f}, 0.59f, 2.f, 1.f, 0.4f, 0.3f},
+    // The start screen's crossed swords (a prototype, start_sword.hpp): low flames, so they stay off the logo above.
+    {"white", {1.00f, 1.00f, 1.00f}, 0.72f, 0.60f, 1.f, 0.4f, 0.3f},
+    {"black", {0.62f, 0.66f, 0.75f}, 1.50f, 0.60f, 1.f, 0.4f, 0.3f, true},
 };
 
 // The map, and where it sits in the element. des.rcss pads the logo 160 dp above (the map's 60 and 100 more for the
@@ -121,6 +139,9 @@ inline void fill(const Look& look, double seconds, Constants& c) {
     c.box[2] = 0.f;
     c.box[3] = 0.f;
     c.dither[0] = 1.f;
+    c.dither[1] = look.dark ? 1.f : 0.f;
+    c.dither[2] = 0.f;
+    c.dither[3] = 0.f;
 }
 
 }  // namespace ui::flame

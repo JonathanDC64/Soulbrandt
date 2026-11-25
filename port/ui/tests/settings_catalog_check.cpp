@@ -261,6 +261,46 @@ void check_restart_names() {
     check(settings::restart_pending().empty(), "changed back, something still waits");
 }
 
+// Co-op's settings on their own (the Seamless co-op screen's Settings): one tab of three sections, "When you host",
+// "When you join" and "On your screen", each with the rows of the Network tab's section of that heading, in its
+// order. The host's rows are the ones whose setting counts in the host's game for everyone (the players, the enemies'
+// health); Co-op notices is each player's own, hosting or joining.
+void check_coop_tab() {
+    g_where = "coop_tabs";
+    const std::vector<catalog::TabDesc>& coop = catalog::coop_tabs();
+    check(coop.size() == 1 && coop[0].sections.size() == 3, "not one tab of three sections");
+    if (coop.size() != 1 || coop[0].sections.size() != 3) return;
+    const char* const heads[3] = {catalog::kCoopHost, catalog::kCoopJoin, catalog::kCoopScreen};
+    const char* const titles[3] = {"When you host", "When you join", "On your screen"};
+    for (int k = 0; k < 3; k++) {
+        const catalog::SectionDesc& c = coop[0].sections[(size_t)k];
+        check(c.title == titles[k], "section " + std::to_string(k) + " is headed '" + c.title + "'");
+        bool found = false;
+        for (const catalog::TabDesc& tab : catalog::tabs())
+            for (const catalog::SectionDesc& s : tab.sections)
+                if (tab.title == "Network" && s.title == std::string(catalog::kCoopHeading) + heads[k]) {
+                    found = true;
+                    bool same = s.rows.size() == c.rows.size();
+                    for (size_t i = 0; same && i < c.rows.size(); i++)
+                        same = c.rows[i].label == s.rows[i].label && c.rows[i].key == s.rows[i].key;
+                    check(same, std::string("not the rows of Network > ") + s.title);
+                    check(!c.rows.empty(), std::string("no rows in ") + s.title);
+                }
+        check(found, std::string("no Network > ") + catalog::kCoopHeading + heads[k] + " section");
+    }
+    const auto has = [&](int k, const char* key) {
+        for (const catalog::RowDesc& r : coop[0].sections[(size_t)k].rows)
+            if (r.key == key) return true;
+        return false;
+    };
+    check(has(0, "DES_SEAMLESS_PLAYERS") && has(0, "DES_SEAMLESS_DIFFICULTY") &&
+              has(0, "DES_SEAMLESS_DIFFICULTY_ATTACK") && has(0, "DES_SEAMLESS_DIFFICULTY_DEFENSE"),
+          "a host's row not under When you host");
+    check(has(1, "DES_SEAMLESS_GLOW") && !has(0, "DES_SEAMLESS_GLOW"), "the glow not under When you join");
+    check(has(2, "coop_notices") && !has(0, "coop_notices") && !has(1, "coop_notices"),
+          "Co-op notices not under On your screen");
+}
+
 // The Game tab's Language rows shown on a disc of region r, and its heading.
 void check_region(int r, int rows, bool heading) {
     g_region = r;
@@ -307,6 +347,7 @@ int main() {
         rows += n;
     }
     check_restart_names();
+    check_coop_tab();
     check_region(0, 1, true);
     check_region(1, 1, true);
     check_region(2, 0, false);

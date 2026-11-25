@@ -8,6 +8,10 @@
 // shown and free; SDL sends a click or a wheel notch only over the window, so those over the picture count, and
 // letting go always counts.
 //
+// A controller in use hides the cursor over the picture too, as on Windows (mouse.cpp, issue #488): a new press on
+// pad 0 hides it (on_frame), and it shows again when the mouse moves or the window goes to the background. Not in a
+// menu of the game with the mouse (it points and clicks there), and never in a test run.
+//
 // Threads: the window's thread owns the state (wndproc). The counts are atomics that the camera hook takes on the
 // game's main thread (des_mouse_take). set_ui_open, on_frame and des_mouse_refresh post WM_DES_MOUSE, and the window's
 // thread then looks again.
@@ -19,7 +23,7 @@
 #include "settings.hpp"
 #include "../../des_rsx_route.h"  // the renderer calls below: through rsx_out in a PS3RECOMP_RSX_HAL build
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <atomic>
 #include <cstdio>
@@ -31,6 +35,7 @@ void cellPad_host_mouse_buttons(unsigned mask);  // ps3recomp, libs/input/cellPa
 void cellPad_host_mouse_wheel(int notches);
 int cellPad_host_keys_out(void);
 void rsx_d3d12_post_message(unsigned msg, unsigned long long wp, long long lp);  // libs/video/rsx_d3d12_backend.h
+extern volatile unsigned g_pad0_buttons;  // ps3recomp, cellPad.c: pad 0's buttons as the game last read them
 }
 
 namespace {
@@ -50,6 +55,7 @@ std::atomic<bool> sHeld{false};     // relative mouse mode is on (mouse look)
 std::atomic<bool> sUiOpen{false};   // a document of the UI is open
 std::atomic<bool> sGameMenu{false}; // a menu of the game is open (set_game_menu)
 std::atomic<bool> sWindowUp{false}; // the window's thread has handed this a message: posts have somewhere to go
+std::atomic<bool> sQuiet{false};    // the cursor is hidden for the pad, until the mouse moves (quiet)
 
 // The window's thread only.
 SDL_Window* sWindow = nullptr;
@@ -58,6 +64,8 @@ bool sMinimised = false;
 bool sWaitButtons = false;  // the game would have the mouse, but a button is still held
 unsigned sButtons = 0;      // the buttons held as cellPad has them: bit 0 left, 1 right, 2 middle, 3 and 4 the side ones
 int sWheel = 0;             // wheel movement short of a whole notch (WHEEL_DELTA)
+bool sOwnCursor = false;    // the UI draws its own cursor (WM_DES_OWN_CURSOR): the system's stays hidden
+int sQuietX = 0, sQuietY = 0;  // where the cursor was when the pad hid it, in the window
 
 bool env_on(const char* name) {
     const char* v = std::getenv(name);
@@ -76,11 +84,32 @@ bool buttons_down() {
     return SDL_GetMouseState(nullptr, nullptr) != 0;
 }
 
+// The system's cursor shown or hidden, as things are now: hidden while the UI draws its own or the pad hid it.
+// (Relative mouse mode, mouse look, hides it whatever this says.)
+void cursor_again() {
+    if (sOwnCursor || sQuiet.load(std::memory_order_relaxed)) SDL_HideCursor();
+    else SDL_ShowCursor();
+}
+
+// The cursor hidden for the pad (on), or shown again (off). Never in a test run: the mouse is the user's.
+void quiet(bool on, const char* why) {
+    if (on && ui::settings::no_user_input()) return;
+    if (on) {
+        float x = 0, y = 0;
+        SDL_GetMouseState(&x, &y);
+        sQuietX = static_cast<int>(x);
+        sQuietY = static_cast<int>(y);
+    }
+    if (sQuiet.exchange(on) == on) return;
+    cursor_again();
+    if (log_on()) std::fprintf(stderr, "[mouse] cursor %s (%s)\n", on ? "hidden for the pad" : "shown", why);
+}
+
 // Never with PS3_NO_USER_INPUT=1 (a test run): the mouse is the user's.
 void hold(const char* why) {
     if (ui::settings::no_user_input()) return;
     if (sHeld.exchange(true)) return;
-    SDL_SetRelativeMouseMode(SDL_TRUE);
+    if (sWindow) SDL_SetWindowRelativeMouseMode(sWindow, true);
     sDx.store(0);
     sDy.store(0);
     if (log_on()) std::fprintf(stderr, "[mouse] held (%s)\n", why);
@@ -99,7 +128,7 @@ void let_go(const char* why) {
         if (log_on()) std::fprintf(stderr, "[mouse] let go (%s)\n", why);
     }
     if (!sHeld.exchange(false)) return;
-    SDL_SetRelativeMouseMode(SDL_FALSE);
+    if (sWindow) SDL_SetWindowRelativeMouseMode(sWindow, false);
     sDx.store(0);
     sDy.store(0);
     if (log_on()) std::fprintf(stderr, "[mouse] let go (%s)\n", why);
@@ -187,25 +216,33 @@ bool wndproc(void* hwnd, unsigned msg, unsigned long long wp, long long lp, long
         }
         return false;
     case WM_DES_MOUSE:
-        update("menu closed, camera running or setting changed");
+        if (wp == 1) {  // a new press on pad 0 (on_frame)
+            if (sWindow && SDL_GetKeyboardFocus() == sWindow && !sMinimised &&
+                !sGameMenu.load(std::memory_order_acquire))
+                quiet(true, "a press on the pad");
+        } else {
+            update("menu closed, camera running or setting changed");
+        }
         *result = 0;
         return true;
     case WM_DES_CURSOR: {
-        static SDL_Cursor* sCursors[SDL_NUM_SYSTEM_CURSORS] = {};
-        const auto shape = static_cast<SDL_SystemCursor>(wp < SDL_NUM_SYSTEM_CURSORS ? wp : 0);
+        static SDL_Cursor* sCursors[SDL_SYSTEM_CURSOR_COUNT] = {};
+        const auto shape = static_cast<SDL_SystemCursor>(wp < SDL_SYSTEM_CURSOR_COUNT ? wp : 0);
         if (!sCursors[shape]) sCursors[shape] = SDL_CreateSystemCursor(shape);
         if (sCursors[shape]) SDL_SetCursor(sCursors[shape]);
         *result = 0;
         return true;
     }
     case WM_DES_OWN_CURSOR:  // (relative mouse mode, mouse look, hides it whatever this says)
-        SDL_ShowCursor(wp ? SDL_DISABLE : SDL_ENABLE);
+        sOwnCursor = wp != 0;
+        cursor_again();
         *result = 0;
         return true;
     case WM_SETFOCUS:
         update("focus");
         return false;
     case WM_KILLFOCUS:
+        quiet(false, "focus lost");
         let_go("focus lost");
         return false;
     case WM_SIZE:  // (minimised, restored, Alt+Enter)
@@ -213,6 +250,8 @@ bool wndproc(void* hwnd, unsigned msg, unsigned long long wp, long long lp, long
         update("window changed");
         return false;
     case WM_MOUSEMOVE:
+        if (sQuiet.load(std::memory_order_relaxed) && (GET_X_LPARAM(lp) != sQuietX || GET_Y_LPARAM(lp) != sQuietY))
+            quiet(false, "mouse moved");
         if (sWaitButtons && !buttons_down()) update("buttons up");
         return false;
     default:
@@ -251,14 +290,24 @@ void on_frame() {
         sCamera.store(camera, std::memory_order_release);
         post_look_again();
     }
+    // A new press on pad 0 (a pad's button, or a key or mouse button bound to one) hides the cursor until the mouse
+    // moves (quiet). Not while a menu of the game has the mouse: a click there presses the pad.
+    static unsigned sPadSeen = 0;
+    const unsigned pad = g_pad0_buttons;
+    const bool pressed = (pad & ~sPadSeen) != 0;
+    sPadSeen = pad;
+    if (pressed && !sQuiet.load(std::memory_order_relaxed) && !sGameMenu.load(std::memory_order_acquire) &&
+        sWindowUp.load())
+        rsx_d3d12_post_message(WM_DES_MOUSE, 1, 0);
 }
 
 void release_now() {
-    if (sHeld.exchange(false)) SDL_SetRelativeMouseMode(SDL_FALSE);
+    if (sQuiet.exchange(false) && sWindow) cursor_again();
+    if (sHeld.exchange(false) && sWindow) SDL_SetWindowRelativeMouseMode(sWindow, false);
 }
 
 void set_cursor(int shape) {
-    static int sShape = SDL_SYSTEM_CURSOR_ARROW;
+    static int sShape = SDL_SYSTEM_CURSOR_DEFAULT;
     if (shape == sShape) return;
     sShape = shape;
     if (sWindowUp.load()) rsx_d3d12_post_message(WM_DES_CURSOR, (unsigned long long)shape, 0);
@@ -269,7 +318,7 @@ void client_size(void* hwnd, int& width, int& height) {
 }
 
 void hold_buttons(void*, bool down) {
-    SDL_CaptureMouse(down ? SDL_TRUE : SDL_FALSE);
+    SDL_CaptureMouse(down);
 }
 
 }  // namespace ui::mouse

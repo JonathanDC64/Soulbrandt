@@ -12,6 +12,7 @@
 #endif
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <initializer_list>
@@ -320,6 +321,11 @@ std::vector<TabDesc> make_tabs() {
                 "Press Cross facing the statue in front of where you wake in the Nexus and pick Change Tendency to "
                 "set a world's tendency or your character's, from Pure White to Pure Black. Some events only happen "
                 "at a tendency, and what has already happened stays."),
+            toggle("Escaped crystal lizards come back", "DES_LIZARD_RETURN",
+                "A crystal lizard that gets away is back the next time its area loads, without using up a return. "
+                "Only a kill uses one. Off, as in the original game: getting away uses a return as a kill does. "
+                "Each boss killed in a lizard's world gives it one return.<br/><br/>It counts from the next area load "
+                "after you turn it on: a lizard that got away before then has used up a return."),
         }},
         {"HUD", {
             action("Edit HUD", Opens::HudEditor, "Move, resize, hide or show each part of the HUD on the game screen."),
@@ -378,8 +384,8 @@ std::vector<TabDesc> make_tabs() {
                         return out;
                     },
                     .blank = "auto"},
-                .help = "The gamepad the game and these menus read, when more than one is connected. Automatic: the "
-                        "game reads the first one found, the menus all of them."},
+                .help = "The gamepad the game and these menus read, when more than one is connected. Automatic: "
+                        "the one you used last plays, and the button icons follow it."},
             toggle("Vibration", "PAD_RUMBLE", "Lets the game make your gamepad vibrate."),
             stick_row("Left stick deadzone", "PAD_DEADZONE_LEFT", 0,
                 "How far you tilt the left stick before it counts, the same on every controller. Default is how the "
@@ -394,9 +400,11 @@ std::vector<TabDesc> make_tabs() {
                 "The forward attack is the kick, or with a weapon held in both hands that weapon's forward attack."
                 "<br/><br/>Forward + attack: push the left stick forward as you attack, as in the original.<br/><br/>"
                 "Own key: attacking never does it. "
-                "The Kick (own key) row in Change Buttons, Keyboard and mouse, does it instead; with no key set, "
-                "there's no forward attack. A gamepad has no such button yet.<br/><br/>Only your own moves change; "
-                "other players see them as usual."),
+                "The Kick (own key) row in Change Buttons, Keyboard and mouse, does it instead, and on a gamepad the "
+                "Kick row in Change Buttons, Gamepad: the button you choose there kicks and does nothing else. A "
+                "back button or paddle works too, when the pad reports it. With no key or button set, there's no "
+                "forward attack. Choosing a Kick key or button there sets this to Own key.<br/><br/>Only your own "
+                "moves change; other players see them as usual."),
             info("Keyboard and mouse", "WASD, mouse, Space",
                 "As in the Souls games on PC:<br/>"
                 "<b>W A S D</b> move &nbsp; <b>Left Alt</b> (held) walk &nbsp; <b>Mouse</b> camera (Mouse look, "
@@ -508,7 +516,9 @@ std::vector<TabDesc> make_tabs() {
                 {{"", "Original (every 6th frame)"}, {"15", "Smoother (at least 15 a second)"}},
                 "How often your position goes to other players. Smoother makes you look less laggy on their screens."),
         }},
-        {"Seamless co-op", {
+        // Seamless co-op's rows in two: the host's game (only the host's setting counts there, for everyone in it),
+        // and a friend's own (each player's, in a host's world). coop_tabs() shows both on the co-op screen.
+        {std::string(kCoopHeading) + kCoopHost, {
             {.label = "Players when you host", .key = "DES_SEAMLESS_PLAYERS",
                 .kind = ChoiceRow{
                     .choices = {{"2", "2: you and a friend"}, {"3", "3: you and two friends"},
@@ -517,6 +527,31 @@ std::vector<TabDesc> make_tabs() {
                 .help = "The most players in a co-op game you host (Seamless co-op, in the menu), you included. One more "
                         "waits, and joins as soon as a place frees up. A change counts at once; players already here "
                         "stay.<br/><br/>The original game plays three at most in co-op."},
+            choice("Enemy difficulty", "DES_SEAMLESS_DIFFICULTY",
+                {{"", "Vanilla", true}, {"bosses", "Scaled like bosses"}, {"1.5", "x1.5"}, {"2", "x2"},
+                    {"2.5", "x2.5"}, {"3", "x3"}, {"3.5", "x3.5"}, {"4", "x4"}},
+                "How much health enemies have in a co-op game you host. Vanilla: only a boss gets more, at its fog "
+                "gate, when blue phantoms are there. Scaled like bosses: every enemy gets more with each player, x1.5 "
+                "with two players, x2 with three and x2.5 with four. x1.5 to x4: that much, however many play. "
+                "Bosses get the same, or their own if it is more."
+                "<br/><br/>The host's choice counts for everyone in its game. A change counts at once."),
+            toggle("Scale enemy attack power", "DES_SEAMLESS_DIFFICULTY_ATTACK",
+                "Enemies' hits on players do as much more as Enemy difficulty gives them health: at x2, twice the "
+                "damage. Off with Vanilla.<br/><br/>The host's choice counts for everyone in its game. A change "
+                "counts at once."),
+            toggle("Scale enemy defenses", "DES_SEAMLESS_DIFFICULTY_DEFENSE",
+                "Players' hits on enemies do as much less as Enemy difficulty gives them health: at x2, half the "
+                "damage. Off with Vanilla.<br/><br/>The host's choice counts for everyone in its game. A change "
+                "counts at once."),
+            choice("When you die as host", "DES_SEAMLESS_HOST_DEATH",
+                {{"", "You respawn alone"}, {"together", "Everyone goes back"}},
+                "You respawn alone: you go back to the area's start by yourself, your friends play on, and dead "
+                "enemies stay dead. In a boss fight you wait until the boss is dead. Only when no friend is left "
+                "standing does everyone go back with you, and the enemies come back.<br/><br/>Everyone goes back: "
+                "each of your deaths takes everyone back to the area's start, and the enemies come back. A change "
+                "counts at once."),
+        }},
+        {std::string(kCoopHeading) + kCoopJoin, {
             toggle("Your glow", "DES_SEAMLESS_GLOW",
                 "Whether the other players see your blue phantom glow while you are in a host's world. Off: they see "
                 "you as you look in your own world. A change counts at once."),
@@ -535,6 +570,12 @@ std::vector<TabDesc> make_tabs() {
                 .help = "Your own glow colour, by hue: 0 red, 60 yellow, 120 green, 180 cyan, 240 blue, 300 magenta. "
                         "Setting it picks Custom in Your glow colour.",
                 .swatch = [](const std::string&) { return s::hue_hex(s::glow_hue()); }},
+        }},
+        {std::string(kCoopHeading) + kCoopScreen, {
+            own_setting(toggle("Co-op notices", "coop_notices",
+                "Short notes while you play: a player joined, left, died or is back, how your join "
+                "went, and who waits to join your game. Off hides them, except a note that co-op didn't start. A "
+                "change counts at once.")),
         }},
         {"In your world", {
             toggle("Messages", "DES_NET_MESSAGES", "Messages from other players. Off hides all of them, yours too."),
@@ -729,6 +770,23 @@ std::vector<TabDesc> make_tabs() {
 const std::vector<TabDesc>& tabs() {
     static const std::vector<TabDesc> sTabs = make_tabs();
     return sTabs;
+}
+
+const std::vector<TabDesc>& coop_tabs() {
+    static const std::vector<TabDesc> sCoop = [] {
+        TabDesc coop{"Co-op", {}};
+        const std::string head = kCoopHeading;
+        for (const TabDesc& tab : tabs())
+            for (const SectionDesc& section : tab.sections)
+                if (tab.title == "Network" && section.title.rfind(head, 0) == 0) {
+                    SectionDesc s = section;
+                    s.title = section.title.substr(head.size());   // "when you host" -> "When you host"
+                    if (!s.title.empty()) s.title[0] = (char)std::toupper((unsigned char)s.title[0]);
+                    coop.sections.push_back(std::move(s));
+                }
+        return std::vector<TabDesc>{std::move(coop)};
+    }();
+    return sCoop;
 }
 
 std::string choice_label(const Choice& c) {

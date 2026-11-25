@@ -72,6 +72,7 @@ constexpr Def kDefs[] = {
     {"DES_IDENTITY", "1", Apply::Live},        // des_respec.cpp, each frame: 1 = with DES_APPEARANCE, also Change Name and Change Body
     {"DES_RESPEC", "0", Apply::Live},          // des_respec.cpp, each frame: 1 = the Nexus statue and the Maiden in Black offer a stat respec
     {"DES_TENDENCY", "0", Apply::Live},        // des_respec.cpp, each frame: 1 = the Nexus statue offers Change Tendency
+    {"DES_LIZARD_RETURN", "0", Apply::Live},   // des_seamless_scripts.cpp, at each area's load: 1 = a crystal lizard that gets away comes back
     {"DES_DOF", "1", Apply::Live},             // des_dof, read each frame
     {"RSX_AA", "0", Apply::Live},              // 0 = none, as on the PS3; 1 = FXAA, 2 = SMAA, before the HUD; per batch
     {"RSX_SCALE", "100", Apply::Live},         // the D3D12 backend remakes its render targets at the next batch
@@ -118,9 +119,16 @@ constexpr Def kDefs[] = {
     {"DES_SEAMLESS_INTRO", "", Apply::Restart},
     {"DES_SEAMLESS_STUN", "", Apply::Restart},
     {"DES_SEAMLESS_PLAYERS", "4", Apply::Live},    // the most players a seamless co-op host takes, itself included: 2-4
+    // seamless co-op, the host's (it counts for its guests too): "bosses" = every enemy's health scaled by the players,
+    // as a boss's is (des_seamless_game.cpp's enemy_health), "1.5" to "4" = by that; "" = the game's own. With a
+    // scale, "1" scales the enemies' attacks and defenses by as much too (enemy_damage).
+    {"DES_SEAMLESS_DIFFICULTY", "", Apply::Live},
+    {"DES_SEAMLESS_DIFFICULTY_ATTACK", "0", Apply::Live},
+    {"DES_SEAMLESS_DIFFICULTY_DEFENSE", "0", Apply::Live},
     {"DES_SEAMLESS_GLOW", "1", Apply::Live},       // seamless co-op: "0" = the other players see this one without its phantom glow
     {"DES_SEAMLESS_GLOW_COLOR", "", Apply::Live},  // seamless co-op: this player's glow colour, "RRGGBB"; "" = the game's blue
     {"glow_hue_custom", "30", Apply::UiOnly},      // Your glow colour's Custom hue (0-350), kept while a named colour is on
+    {"DES_SEAMLESS_HOST_DEATH", "", Apply::Live},  // the host's death: "" = alone while a friend stands, "together" = all back
     {"DES_NET_PASSWORD", "", Apply::Live},     // matchmaking password; a hash of it goes to the server; "" = everyone
     {"DES_NET_TENDENCY", "own", Apply::Live},  // des_qwc_local: "own" = yours only, "server" = the server's mixed in (the game's)
     {"DES_NET_RATING_POLL", "", Apply::Live},  // des_net_grade_poll: seconds between rating checks; "" = the game's 300
@@ -143,8 +151,10 @@ constexpr Def kDefs[] = {
     {"menu_hint", "1", Apply::UiOnly},
     {"trophy_popups", "1", Apply::UiOnly},     // trophy_toasts.cpp; off hides the toast, the unlock is still kept
     {"trophy_sound", "1", Apply::UiOnly},      // trophy_toasts.cpp; off = no tune when a trophy is earned
+    {"coop_notices", "1", Apply::UiOnly},      // coop_notices.cpp; off hides seamless co-op's notes (not "didn't start")
     {"DES_CURSOR3D", "1", Apply::Live},        // host.cpp, each frame: 0 = the system's arrow, not the sword (docs/112)
-    {"DES_CURSOR_SWORD", "moonlight", Apply::Live},  // host.cpp, each frame: which sword (souls_model.hpp's swords())
+    {"DES_CURSOR_SWORD", "soulbrandt", Apply::Live},  // host.cpp, each frame: which sword (souls_model.hpp's swords());
+                                                      // until 0.2.0 the default was moonlight (load_file keeps it)
     {"DES_CURSOR_SIZE", "64", Apply::Live},    // host.cpp, each frame: the sword's length in dp
     {"DES_UI_LIZARD", "1", Apply::Live},       // host.cpp, each frame: 0 = no dancing crystal lizard in the corner
     {"start_smoke", "1", Apply::UiOnly},       // prelaunch.cpp: 0 = no smoke behind the start screen (DeS UI)
@@ -353,6 +363,64 @@ std::string keys_for_pad(const std::string& keys) {
     return out;
 }
 
+// The gamepad's buttons as cellPad gets them (PAD_MAP), less the Kick row's ("kick=", Change Buttons' Gamepad page:
+// des_kick in des_options.cpp). With DES_KICK=1 its pad button presses R1 too, added to R1's buttons, and nothing else:
+// a game button that had it has it no more ("none" when that leaves it none), and DES_KICK_PAD names it, for des_kick
+// to read at each attack. A game button named again replaces what it had, in cellPad, so the changed ones go last.
+std::string map_for_pad(const std::string& map) {
+    // cellPad's names (pad_map.h): the game's 16 buttons, then the extra ones some pads have (paddles, misc, touchpad)
+    static const char* const kNames[] = {
+        "select", "l3", "r3", "start", "up", "right", "down", "left", "l2", "r2", "l1", "r1",
+        "triangle", "circle", "cross", "square", "paddle1", "paddle2", "paddle3", "paddle4", "misc", "touchpad"};
+    constexpr int kGame = 16;
+    const auto lower = [](std::string s) {
+        for (char& c : s) c = char(std::tolower(static_cast<unsigned char>(c)));
+        return s;
+    };
+    const std::string mode = pinned("DES_KICK") ? pinned_value("DES_KICK") : get("DES_KICK");
+    std::string out, kick;
+    std::map<std::string, std::string> src;   // each game button's last value
+    size_t at = 0;
+    while (at < map.size()) {
+        size_t end = map.find_first_of(", ;", at);
+        if (end == std::string::npos) end = map.size();
+        const std::string pair = map.substr(at, end - at);
+        at = end + 1;
+        if (pair.empty()) continue;
+        const size_t eq = pair.find('=');
+        const std::string target = lower(pair.substr(0, eq));
+        const std::string value = eq == std::string::npos ? "" : lower(pair.substr(eq + 1));
+        if (target == "kick") {
+            kick = value;
+            continue;
+        }
+        src[target] = value;
+        if (!out.empty()) out += ',';
+        out += pair;
+    }
+    bool known = false;
+    for (const char* name : kNames) known = known || kick == name;
+    if (mode != "1" || !known) kick.clear();
+    for (int g = 0; g < kGame && !kick.empty(); g++) {
+        const std::string name = kNames[g];
+        const auto it = src.find(name);
+        const std::string was = it == src.end() ? name : it->second;
+        std::string now;   // the same buttons, less the Kick's, and R1's with it
+        for (size_t a = 0; a <= was.size();) {
+            size_t bar = was.find('|', a);
+            if (bar == std::string::npos) bar = was.size();
+            const std::string item = was.substr(a, bar - a);
+            a = bar + 1;
+            if (!item.empty() && item != "none" && item != kick) now += (now.empty() ? "" : "|") + item;
+        }
+        if (name == "r1") now += (now.empty() ? "" : "|") + kick;
+        if (now.empty()) now = "none";
+        if (now != was) out += (out.empty() ? "" : ",") + name + "=" + now;
+    }
+    ps3_setenv("DES_KICK_PAD", kick.c_str());
+    return out;
+}
+
 // The environment variables a setting drives (DES_SKIP_INTRO_MOVIE sets PS3_SAIL_SKIP_FIRST, which cellSail reads as each movie opens; PAD_KEYS gives cellPad the
 // layout with the changes after it, keys_for_pad).
 void apply_env(std::string_view key, const std::string& value) {
@@ -366,6 +434,10 @@ void apply_env(std::string_view key, const std::string& value) {
     if (key == "DES_NET_PASSWORD") return;  // (only its hash is used, in PS3_HTTP_HEADER: apply_match_group)
     if (key == "PAD_KEYS") {
         ps3_setenv("PAD_KEYS", keys_for_pad(keys_with_layout(value)).c_str());
+        return;
+    }
+    if (key == "PAD_MAP") {
+        ps3_setenv("PAD_MAP", map_for_pad(value).c_str());
         return;
     }
     ps3_setenv(k.c_str(), value.c_str());
@@ -459,7 +531,7 @@ void load_file() {
     if (!f) return;
     char line[8192];  // (DES_MODS lists mod folders by name: dozens of long names fit)
     int applied = 0;
-    bool layout_line = false;
+    bool layout_line = false, sword_line = false;
     while (std::fgets(line, sizeof line, f)) {
         const std::string l = trim(line);
         if (l.empty() || l[0] == '#' || l[0] == ';') continue;
@@ -474,6 +546,7 @@ void load_file() {
         const Def* d = find(key);
         if (!d || d->apply == Apply::Session) continue;  // (a per-session value is never read from the file)
         if (key == "keys_layout") layout_line = true;
+        if (key == "DES_CURSOR_SWORD" && !value.empty()) sword_line = true;
         // World tendency's empty value was "With the server's", then the default, so every file has it, picked or not.
         // Now the default is Yours only and the server's is "server": an empty one reads as the default.
         if (key == "DES_NET_TENDENCY" && value.empty()) continue;
@@ -499,6 +572,10 @@ void load_file() {
                      "layout again\n", get("PAD_KEYS").c_str());
         sValues["PAD_KEYS"] = "";
     }
+    // The cursor's sword was the moonlight until 0.2.0, and a settings.ini a setup wrote says so (save() writes every
+    // key), so a player keeps theirs and only a new one gets the new default. A file with no sword in it (from before
+    // the row, or edited) is a player's too: the moonlight as well.
+    if (!sword_line) sValues["DES_CURSOR_SWORD"] = "moonlight";
 }
 
 std::string sNetStatus = "Off";
@@ -615,8 +692,7 @@ static void apply_seamless() {
         std::fprintf(stderr, "[coop] mods on%s: %s\n", ok && *ok ? ", accepted" : " (no warning: not started from "
                      "the Co-op window)", mods::join(names, ", ").c_str());
     }
-    const std::string name = env_set("PS3_NP_ONLINE_ID") ? std::string(std::getenv("PS3_NP_ONLINE_ID"))
-                                                         : effective("DES_NET_NAME");
+    const std::string name = seamless_name();
     if (!net_name_ok(name)) {
         sNetStatus = name.empty() ? "Off: no online name" : "Off: the online name is not valid";
         std::fprintf(stderr, "[ui] seamless co-op: off, %s (Settings > Network)\n",
@@ -628,19 +704,9 @@ static void apply_seamless() {
     int port = std::atoi(effective("DES_NET_P2P_PORT").c_str());
     if (port < kNetP2pPortMin || port > kNetP2pPortMax) port = kNetP2pPortDefault;
     set_net_knob("PS3_NET_P2P_PORT", std::to_string(port));
-    // The endpoint: settings.ini's (or the environment's) when it names one or says 0, else the Server row's. A test
-    // run never reaches the project's server unless it says so, as for online.
-    std::string intro = trim(effective("DES_SEAMLESS_INTRO"));
-    if (intro.empty() && harness_run()) {
-        intro = "0";
+    const std::string intro = seamless_endpoint();
+    if (intro == "0" && trim(effective("DES_SEAMLESS_INTRO")).empty() && harness_run())
         std::fprintf(stderr, "[ui] seamless co-op: no room code in a test run unless DES_SEAMLESS_INTRO is given\n");
-    }
-    if (intro.empty()) {
-        const NetServer* s = net_server(effective("DES_NET_SERVER"));
-        const bool ours = s && *s->address &&
-                          (s->key == std::string_view("project") || s->key == std::string_view("local"));
-        intro = ours ? std::string(s->address) + ":" + std::to_string(kNetPsnrPort) : "0";
-    }
     set_net_knob("DES_SEAMLESS_INTRO", intro);
     if (const std::string stun = trim(effective("DES_SEAMLESS_STUN")); !stun.empty())
         set_net_knob("DES_SEAMLESS_STUN", stun);
@@ -823,6 +889,24 @@ void write_in_use() {
 
 }  // namespace
 
+std::string seamless_name() {
+    return env_set("PS3_NP_ONLINE_ID") ? std::string(std::getenv("PS3_NP_ONLINE_ID")) : effective("DES_NET_NAME");
+}
+
+// The endpoint: settings.ini's (or the environment's) when it names one or says 0, else the Server row's. A test run
+// never reaches the project's server unless it says so, as for online.
+std::string seamless_endpoint() {
+    std::string intro = trim(effective("DES_SEAMLESS_INTRO"));
+    if (intro.empty() && harness_run()) return "0";
+    if (intro.empty()) {
+        const NetServer* s = net_server(effective("DES_NET_SERVER"));
+        const bool ours = s && *s->address &&
+                          (s->key == std::string_view("project") || s->key == std::string_view("local"));
+        intro = ours ? std::string(s->address) + ":" + std::to_string(kNetPsnrPort) : "0";
+    }
+    return intro;
+}
+
 void load_and_apply_env() {
     for (const Def& d : kDefs) {
         if (d.apply == Apply::UiOnly) continue;
@@ -840,6 +924,10 @@ void load_and_apply_env() {
     ps3_setenv("PAD_KEYS", keys_for_pad(keys_with_layout(keys)).c_str());
     std::fprintf(stderr, "[ui] keyboard and mouse: the Souls layout%s%s\n", keys.empty() ? "" : ", changed by ",
                  keys.c_str());
+    // The gamepad's buttons too, once DES_KICK is known: the Kick row's button is R1's with it (map_for_pad).
+    ps3_setenv("PAD_MAP", map_for_pad(pinned("PAD_MAP") ? pinned_value("PAD_MAP") : get("PAD_MAP")).c_str());
+    if (const char* kick = std::getenv("DES_KICK_PAD"); kick && *kick)
+        std::fprintf(stderr, "[ui] gamepad: %s kicks (the Kick row)\n", kick);
     // Mods before the network: a gameplay mod keeps it off. Which mods are on is the mods folder's order file
     // (mods.hpp); settings.ini's DES_MODS, from before it, moves there once. DES_MODS in the environment still wins
     // (a test run's mods).
@@ -890,10 +978,19 @@ void set(std::string_view key, const std::string& value) {
     if ((d->apply == Apply::Live || d->apply == Apply::Session) && !pinned(key))
         apply_env(key, value.empty() ? default_of(*d) : value);
     if (key == "DES_NET_PASSWORD" && !pinned(key)) apply_match_group();
-    if (key == "DES_KICK" && !pinned(key))   // (the Kick key presses R1 only with DES_KICK=1: keys_for_pad)
+    if (key == "DES_KICK" && !pinned(key)) {   // (the Kick key and button press R1 only with DES_KICK=1: keys_for_pad,
+                                               // map_for_pad)
         apply_env("PAD_KEYS", pinned("PAD_KEYS") ? pinned_value("PAD_KEYS") : get("PAD_KEYS"));
+        apply_env("PAD_MAP", pinned("PAD_MAP") ? pinned_value("PAD_MAP") : get("PAD_MAP"));
+    }
     save();
     write_in_use();
+}
+
+bool kick_chosen() {
+    if (pinned("DES_KICK") || get("DES_KICK") == "1") return false;
+    set("DES_KICK", "1");
+    return true;
 }
 
 void store(std::string_view key, const std::string& value) {

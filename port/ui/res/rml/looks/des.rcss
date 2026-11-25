@@ -1248,6 +1248,16 @@ body.prelaunch hero title-logo {
     decorator: image(/res/img/soulbrandt-logo.png) content-box, shader("flame:logo") padding-box;
 }
 
+/* The start screen's sword beside the title (a prototype: prelaunch.rcss's #sword-title), its middle line 30 dp past
+   the logo's right, its top 80 dp above the logo's for the flame. */
+body.prelaunch start-sword#sword-title {
+    left: 50%;
+    margin-left: 170dp;
+    top: -80dp;
+    width: 160dp;
+    height: 276dp;
+}
+
 /* The flame off (Settings > Interface > Soul flame): the letters alone. */
 body.prelaunch.no-flame hero title-logo {
     decorator: image(/res/img/soulbrandt-logo.png) content-box;
@@ -2312,6 +2322,112 @@ coop-info.long info-code {
     line-height: 34dp;
 }
 
+/* Who is in the session (coop_session.cpp): one line per player between thin dividers, as the game's lists: the name
+   and its mark, what it does, and the ping at the right end. */
+coop-info info-players {
+    display: block;
+    margin: 4dp 0 12dp;
+    border-top: 1dp #3a3833;
+}
+
+coop-info info-player {
+    display: flex;
+    align-items: baseline;
+    padding: 6dp 8dp 5dp;
+    border-bottom: 1dp #3a3833;
+    font-size: 21dp;
+    line-height: 28dp;
+    letter-spacing: 0.4dp;
+    white-space: nowrap;
+}
+
+coop-info info-name {
+    flex: 1 1 0;
+    overflow: hidden;
+    color: var(--des-tan-light);
+}
+
+coop-info info-mark {
+    font-size: 17dp;
+    color: var(--des-tan-muted);
+}
+
+coop-info info-state {
+    flex: 0 0 172dp;
+    color: var(--des-tan);
+}
+
+coop-info info-state.wide {
+    flex: 0 0 262dp;
+}
+
+coop-info info-ping {
+    flex: 0 0 90dp;
+    text-align: right;
+    color: var(--des-tan);
+}
+
+coop-info info-line.session {
+    margin: 0 0 4dp;
+}
+
+coop-info.long info-player {
+    padding: 4dp 8dp 3dp;
+}
+
+/* A line in the session moves a player (coop_page.cpp): another player's Warp, your own Unstuck. The line with the
+   focus, and the one under the pointer, show the move as a small stone button over the ping's end (the Copy
+   button's look); a grey one can't now, and the strip above says why. */
+coop-info info-player.pick {
+    position: relative;
+    cursor: pointer;
+}
+
+coop-info info-player.pick.focused {
+    background-color: rgba(133, 52, 50, 38%);
+}
+
+coop-info info-player.pick.focused info-name {
+    color: var(--des-tan-light);
+}
+
+coop-info info-act {
+    display: none;
+    position: absolute;
+    right: 8dp;
+    top: 6dp;
+    height: 24dp;
+    padding: 0 12dp;
+    border-top-width: 1dp;
+    border-top-color: #4f4d46;
+    border-bottom-width: 1dp;
+    border-bottom-color: #141414;
+    background-color: #2c2c2b;
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#333331, #262626);
+    font-size: 14dp;
+    line-height: 22dp;
+    letter-spacing: 0.5dp;
+    text-transform: uppercase;
+    color: var(--des-tan-light);
+}
+
+coop-info info-player.pick:hover info-act,
+coop-info info-player.pick.focused info-act {
+    display: block;
+}
+
+coop-info info-player.pick.focused info-act {
+    border-top-color: var(--des-blood-edge);
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#853432, #6a2524);
+}
+
+coop-info info-act.disabled,
+coop-info info-player.pick.focused info-act.disabled {
+    border-top-color: #3a3833;
+    decorator: image(/res/img/grain.png repeat left top), linear-gradient(#292927, #212120);
+    color: var(--des-locked);
+}
+
 /* A code's line with its small Copy button at the right end: a small stone button, as the questions' buttons. */
 coop-info info-head {
     display: flex;
@@ -2431,6 +2547,11 @@ menu-rows.pad menu-value.wait menu-text {
 
 menu-rows.pad menu-value.wait controls-art {
     display: none;
+}
+
+/* A pad button with no picture (the Kick's back buttons and paddles, or none): its name. */
+menu-rows.pad menu-value.named menu-text {
+    display: block;
 }
 
 controls-restore {
@@ -2975,5 +3096,12 @@ body.prelaunch hero title-logo {
     height: 106dp;
     padding: 109dp 41dp 41dp 41dp;
     margin: -109dp -41dp -41dp -41dp;
+}
+
+body.prelaunch start-sword#sword-title {
+    margin-left: 116dp;
+    top: -54dp;
+    width: 109dp;
+    height: 188dp;
 }
 }
