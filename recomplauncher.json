@@ -11,12 +11,16 @@
       "format": "ini",
       "file": [
         { "path": "{install}/data/settings.ini", "if": "{install}/portable.txt" },
-        { "path": "{local}/DemonsSoulsRecomp/DemonsSouls/settings.ini", "if": "{install}/Soulbrandt" },
-        { "path": "{config}/DemonsSoulsRecomp/DemonsSouls/settings.ini" }
+        { "path": "{config}/DemonsSoulsRecomp/DemonsSouls/settings.ini", "if": "{config}/DemonsSoulsRecomp/DemonsSouls" },
+        { "path": "{local}/DemonsSoulsRecomp/DemonsSouls/settings.ini", "if": "{local}/DemonsSoulsRecomp/DemonsSouls" },
+        { "path": "{local}/Soulbrandt/settings.ini" }
       ]
     }
   ],
-  "saves": ["{install}/gamedata/dev_hdd0/home/00000001/savedata"],
+  "saves": [
+    "{install}/gamedata/dev_hdd0/home/00000001/savedata",
+    "{local}/Soulbrandt/gamedata/dev_hdd0/home/00000001/savedata"
+  ],
   "looks": {
     "allowed": false,
     "reason": "The game has its own anti-aliasing, scaling filter and HDR in its Settings."

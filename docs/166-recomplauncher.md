@@ -13,9 +13,9 @@ what is left open. Labels: **read** (the guide, the schema or our code), **measu
 - **It asks for no game copy, runs no setup step and downloads nothing.** Setup still does all of that with the
   player's own copy: the launcher's Play opens setup on a first start, as a double-click does.
 - **A check** (`tools/release/recomplauncher.py check`, in CI) fails when the file and the menu's settings drift.
-- **It waits for 0.2.1** (the maintainer's call, 2026-11-20): 0.2.1's single data folder (docs/164) moves
-  `settings.ini` and the saves, and the file names both, so it ships with the new paths from the start. Section 6
-  has the maintainer's decisions, section 7 the questions for the launcher's team.
+- **It ships in 0.2.1** (the maintainer's call, 2026-11-20), with that version's one data folder (docs/164): the
+  file names `settings.ini` and the saves where 0.2.1 keeps them, for a new install and for one an earlier version
+  set up. Section 6 has the maintainer's decisions, section 7 the questions for the launcher's team.
 
 ## 1. What the launcher does (read)
 
@@ -43,7 +43,7 @@ file, only if a file asks for it.
 | Start | `Soulbrandt.exe`, `Soulbrandt` on Linux. Any argument that is not `--username` or `--psnr` is taken as the game file to boot (`elf_given` in des_ui.cpp, `main_elf` in des_options.cpp). | `start.program`, no arguments, no variables |
 | Settings | `settings.ini`, `KEY = value`, no sections, every key written by the menu (settings.cpp's `save`). A variable in the environment wins and locks the row (`load_and_apply_env`). | `config`, 14 `settings` |
 | Game copy | Setup asks for a folder with `PS3_GAME`, has RPCS3 unlock the encrypted files (or takes files the player decrypted), and builds the game. It cannot read an ISO yet. | nothing |
-| Saves | `<install>/gamedata/dev_hdd0/home/00000001/savedata`. The game works in its own folder (`work_in_exe_folder`). | `saves` |
+| Saves | `gamedata/dev_hdd0/home/00000001/savedata` in the one data folder; in `<install>` instead for a portable install, or one whose own `gamedata` already holds saves (docs/164). The game works in the folder that holds them (`work_in_saves_folder`). | `saves`, both places |
 | Online key | `online-key.bin` in the data folder: the install's private key, which owns the online name (docs/69). | left out of `saves` on purpose |
 | Filters | The game has its own anti-aliasing, scaling filter and HDR. | `looks` off |
 | Crashes | The game's own crash window and issue report. | nothing |
@@ -51,18 +51,31 @@ file, only if a file asks for it.
 
 ### 2.1 Where settings.ini is
 
-The data folder (`report::data_dir`): `<install>/data` with `portable.txt` beside the program, else
-`%APPDATA%\DemonsSoulsRecomp\DemonsSouls` on Windows and `~/.local/share/DemonsSoulsRecomp/DemonsSouls` on Linux
-(`$XDG_DATA_HOME` first). The launcher's words for those are `{install}`, `{config}` (AppData\Roaming, or `~/.config`)
-and `{local}` (AppData\Local, or `~/.local/share`). Its file list takes the first entry whose `if` exists, so:
+The settings folder (`setup::settings_folder`, docs/164), in this order:
+
+- `<install>/data`, with `portable.txt` beside the program;
+- an earlier version's folder, when it holds anything: `%APPDATA%\DemonsSoulsRecomp\DemonsSouls` on Windows,
+  `~/.local/share/DemonsSoulsRecomp/DemonsSouls` on Linux;
+- else the one data folder: `%LOCALAPPDATA%\Soulbrandt` on Windows, `~/.local/share/Soulbrandt` on Linux.
+
+On Linux `$XDG_DATA_HOME` comes before `~/.local/share`. The launcher's words for those are `{install}`, `{config}`
+(AppData\Roaming, or `~/.config`) and `{local}` (AppData\Local, or `~/.local/share`). Its file list takes the first
+entry whose `if` exists, so:
 
 1. `{install}/data/settings.ini`, if `{install}/portable.txt` exists.
-2. `{local}/DemonsSoulsRecomp/DemonsSouls/settings.ini`, if `{install}/Soulbrandt` exists: the Linux download's
-   program (the Windows one is `Soulbrandt.exe`).
-3. `{config}/DemonsSoulsRecomp/DemonsSouls/settings.ini`: Windows.
+2. `{config}/DemonsSoulsRecomp/DemonsSouls/settings.ini`, if that folder exists: an earlier version on Windows.
+3. `{local}/DemonsSoulsRecomp/DemonsSouls/settings.ini`, if that folder exists: an earlier version on Linux. Nothing
+   makes it on Windows, where `%LOCALAPPDATA%\DemonsSoulsRecomp` is the earlier build folder and holds only setup's
+   folders (read: this PC's).
+4. `{local}/Soulbrandt/settings.ini`: the one data folder, on both systems.
 
-So on Linux a pick made in the launcher before the game's first start goes to the file the game reads, not to
-`~/.config`. A program renamed by PRODUCT_NAME needs the `if` to follow it.
+So a pick made in the launcher before the game's first start goes to the file the game reads. Two cases differ:
+
+- an earlier version's settings folder that exists but is empty: the game skips it, the launcher does not;
+- a Linux `$XDG_DATA_HOME` set to another folder, if the launcher's `{local}` does not follow it (question 7.7).
+
+The folder names are fixed (setup_folder.hpp's `kFolderName` and `kOneFolderName`), so a rename by PRODUCT_NAME changes
+none of these places.
 
 ### 2.2 The program starts itself again
 
@@ -76,9 +89,12 @@ Picture mode may come back over the game. The game itself goes on. Question 7.5.
 `recomplauncher.json` at the root:
 
 - `name`, and `start.program` `["Soulbrandt.exe", "Soulbrandt"]`. No `args` and no `env`.
-- `config`: `settings.ini`, the three places of section 2.1. No `always`, `ensure` or `new`, so the launcher writes a
+- `config`: `settings.ini`, the four places of section 2.1. No `always`, `ensure` or `new`, so the launcher writes a
   key only when the player picks a choice (inferred).
-- `saves`: the save folder only.
+- `saves`: the save folder, in the game's folder and in the one data folder. An install uses one of them; the other
+  is missing, or holds another install's saves on the same PC, which a backup then copies too (inferred).
+- A player who moves to the launcher's install from a folder they unpacked by hand finds no saves there at first.
+  The start screen offers to copy them from the earlier folder (docs/164 section 5), which is only read.
 - `looks`: off, "The game has its own anti-aliasing, scaling filter and HDR in its Settings."
 - `system`: Windows 10 with Direct3D 12; Linux with glibc 2.35 and Vulkan 1.3 (the README's needs). The launcher
   tells a player whose PC is older, and never stops the game.
@@ -132,8 +148,8 @@ own update replaces it with the program.
 
 - A new setting in the menu needs nothing here. A change to a listed row's values or default fails the check until
   the file follows.
-- **The data folder for 0.2.1** (docs/164) puts settings and saves of new installs in one new folder. `config.file`
-  and `saves` must then list the new places first and the old ones after. The check does not see this.
+- **The places** are setup_folder.cpp's (docs/164). A change to where settings or saves go needs section 2.1 and the
+  file changed with it.
 - **The download's new name** for 0.2.1 (`Soulbrandt-X.Y.Z-windows.zip`, with the old name kept beside it) puts two
   Windows zips in one release (question 7.2).
 
@@ -197,6 +213,7 @@ All settled on 2026-11-20.
 5. The program ends and starts itself again (section 2.2). Does the launcher follow the new process?
 6. settings.ini has no sections. Is a plain key like `DES_FPS` read and written as one, and is an empty value (the
    original 30 fps) matched?
+7. On Linux, does `{local}` follow `$XDG_DATA_HOME`, as the game does?
 
 ## 8. Later
 
@@ -206,8 +223,6 @@ All settled on 2026-11-20.
   arguments could be ignored instead.
 - `game` and `prepare`, once setup reads an ISO and can run without a window, printing `progress` lines. The player's
   copy would then be picked once, in the launcher.
-- A player who moves to the launcher's install starts with no saves there: they stay in the old folder's `gamedata`.
-  0.2.1's offer to copy them (docs/164) covers that.
 
 ## 9. Tests
 
