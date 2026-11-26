@@ -5,6 +5,10 @@ describes, the legacy one on vkd3d, is what a Vulkan start that fails falls back
 says about the program, the libraries and the build still holds. Its "Missing" list is about the legacy renderer: setup's
 shader step, for one, runs on the Vulkan route.
 
+**2026-11-24:** SDL 3 replaced SDL2 everywhere on Linux (ps3recomp #322, port #708): the runtime builds SDL 3.4.20 from its
+pinned source at configure time and links it in, so no SDL library comes from the system or sits beside the game. Where
+this page says SDL2, read SDL 3. The build needs the development headers SDL 3 opens its back ends with (below).
+
 Demon's Souls runs as a native Linux program, built from the same code as
 the Windows exe. It boots, loads the save's level and renders it as on
 Windows. This page says how, what is missing, and how to build and run it.
@@ -157,9 +161,16 @@ stb is fetched at configure time, as RmlUi and FreeType are.
 
 ## Building
 
-Linux packages: clang (or GCC), CMake, Ninja, SDL2 (`libsdl2-dev`), the
-Vulkan headers and loader (`libvulkan-dev`), a Vulkan driver, and FFmpeg's
-headers for the movies (`libavcodec-dev`).
+Linux packages: clang (or GCC), CMake, Ninja, the Vulkan headers and loader
+(`libvulkan-dev`), a Vulkan driver, FFmpeg's headers for the movies
+(`libavcodec-dev`), and the headers SDL 3 builds against: X11 (`libx11-dev`,
+`libxext-dev`, `libxrandr-dev`, `libxcursor-dev`, `libxfixes-dev`, `libxi-dev`,
+`libxss-dev`, `libxinerama-dev`), `libxkbcommon-dev`, Wayland (`libwayland-dev`,
+`wayland-protocols`, `libdecor-0-dev`), EGL and GL (`libegl-dev`, `libgl-dev`,
+`libgles-dev`, `libdrm-dev`, `libgbm-dev`), sound (`libpulse-dev`,
+`libasound2-dev`, `libpipewire-0.3-dev`), `libdbus-1-dev`, `libudev-dev` and
+`libibus-1.0-dev`. The CI's Linux job (`.github/workflows/host.yml`) installs
+exactly these.
 
 vkd3d: 2.1 from the release tarball. Ubuntu 24.04 packages vkd3d 1.2, which
 has no HLSL compiler. Building it needs flex, bison, Perl's JSON module
@@ -241,7 +252,7 @@ share it. A developer build (`DES_DEV=ON`) is refused.
   `work/game/EBOOT.ELF`, `work/libsre/libsre_image.bin`, and `AppRun`, the
   launcher. The icon is the game's `ICON0.PNG` when `PS3_VFS_ROOT` is set
   while packing, else a plain one.
-- **From the system:** SDL2, the Vulkan loader and driver, and FFmpeg for the
+- **From the system:** the Vulkan loader and driver, and FFmpeg for the
   movies (the major version the runtime was built against; without it a
   movie ends at once). The system's glibc must be at least as new as the
   build machine's.

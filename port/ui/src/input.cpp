@@ -4,7 +4,9 @@
 // default) is the menu button; Triangle, Square, Select and R3 are P, C, H and Shift (menu_input.hpp).
 #include "input.hpp"
 
+#include "controls_model.hpp"
 #include "host.hpp"
+#include "host_pads.hpp"
 #include "menu_pad.hpp"
 #include "settings.hpp"
 #include "ui.hpp"
@@ -146,6 +148,35 @@ int take_captured_wheel() noexcept {
     return n;
 }
 
+unsigned menu_buttons(unsigned buttons) {
+    if (settings::get_int("menu_follow_buttons") == 0) return buttons;
+    return through_map(buttons, controls::game_button_sources());
+}
+
+int menu_key(int vk) {
+    if (settings::get_int("menu_follow_buttons") == 0) return vk;
+    const int as = controls::menu_key_for(vk);
+    return as ? as : vk;
+}
+
+prompts::Glyph menu_glyph(prompts::Device device, prompts::Key key) {
+    const prompts::Glyph g = prompts::glyph(device, key);
+    if (settings::get_int("menu_follow_buttons") == 0) return g;
+    if (device == prompts::Device::Keyboard) {
+        const bool tabs = key == prompts::Key::PrevTab || key == prompts::Key::NextTab;
+        return tabs && (menu_key('Q') != 'Q' || menu_key('E') != 'E') ? prompts::page_glyph(key) : g;
+    }
+    if (g.art[0].is != prompts::Art::Is::Button || g.art[1].is != prompts::Art::Is::None) return g;
+    int game = -1;
+    for (int i = 0; i < controls::kPadCount; i++)
+        if (g.art[0].name == controls::kPadNames[i]) game = i;
+    if (game < 0) return g;
+    const int pad = controls::game_button_sources()[game];
+    if (pad < 0 || pad == game) return g;
+    const prompts::Glyph moved = prompts::button_glyph(device, controls::kPadNames[pad]);
+    return moved.art[0].is == prompts::Art::Is::None ? g : moved;
+}
+
 void update_pad(const PadState& pad, int chord) noexcept {
     auto* context = host::context();
     if (context == nullptr) return;
@@ -157,7 +188,9 @@ void update_pad(const PadState& pad, int chord) noexcept {
     }
     sGameDevice = pad.glyph;
     if (sDevice >= 2 && pad.glyph >= 2) sDevice = pad.glyph;  // (cellPad knows the pad's kind a poll after its press)
-    const PadKeys down = pad_keys(pad, chord, sPadKeys);
+    PadState menu = pad;
+    menu.buttons = menu_buttons(pad.buttons);  // (Same buttons as the game: the game's buttons, else the pad's own)
+    const PadKeys down = pad_keys(menu, chord, sPadKeys);
     const double now = now_seconds();
     for (int k = 0; k < kPadKeyCount; k++) {
         Repeat& r = sRepeats[k];
@@ -219,6 +252,9 @@ bool on_steam_deck() noexcept {
 
 PadSupport pad_support() noexcept {
 #ifdef _WIN32
+    if (cellPad_host_reader_sdl())
+        return {"SDL game controllers, DualSense, DualShock 4",
+                "Xbox, PlayStation, Switch, Steam and other controllers SDL knows, over USB or Bluetooth."};
     return {"XInput, DualSense, DualShock 4", "Xbox controllers, DualSense and DualShock 4, over USB or Bluetooth."};
 #else
     return {"SDL game controllers", "Xbox, PlayStation and other controllers SDL knows, over USB or Bluetooth."};

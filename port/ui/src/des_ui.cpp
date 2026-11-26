@@ -18,6 +18,7 @@
 
 #include "app.hpp"
 #include "button_icons.hpp"
+#include "controls_model.hpp"
 #include "coop_window.hpp"
 #include "crash_report.hpp"
 #include "discord_presence.hpp"
@@ -30,6 +31,7 @@
 #include "mods.hpp"
 #include "mouse.hpp"
 #include "net_notices.hpp"
+#include "coop_notices.hpp"
 #include "osk_window.hpp"
 #include "overlay.hpp"
 #include "perf_overlay.hpp"
@@ -43,10 +45,12 @@
 #include "report.hpp"
 #include "settings.hpp"
 #include "setup_engine.hpp"
+#include "path_utf8.hpp"
 #include "setup_folder.hpp"
 #include "setup_screens.hpp"
 #include "setup_window.hpp"
 #include "players_window.hpp"
+#include "host_pads.hpp"
 #include "trophy_toasts.hpp"
 #include "ui.hpp"
 #include "updates.hpp"
@@ -54,10 +58,6 @@
 #include "version.hpp"
 #include "../../des_rsx_route.h"  // the renderer calls below: through rsx_out in a PS3RECOMP_RSX_HAL build
 #include "../../des_seamless.h"
-
-#ifdef _WIN32
-#include <xinput.h>  // (read_xinput)
-#endif
 
 #include <algorithm>
 #include <atomic>
@@ -102,18 +102,8 @@ int rsx_d3d12_borderless(void);
 void cellPad_set_host_hold(int hold);
 extern volatile unsigned g_pad0_buttons;  // pad 0 as the game last read it (CELL_PAD_CTRL_* layout)
 
-typedef struct {  // as pad_hid_sony.h has it, field for field: the poll fills an array of these
-    unsigned short buttons;    // CELL_PAD_CTRL_*
-    unsigned char lx, ly, rx, ry;  // 0-255, centre 128, up = 0
-    unsigned char l2, r2;
-    unsigned char slot;        // the pad, for its vibration
-    unsigned char extra;       // its buttons beyond the PS3's (pad_map.h's PAD_EXTRA_*: back buttons, Fn, mute)
-    float raw[4];              // its sticks as it reports them (Windows)
-} PadHidSonyState;
-// (The runtime writes whole entries of its own size: an array of a smaller copy overflows with a second pad.)
-static_assert(sizeof(PadHidSonyState) == 28, "pad_hid_sony.h's PadHidSonyState");
-int pad_hid_sony_poll(PadHidSonyState* out, int max);
 int cellPad_host_pads_on(void);  // cellPad.h: 0 while the game ignores the pads (PAD_FOCUS_ONLY in the background)
+int cellPad_host_keys_out(void);  // cellPad.h: 1 while keys and the mouse stay out of port 0's pad (Steam's layout)
 int cellPad_host_glyph_device(void);  // cellPad.h: what the game was last used with (PAD_GLYPH_*, pad_glyph.h)
 int cellPad_host_controller(int i, char* id, int idn, char* name, int namen);  // cellPad.h: the i-th port's pad
 
@@ -205,6 +195,18 @@ ui::gpu::CoreFrame sCore;  // frame_gpu's frame, for the renderer (begin_frame's
 bool on_core();
 #endif
 std::atomic<unsigned> sChordMask{kL3 | kR3};  // the menu chord, refreshed while the UI is awake
+// The pad's own buttons that make the chord, for the watch thread, which reads the pads as they are: with Same buttons
+// as the game on, the ones Change Buttons put the chord's buttons on (chord_pad_mask; refreshed with sChordMask).
+std::atomic<unsigned> sChordPadMask{kL3 | kR3};
+
+unsigned chord_pad_mask(unsigned mask) {
+    if (ui::settings::get_int("menu_follow_buttons") == 0) return mask;
+    const auto from = ui::controls::game_button_sources();
+    unsigned out = 0;
+    for (int g = 0; g < 16; g++)
+        if (mask & (1u << g)) out |= from[g] >= 0 ? 1u << from[g] : 1u << 31;  // (nothing presses it: never made)
+    return out;
+}
 
 // DES_UI_SHOT=path[,frame][;path[,frame]...]: write the back buffer after the UI draws, at that presented frame.
 struct Shot {
@@ -441,8 +443,8 @@ int wndproc(void*, void* hwnd_, unsigned msg, unsigned long long wp, long long l
     }
 }
 
-// ---- Gamepads: XInput and the Sony HID reader, merged (the same readers the game's pad uses; off Windows the reader
-// gives SDL's pads) ----
+// ---- Gamepads: every pad the game's input reads (cellPad_host_pads: XInput or SDL, and the Sony HID reader),
+// merged ----
 
 float pick(float a, float b) {
     return std::abs(a) >= std::abs(b) ? a : b;
@@ -450,108 +452,37 @@ float pick(float a, float b) {
 
 // The pad the menus read alone: the one Settings > Controls > Controller picks (PAD_CONTROLLER), while it is connected,
 // as the game then reads it alone (cellPad.c puts it on port 0). Otherwise, Automatic or with the picked pad away, the
-// menus read every pad. So a second device that holds a button nobody presses can be left out of the menus too.
-struct PadOnly {
-    bool on = false;
-    int xinput = -1;  // the XInput user ("controllerN" on Windows)
-    int hid = -1;     // the HID reader's slot ("playstationN"; off Windows "controllerN", SDL's controller slot)
-};
-
-PadOnly pad_only() {
-    PadOnly o;
+// menus read every pad (empty). So a second device that holds a button nobody presses can be left out of the menus too.
+std::string pad_only() {
     const char* want = std::getenv("PAD_CONTROLLER");  // (the Controller row is live: settings.cpp sets it)
-    if (!want || !*want || !std::strcmp(want, "auto")) return o;
+    if (!want || !*want || !std::strcmp(want, "auto")) return {};
     char id[16];
-    if (!cellPad_host_controller(0, id, int(sizeof id), nullptr, 0) || std::strcmp(id, want) != 0) return o;
-    const int k = want[std::strlen(want) - 1] - '1';  // (a name cellPad gave: "controller1".."controller4", ...)
-    if (!std::strncmp(want, "playstation", 11)) {
-        o.hid = k;
-    } else {
-#ifdef _WIN32
-        o.xinput = k;
-#else
-        o.hid = k;
-#endif
-    }
-    o.on = true;
-    return o;
+    if (!cellPad_host_controller(0, id, int(sizeof id), nullptr, 0) || std::strcmp(id, want) != 0) return {};
+    return want;
 }
 
-#ifdef _WIN32
-unsigned xinput_to_cell(WORD b) {
-    unsigned c = 0;
-    if (b & XINPUT_GAMEPAD_DPAD_UP) c |= kUp;
-    if (b & XINPUT_GAMEPAD_DPAD_DOWN) c |= kDown;
-    if (b & XINPUT_GAMEPAD_DPAD_LEFT) c |= kLeft;
-    if (b & XINPUT_GAMEPAD_DPAD_RIGHT) c |= kRight;
-    if (b & XINPUT_GAMEPAD_START) c |= kStart;
-    if (b & XINPUT_GAMEPAD_BACK) c |= kSelect;
-    if (b & XINPUT_GAMEPAD_LEFT_THUMB) c |= kL3;
-    if (b & XINPUT_GAMEPAD_RIGHT_THUMB) c |= kR3;
-    if (b & XINPUT_GAMEPAD_LEFT_SHOULDER) c |= kL1;
-    if (b & XINPUT_GAMEPAD_RIGHT_SHOULDER) c |= kR1;
-    if (b & XINPUT_GAMEPAD_A) c |= kCross;
-    if (b & XINPUT_GAMEPAD_B) c |= kCircle;
-    if (b & XINPUT_GAMEPAD_X) c |= kSquare;
-    if (b & XINPUT_GAMEPAD_Y) c |= kTriangle;
-    return c;
-}
-
-// XInput's pads, into `pad`. Polls XInput slots only while a slot answers: a missing pad's XInputGetState is
-// slow, so empty slots are retried once a second.
-void read_xinput(ui::input::PadState& pad, bool& neutral, const PadOnly& only) {
-    static clock_type::time_point sNextScan[XUSER_MAX_COUNT]{};
-    const auto now = clock_type::now();
-    for (DWORD i = 0; i < XUSER_MAX_COUNT; i++) {
-        if (only.on && int(i) != only.xinput) continue;
-        if (now < sNextScan[i]) continue;
-        XINPUT_STATE st{};
-        if (XInputGetState(i, &st) != ERROR_SUCCESS) {
-            sNextScan[i] = now + std::chrono::seconds(1);
-            continue;
-        }
-        const XINPUT_GAMEPAD& g = st.Gamepad;
-        unsigned b = xinput_to_cell(g.wButtons);
-        if (g.bLeftTrigger > 100) b |= kL2;
-        if (g.bRightTrigger > 100) b |= kR2;
-        pad.buttons |= b;
-        const float lx = std::clamp(g.sThumbLX / 32767.0f, -1.0f, 1.0f);
-        const float ly = std::clamp(-g.sThumbLY / 32767.0f, -1.0f, 1.0f);
-        pad.lx = pick(pad.lx, lx);
-        pad.ly = pick(pad.ly, ly);
-        if (b || g.bLeftTrigger > 30 || g.bRightTrigger > 30 || std::abs(g.sThumbLX) > 8000 || std::abs(g.sThumbLY) > 8000 ||
-            std::abs(g.sThumbRX) > 8000 || std::abs(g.sThumbRY) > 8000)
-            neutral = false;
-    }
-}
-#else
-void read_xinput(ui::input::PadState&, bool&, const PadOnly&) {}  // (off Windows SDL's pads come through the HID reader)
-#endif
-
-// The pads: XInput's and the HID reader's, merged (or the one pad_only names).
+// The pads, merged (or the one pad_only names).
 ui::input::PadState read_pads(bool& neutral) {
     ui::input::PadState pad;
     neutral = true;
     if (ui::settings::no_user_input()) return pad;  // PS3_NO_USER_INPUT: no pad of the user's is read
     if (!cellPad_host_pads_on()) return pad;         // PAD_FOCUS_ONLY, with the window in the background
     pad.glyph = cellPad_host_glyph_device();          // (the menus' prompts: input.hpp's menu_device)
-    const PadOnly only = pad_only();
-    read_xinput(pad, neutral, only);
-    PadHidSonyState hid[4];
-    const int n = pad_hid_sony_poll(hid, 4);
+    const std::string only = pad_only();
+    CellPadHostPad pads[8];
+    const int n = cellPad_host_pads(pads, 8);
     for (int i = 0; i < n; i++) {
-        if (only.on && int(hid[i].slot) != only.hid) continue;
-        unsigned b = hid[i].buttons;
-        if (hid[i].l2 > 100) b |= kL2;
-        if (hid[i].r2 > 100) b |= kR2;
+        const CellPadHostPad& p = pads[i];
+        if (!only.empty() && only != p.id) continue;
+        unsigned b = p.buttons;
+        if (p.l2 > 100) b |= kL2;
+        if (p.r2 > 100) b |= kR2;
         pad.buttons |= b;
-        pad.extra |= hid[i].extra;  // (XInput has none)
-        pad.lx = pick(pad.lx, (hid[i].lx - 128) / 127.0f);
-        pad.ly = pick(pad.ly, (hid[i].ly - 128) / 127.0f);
+        pad.extra |= p.extra;
+        pad.lx = pick(pad.lx, (p.lx - 128) / 127.0f);
+        pad.ly = pick(pad.ly, (p.ly - 128) / 127.0f);
         const auto off = [](unsigned char v) { return std::abs(int(v) - 128) > 32; };
-        if (b || hid[i].extra || hid[i].l2 > 30 || hid[i].r2 > 30 || off(hid[i].lx) || off(hid[i].ly) || off(hid[i].rx) ||
-            off(hid[i].ry))
-            neutral = false;
+        if (b || p.extra || p.l2 > 30 || p.r2 > 30 || off(p.lx) || off(p.ly) || off(p.rx) || off(p.ry)) neutral = false;
     }
     if (ui::stick_preview_takes_left()) pad.lx = pad.ly = 0.f;  // (being tried out in Settings: the D-pad moves the menu)
     return pad;
@@ -580,24 +511,13 @@ std::string held_inputs() {
             std::snprintf(b, sizeof b, "key 0x%02X%s%s", vk, name.empty() ? "" : " ", name.c_str());
             add(b);
         }
-#ifdef _WIN32
-    for (DWORD i = 0; i < XUSER_MAX_COUNT; i++) {
-        XINPUT_STATE st{};
-        if (XInputGetState(i, &st) != ERROR_SUCCESS) continue;
-        const XINPUT_GAMEPAD& g = st.Gamepad;
-        std::snprintf(b, sizeof b, "XInput %lu: buttons 0x%04X, triggers %u %u, sticks %d %d %d %d",
-                      (unsigned long)i, unsigned(g.wButtons), unsigned(g.bLeftTrigger), unsigned(g.bRightTrigger),
-                      g.sThumbLX, g.sThumbLY, g.sThumbRX, g.sThumbRY);
-        add(b);
-    }
-#endif
-    PadHidSonyState hid[4];
-    const int n = pad_hid_sony_poll(hid, 4);
+    CellPadHostPad pads[8];
+    const int n = cellPad_host_pads(pads, 8);
     for (int i = 0; i < n; i++) {
-        std::snprintf(b, sizeof b, "HID pad %u: buttons 0x%04X, extra 0x%02X, triggers %u %u, sticks %u %u %u %u",
-                      unsigned(hid[i].slot), unsigned(hid[i].buttons), unsigned(hid[i].extra), unsigned(hid[i].l2),
-                      unsigned(hid[i].r2), unsigned(hid[i].lx), unsigned(hid[i].ly), unsigned(hid[i].rx),
-                      unsigned(hid[i].ry));
+        const CellPadHostPad& p = pads[i];
+        std::snprintf(b, sizeof b, "%s: buttons 0x%04X, extra 0x%02X, triggers %u %u, sticks %u %u %u %u", p.id,
+                      unsigned(p.buttons), unsigned(p.extra), unsigned(p.l2), unsigned(p.r2), unsigned(p.lx),
+                      unsigned(p.ly), unsigned(p.rx), unsigned(p.ry));
         add(b);
     }
     return s.empty() ? "nothing now" : s;
@@ -700,10 +620,12 @@ void push_documents() {
     ui::push_document(std::make_unique<ui::MenuShell>(), false);
     if (sStartScreen) ui::push_document(std::make_unique<ui::Prelaunch>());
 
-    // DES_UI_OPEN=menu | settings | trophies | mods | players | coop | coop-host | coop-join | privacy | osk | setup |
-    // setup-run: open one at startup
+    // DES_UI_OPEN=menu | settings | trophies | mods | players | coop | coop-host | coop-join | coop-join-code |
+    // coop-settings | privacy | osk | setup | setup-run: open one at startup
     // (for screenshots and tests; privacy is the note as Settings > Network shows it; coop-host and coop-join are
-    // Seamless co-op with Host's or Join's first question over it, as a press opens it: the notice, the mods warning).
+    // Seamless co-op with Host's or Join's first question over it, as a press opens it: the notice, the mods warning;
+    // coop-join-code is Join with DES_UI_JOIN_CODE's code, as Join's window takes it, with no question first: the
+    // check, then the restart; coop-settings is co-op's settings alone, as the Co-op window's Settings opens them).
     // setup is setup's start screen over the game (docs/88: its own window comes with the split host), with
     // DES_SETUP_GAME's folders to begin with; setup-run runs the setup engine at once, on those folders.
     if (const char* open = std::getenv("DES_UI_OPEN"); open && *open) {
@@ -716,10 +638,16 @@ void push_documents() {
         else if (!std::strcmp(open, "mods")) ui::push_document(ui::menu::screen_alone("Mods"));
         else if (!std::strcmp(open, "players")) ui::push_document(std::make_unique<ui::PlayersWindow>());
         else if (!std::strcmp(open, "coop")) ui::push_document(ui::menu::screen_alone("Seamless co-op"));
+        else if (!std::strcmp(open, "coop-settings")) ui::push_document(ui::menu::screen_alone("Co-op settings"));
         else if (!std::strcmp(open, "coop-host") || !std::strcmp(open, "coop-join")) {
             ui::push_document(ui::menu::screen_alone("Seamless co-op"));
             if (!std::strcmp(open, "coop-host")) ui::coop::open_host();
             else ui::coop::open_join();
+        }
+        else if (!std::strcmp(open, "coop-join-code")) {
+            ui::push_document(ui::menu::screen_alone("Seamless co-op"));
+            const char* code = std::getenv("DES_UI_JOIN_CODE");
+            ui::coop::join_code(code ? code : "");
         }
         else if (!std::strcmp(open, "privacy"))
             ui::push_document(std::make_unique<ui::PrivacyWindow>(ui::PrivacyWindow::Mode::Read));
@@ -753,6 +681,58 @@ bool ensure_init(int width, int height) {
     return true;
 }
 
+// A key Steam's desktop layout pressed for the pad's controls, which the menus drop. While cellPad keeps the keys out
+// of port 0's pad (cellPad_host_keys_out: a Steam Deck, or a Valve controller with Steam in the background), that
+// layout also presses keys for the controls: the D-pad is the arrow keys too, A Enter, B Escape. The pad already
+// moves the menus (input.cpp), so the key would count a second time (a tester: D-pad right moved two places in the
+// L3+R3 menu). Kept: F1, keys with Ctrl or Alt (pasting), and Backspace, Delete, Home and End while typing (a text
+// field or the on-screen keyboard). Typed characters (Char) always come in.
+bool steam_layout_key(const InputEvent& e, Rml::Context* ctx) {
+    if (e.type != InputEvent::KeyDown && e.type != InputEvent::KeyUp) return false;
+    if (!cellPad_host_keys_out() || is_menu_key(WPARAM(e.a))) return false;
+    if (e.mods & (Rml::Input::KM_CTRL | Rml::Input::KM_ALT)) return false;
+    if (e.a == VK_BACK || e.a == VK_DELETE || e.a == VK_HOME || e.a == VK_END) {
+        if (ui::active_osk()) return false;
+        const Rml::Element* f = ctx ? ctx->GetFocusElement() : nullptr;
+        if (f && (f->GetTagName() == "input" || f->GetTagName() == "textarea")) return false;
+    }
+    static bool said = false;
+    if (!said) {
+        said = true;
+        std::fprintf(stderr, "[ui] the menus leave out the window's keys: Steam's desktop layout presses them for the pad\n");
+    }
+    return true;
+}
+
+// Same buttons as the game (input.hpp's menu_key): the key a key going down stands for in the menus (E for Enter, Space
+// for Esc in the Souls layout), kept until it comes up so its key up matches (sKeyAs, 0: as it is). Not while typing
+// (a text field, the on-screen keyboard), nor with Shift, Ctrl or Alt held. The character the key also types is
+// dropped (sDropChar): E is Enter then, and must not type an e into a text field that Enter just opened.
+int sKeyAs[256];
+bool sDropChar = false;
+
+int menu_key_down(const InputEvent& e, Rml::Context* ctx) {
+    const int vk = e.a;
+    if (vk <= 0 || vk >= 256) return vk;
+    sKeyAs[vk] = 0;
+    if (e.mods & (Rml::Input::KM_SHIFT | Rml::Input::KM_CTRL | Rml::Input::KM_ALT)) return vk;
+    if (ui::active_osk()) return vk;
+    const Rml::Element* f = ctx ? ctx->GetFocusElement() : nullptr;
+    if (f && (f->GetTagName() == "input" || f->GetTagName() == "textarea")) return vk;
+    const int as = ui::input::menu_key(vk);
+    if (as == vk) return vk;
+    sKeyAs[vk] = as;
+    sDropChar = true;
+    return as;
+}
+
+int menu_key_up(int vk) {
+    if (vk <= 0 || vk >= 256 || sKeyAs[vk] == 0) return vk;
+    const int as = sKeyAs[vk];
+    sKeyAs[vk] = 0;
+    return as;
+}
+
 void process_queue() {
     std::vector<InputEvent> events;
     {
@@ -762,6 +742,12 @@ void process_queue() {
     }
     Rml::Context* ctx = ui::host::context();
     for (const InputEvent& e : events) {
+        if (e.type == InputEvent::Char && sDropChar) {  // (the character of a key the menus took as Enter or Esc)
+            sDropChar = false;
+            continue;
+        }
+        if (e.type == InputEvent::KeyDown) sDropChar = false;
+        if (steam_layout_key(e, ctx)) continue;
         if (ui::OskWindow* osk = ui::active_osk()) {  // the on-screen keyboard is up: typing goes into it
             if (e.type == InputEvent::Char) {
                 osk->on_char(unsigned(e.a));
@@ -781,11 +767,11 @@ void process_queue() {
                 break;
             }
             ctx->ProcessMouseLeave();
-            ctx->ProcessKeyDown(ui::keys::to_rml(e.a), e.mods);
+            ctx->ProcessKeyDown(ui::keys::to_rml(menu_key_down(e, ctx)), e.mods);
             break;
         case InputEvent::KeyUp:
             if (ui::input::binding_capture()) break;
-            ctx->ProcessKeyUp(ui::keys::to_rml(e.a), e.mods);
+            ctx->ProcessKeyUp(ui::keys::to_rml(menu_key_up(e.a)), e.mods);
             break;
         case InputEvent::Char:
             // Typing into a text field (Custom frame rate's): printable characters only, as RmlUi's own Win32
@@ -989,7 +975,7 @@ void watch_thread() {
         if (!stopped) noticed = dialogShown = false;
         if (stopped && !sCapturing.load()) {  // (the menu is not up: the chord opens it)
             bool neutral = true;
-            const unsigned mask = sChordMask.load();
+            const unsigned mask = sChordPadMask.load();
             const bool down = (read_pads(neutral).buttons & mask) == mask;
             if (down && !chordWasDown) {
                 std::fprintf(stderr, "[ui] the menu chord, with no new frame for %lld s\n", since / 1000);
@@ -1152,6 +1138,7 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
     if (!sActive && !sStartScreen && !gameMenu && !chordEdge && !shot && !sQueued.load(std::memory_order_acquire) &&
         !sOpenPending && !sReportCountdown && !(prework && !sPreworkShown) && !privacy && !sCloseRequested.load() &&
         !sOskPending.load(std::memory_order_acquire) && !ui::trophies::pending() && !ui::net_notices::pending() &&
+        !ui::coop_notices::pending() &&
         !sHangNotice.load(std::memory_order_relaxed) &&
         !sCustomServerNotice.load(std::memory_order_relaxed) && !sModsNotice.load(std::memory_order_relaxed) &&
         !ui::report::saved_notice_pending() && ui::perf::mode() == ui::perf::Mode::Off) {
@@ -1167,6 +1154,7 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
         if (sCloseRequested.exchange(false) && ui::app().quit) ui::app().quit();  // nothing to ask with
         if (sOskPending.exchange(false)) apply_osk_request(false);
         ui::trophies::discard();  // (the unlocks are saved; only the pop-ups are lost)
+        ui::coop_notices::discard();  // (the co-op log has them)
         sHangNotice.store(false);
         sCustomServerNotice.store(false);
         sModsNotice.store(false);
@@ -1182,6 +1170,7 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
     sOpenPending = false;
     const int chord = ui::settings::get_int("pad_menu_chord");
     sChordMask = ui::input::chord_mask(chord);
+    sChordPadMask = chord_pad_mask(sChordMask);
 
     if (!sActive) {
         // Waking: what is held now is not a press (the chord, or the key that opened the menu, is handled here).
@@ -1223,6 +1212,7 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
     if (ui::OskWindow* osk = ui::active_osk()) osk->on_pad(pad.buttons);
     ui::trophies::drain();
     ui::net_notices::drain();
+    ui::coop_notices::drain();   // seamless co-op's joins, leaves, deaths
     ui::update();
     sStartUp.store(ui::is_prelaunch_open());
 
@@ -1456,35 +1446,70 @@ void crash_dialog_env() {
     }
 }
 
-// A player's start keeps the saves where a double-click puts them. They are the PS3 file system's gamedata/dev_hdd0
-// under the working folder (cellFs.c, cellSaveData.c), so a shortcut's "Start in", or a start from a terminal in
-// another folder, would read and write saves there. So the game works in the exe's folder (docs/90 section 4, item
-// 3). Saves in the folder it was started in are named in the log, never moved. DES_KEEP_CWD=1 (a test run with its
-// own copy of a save in its own folder) leaves the working folder as it is.
-void work_in_exe_folder() {
-    if (env_on("DES_KEEP_CWD")) return;
+// The folder whose gamedata holds the saves (report::saves_pick, docs/164): the one data folder in a new install, the
+// program's folder in a portable one or where an earlier version's saves are. A test harness run, or one with a save
+// root of its own (PS3_SAVEDATA_ROOT, PS3_HDD0_ROOT), keeps the program's folder, as before the one data folder.
+std::filesystem::path saves_home() {
     const std::filesystem::path exe = ui::report::program_dir();
+    if (ui::settings::harness_run() || std::getenv("PS3_SAVEDATA_ROOT") || std::getenv("PS3_HDD0_ROOT")) return exe;
+    const ui::setup::Pick pick = ui::report::saves_pick();
+    if (pick.dir.empty()) return exe;
+    std::error_code ec;
+    std::filesystem::create_directories(pick.dir, ec);
+    if (!std::filesystem::is_directory(pick.dir, ec)) {
+        std::fprintf(stderr, "[setup] launch: cannot make %s, so the saves stay in the game's folder\n",
+                     ui::path_utf8(pick.dir).c_str());
+        return exe;
+    }
+    std::fprintf(stderr, "[setup] launch: the saves are in %s (%s)\n", ui::path_utf8(pick.dir / "gamedata").c_str(),
+                 ui::setup::source_words(pick.source));
+    return pick.dir;
+}
+
+// A player's start keeps the saves in one place, whatever folder the program is started from. They are the PS3 file
+// system's gamedata/dev_hdd0 under the working folder (cellFs.c, cellSaveData.c; co-op's own saves and the trophies
+// too), so a shortcut's "Start in", or a start from a terminal in another folder, would read and write saves there.
+// So the game works in saves_home (docs/90 section 4, item 3; docs/164). Saves in the folder it was started in are
+// named in the log, never moved. DES_KEEP_CWD=1 (a test run with its own copy of a save in its own folder) leaves the
+// working folder as it is.
+void work_in_saves_folder() {
+    if (env_on("DES_KEEP_CWD")) return;
+    const std::filesystem::path home = saves_home();
     std::error_code ec;
     const std::filesystem::path cwd = std::filesystem::current_path(ec);
-    if (exe.empty() || ec || std::filesystem::equivalent(cwd, exe, ec)) return;
+    if (home.empty() || ec || std::filesystem::equivalent(cwd, home, ec)) return;
     std::filesystem::directory_iterator user(cwd / "gamedata" / "dev_hdd0" / "home", ec), end;
     for (; !ec && user != end; user.increment(ec)) {   // (the forms that throw would end the start)
         std::error_code ec2;
         const auto saves = user->path() / "savedata";
         if (std::filesystem::is_directory(saves, ec2) && !std::filesystem::is_empty(saves, ec2))
-            std::fprintf(stderr, "[setup] launch: %s has saves; this start uses the ones beside the game, in %s\n",
-                         saves.string().c_str(), (exe / "gamedata").string().c_str());
+            std::fprintf(stderr, "[setup] launch: %s has saves; this start uses the ones in %s\n",
+                         saves.string().c_str(), (home / "gamedata").string().c_str());
     }
-    std::filesystem::current_path(exe, ec);
-    if (ec) std::fprintf(stderr, "[setup] launch: cannot work in %s, so the saves are in %s\n", exe.string().c_str(),
+    std::filesystem::current_path(home, ec);
+    if (ec) std::fprintf(stderr, "[setup] launch: cannot work in %s, so the saves are in %s\n", home.string().c_str(),
                          (cwd / "gamedata").string().c_str());
+}
+
+// The shader cache's folder (report::shader_cache_pick, docs/164) as PS3_SHADER_CACHE, for the game, setup's shader
+// pass (`--shaders`, started by setup's engine with this process's environment) and the menus' own shaders: set before
+// anything reads it, as each reads it once. Only a player's start: one given in the environment stays, and a test run
+// or a start with a game's ELF keeps the runtime's default (shader_cache beside the program).
+void use_shader_cache_folder() {
+    if (std::getenv("PS3_SHADER_CACHE") || ui::settings::harness_run()) return;
+    const ui::setup::Pick pick = ui::report::shader_cache_pick();
+    if (pick.dir.empty()) return;
+    ps3_setenv("PS3_SHADER_CACHE", ui::path_utf8(pick.dir).c_str());
+    std::fprintf(stderr, "[setup] the shader cache is in %s (%s)\n", ui::path_utf8(pick.dir).c_str(),
+                 ui::setup::source_words(pick.source));
 }
 
 // The game folder whose saves this start uses, noted in the player's data folder (setup_folder.hpp's game-folders.txt,
 // docs/164 section 5), so that a later version unpacked into another folder can offer to copy these saves. Only a
-// player's start, whose saves are the program folder's own gamedata (work_in_exe_folder): not a test run with a save
-// root or a working folder of its own, nor one that keeps no data folder. Nothing else is written; a failure is only
-// logged.
+// player's start whose saves are the program folder's own gamedata (work_in_saves_folder: a portable install, or one
+// with an earlier version's saves there; a new install's are in the one data folder, which no unpacking leaves
+// behind): not a test run with a save root or a working folder of its own, nor one that keeps no data folder. Nothing
+// else is written; a failure is only logged.
 void note_game_folder() {
     const std::filesystem::path data = ui::report::data_dir();
     if (data.empty() || std::getenv("PS3_SAVEDATA_ROOT") || std::getenv("PS3_HDD0_ROOT") || env_on("DES_KEEP_CWD"))
@@ -1506,6 +1531,9 @@ void note_game_folder() {
 
 extern "C" int des_ui_launch(int* argc, char*** argv) {
     if (const char* v = std::getenv("DES_UI"); v && !std::strcmp(v, "0")) return -1;
+    // A player's start (no game's ELF given): the shader cache's folder first, for every process of the program (the
+    // crash dialog's and setup's too), so that none of them makes one in another place.
+    if (!elf_given(*argc, *argv)) use_shader_cache_folder();
     // The crash dialog's process: the window alone, before anything here touches the program's files.
     if (crash_dialog_process()) return -2;
     ui::updates::drop_old_program();
@@ -1519,11 +1547,13 @@ extern "C" int des_ui_launch(int* argc, char*** argv) {
             {ui::report::program_dir(), ui::setup::data_dir(), ui::report::data_dir(), launch.game},
             ui::settings::unattended_run()))
         return 1;
+    // A portable install whose folder cannot be written stops here (docs/164): it takes no other place.
+    if (!ui::setup::portable_writable(ui::settings::unattended_run())) return 1;
     if (launch.state != ui::setup::State::Ready) {
         std::fprintf(stderr, "[setup] launch: the game is not set up yet, setup opens\n");
         return -2;
     }
-    work_in_exe_folder();
+    work_in_saves_folder();
     note_game_folder();
     // What setup found of the disc copy, and whether the player went on anyway (tools/setup/des_setup/disc.py): a copy
     // that lacks files the game reads crashes later, far from the cause (issue #418).
@@ -1589,6 +1619,7 @@ extern "C" void des_ui_early_init(void) {
     if (!sCrashDialog) parse_debug_knobs();  // (the dialog's are crash_dialog_env's: these are the game's)
     sOpenPending = sSetupOnly || env_on("DES_UI_OPEN");
     sChordMask = ui::input::chord_mask(ui::settings::get_int("pad_menu_chord"));
+    sChordPadMask = chord_pad_mask(sChordMask);
 
     sStartScreen = !sSetupOnly && (env_on("DES_UI_START") || (ui::settings::get_int("show_start_screen") != 0 &&
                                                               !env_on("DES_SKIP_UI") && !ui::settings::scripted_run()));

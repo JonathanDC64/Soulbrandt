@@ -30,9 +30,9 @@ Code:
 | `environment.txt` | the command line and every port or runtime option set in the environment (`DES_`, `PS3_`, `RSX_`, `SPU_`, `SPURS_`, `GCM_`, `PAD_`, `PPU_`, `AUDIO_`, `VBLANK`, `FIFO_`, `LIBSRE_`, `SAIL_`, `TROPHY_`, `WATCHDOG_`) |
 | `runtime.txt` | the runtime's snapshot (below), sampled over 2 s |
 | `des.log` | the first 120 lines of the log and its last 512 KB |
-| `des.prev.log` | the end of the previous run's log, when that run was in the last 24 h: a freeze or crash the player restarted after |
+| `des.prev.log` to `des.prev4.log` | the end of each of the four runs' logs before it (192 KB of the last, 128 KB of the others), those from the last 24 h: a freeze or crash the player restarted after, and a friend's Leave co-op, which starts the game again twice |
 | `coop.log` | this run's co-op log (below), whole up to its last 4 MB, when the run had co-op |
-| `coop.prev.log` | the co-op log before it, when it is from the last 24 h: a session the player restarted after |
+| `coop.prev.log` to `coop.prev4.log` | the four co-op logs before it (1 MB of the last, 512 KB of the others), those from the last 24 h: sessions the player restarted after |
 | `save/<folder>/...` | the player's save (`report::save_files`): each save folder in the game's save root (`PS3_SAVEDATA_ROOT`, else `gamedata/dev_hdd0/home/00000001/savedata`, as `cellSaveData.c` finds it). Every file except the folder's two pictures (`ICON0.PNG`, `PIC1.PNG`: the game's art, and a save loads without them) and a file the runtime is still writing (`.<name>.tmp`). If the game saved while it was read, it is read again, up to twice, half a second apart. At most 8 MB a file and 32 MB in all; a Demon's Souls save is ten 256 KB files |
 
 To load a reported save, put its folder in a save root of its own and start
@@ -50,6 +50,24 @@ process of its own and reads no settings. So the game keeps
 startup and after each change. The dialog uses that file, and falls back to
 `settings.ini` only if it is missing. Without it, a player who had never
 changed a setting would send no settings at all.
+
+**A crash inside the pipeline library (2026-11-26, issue #731).** The renderer keeps the driver's compiled
+pipelines in `shader_cache\gpu\d3d12\pipelines.lib`. D3D12 throws at a damaged pipeline in that file, the throw ends
+the game, and every start after it crashed the same way. Now:
+
+- **The save** writes the file to the disk before it renames it over the old one, so a power cut or a hard reset
+  can't leave a file with pages that were never written.
+- **A crash while the game loads or stores a pipeline there** (or reads or saves the file) leaves a note beside it,
+  `pipelines.lib.bad`, and `crash.txt` gets a line after the renderer's:
+  `D3D12 pipeline library: crashed loading pipeline <name>; the next start makes a new library, and makes that
+  pipeline without it`.
+- **The next start** deletes the library and makes a new one (the start's build fills it again), and keeps the
+  pipeline's name in `pipelines.lib.skip`. The driver makes the pipelines listed there each time, without the
+  library, so one the driver itself crashes on can't end a run twice. The log says
+  `[D3D12] pipeline library: the last run crashed loading pipeline <name>; a new library, ...`, and on later starts
+  `[D3D12] pipeline library: <n> pipeline(s) made without it`.
+- **To test it:** `RSX_PSO_LIB_CRASH_TEST=1` ends the game inside the first load from the library, through the same
+  path. Start again without it.
 
 **Off Windows (2026-11-18).** The same dialog, with the same three forms and buttons:
 - **Its process** is the program started again with `DES_UI_OPEN=crash-dialog`, `DES_CRASH_REPORT=<the report>` and
@@ -85,7 +103,12 @@ changed a setting would send no settings at all.
 - CPU per host thread over the sample window, with the hot function. On Linux
   it is each thread's time on a CPU and its time ready to run but waiting for
   one, from the kernel's counts, with the threads named after the guest's
-  threads, SPU groups, the RSX thread, the vblank clock and the sound mixer;
+  threads, SPU groups, the RSX thread, the vblank clock and the sound mixer.
+  Each thread also has how often it ran a second (`runs/s`) and its average
+  wait each time (`wait/run`), and a line above the table says how many of
+  the machine's CPUs were busy, and so about how much other programs used
+  (ps3recomp #331). Many short waits mean the threads wake each other often;
+  a few long ones mean the CPUs were full;
 - the calls each guest thread finished in that window;
 - the host threads; the last 60 SPU history events; the knobs that are set.
 
@@ -115,8 +138,8 @@ network, the router and the reports made meanwhile.
 - The game's threads do nothing more: the tee threads pick the lines out of
   what they read anyway. A line cut between two reads waits for its end.
 - It is made at the run's first co-op line, so a run without co-op leaves the
-  last session's file as it was. The one before it is kept as
-  `coop.prev.log`. Another copy of the game running at the same time writes
+  last session's file as it was. The four before it are kept as
+  `coop.prev.log` to `coop.prev4.log`, newest first. Another copy of the game running at the same time writes
   `coop.<process>.log`, as it writes `des.<process>.log`.
 - It stops at 32 MB, with a note (`des.log` goes on).
 - What co-op adds to it (`des_seamless_game.cpp`):

@@ -38,9 +38,11 @@ inline constexpr const char* kPythonProgram = "python/bin/python3";
 #endif
 
 // Setup's data folder (docs/81, docs/88 section 3): DES_SETUP_DATA; else the folder the player chose on setup's screens
-// (choose_data_dir); else the usual one: %LOCALAPPDATA%\DemonsSoulsRecomp, on Linux $XDG_DATA_HOME/DemonsSoulsRecomp
-// (or ~/.local/share/...), as des_setup's own default, and in a portable install (report::portable) data\setup-data
-// beside the program, unless the game was built in the shared folder before (setup_folder.hpp find_folders). The host
+// (choose_data_dir); else the usual one: the one data folder's setup-data (in %LOCALAPPDATA%, on Linux in
+// $XDG_DATA_HOME or ~/.local/share), or the earlier versions' %LOCALAPPDATA%\DemonsSoulsRecomp when it holds a build
+// or a choice (setup_folder.hpp setup_shared_folder), as des_setup's own default; and in a portable install
+// (report::portable) data\setup-data beside the program, unless the game was built in the shared folder before
+// (setup_folder.hpp find_folders). The host
 // always passes it to the engine. Not the player's folder of settings, logs and reports (report::data_dir): this one
 // holds the copied inputs, the lift and the build.
 const std::filesystem::path& data_dir();
@@ -81,8 +83,8 @@ struct Request {
 // split by ';'), DES_SETUP_FIRMWARE, DES_SETUP_UPDATE, DES_SETUP_RPCS3 and DES_SETUP_IMPORT (save,trophies,settings).
 Request request_from_env();
 
-// The game's gamedata folder for this install: beside the exe, where a player's start works and keeps its saves (the
-// launch hook's work_in_exe_folder). The RPCS3 route's import writes there (--gamedata).
+// The game's gamedata folder for this install: in the folder a player's start works in and keeps its saves
+// (report::saves_pick; the launch hook's work_in_saves_folder). The RPCS3 route's import writes there (--gamedata).
 std::filesystem::path gamedata_dir();
 
 // The state at start, from setup/ready.txt and the journal's presence only: no Python and no hashing, so it costs
@@ -116,6 +118,10 @@ std::filesystem::path disc_record();
 // write a name in other letters (a Cyrillic or Japanese folder on a Western Windows). Always true off Windows, whose
 // names are UTF-8 bytes (docs/126).
 bool folders_usable(const std::vector<std::filesystem::path>& folders, bool quiet);
+// A portable install (report::portable) keeps all its files in the program's folder (docs/164): false, said in a
+// message box unless `quiet`, when a file cannot be written there (a folder under Program Files, a read-only drive,
+// Windows' Controlled folder access). The game does not start then: no other place is taken instead.
+bool portable_writable(bool quiet);
 
 // The engine's Python: DES_SETUP_PYTHON (a developer's), else the downloaded one (empty until the host has fetched it:
 // Engine::start fetches it first then).

@@ -1941,6 +1941,8 @@ Rml::CompiledShaderHandle RendererImpl::CompileShader(const Rml::String& name, c
             return {};
         }
         shader.model = value.substr(6);
+        // (the start screen's sword, "<sword>@<look>": render_gpu.cpp moves it; here it stands still in its box)
+        if (const size_t at = shader.model.find('@'); at != std::string::npos) shader.model.resize(at);
         return reinterpret_cast<Rml::CompiledShaderHandle>(new CompiledShader(std::move(shader)));
     }
     if (name == "linear-gradient") {

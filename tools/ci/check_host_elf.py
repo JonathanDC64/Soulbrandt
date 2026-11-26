@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """check_host_elf.py: fails when the Linux host folder needs a library players may not have (docs/87).
 
-The Linux des_host links the C++ library into itself and has SDL2, vkd3d and FFmpeg beside it, which it finds
+The Linux des_host links the C++ library and SDL3 into itself and has vkd3d and FFmpeg beside it, which it finds
 through RUNPATH $ORIGIN. So every program and library in the folder may need only glibc's own libraries, GCC's
 runtime (libgcc_s.so.1, on every Linux) and the folder's other libraries, and no glibc symbol newer than the
 floor (2.35, the ubuntu-22.04 runner's). This reads each ELF file itself (no readelf or ldd needed), prints
@@ -152,8 +152,8 @@ def self_test():
     base = {"type": 3, "soname": None, "runpath": None, "rpath": None, "versions": {}}
     cases = [
         ("plain", dict(base, needed=["libc.so.6", "libm.so.6"], versions={"libc.so.6": ["GLIBC_2.34"]}), 0),
-        ("folder lib with $ORIGIN", dict(base, needed=["libSDL2-2.0.so.0"], runpath="$ORIGIN"), 0),
-        ("folder lib without RUNPATH", dict(base, needed=["libSDL2-2.0.so.0"]), 1),
+        ("folder lib with $ORIGIN", dict(base, needed=["libvkd3d.so.1"], runpath="$ORIGIN"), 0),
+        ("folder lib without RUNPATH", dict(base, needed=["libvkd3d.so.1"]), 1),
         ("unknown lib", dict(base, needed=["libfoo.so.1"]), 1),
         ("shared C++ library", dict(base, needed=["libstdc++.so.6"], versions={"libstdc++.so.6": ["GLIBCXX_3.4.30"]}), 2),
         ("glibc too new", dict(base, needed=["libc.so.6"], versions={"libc.so.6": ["GLIBC_2.36", "GLIBC_2.2.5"]}), 1),
@@ -162,7 +162,7 @@ def self_test():
     ]
     bad = 0
     for label, info, want in cases:
-        _, probs = check("t", info, {"libSDL2-2.0.so.0"}, floor)
+        _, probs = check("t", info, {"libvkd3d.so.1"}, floor)
         if len(probs) != want:
             print(f"self-test: {label}: {len(probs)} problems, expected {want}: {probs}")
             bad += 1

@@ -52,12 +52,12 @@ jobs:
       # none of the rest of the tree; the maps go in the symbols zip.
       - name: Package, twice
         run: |
-          mkdir -p host/licenses/ffmpeg host-linux/licenses/SDL2 && printf 'stand-in' > host/des_host.exe
+          mkdir -p host/licenses/ffmpeg host-linux/licenses/vkd3d && printf 'stand-in' > host/des_host.exe
           printf 'stand-in' > host/des_host.map && printf 'stand-in' > host-linux/des_host.map
           printf 'stand-in' > host/avcodec-62.dll && printf 'stand-in' > host/avutil-60.dll
           printf 'stand-in' > host/licenses/ffmpeg/COPYING.LGPLv2.1
-          printf 'stand-in' > host-linux/des_host && printf 'stand-in' > host-linux/libSDL2-2.0.so.0
-          printf 'stand-in' > host-linux/licenses/SDL2/LICENSE.txt
+          printf 'stand-in' > host-linux/des_host && printf 'stand-in' > host-linux/libvkd3d.so.1
+          printf 'stand-in' > host-linux/licenses/vkd3d/LICENSE
           for out in dist dist2; do
             python tools/release/package.py build --rev HEAD --host host/des_host.exe --linux-host host-linux \
               --out "$out" --dry-run
@@ -78,7 +78,7 @@ jobs:
           unzip -l dist/DemonsSoulsRecomp-*-windows.zip | grep -E ' DemonsSoulsRecomp-[^/]+/recomplauncher\.json$'
           tar -tJf dist/DemonsSoulsRecomp-*-linux.tar.xz | grep -E '^DemonsSoulsRecomp-[^/]+/recomplauncher\.json$'
           tar -tvJf dist/DemonsSoulsRecomp-*-linux.tar.xz | grep -E "^-rwxr-xr-x .* DemonsSoulsRecomp-[^/]+/$program\$"
-          tar -tvJf dist/DemonsSoulsRecomp-*-linux.tar.xz | grep -E ' DemonsSoulsRecomp-[^/]+/licenses/SDL2/LICENSE\.txt$'
+          tar -tvJf dist/DemonsSoulsRecomp-*-linux.tar.xz | grep -E ' DemonsSoulsRecomp-[^/]+/licenses/vkd3d/LICENSE$'
           tar -xOJf dist/DemonsSoulsRecomp-*-linux.tar.xz --wildcards '*/release-files.txt' | grep -x "$program"
           # The lift's tools from the packaged tree: each starts (what it imports is there), and the names they find
           # in the fork's modules are the same as from the whole tree.

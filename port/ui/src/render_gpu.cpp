@@ -29,6 +29,7 @@
 #include "renderer.hpp"
 #include "shader_cache.hpp"
 #include "souls_model.hpp"
+#include "start_sword.hpp"
 #include "version.hpp"
 
 #include "gpu.h"
@@ -404,11 +405,39 @@ struct CompiledShader {
     std::vector<float> stop_positions;
     std::vector<Rml::Colourf> stop_colors;
     std::string model;  // decorator: shader("model:<name>"): one of the game's models, fitted into the element
+    int sword_look = -1;  // shader("model:<sword>@<look>"): the start screen's sword, moving (start_sword.hpp)
+    std::chrono::steady_clock::time_point born = std::chrono::steady_clock::now();  // (when the look began,
+    double sword_delay = 0.0;                                                        //  and how long it waits)
+    bool sword_solid = false;  // (drawn whole, not faint: "@1" after the count)
     const ui::fog::Look* fog = nullptr;  // decorator: shader("fog:<name>"): the start screen's smoke
     float aspect = 1.f;                  // (the element's width over its height)
     const ui::flame::Look* flame = nullptr;  // decorator: shader("flame:<name>"): the logo's flame
     Rml::TextureHandle map = {};             // (its map, this shader's own)
+    float flame_top = -1.f;                  // a map of its own (the start screen's sword): the room above it, as
+    float flame_box[2] = {0.f, 0.f};         // a fraction of the element, and the map's size in dp; -1: the logo's
 };
+
+// Seconds into the look of the start screen's sword that a shader is part of (start_sword.hpp): since it was made, less
+// the look's delay. DES_START_SWORD_T=<seconds> holds it at one moment; with the animations off (DES_UI_NO_ANIM), 30 s.
+double sword_time(const CompiledShader& s) {
+    static const char* held = std::getenv("DES_START_SWORD_T");
+    static const bool still = std::getenv("DES_UI_NO_ANIM") != nullptr;
+    if (held && *held) return std::atof(held);
+    if (still) return 30.0;
+    return std::chrono::duration<double>(std::chrono::steady_clock::now() - s.born).count() - s.sword_delay;
+}
+
+// The flame's constants: its look's, and a map of its own's place (the start screen's sword), as much of it as shows.
+void flame_fill(const CompiledShader& s, double seconds, ui::flame::Constants& c) {
+    ui::flame::fill(*s.flame, seconds, c);
+    if (s.flame_top >= 0.f) {
+        if (s.sword_look >= 0) c.color[3] *= ui::start_sword::flame_in(s.sword_look, sword_time(s));
+        c.shape[3] = s.flame_top;
+        c.box[0] = s.flame_box[0];
+        c.box[1] = s.flame_box[1];
+        c.dither[2] = 24.f;  // (the sword's element: it fades 24 dp inside its edges)
+    }
+}
 
 bool is_gradient(const CompiledShader& s) {
     return !s.fog && !s.flame && s.model.empty() && !s.stop_positions.empty();
@@ -2369,9 +2398,35 @@ Rml::CompiledShaderHandle RendererImpl::CompileShader(const Rml::String& name, c
                              // "flame:logo"
         const Rml::String value = Rml::Get(parameters, "value", Rml::String());
         if (value.rfind("flame:", 0) == 0) {
-            shader.flame = ui::flame::find(value.c_str());
+            const size_t at = value.find('@');
+            shader.flame = ui::flame::find(value.substr(0, at).c_str());
             Rml::Vector2i size;
-            if (shader.flame) shader.map = LoadTexture(size, ui::flame::kMap);
+            if (shader.flame && at != Rml::String::npos) {
+                // "flame:<look>@<sword>@<start sword look>[@<delay>...]": the start screen's sword's, its map made
+                // from the sword as that look places it in this element at rest (start_sword.hpp), at the element's
+                // size now; it shows as much as the look has it at the time into it (flame_in).
+                const Rml::String rest = value.substr(at + 1);
+                const size_t next = rest.find('@');
+                const size_t then = next == Rml::String::npos ? next : rest.find('@', next + 1);
+                const int look = next == Rml::String::npos
+                                     ? -1
+                                     : ui::start_sword::find(rest.substr(
+                                           next + 1, then == Rml::String::npos ? then : then - next - 1));
+                shader.sword_look = look;
+                if (then != Rml::String::npos) shader.sword_delay = std::atof(rest.c_str() + then + 1);
+                const Rml::Vector2f dims = Rml::Get(parameters, "dimensions", Rml::Vector2f(0.f));
+                const float dp = mHeight > 0 ? float(mHeight) / 720.f : 1.f;  // (the start screen fits the window's height)
+                ui::start_sword::FlameMap map;
+                if (look >= 0 && ui::start_sword::flame_map(look, rest.substr(0, next), dims.x, dims.y, dp, map)) {
+                    shader.map = GenerateTexture(Rml::Span<const Rml::byte>(map.rgba.data(), map.rgba.size()),
+                                                 Rml::Vector2i(map.width, map.height));
+                    shader.flame_top = map.top;
+                    shader.flame_box[0] = dims.x / dp;
+                    shader.flame_box[1] = dims.y * (1.f - map.top) / dp;
+                }
+            } else if (shader.flame) {
+                shader.map = LoadTexture(size, ui::flame::kMap);
+            }
             if (!shader.flame || !shader.map) {
                 Rml::Log::Message(Rml::Log::LT_WARNING, "Unsupported shader '%s'.", value.c_str());
                 return {};
@@ -2393,6 +2448,24 @@ Rml::CompiledShaderHandle RendererImpl::CompileShader(const Rml::String& name, c
             return {};
         }
         shader.model = value.substr(6);
+        // A look of the start screen's sword: "<sword>@<look>[@<delay in seconds>[@<count>[@<solid: 1>]]]", the count
+        // only making each value new, so a look picked again starts again.
+        if (const size_t at = shader.model.find('@'); at != std::string::npos) {
+            const std::string rest = shader.model.substr(at + 1);
+            const size_t next = rest.find('@');
+            shader.sword_look = ui::start_sword::find(rest.substr(0, next));
+            if (next != std::string::npos) {
+                shader.sword_delay = std::atof(rest.c_str() + next + 1);
+                const size_t count = rest.find('@', next + 1);
+                const size_t solid = count == std::string::npos ? count : rest.find('@', count + 1);
+                shader.sword_solid = solid != std::string::npos && rest.compare(solid + 1, std::string::npos, "1") == 0;
+            }
+            shader.model.resize(at);
+            if (shader.sword_look < 0 || shader.model.empty()) {
+                Rml::Log::Message(Rml::Log::LT_WARNING, "Unsupported shader '%s'.", value.c_str());
+                return {};
+            }
+        }
         return reinterpret_cast<Rml::CompiledShaderHandle>(new CompiledShader(std::move(shader)));
     }
     if (name == "linear-gradient") {
@@ -2460,8 +2533,8 @@ void RendererImpl::RenderShader(Rml::CompiledShaderHandle shader, Rml::CompiledG
         store(mTransform, c.transform);
         c.translate[0] = translation.x;
         c.translate[1] = translation.y;
-        ui::flame::fill(*s->flame,
-                        still ? 0.0 : std::chrono::duration<double>(std::chrono::steady_clock::now() - mStart).count(), c);
+        flame_fill(*s,
+                   still ? 0.0 : std::chrono::duration<double>(std::chrono::steady_clock::now() - mStart).count(), c);
         if (const auto gpu = constants(&c, sizeof c)) {
             gpu_cmd_bind_cb(mCmd, 0, gpu);
             draw(*g);
@@ -2480,6 +2553,65 @@ void RendererImpl::RenderShader(Rml::CompiledShaderHandle shader, Rml::CompiledG
         }
         ModelView view;
         view.time = std::chrono::duration<double>(std::chrono::steady_clock::now() - mStart).count();
+        if (s->sword_look >= 0) {
+            // The start screen's sword: each of its look's poses (start_sword.hpp) in the element's box, at the time
+            // since the look began (DES_START_SWORD_T=<seconds> holds it at one moment; still at 30 s with the
+            // animations off, DES_UI_NO_ANIM).
+            // (each pose's own model, the look's or the decorator's)
+            constexpr int kPoses = ui::start_sword::kPoses;
+            std::string names[kPoses];
+            ui::start_sword::Shape shapes[kPoses];
+            for (int i = 0; i < kPoses; i++) {
+                names[i] = ui::start_sword::model_of(s->sword_look, i, s->model);
+                const ui::models::Model* m = ui::models::get(names[i]);
+                if (!m) return;
+                shapes[i] = ui::start_sword::shape(*m);
+            }
+            const double t = sword_time(*s);
+            const float box[4] = {lo.x, lo.y, hi.x - lo.x, hi.y - lo.y};
+            ui::start_sword::Pose poses[kPoses];
+            const int n = ui::start_sword::poses(s->sword_look, t, box, shapes, poses, s->sword_solid);
+            // Its swords share one depth, so each hides the other where it is in front (as soulbrandt and Demonbrandt
+            // pass each other): one range for them all, the farthest any reaches from its pivot, and the depth cleared
+            // once before them. One drawn apart (the Regalia, fading in over the two) has its own.
+            float shared = 0.f;
+            if (n > 1) {
+                for (int i = 0; i < n; i++) {
+                    const float along = shapes[i].hi[1] - shapes[i].lo[1];
+                    if (!(along > 0.f) || poses[i].apart) continue;
+                    float far = 0.f;
+                    for (int c = 0; c < 8; c++) {
+                        float d2 = 0.f;
+                        for (int k = 0; k < 3; k++) {
+                            const float d = (c >> k & 1 ? shapes[i].hi[k] : shapes[i].lo[k]) - poses[i].pivot[k];
+                            d2 += d * d;
+                        }
+                        far = std::max(far, std::sqrt(d2));
+                    }
+                    shared = std::max(shared, far * poses[i].length / along + 2.f);
+                }
+                if (mOpen && mBound && mBound->layer && GPU_VALID(mStencil) && shared > 0.f)
+                    gpu_cmd_clear_depth(mCmd, mStencilDsv, GPU_CLEAR_DEPTH, 1.f, 0, nullptr);
+                else
+                    shared = 0.f;
+            }
+            for (int i = 0; i < n; i++) {
+                const float along = shapes[i].hi[1] - shapes[i].lo[1];  // (the blade lies along the model's y)
+                if (!(along > 0.f) || !(poses[i].opacity > 0.f)) continue;
+                ModelView v;
+                v.time = view.time;
+                std::memcpy(v.rotation, poses[i].rotation, sizeof v.rotation);
+                std::memcpy(v.pivot, poses[i].pivot, sizeof v.pivot);
+                v.at[0] = poses[i].at[0];
+                v.at[1] = poses[i].at[1];
+                v.scale = poses[i].length / along;
+                v.glow_scale = poses[i].glow;
+                v.depth_reach = poses[i].apart ? 0.f : shared;
+                v.solid_scale = poses[i].bright;
+                render_model(names[i], v, g->alpha * poses[i].opacity);
+            }
+            return;
+        }
         const float spin = ui::models::spin(s->model);
         std::memcpy(view.rotation, ui::models::look(s->model, float(std::fmod(double(spin) * view.time, 360.0))).rotation,
                     sizeof view.rotation);
@@ -2567,7 +2699,7 @@ void RendererImpl::render_effect(const CompiledShader& s, const Geometry& g, Rml
         gpu_cmd_bind_table(mCmd, 2, map->table);
         ui::flame::Constants c{};
         store(Rml::Matrix4f::Identity(), c.transform);
-        ui::flame::fill(*s.flame, seconds, c);
+        flame_fill(s, seconds, c);
         c.dither[0] = 0.f;
         if (prepare(kFlame)) quad(&c, sizeof c);
     }
@@ -2752,7 +2884,8 @@ bool RendererImpl::render_model(const std::string& name, const ModelView& view, 
     }
     // The effects reach a little further: the glow's blur, half a star glint.
     const float length = std::max({hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]}) * scale;
-    const float sigma = look.glow_strength > 0.f ? look.glow_radius * length : 0.f;
+    const float glow_strength = look.glow_strength * view.glow_scale;
+    const float sigma = glow_strength > 0.f ? look.glow_radius * length : 0.f;
     const float glint = look.sparkles > 0 ? look.sparkle_size * length : 0.f;
     reach = reach * scale + std::max(3.f * sigma, 0.5f * glint) + 2.f;
     if (!(reach < 100000.f)) return false;
@@ -2761,7 +2894,8 @@ bool RendererImpl::render_model(const std::string& name, const ModelView& view, 
                           Rml::Math::Clamp(int(std::ceil(at[0] + reach)), 0, mBound->w),
                           Rml::Math::Clamp(int(std::ceil(at[1] + reach)), 0, mBound->h)};
     if (square.right <= square.left || square.bottom <= square.top) return true;  // (all of it off the target)
-    gpu_cmd_clear_depth(mCmd, mStencilDsv, GPU_CLEAR_DEPTH, 1.f, 0, &square);
+    if (view.depth_reach > 0.f) reach = view.depth_reach;  // (drawn with others: their depth, as they left it)
+    else gpu_cmd_clear_depth(mCmd, mStencilDsv, GPU_CLEAR_DEPTH, 1.f, 0, &square);
 
     // Model space to pixels: R (p - pivot) scale + (at, 0); then x and y to clip space, and z (toward the viewer, within
     // +-reach) to a depth from 0 at the front to 1 at the back.
@@ -2808,7 +2942,7 @@ bool RendererImpl::render_model(const std::string& name, const ModelView& view, 
         k.flags[0] = blended ? 1.f : 0.f;  // a blended mesh: its faces toward the viewer only
         k.flags[1] = blended ? 0.f : 1.f;
         k.flags[2] = look.alpha_test;
-        for (int c = 0; c < 3; c++) k.tint[c] = blended ? look.tint[c] : look.solid[c];
+        for (int c = 0; c < 3; c++) k.tint[c] = blended ? look.tint[c] : look.solid[c] * view.solid_scale;
         k.tint[3] = opacity;
     };
     const auto draw_meshes = [&](bool blended, bool every = false) {
@@ -2852,7 +2986,7 @@ bool RendererImpl::render_model(const std::string& name, const ModelView& view, 
         set_scissor(window);
         pass(true);
         std::memcpy(k.tint, look.glow, sizeof look.glow);
-        k.tint[3] = look.glow_strength * opacity;
+        k.tint[3] = glow_strength * opacity;
         k.fx[2] = 1.f;
         draw_meshes(true, look.glow_whole);
         k.fx[2] = 0.f;

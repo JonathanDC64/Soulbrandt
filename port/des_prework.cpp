@@ -46,16 +46,18 @@
  * With ps3recomp's portable renderer (PS3RECOMP_RSX_HAL) the pass runs once
  * for each target the runtime has (rsx_shader_precompile.h): d3d12, today's
  * renderer's, as above; dxbc, the new D3D12 path's, into the same .dxbc
- * files; spv, Vulkan's, into <cache>/gpu/spv/. Each later target has its own
- * stamp, <cache>/gpu/precompile_<target>.stamp, which also records its
- * compiler; a target whose stamp is up to date is skipped. It runs off
- * Windows too, where only spv is.
+ * files; spv, Vulkan's, into <cache>/gpu/spv/, only when the renderer is
+ * Vulkan (run_passes). Each later target has its own stamp,
+ * <cache>/gpu/precompile_<target>.stamp, which also records its compiler; a
+ * target whose stamp is up to date is skipped. It runs off Windows too, where
+ * only spv is.
  */
 #include "ps3emu/ps3_knob.h"
 #include "ui/include/des_ui.h"  /* des_ui_privacy_wait */
 #include "rsx_shader_precompile.h"
 #include "des_rsx_route.h"  /* the renderer calls below: through rsx_out in a PS3RECOMP_RSX_HAL build */
 #include "des_region.h"     /* the two discs' title IDs */
+#include "des_pso_predict.h"  /* the pipelines the game can ask for, from its files */
 
 #ifdef _WIN32
 #include <windows.h>
@@ -295,6 +297,48 @@ bool flat_archive(const std::string& name)
     return false;
 }
 
+/* The shaders the game can use and the index does not (des_pso_predict, docs/97): one row each, after the
+ * index's own, so the start's build compiles each once into the pipeline library and the warm-up loads it at
+ * every start. A driver compiles a shader the first time a pipeline in the process has it (30-70 ms on an
+ * RTX 5070 Ti, at a draw a hitch); once it has, another pipeline with it takes about 0.5 ms, whatever its
+ * state. So a row only has to have the shader: they are SDR's whatever RSX_HDR says, and an HDR toggle leaves
+ * the index's text (and so its build mark) as it was. The rows are of this disc's own files, so every version
+ * of the game gets them. They are kept in the cache (pso_predict.tsv), under a mark of what they were made
+ * from: key (the archives, the executables), the material bundle and the index. DES_PSO_PREDICT=0 leaves
+ * them out. */
+void add_predicted(const char* root, const std::string& elf, const char* cache, std::string key, std::string& index)
+{
+    if (!ps3_env_int("DES_PSO_PREDICT", 1)) return;
+    const std::string usr = std::string(root) + kSep + "PS3_GAME" + kSep + "USRDIR";
+    stamp_file(key, "mtd", usr + kSep + "mtd" + kSep + "mtd.mtdbnd");
+    uint64_t h = 14695981039346656037ull;
+    for (const char c : key) h = (h ^ uint8_t(c)) * 1099511628211ull;
+    for (const char c : index) h = (h ^ uint8_t(c)) * 1099511628211ull;   /* (the rows leave out the index's shaders) */
+    char mark[64];
+    std::snprintf(mark, sizeof mark, "# des_pso_predict %016llx\n", (unsigned long long)h);
+    const size_t ml = std::strlen(mark);
+    const std::string path = std::string(cache) + kSep + "pso_predict.tsv";
+    std::vector<uint8_t> old;
+    std::string rows;
+    if (read_file(path, old) && old.size() > ml && std::memcmp(old.data(), mark, ml) == 0) {
+        rows.assign(old.begin() + ml, old.end());
+    } else {
+        DesPsoPredictCounts c{};
+        rows = des_pso_predict(usr, elf, false, &c, &index);
+        if (rows.empty()) return;
+        std::fprintf(stderr, "[des] shaders: %u pipelines predicted from %u materials; %u rows for the shaders the "
+                             "index does not use (pso_predict.tsv)\n", c.predicted, c.materials, c.rows);
+        if (FILE* f = std::fopen(path.c_str(), "wb")) {
+            std::fwrite(mark, 1, ml, f);
+            std::fwrite(rows.data(), 1, rows.size(), f);
+            std::fclose(f);
+        }
+    }
+    if (!index.empty() && index.back() != '\n') index += '\n';
+    index += "# predicted (des_pso_predict)\n";
+    index += rows;
+}
+
 /* Queue every .vpo/.fpo in one archive; returns how many. */
 int queue_archive(const std::string& path, const std::string& name)
 {
@@ -428,6 +472,7 @@ Pass run_pass(const char* root, const std::string& elf, bool force, void (*poll)
     const std::vector<std::string> names = list_archives(dir, stamp);
     if (elf.empty()) stamp += "eboot none\n";
     else stamp_file(stamp, "eboot", elf);
+    const std::string predict_key = stamp;   /* (add_predicted's: the archives and executables, not fp_variants) */
     stamp_file(stamp, "fp_variants", std::string(cache) + kSep + "fp_variants.txt");
 #if defined(PS3RECOMP_RSX_HAL)
     const std::string stamp_path = target_stamp(cache, stamp);
@@ -443,6 +488,7 @@ Pass run_pass(const char* root, const std::string& elf, bool force, void (*poll)
      * cache the pass then does only the index's work. */
     std::string index_name;
     std::string index = read_index(index_name);
+    add_predicted(root, elf, cache, predict_key, index);
     if (!index.empty() && rsx_shader_precompile_index_built(index.data(), index.size())) index.clear();
     const bool up_to_date = !force && read_file(stamp_path, old) && std::string(old.begin(), old.end()) == stamp;
     const int rows = index.empty() ? 0 : rsx_shader_precompile_index(index.data(), index.size(), up_to_date);
@@ -526,13 +572,26 @@ int pass_rank(Pass p)
 }
 
 /* run_pass once for each target the runtime has, d3d12 first; a skip stops the rest. The result is the worst of
- * theirs, the counts and seconds their sums. */
+ * theirs, the counts and seconds their sums.
+ *
+ * Vulkan's target (spv) runs only when the renderer is Vulkan: on D3D12 it would add about 12 s to a first start
+ * (4,179 shaders on 15 threads) and 182 MB to the cache, for shaders that are never drawn. A player who picks
+ * Vulkan in Settings gets them at that next start, on the same progress screen (its stamp is not written until
+ * then). The route is the one this process runs, or, in setup's shaders phase, the one a start would pick
+ * (rsx_out_renderer picks it as a start does; the shader index already asks it). The legacy renderer's d3d12
+ * target stays: it compiles the .dxbc files that the dxbc target then finds cached. */
 Pass run_passes(const char* root, const std::string& elf, bool force, void (*poll)(void), rsx_shader_precompile_stats& s)
 {
     Pass all = Pass::Off;
+    const char* const route = rsx_out_renderer();
     for (int t = 0; t < RSX_PRECOMPILE_TARGETS && !s_skip.load(); ++t) {
         const rsx_shader_precompile_sink* k = rsx_shader_precompile_sink_of(t);
         if (!k) continue;
+        if (k->route && same_nocase(k->route, "vulkan") && !same_nocase(route, "vulkan")) {
+            std::fprintf(stderr, "[des] shaders: the %s target waits for the Vulkan renderer (this one is %s)\n",
+                         k->name, route);
+            continue;
+        }
         rsx_shader_precompile_reset();
         rsx_shader_precompile_use(k);
         s_target = t;
@@ -611,4 +670,23 @@ extern "C" int des_prework_shaders(const char* game, const char* eboot)
     std::printf("shaders %s %u %u %u %.1f\n", kResult[int(p)], s.built, s.cached, s.failed, s.seconds);
     std::fflush(stdout);
     return p == Pass::Done || p == Pass::UpToDate || p == Pass::Off || p == Pass::NoArchives ? 0 : 1;
+}
+
+/* `des_host --pso-predict <game folder> <EBOOT.elf> <out.tsv> [hdr]`: the
+ * predicted rows (des_pso_predict) written to a file, for tests and for
+ * tools/des/pso_predict_check.py. Returns 0 when it wrote rows. */
+extern "C" int des_prework_pso_predict(const char* game, const char* eboot, const char* out, int hdr)
+{
+    DesPsoPredictCounts c{};
+    const std::string usr = std::string(game ? game : "") + kSep + "PS3_GAME" + kSep + "USRDIR";
+    const std::string rows = des_pso_predict(usr, eboot ? eboot : "", hdr != 0, &c);
+    FILE* f = rows.empty() || !out ? nullptr : std::fopen(out, "wb");
+    if (f) {
+        std::fwrite(rows.data(), 1, rows.size(), f);
+        std::fclose(f);
+    }
+    std::printf("pso-predict %u rows, %u materials, %u programs, %u programs a rule names are not in the files\n",
+                c.rows, c.materials, c.programs, c.missing);
+    std::fflush(stdout);
+    return f ? 0 : 1;
 }

@@ -10,12 +10,18 @@
 #include "modal.hpp"
 #include "prompts.hpp"
 #include "settings.hpp"
+#include "start_sword.hpp"
 #include "menu_pages.hpp"
 #include "menu_shell.hpp"
 #include "ui.hpp"
 #include "updates.hpp"
 #include "update_window.hpp"
 #include "version.hpp"
+
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <string>
 
 namespace ui {
 namespace {
@@ -29,14 +35,18 @@ const Rml::String kDocumentSource = R"RML(
 </head>
 <body class="prelaunch">
     <prelaunch-gradient />
+    <start-sword id="sword-window" />
+    <start-sword id="sword-column" />
     <prelaunch-vignette />
     <content id="root" open>
         <menu>
             <hero class="intro-item delay-0">
+                <start-sword id="sword-logo" />
+                <start-sword id="sword-title" />
                 <title-logo />
                 <title-rule />
             </hero>
-            <menu-list id="menu-list" />
+            <menu-list id="menu-list"><start-sword id="sword-menu" /></menu-list>
         </menu>
         <update-note id="update-note">
             <update-mark />
@@ -49,6 +59,7 @@ const Rml::String kDocumentSource = R"RML(
             <version-label>Version <version-number id="version-text"></version-number></version-label>
         </version-info>
         <prelaunch-prompts id="prompts" class="intro-item delay-7" />
+        <sword-label id="sword-label" />
     </content>
 </body>
 </rml>
@@ -72,6 +83,43 @@ Prelaunch::Prelaunch() : Document(kDocumentSource, false, DocumentScope::Prelaun
     mVersion = mDocument->GetElementById("version-text");
     mHint = mDocument->GetElementById("hint-text");
     mPrompts = mDocument->GetElementById("prompts");
+
+    // The sword (a prototype, start_sword.hpp), off unless DES_START_SWORD=<1 to 9, or a look's id> names the one it
+    // opens with: then keys 1 to 9 pick one, 0 none, T draws a faint one solid; Left / Right and L1 / R1 (Page Up /
+    // Down) go through them, and a line at the top left names it. Off, none of its keys are taken and the screen is as
+    // it was.
+    mSwordWindow = mDocument->GetElementById("sword-window");
+    mSwordLogo = mDocument->GetElementById("sword-logo");
+    mSwordColumn = mDocument->GetElementById("sword-column");
+    mSwordMenu = mDocument->GetElementById("sword-menu");
+    mSwordTitle = mDocument->GetElementById("sword-title");
+    mSwordLabel = mDocument->GetElementById("sword-label");
+    if (const char* v = std::getenv("DES_START_SWORD"); v && *v && std::strcmp(v, "0") != 0) {
+        mSwordOn = true;
+        const char* solid = std::getenv("DES_START_SWORD_SOLID");
+        mSwordSolid = solid && *solid && *solid != '0';
+        const int by_id = start_sword::find(v);
+        set_sword_look(by_id >= 0 ? by_id + 1 : std::atoi(v));
+    } else if (mSwordLabel) {
+        set_display(mSwordLabel, Rml::Style::Display::None);
+    }
+    if (mSwordOn) listen(mDocument, Rml::EventId::Keydown, [this](Rml::Event& e) {
+        const int key = e.GetParameter<int>("key_identifier", 0);
+        const int n = int(start_sword::looks().size());
+        if (key == Rml::Input::KI_T) {  // (solid or faint, from its start again)
+            mSwordSolid = !mSwordSolid;
+            set_sword_look(mSwordLook);
+            e.StopPropagation();
+            return;
+        }
+        for (const int first : {int(Rml::Input::KI_0), int(Rml::Input::KI_NUMPAD0)}) {
+            if (key >= first && key <= first + n) {
+                set_sword_look(key - first);
+                e.StopPropagation();
+                return;
+            }
+        }
+    });
     // A click on a prompt does what its button does: Open presses the choice with the focus, Quit asks.
     listen(mPrompts, Rml::EventId::Click, [this](Rml::Event& e) {
         for (Rml::Element* t = e.GetTargetElement(); t && t != mPrompts; t = t->GetParentNode()) {
@@ -208,6 +256,42 @@ void Prelaunch::hide(bool close) {
     }
 }
 
+// The sword's look: its decorator on the element whose box the look takes (the window's, the logo's or the middle
+// column's), none on the others, and the line at the top left that names it. A new decorator starts the look from its
+// beginning. A look with the flame has it under the sword, its map made from the sword in that box (render_gpu.cpp).
+void Prelaunch::set_sword_look(int look, double delay) {
+    const auto all = start_sword::looks();
+    const int n = int(all.size());
+    look = ((look % (n + 1)) + n + 1) % (n + 1);
+    mSwordLook = look;
+    const start_sword::Look* l = look > 0 ? &all[size_t(look - 1)] : nullptr;
+    char tail[48];
+    std::snprintf(tail, sizeof tail, "@%.2f@%d@%d", delay, ++mSwordShown, mSwordSolid ? 1 : 0);
+    std::string decorator = "none";
+    if (l) {
+        decorator = std::string("shader(\"model:soulbrandt@") + l->id + tail + "\")";
+        // Its flames under it, a sword's each (the look's flame and sword, else the logo's and the decorator's).
+        for (int i = 0; l->flame && i < (l->models[1] ? 2 : 1); i++)
+            decorator += std::string(", shader(\"flame:") + (l->flames[i] ? l->flames[i] : "logo") + "@" +
+                         start_sword::model_of(look - 1, i, "soulbrandt") + "@" + l->id + tail + "\")";
+    }
+    const auto on = [&](Rml::Element* e, start_sword::Place place) {
+        if (e) e->SetProperty("decorator", l && l->place == place ? decorator : std::string("none"));
+    };
+    on(mSwordWindow, start_sword::Place::Window);
+    on(mSwordLogo, start_sword::Place::Logo);
+    on(mSwordColumn, start_sword::Place::Column);
+    on(mSwordMenu, start_sword::Place::Menu);
+    on(mSwordTitle, start_sword::Place::Title);
+    if (mSwordLabel) {
+        set_text_content(mSwordLabel, (l ? "Sword " + std::to_string(look) + " of " + std::to_string(n) + ": " + l->label
+                                         : std::string("No sword")) +
+                                          ". Left and Right, or 1 to " + std::to_string(n) + ", change it; 0 hides it; T makes it " +
+                                          (mSwordSolid ? "faint again (solid now)." : "solid."));
+    }
+    std::fprintf(stderr, "[ui] start screen: sword %d (%s%s)\n", look, l ? l->id : "none", mSwordSolid ? ", solid" : "");
+}
+
 // "Update to <version>" while the check has found a release the player has not skipped.
 void Prelaunch::show_update() {
     const bool found = updates::state() == updates::State::Found && !updates::skipped();
@@ -233,6 +317,7 @@ void Prelaunch::update() {
         mDocument->SetClass("still", !host::animations_enabled());
         mDocument->SetClass("animate-in", true);
         mEntranceAnimationStarted = true;
+        if (mSwordOn) set_sword_look(mSwordLook, 0.5);  // (from the start again as the screen fades in: its motion is seen)
     }
     show_update();
     // Settings > Interface: the smoke and the logo's flame (DeS UI draws them) can be off; des.rcss leaves them out.
@@ -290,6 +375,12 @@ bool Prelaunch::handle_nav_command(Rml::Event& event, NavCommand cmd) {
     } else if (cmd == NavCommand::Cancel) {
         // Circle / Escape on the start screen asks to quit, as a desktop program's start screen would.
         request_quit_confirm(false);
+        return true;
+    } else if (mSwordOn && (cmd == NavCommand::Left || cmd == NavCommand::Right || cmd == NavCommand::Previous ||
+                            cmd == NavCommand::Next)) {  // the sword's next look, or the one before (none between the last and 1)
+        set_sword_look(mSwordLook + (cmd == NavCommand::Right || cmd == NavCommand::Next ? 1 : -1));
+        play_sound(kSoundItemFocus);
+        event.StopPropagation();
         return true;
     } else {
         return false;

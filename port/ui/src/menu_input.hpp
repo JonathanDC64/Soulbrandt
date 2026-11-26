@@ -11,6 +11,10 @@
 //   Help      H                  Select        View
 //   Compare   C (held)           Square        X
 //   Hide      Shift (held)       R3            RS
+//
+// With Same buttons as the game on (input.hpp's menu_buttons and menu_key), the PlayStation and Xbox columns are the
+// game's buttons wherever Change Buttons put them, and the keys for Cross and Circle (E and Space in the Souls layout)
+// come in as Enter and Esc.
 #pragma once
 
 #include <RmlUi/Core/Input.h>

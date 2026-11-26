@@ -31,7 +31,18 @@ class CheckTest(unittest.TestCase):
         with mock.patch.object(tps, "fetch_any", side_effect=OSError("404")):
             rc, _, err = self.run_main("--check")
         self.assertEqual(rc, 1)
-        self.assertIn("gh release upload", err)
+        self.assertIn("gh release create", err)
+
+    def test_a_new_archive_has_a_release_of_its_own(self):
+        self.assertEqual(tps.release_tag("ffmpeg", "8.1.3"), "third-party-sources")
+        self.assertEqual(tps.release_tag("vkd3d", "2.1"), "third-party-sources")
+        self.assertEqual(tps.release_tag("libusb", "1.0.30"), "source-libusb-1.0.30")
+        self.assertEqual(tps.release_tag("ffmpeg", "8.2"), "source-ffmpeg-8.2")
+        with mock.patch.object(tps, "fetch_any") as fetch:
+            self.run_main("--check")
+        urls = [c.args[0][0] for c in fetch.call_args_list]
+        v = tps.read_env(tps.HOST_YML)["LIBUSB_VERSION"]
+        self.assertIn(f"{tps.HOME}/source-libusb-{v}/libusb-{v}.tar.bz2", urls)
 
     def test_check_fails_on_the_wrong_bytes(self):
         with mock.patch.object(tps, "fetch_any", side_effect=ValueError("SHA-256")):

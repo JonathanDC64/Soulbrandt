@@ -17,6 +17,13 @@ void stick_axis(float v, bool (&held)[2]) noexcept {
 
 }  // namespace
 
+unsigned through_map(unsigned buttons, const std::array<signed char, 16>& from) noexcept {
+    unsigned out = 0;
+    for (int g = 0; g < 16; g++)
+        if (from[g] >= 0 && (buttons >> from[g]) & 1u) out |= 1u << g;
+    return out;
+}
+
 unsigned chord_mask(int chord) noexcept {
     return chord == 1 ? (kSelect | kStart) : (kL3 | kR3);
 }

@@ -455,7 +455,18 @@ inferred from the code; it was not compared with a PS3.
     sender moves, the gait comes from the sender's own speed instead: the distance between its last two positions
     over their gap, averaged with the one before. That is the speed the chase settles to.
   - *The speed surged.* The gap the chase divides by (+0x21C, at 0x0030C330) is replaced with an exponential
-    average of the recent gaps (a fifth of each new one).
+    average of the recent gaps (a fifth of each new one; a late packet counts as twice the average at most).
+  - *Uneven arrival.* Over the internet packets don't arrive as evenly as they're sent: two can come in one frame,
+    then none for a few. The second of two has a gap of 0, which the game treats as a warp and puts the remote at
+    the new position at once; a very short gap can read as a speed past its warp limit. Gaps under 150 ms are
+    replaced with the average before those tests too (0x0030C2DC), and the sender's speed for the gait counts the
+    packets since the last frame times the average gap, not the gap this copy saw. A real warp is still far past
+    the limit.
+
+    In two copies on one PC, the host at 60 fps sending 15 packets a second, the friend unlocked, with 40 ms of
+    delay and 0-60 ms of jitter added to every packet (two runs each): the friend's copy of the host warped 40 and
+    44 times a minute before, none after; frames shown as a dash during a run went from 1,238 and 1,602 to none,
+    and gait changes while moving from 82 and 88 to 22 and 19.
   - *The stick let go.* A chase that reaches the last position before the next packet moves nothing until it, and
     SetMoveVector turns a zero move into a zero stick. While the sender moves, such a frame gets a 0.1 mm move
     along the last direction, so the stick holds.
@@ -506,15 +517,28 @@ session..." as the Tower Knight went down. The host played at 60 fps.
 - **The fix,** `des_net_script` (port/des_options.cpp), hooks the send's first instruction:
   - a script's call that is the same as one sent on the frame before goes out at most 30 times a second of game
     time, as at 30 fps;
-  - the first three of a run go as they come, and so does the same call made twice in one frame;
+  - the first three of a run go as they come;
+  - in a run, only a frame's first copy of the call may go (since 2026-11-20, below). A call made twice in one frame
+    outside a run goes twice;
   - a call held back is not sent at all. The send is handed a size it refuses (it takes size + 8 up to 0x800), so it
     returns 0 as with no one to send to, and no caller reads that. The call itself still ran in this game;
-  - at 30 fps or below nothing is held back. It works in the game's own sessions and in seamless co-op.
+  - it works in the game's own sessions and in seamless co-op.
   
   The first call held back in a run writes one line to the co-op log ("a script sends its call ... on every frame").
   `DES_NET_SCRIPT_RATE=0` turns the fix off.
 - **With the fix,** in the same run: the copy at about 420 fps sent 153 of 2000 (it held back about 1850), and the copy
   at 60 fps sent 152 of 300. Neither queue rose, and the session stayed.
+- **The real fight (2026-11-20).** The tester got the same leave again with the fix, as the Tower Knight got up,
+  twice in one session. In the real fight the script makes the get-up call 4 times a frame, in every player's game:
+  two copies on one PC (host 60 fps, friend about 120 fps, 40 ms of delay) sent 240 and about 500 a second. The fix
+  held back only each frame's first copy, so about three quarters still went. The friend left with 1001 waiting about
+  4 s into the get-up. The host's queue grew too: with that delay it drained about 120 a second.
+  - The 4 copies are the same command (`SetEventCommand(801, 851)`, the knight's get-up), so in a run only a frame's
+    first copy goes now. That is at most 30 a second, at any frame rate. The other copies still run in the game that
+    made them.
+  - This also changes 30 fps: the PS3 sent all 4 copies each frame (120 a second). The others got the same command 4
+    times a frame; now they get it once.
+  - The test area's timer in the first runs made one call a frame, which is why those runs passed.
 - **Not changed:** the position packets (type 1, every 6 frames, section 7a) go out more often above 30 fps. They didn't
   fill the queue in these runs (0 waiting at 420 fps without the timer).
 

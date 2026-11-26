@@ -32,8 +32,8 @@ struct Def {
 };
 
 // The file's location (UTF-8): DES_SETTINGS, else settings.ini in the data folder (report::data_dir(): DES_DATA_DIR,
-// <exe dir>\data when portable.txt is there, else %APPDATA%\DemonsSoulsRecomp\DemonsSouls). Empty when the settings
-// are not kept (a test harness run).
+// <exe dir>\data when portable.txt is there, else an earlier version's folder that holds anything or the one data
+// folder, docs/164). Empty when the settings are not kept (a test harness run).
 const std::string& path();
 
 // The settings in use, as settings.ini lines, with the values the environment set noted (for an issue report).
@@ -166,6 +166,11 @@ bool net_name_ok(std::string_view name);             // 3-16 letters, digits, '-
 // An online name for a player who has none: a word from the game and four digits ("Stonefang-4821"), which
 // net_name_ok accepts. Setup offers it, and the Network tab falls back to it rather than leave the name empty.
 std::string suggest_net_name();
+// Seamless co-op's online name (PS3_NP_ONLINE_ID, else Settings > Network's) and the endpoint that introduces players
+// (DES_SEAMLESS_INTRO's value: "host:port", or "0" for none), as a start into co-op takes them (apply_seamless). The
+// Join window's check uses them before the restart (coop_window.cpp), so it tries what the join will.
+std::string seamless_name();
+std::string seamless_endpoint();
 // The chosen server's address (DES_NET_SERVER, DES_NET_CUSTOM for Custom), or "" when there is none or it is not
 // a valid address.
 std::string net_server_address();

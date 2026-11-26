@@ -2039,9 +2039,11 @@ struct NetRemote {
     float x, z;          /* the target at the last packet */
     float acc;           /* seconds since it */
     float speed, gap;    /* the sender's speed, and the last gap between packets */
-    float gap_avg;       /* those gaps averaged, 0 after a long one */
+    float gap_avg;       /* those gaps averaged, 0 at the game's own rate */
     float dir_x, dir_z;  /* the direction of the last move that went somewhere */
     unsigned last_use;
+    unsigned npk;        /* packets since the last frame that saw one */
+    float raw;           /* the gap the game measured for the packet in hand */
 };
 static NetRemote s_net_rem[8];
 
@@ -2062,7 +2064,7 @@ static NetRemote* net_remote(uint32_t m)
         r = &s_net_rem[0];
         for (NetRemote& e : s_net_rem)
             if (e.last_use < r->last_use) r = &e;
-        *r = NetRemote{m, vm_readf(m + 0x1D0), vm_readf(m + 0x1D8), 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0};
+        *r = NetRemote{m, vm_readf(m + 0x1D0), vm_readf(m + 0x1D8), 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0, 0, 0.0f};
     }
     r->last_use = ++use;
     return r;
@@ -2077,9 +2079,12 @@ static NetRemote* net_remote(uint32_t m)
  * or two, the chase arrives early on a fifth of the frames, and each arrival
  * shows idle for at least 0.2 s (the gait's hold): a walk that flickers into
  * idle, and a walk that reads as a run. The sender's speed is the distance
- * between its last two positions over their gap, averaged with the one
- * before: the speed the game's chase settles to (its 1.2 lead sets only how
- * far behind it trails). */
+ * between its last two positions over the time the sender took between
+ * them, averaged with the one before: the speed the game's chase settles to
+ * (its 1.2 lead sets only how far behind it trails). The sender's time is the
+ * packets between them times the average gap, not the gap this copy saw:
+ * over the internet packets arrive unevenly (two in one frame, then none for
+ * three), and a speed from the gaps seen jumped with each. */
 static void net_remote_frame(NetRemote* r, float dt)
 {
     const uint32_t m = r->m;
@@ -2088,20 +2093,24 @@ static void net_remote_frame(NetRemote* r, float dt)
     const float x = vm_readf(m + 0x1D0), z = vm_readf(m + 0x1D8);
     const float d = std::sqrt((x - r->x) * (x - r->x) + (z - r->z) * (z - r->z));
     const float gap = r->acc;
-    r->x = x; r->z = z; r->acc = 0.0f;
-    if (gap > 0.0f) {   /* (a second packet in the same frame: no gap to measure) */
-        r->gap = gap;
-        const float v = d / gap;
+    const float t = r->gap_avg > 0.0f ? (float)(r->npk > 1 ? r->npk : 1) * r->gap_avg : gap;
+    r->x = x; r->z = z; r->acc = 0.0f; r->npk = 0;
+    if (gap > 0.0f) r->gap = gap;
+    if (t > 0.0f) {
+        const float v = d / t;
         r->speed = (d < 0.005f || v > 20.0f) ? 0.0f : (r->speed > 0.0f ? 0.5f * (r->speed + v) : v);
     }
 }
 
-/* The sender's speed while packets come under 150 ms apart and it moves; -1
- * for a packet with the same position (it stopped), a gap over 150 ms, or a
- * jump over 20 m/s (a warp): then the game's own value stands. */
+/* The sender's speed while packets come under 150 ms apart on average and it
+ * moves; -1 at the game's own rate, for a packet with the same position (it
+ * stopped), a jump over 20 m/s (a warp), or no packet for three average gaps
+ * (a quarter of a second at least): then the game's own value stands. */
 static float net_remote_gait(const NetRemote* r)
 {
-    if (r->gap > 0.15f || r->acc > 0.15f || r->speed <= 0.0f) return -1.0f;
+    if (!(r->gap_avg > 0.0f) || r->speed <= 0.0f) return -1.0f;
+    const float wait = 3.0f * r->gap_avg;
+    if (r->acc > (wait > 0.25f ? wait : 0.25f)) return -1.0f;
     return r->speed;
 }
 
@@ -2132,7 +2141,13 @@ static float net_remote_gait(const NetRemote* r)
  * divides by (+0x21C, 0x0030C330) is counted in the receiver's frames and is
  * off by up to one, 20-30% of 45 ms, so the remote surges and slows 20 times
  * a second. That gap is replaced with the average of the recent ones (an
- * exponential average, a fifth of each new gap). And a chase that reaches the
+ * exponential average, a fifth of each new gap, a late one counted as twice
+ * the average at most). Over the internet two packets can also come in one
+ * frame: the second has a gap of 0, which the game takes as a warp (OnPacket
+ * puts the remote at the new position at once, 0x0030C2DC), and a very short
+ * one can read as a speed past its warp limit. Gaps under 150 ms are replaced
+ * there too, before that test, so the remote chases instead of jumping; a
+ * real warp is still far past the limit. And a chase that reaches the
  * last position before the next packet (the game then moves nothing until
  * it) handed SetMoveVector a zero move, which sets the remote's stick to
  * zero: a frame of letting go mid-walk. While the sender moves, such a frame
@@ -2164,16 +2179,32 @@ extern "C" void des_net_sync(ppu_context* ctx, uint32_t addr)
     static int on = 1;
     PS3_KNOB(on, ps3_env_int("DES_NETFIX", 1) != 0);
     const bool fix = on && dt > 0.0f && dt <= kMaxFrameDt;
-    if (addr == 0x0030C330u) {   /* fmuls f0, f12, f0: OnPacket's 1.2 * gap; r31 = the manipulator */
+    if (addr == 0x0030C2DCu) {   /* after lfs f12, 0x21C(r31): the gap, before the warp tests; f13 = the distance */
         if (!fix) return;
         NetRemote* r = net_remote((uint32_t)ctx->gpr[31]);
         const float gap = (float)ctx->fpr[12];
-        if (!(gap > 0.0f && gap < 0.15f)) {
+        r->npk++;
+        r->raw = gap;
+        if (r->gap_avg > 0.0f && gap < 0.15f) ctx->fpr[12] = r->gap_avg;
+        return;
+    }
+    if (addr == 0x0030C330u) {   /* fmuls f0, f12, f0: OnPacket's 1.2 * gap; r31 = the manipulator */
+        if (!fix) return;
+        NetRemote* r = net_remote((uint32_t)ctx->gpr[31]);
+        const float used = (float)ctx->fpr[12];   /* the average, when 0x0030C2DC put it there */
+        float gap = r->raw;
+        if (!(gap > 0.0f)) gap = r->gap_avg;      /* a second packet in the frame: no gap to add */
+        if (r->gap_avg > 0.0f) {
+            if (gap > 2.0f * r->gap_avg) gap = 2.0f * r->gap_avg;
+            r->gap_avg += 0.2f * (gap - r->gap_avg);
+        } else if (gap > 0.0f && gap < 0.15f) {
+            r->gap_avg = gap;
+        }
+        if (!(r->gap_avg > 0.0f && r->gap_avg < 0.15f)) {   /* the game's own rate */
             r->gap_avg = 0.0f;
             return;
         }
-        r->gap_avg = r->gap_avg > 0.0f ? r->gap_avg + 0.2f * (gap - r->gap_avg) : gap;
-        ctx->fpr[0] = (float)(ctx->fpr[0] * (r->gap_avg / gap));
+        if (used > 0.0f) ctx->fpr[0] = (float)(ctx->fpr[0] * (r->gap_avg / used));
         return;
     }
     if (addr == 0x0030C378u) {   /* SetMoveVector's entry: v2 = this frame's move, r3 = the manipulator */
@@ -2232,6 +2263,16 @@ extern "C" void des_net_sync(ppu_context* ctx, uint32_t addr)
  * skips the reply, both functions see server = own, and the result is the
  * offline one. The player's own values still go to the server (addQWCData).
  * Blends saved before stay. Live: from the next load. Main thread.
+ * A new character (0x00920FC8 called from the new-game step, 0x00185200,
+ * 0x001856B8, 0x00185748) gets 0 in every area instead: the own values then
+ * are whatever was in memory, a character played before in the same run, and
+ * a new character took that one's world tendency (2026-11-20: a tester's new
+ * character had pure white Palace, 200, from their other character, so 1-1's
+ * dragons were gone). 0 is what the game gives a new character offline (no
+ * server reply, NetData's zeros). The caller is read off the stack: the
+ * reader 0x00567E98 has pushed its frame (stdu at its first instruction),
+ * the back chain gives 0x00920FC8's, which keeps its return address at
+ * +0x110 (std r0, 0x110(r1) at 0x00921008).
  * Always in seamless co-op (DES_SEAMLESS host or join): there is no server
  * there, only the game's own in-game answers (des_seamless.cpp), which give a
  * neutral tendency, so the mix only pulled each player's tendency toward
@@ -2249,15 +2290,19 @@ extern "C" void des_qwc_local(ppu_context* ctx, uint32_t)
     uint32_t q = vm_read32(DES_AT(0x01B4EF9Cu));
     if (!guest_ptr_ok(q) || !guest_ptr_ok(q = vm_read32(q + 0x24))) return;
     const uint32_t own_at = q + 0x48 + 8 * (area - 1);
-    vm_write32(out, vm_read32(own_at));
-    vm_write32(out + 4, vm_read32(own_at + 4));
+    const uint32_t frame = vm_read32((uint32_t)ctx->gpr[1] + 4);   /* (the back chain's low word) */
+    const uint32_t from = guest_ptr_ok(frame) ? vm_read32(frame + 0x114) : 0;
+    const bool fresh = from == DES_AT(0x00185204u) || from == DES_AT(0x001856BCu) || from == DES_AT(0x0018574Cu);
+    const uint32_t b0 = fresh ? 0u : vm_read32(own_at), b1 = fresh ? 0u : vm_read32(own_at + 4);
+    vm_write32(out, b0);
+    vm_write32(out + 4, b1);
     ctx->gpr[4] = 0;
     if (area == 1) {
         float bw, lr;
-        const uint32_t b0 = vm_read32(own_at), b1 = vm_read32(own_at + 4);
         std::memcpy(&bw, &b0, 4);
         std::memcpy(&lr, &b1, 4);
-        std::fprintf(stderr, "[des] world tendency: yours only (the server's skipped; area 1 %.0f / %.0f)\n", bw, lr);
+        std::fprintf(stderr, "[des] world tendency: yours only (the server's skipped%s; area 1 %.0f / %.0f; from %08X)\n",
+                     fresh ? ", a new character: 0 everywhere" : "", bw, lr, from);
     }
 }
 
@@ -2461,11 +2506,19 @@ extern "C" void des_net_replay(ppu_context* ctx, uint32_t addr)
  * and the game leaves the session ("The network connection is unstable").
  * So a call the same as one on the frame before goes out at most 30 times a
  * second of game time, as at 30 fps; the first three of a run go as they
- * come, and so does a call made twice in one frame. One not sent goes
- * nowhere: the send is handed a size it refuses (it takes size + 8 <= 0x800)
- * and returns 0, as with no one to send to; no caller reads that. The call
- * itself still ran in this game. At 30 fps or below nothing is held back.
- * DES_NET_SCRIPT_RATE=0 turns it off. */
+ * come. A script may also make the same call more than once a frame: the
+ * Tower Knight's get-up goes 4 times a frame, in every game (2026-11-20,
+ * two games at 60 and 120 fps with 40 ms of delay: 120 and 240 a second,
+ * the guest's backlog past 1000 in 4 s; the host's grew too, the backlog
+ * drained about 120 a second). In a run only a frame's first copy may go:
+ * the others are the same command again, and run in the game that made
+ * them. So a call made on every frame goes out at most 30 times a second,
+ * at any frame rate; a call made twice in one frame outside a run (a
+ * script's one-off call, or a run's first three frames) goes twice. One
+ * not sent goes nowhere: the send is handed a size it refuses (it takes
+ * size + 8 <= 0x800) and returns 0, as with no one to send to; no caller
+ * reads that. The call itself still ran in this game. DES_NET_SCRIPT_RATE=0
+ * turns it off. */
 constexpr int32_t  kScriptCallMsg  = 12;      /* the message type, and its size */
 constexpr uint32_t kScriptCallSize = 20;
 constexpr uint32_t kSendRefused    = 0x7F9;   /* a size the send refuses */
@@ -2504,7 +2557,10 @@ extern "C" void des_net_script(ppu_context* ctx, uint32_t)
         c->run = 0;
         c->said = false;
     }
-    if (c->run && c->frame == frame) return;   /* again in the same frame */
+    if (c->run && c->frame == frame) {   /* again in the same frame: one copy a frame in a run */
+        if (c->run > 3) ctx->gpr[6] = kSendRefused;
+        return;
+    }
     c->run = c->run && frame - c->frame == 1u ? c->run + 1 : 1;
     c->frame = frame;
     if (c->run == 1) c->next = now + kScriptCallGap;
@@ -2655,6 +2711,47 @@ extern "C" void des_slide_rate(ppu_context* ctx, uint32_t addr)
         if (r.wrapper == wrapper) r.steep_s = 0.0f;
         if (v > 0.0 && v < 1.0) ctx->fpr[0] = (float)std::pow(v, (double)steps);
     }
+}
+
+/* A character proxy in the air (wrapper + 0x190 set), in the same velocity
+ * update 0x001FE778: the game adds gravity times dt to the proxy's velocity,
+ * clamps it (x and z to 6 m/s each way, y to 50 m/s down) and then keeps 0.95
+ * of its speed across the ground (r30 - 0x7DE0, x and z only). That drag is once a
+ * frame: a character that runs off a ledge keeps 0.95^30 of that speed after a
+ * second at 30 fps but 0.95^240 at 240 fps, so it falls almost straight down
+ * and lands short of where it lands at 30 fps (docs/28). The lifter
+ * calls this after 0x001FECA8 (stfs f12, 0x74(r1): the drag, put on the stack
+ * and splatted into the multiply next); it raises the stored drag to dt * 30,
+ * with dt the step's (r26 + 0x20), as des_slide_rate does with the 0.65 decay.
+ * All characters, any thread, every disc. DES_AIRFIX=0 turns it off live.
+ * DES_AIRLOG=1 prints each step in the air: the wrapper (r29), dt, the speed
+ * across the ground before the drag and the speed down. */
+extern "C" void des_air_rate(ppu_context* ctx, uint32_t addr)
+{
+    static int on = 1, log = 0;
+    PS3_KNOB(on, ps3_env_int("DES_AIRFIX", 1) != 0);
+    PS3_KNOB(log, env_on("DES_AIRLOG"));
+    const uint32_t insn = hook_insn(addr);
+    if ((insn >> 26) != 52) return;   /* stfs only */
+    const uint32_t at = (uint32_t)ctx->gpr[(insn >> 16) & 31] + (uint32_t)(int16_t)(insn & 0xFFFF);
+    if (!guest_ptr_ok(at)) return;
+    const float drag = vm_readf(at);
+    const float dt = vm_readf((uint32_t)ctx->gpr[26] + 0x20), steps = dt * 30.0f;
+    const bool scale = on && s_fps > 0 && steps > 0.0f && steps < 30.0f && steps != 1.0f && drag > 0.0f &&
+                       drag < 1.0f;
+    if (log) {
+        /* x and z of the velocity before the drag (r1 + 0xD0, + 0xD8), y after its clamp (r8) */
+        const uint32_t sp = (uint32_t)ctx->gpr[1];
+        const float x = vm_readf(sp + 0xD0), z = vm_readf(sp + 0xD8);
+        const uint32_t py = (uint32_t)ctx->gpr[8];
+        const float y = guest_ptr_ok(py) ? vm_readf(py) : 0.0f;
+        using clock = std::chrono::steady_clock;
+        static const clock::time_point t0 = clock::now();
+        const double ms = std::chrono::duration<double, std::milli>(clock::now() - t0).count();
+        fprintf(stderr, "[airlog] %.1f ms %08X dt %.5f across %.3f down %.3f drag %.4f%s\n", ms,
+                (uint32_t)ctx->gpr[29], dt, std::sqrt(x * x + z * z), y, drag, scale ? " scaled" : "");
+    }
+    if (scale) vm_writef(at, (float)std::pow((double)drag, (double)steps));
 }
 
 /* DES_ROLLDIR=1 (the default; 0 is the original): a roll while locked on goes
@@ -2998,6 +3095,35 @@ extern "C" void des_ghost_rate(ppu_context* ctx, uint32_t addr)
     if (addr == 0x00315030u) ctx->gpr[9] = (uint64_t)n;         /* li r9, 10: frames to the next sample */
     else if (addr == 0x003147ECu) ctx->fpr[12] = (float)n;      /* lfs f12: the move and turn divisor */
     else ctx->fpr[12] = 3.0f * (float)n;                        /* 0x00314ABC, lfs f12: the step's speed factor */
+}
+
+/* A dash's stamina (docs/28). 0x00286020 adds each update's dt to the
+ * character's dash timer (+0x144); once it reaches 0.1 s (the constant at
+ * 0x019DA2A8) the dash costs 1 stamina (+0x3D4) and the timer is set to 0.
+ * The part of the update past 0.1 s was lost, so 0.1 s took a whole number of
+ * frames: 3 at the PS3's fixed 1/30 s, 10 a second. At 45 fps it took 5
+ * (0.111 s, 9 a second), at 75 fps 8 (9.4 a second), and under DES_FPS even 30
+ * fps lost some, since our frame time is the real one and a frame a hair under
+ * 1/30 s made the third not enough. The lifter calls this after the store of
+ * the 0 (0x00286654, stw r9, 0x144(r31)); the timer the update reached is
+ * still in f13 and the 0.1 in f0, on all four discs. It keeps the rest,
+ * between 0 and 0.1 s, so a dash costs 10 a second at any frame rate, as on the
+ * PS3. A frame is at most 50 ms (kMaxFrameDt), so the rest never holds a
+ * second 0.1. Nothing without DES_FPS. DES_STAMFIX=0 turns it off live. Main
+ * thread. */
+extern "C" void des_stamina_carry(ppu_context* ctx, uint32_t addr)
+{
+    static int on = 1;
+    PS3_KNOB(on, ps3_env_int("DES_STAMFIX", 1) != 0);
+    if (!on || s_fps <= 0) return;
+    const uint32_t insn = hook_insn(addr);
+    if ((insn >> 26) != 36) return;   /* stw only */
+    const uint32_t timer = (uint32_t)ctx->gpr[(insn >> 16) & 31] + (uint32_t)(int16_t)(insn & 0xFFFF);
+    const float t = (float)ctx->fpr[13], tick = (float)ctx->fpr[0];
+    if (!guest_ptr_ok(timer) || !(tick > 0.0f && t >= tick)) return;
+    float rest = t - tick;
+    if (!(rest < tick)) rest = 0.0f;
+    vm_writef(timer, rest);
 }
 
 #if !DES_DEV
@@ -3492,6 +3618,29 @@ extern "C" void des_souls_use_init(void);  /* des_souls_use.cpp */
 extern "C" void des_item_keys_init(void);  /* des_item_hotkeys.cpp */
 extern "C" void des_pantheon_init(void);   /* des_pantheon.cpp */
 
+#ifdef __linux__
+/* One line of a /sys file, without its newline; empty when it can't be read. */
+static std::string sys_line(const char* path)
+{
+    char buf[64] = {};
+    if (FILE* f = std::fopen(path, "r")) {
+        if (!std::fgets(buf, sizeof buf, f)) buf[0] = 0;
+        std::fclose(f);
+    }
+    buf[std::strcspn(buf, "\r\n")] = 0;
+    return buf;
+}
+
+/* A Steam Deck, LCD (Jupiter) or OLED (Galileo), by the machine's own
+ * firmware names: the machine RSX_CORE's gain was measured on. */
+static bool on_steam_deck_hw()
+{
+    if (sys_line("/sys/class/dmi/id/sys_vendor") != "Valve") return false;
+    const std::string product = sys_line("/sys/class/dmi/id/product_name");
+    return product == "Jupiter" || product == "Galileo";
+}
+#endif
+
 /* The run defaults every start needs, from setup's Play, Explorer or a
  * shortcut as much as from tools/des (docs/45 1.3). Without them a player's
  * start hung on the loading screen: libsre was never loaded, so every SPURS
@@ -3514,6 +3663,11 @@ static void run_defaults()
          * stick starts from the length where the game's own stick zone ends,
          * so the character starts moving at that tilt, without a jump. */
         {"PAD_DEADZONE_ANTI", "37"},
+        /* Settings > Controls > Controller on Automatic: the gamepad used
+         * last plays, with its button icons and vibration (ps3recomp's
+         * cellPad.c puts it on port 0, the only port the game reads). Without
+         * it, the first pad found played and the others did nothing. */
+        {"PAD_FOLLOW", "1"},
         /* The level's busiest frames need ~850k vertices; growing the buffer
          * during play stalled a frame for 100-400 ms (docs/28). */
         {"VP_VB_VERTS", "1572864"},
@@ -3545,13 +3699,6 @@ static void run_defaults()
          * went from 68-88 to 8-11 (docs/73). libmixer's threads still go up
          * by name (PPU_MIXER_RAISE). */
         {"PPU_RAISE_BELOW", "0"},
-#ifdef __linux__
-        /* The RSX thread alone on one CPU of a core, and the rest of the
-         * process off that core (ps3recomp's RSX_CORE). On a Steam Deck that
-         * thread holds the frame, and it ran 4-8% faster so. auto: only with
-         * SMT and at least 4 cores, from the game's first frame. */
-        {"RSX_CORE", "auto"},
-#endif
     };
     /* libsre is loaded only for a family that isn't on our code: LIBSRE_OWN=0
      * (both on Sony's code, the old boot) or lf / queue (one of them). Read
@@ -3560,6 +3707,15 @@ static void run_defaults()
     const std::string own = own_env ? own_env : "1";
     for (const auto& d : kDefaults)
         if (!getenv(d.name)) ps3_setenv(d.name, d.value);
+#ifdef __linux__
+    /* The RSX thread alone on one CPU of a core, and the rest of the process
+     * off that core, from the game's first frame (ps3recomp's RSX_CORE).
+     * auto: only where enough cores are left for the rest, which ps3recomp's
+     * plat_core_reserve decides; 4 may be too few (a 4-core laptop's sound
+     * fell behind with 3 left for the rest). On a Steam Deck, 1: there that
+     * thread holds the frame, and it ran 4-8% faster so. */
+    if (!getenv("RSX_CORE")) ps3_setenv("RSX_CORE", on_steam_deck_hw() ? "1" : "auto");
+#endif
     if (!getenv("LIBSRE_LLE")) ps3_setenv("LIBSRE_LLE", own == "1" || own == "all" ? "0" : "1");
 #ifdef DES_LIBSRE_IMAGE
     /* A source build's libsre glue gives its image from the working folder, and a direct start of des_boot.exe
@@ -3577,6 +3733,7 @@ static void run_defaults()
 
 extern "C" int des_icon_render(const char* game, const char* out);   /* ui/src/souls_icon.cpp */
 extern "C" int des_prework_shaders(const char* game, const char* eboot);   /* des_prework.cpp */
+extern "C" int des_prework_pso_predict(const char* game, const char* eboot, const char* out, int hdr);
 extern "C" void des_prework_elf(const char* path);
 
 /* main's ELF, as boot_main reads its arguments: the first that is not a
@@ -3595,7 +3752,9 @@ static const char* main_elf(int argc, char** argv)
  * shaders phase (`--shaders <game folder> [<EBOOT.elf>]`: the shader cache
  * filled with no window, then the exit), setup's two for the program's icon
  * (`--icon <game folder> <out.ico>`, and `--program-check`, which only says
- * that the program starts; tools/setup/des_setup/exe_icon.py), or the run
+ * that the program starts; tools/setup/des_setup/exe_icon.py), the predicted
+ * pipelines as index rows for tests (`--pso-predict <game folder> <EBOOT.elf>
+ * <out.tsv> [hdr]`, des_pso_predict.cpp), or the run
  * defaults, then setup's
  * screens alone, or the game (des_ui_launch), whose ELF the shader pass at
  * the start reads too (des_prework_elf). */
@@ -3604,6 +3763,8 @@ extern "C" int ps3_title_launch(int* argc, char*** argv)
     if ((*argc == 3 || *argc == 4) && std::strcmp((*argv)[1], "--shaders") == 0)
         return des_prework_shaders((*argv)[2], *argc == 4 ? (*argv)[3] : nullptr);
     if (*argc == 4 && std::strcmp((*argv)[1], "--icon") == 0) return des_icon_render((*argv)[2], (*argv)[3]);
+    if ((*argc == 5 || *argc == 6) && std::strcmp((*argv)[1], "--pso-predict") == 0)
+        return des_prework_pso_predict((*argv)[2], (*argv)[3], (*argv)[4], *argc == 6 && std::strcmp((*argv)[5], "hdr") == 0);
     if (*argc == 2 && std::strcmp((*argv)[1], "--program-check") == 0) return 0;
     run_defaults();
     const int launch = des_ui_launch(argc, argv);

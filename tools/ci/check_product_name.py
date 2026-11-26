@@ -5,8 +5,10 @@ PRODUCT_NAME, at the root, holds the project's shown name. The build, the releas
 read it from there, so a rename is that one line. This fails, with each place named:
   - when a tracked file other than the docs has the name written out (it should read PRODUCT_NAME instead), but for
     a line marked "(the game's sword)": the project is named after one of the game's swords, and that line means it;
+    and a line marked "(the fixed folder name)": the one data folder's name (docs/164), a technical name that stays
+    when the project is renamed, or players' files would be left behind;
   - when one still has a former shown name (FORMER below; a rename adds the old name to it);
-  - when the README's title, PRIVACY.md's server name or .recomp.json's project (the recomp.fyi listing) is not the
+  - when the README's title (its heading, or its title picture's alt text), PRIVACY.md's server name or .recomp.json's project (the recomp.fyi listing) is not the
     name. Those three are written by hand, so this is what catches a rename that missed them.
 recomplauncher.json (RecompLauncher's file, docs/166) has the name and the program's file name written out too;
 tools/release/recomplauncher.py checks both against PRODUCT_NAME, so it is left out here.
@@ -58,13 +60,19 @@ def main():
         text = data.decode("utf-8", "replace")
         for n, line in enumerate(text.splitlines(), 1):
             line = REPOSITORY_RE.sub("", line)
-            if name and name in line and "(the game's sword)" not in line:
+            if name and name in line and "(the game's sword)" not in line and "(the fixed folder name)" not in line:
                 problems.append((f"{path}:{n}", f"the name {name!r} is written out: read PRODUCT_NAME instead"))
             for old in FORMER:
                 if old in line:
                     problems.append((f"{path}:{n}", f"a former name, {old!r}"))
     readme = open(os.path.join(ROOT, "README.md"), encoding="utf-8").read()
-    title = next((l[2:].strip() for l in readme.splitlines() if l.startswith("# ")), "")
+    # The title, above the first section: a "# " heading, or, when the README opens with a picture of its title, that
+    # picture's alt text.
+    head = readme.split("\n## ", 1)[0]
+    title = next((l[2:].strip() for l in head.splitlines() if l.startswith("# ")), None)
+    if title is None:
+        alt = re.search(r'<img\b[^>]*\balt="([^"]*)"', head)
+        title = alt.group(1).strip() if alt else ""
     if title != name:
         problems.append(("README.md", f"the title is {title!r}, PRODUCT_NAME says {name!r}"))
     privacy = open(os.path.join(ROOT, "PRIVACY.md"), encoding="utf-8").read()

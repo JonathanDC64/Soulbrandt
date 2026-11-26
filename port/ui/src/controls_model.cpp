@@ -501,6 +501,29 @@ std::string slot_label(int t, int slot) {
     return slot < int(bs.size()) ? binding_label(bs[slot]) : "None";
 }
 
+std::array<signed char, kPadCount> game_button_sources() {
+    const PadMap m = pad_map();
+    std::array<signed char, kPadCount> from{};
+    for (int g = 0; g < kPadCount; g++) from[g] = static_cast<signed char>(m[g]);
+    return from;
+}
+
+int menu_key_for(int vk) {
+    if (vk <= 0 || vk >= kInMouse) return 0;
+    if (vk == VK_RETURN || vk == VK_ESCAPE || vk == VK_F1 || (vk >= VK_LEFT && vk <= VK_DOWN)) return 0;
+    const KeyMap& m = key_map();
+    const auto works = [&](const char* name) {
+        const int t = target_index(name);
+        if (t < 0) return false;
+        for (const Binding& b : m[t])
+            if (b.in == vk && b.mod == 0) return true;
+        return false;
+    };
+    if (works("cross")) return VK_RETURN;
+    if (works("circle")) return VK_ESCAPE;
+    return 0;
+}
+
 void restore_defaults() {
     settings::set("PAD_MAP", "");
     settings::set("PAD_KEYS", "");

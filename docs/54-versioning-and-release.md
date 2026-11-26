@@ -655,14 +655,19 @@ source to be offered with the binaries. The archives used to be attached to ever
 its page that a player could take for downloads of the game. The user asked for them to go on a release of their own,
 like the compiler's.
 
-- **Where:** [`third-party-sources`](https://github.com/JonathanDC64/Soulbrandt/releases/tag/third-party-sources), holding the exact archives `host.yml` builds from.
-- **What points there:** `README.md`, and `licenses/ffmpeg/README.txt` and `licenses/vkd3d/README.txt` in the download.
+- **Where:** [`third-party-sources`](https://github.com/JonathanDC64/Soulbrandt/releases/tag/third-party-sources) holds FFmpeg 8.1.3's and vkd3d 2.1's
+  archives. Every archive after those has a release of its own, `source-<name>-<version>` (libusb 1.0.30's is
+  `source-libusb-1.0.30`). The repository's releases are immutable once published, so no file can be added to a
+  release later: a new archive's release is made with the archive attached (`gh release create`).
+- **What points there:** `README.md`, and `licenses/ffmpeg/README.txt`, `licenses/vkd3d/README.txt` and
+  `licenses/libusb/README.txt` in the downloads.
   v0.1.0's zip was built before this, and its FFmpeg note says "on this release's page", so its release notes hold the
   link.
 - **The check:** `release.yml` and `release-check.yml` run `third_party_sources.py --check`, which downloads each archive
   from that release and compares it with `host.yml`'s pinned SHA-256. A new version with no archive there stops a release.
-- **Moving to a new version:** `third_party_sources.py --out DIR`, then `gh release upload third-party-sources DIR/*`.
-  Keep the old archives for as long as a published release uses them.
+- **Moving to a new version:** `third_party_sources.py --out DIR`, then the `gh release create` command its `--check`
+  prints for the new archive, and the version's README line in `host.yml` points at that release. Keep the old
+  releases for as long as a published game release uses them.
 - **Not a game release:** the update check reads only `vX.Y.Z` tags, and `release-latest.yml` keeps "Latest" on those.
 
 The LGPL's wording is that the source is offered "from the same place". A release of the same repository, linked from

@@ -10,13 +10,18 @@
 //     multiplayer walls drop as at a session's end;
 //   - no rating screen after a kill: a short timer goes on to the next step instead;
 //   - a blue phantom's death keeps it in the session: it comes back where the host last arrived, and in a boss fight
-//     it first watches until the fight ends (the boss dead, or the host dead: then it goes back with the host); out
+//     it first watches until the fight ends (the boss dead, or everyone dead: then it goes back with the host); out
 //     of the session meanwhile, it goes home;
-//   - the cutscenes keep their solo mode in a session: each player skips its own;
+//   - the host's death: while a friend stands, it respawns alone and its friends play on (in a boss fight, once the
+//     boss is dead); with none standing, everyone goes back with it (SeamlessHostWait;
+//     DES_SEAMLESS_HOST_DEATH=together: always everyone);
+//   - the cutscenes keep their solo mode in a session (des_seamless_game.cpp's cut_tick then leaves the skip of one the
+//     host plays too to the host);
 //   - no multiplayer wall closes the way back to an Archstone (the host may use them in a session);
 //   - a boss's extra health counts a third blue phantom (a party of four) as two: x2, the game's most.
 // Each area's script:
-//   - a boss fight is marked from the boss's health bar to its clearing (for the watch above);
+//   - a boss fight is marked from the boss's health bar to its clearing (for the watch above, and flag 19994 for
+//     des_seamless_game.cpp: no join during the host's);
 //   - the boss rooms' party walls drop as in solo play;
 //   - a guest doesn't play the warp-out pose at a boss's death;
 //   - the poses a player's script plays on it (an Archstone's touch and the trip home after it, a sword pulled out)
@@ -24,8 +29,12 @@
 //   - the Archstones: the host may use them in a session (the guests then follow it, des_seamless_game.cpp); a guest
 //     still gets "You can't return during multiplayer.", at the Nexus's stones too (they had no session check);
 //   - a boss's soul: a blue phantom may take its own, as the host takes its own;
+//   - an NPC's talk that gives an item (1-1's Ostrava, once saved) is each player's own: each player has that talk
+//     and gets the item (talk_gifts_for_each);
 //   - the wandering ghosts' sightings are each player's own (local_wander_loops);
-//   - a light wall one player walks through is gone in every player's game (walls_for_watchers);
+//   - a light wall one player walks through is gone in every player's game (walls_for_watchers), and a friend may walk
+//     through one that isn't a boss's, not only the host (light_walls_for_friends), which takes it away in every
+//     player's game too (light_walls_for_all);
 //   - a boss that wakes only for the player who walks through its fog wakes for one put in its room too
 //     (standby_in_the_room);
 //   - the room is never locked (LockSession), here or at a kill in global_event.lua, so a friend can always join again;
@@ -45,12 +54,14 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <iterator>
 #include <map>
 #include <mutex>
+#include <random>
 #include <regex>
 #include <set>
 #include <sstream>
@@ -63,6 +74,8 @@ extern "C" void ds_malloc(ppu_context* ctx);   // des_heap.cpp: the guest heap
 // and its soul, key and item pickups), before the area starts
 void des_seamless_area_read(uint32_t world, const std::vector<uint32_t>& scenes, const std::vector<uint32_t>& chain,
                             const std::vector<uint32_t>& own);
+// des_seamless_game.cpp: the host's load of the area, for a pick that comes out the same in every game (false: none)
+bool des_seamless_shared_seed(uint64_t* seed);
 
 namespace {
 
@@ -183,9 +196,11 @@ bool edit_global(std::string& t, const std::string& nl)
     if (!replace_in(t, "MissionSuccessed", "proxy:RecallMenuEvent( 0, 8933 );", "--SEAMLESS proxy:RecallMenuEvent( 0, 8933 );"))
         return false;
     // OnEvent_4034 (the session connected): the cutscenes keep their solo mode. REMO_FLAG is the mode every
-    // RequestRemo passes. A map's scripts start with 0, 4034 makes it 2 (multiplayer: a guest can't skip one, and the
-    // host's skip ends only its own), and 4035 (the session's end, and BlockClear2_3Leave above) makes it 0 again. In
-    // 0, as the ones asked for before 4034 (an area's opening) already were in a session, each player skips its own.
+    // RequestRemo passes. A map's scripts start with 0, 4034 makes it 2 (multiplayer: the game's skip refuses it, in
+    // every game, and no game's skip reaches another's), and 4035 (the session's end, and BlockClear2_3Leave above)
+    // makes it 0 again. In 0, as the ones asked for before 4034 (an area's opening) already were in a session, each
+    // player could skip its own; des_seamless_game.cpp's cut_tick gives a friend's copy of one the host plays too the
+    // 2 while the host's plays, and ends it when the host skips (one only the friend sees stays the friend's to skip).
     if (!replace_in(t, "OnEvent_4034", "REMO_FLAG = 2;",
                     "REMO_FLAG = 0; --SEAMLESS each player's cutscenes are its own"))
         return false;
@@ -249,6 +264,9 @@ bool edit_global(std::string& t, const std::string& nl)
     // edit_area) the phantom first watches until the fight ends: it looks again each second (two timer slots in turn,
     // so a handler never sets up its own slot) until the boss is dead, or the host has died: the host's respawn
     // then takes everyone back (des_seamless_game.cpp's follow), and this phantom goes with it at full health.
+    // Whether the host's death takes everyone back is flag 20297, which des_seamless_game.cpp sets in a guest's game
+    // from the host's word (ALLB) until the guest has followed that load: a value of the scripts' own, set by HostDead,
+    // outlived it when HostDead came after the load (11-22: the next death of that friend waited for good).
     // Once the boss is dead, a phantom that died in the fight (SeamlessFightDeath, noted at its death) comes back at
     // its own bloodstain, in the boss's room, not at the area's start: flag 19993 (past the game's last flag; only
     // des_seamless_game.cpp's flag hook reads it) just before the reload says so.
@@ -271,7 +289,7 @@ bool edit_global(std::string& t, const std::string& nl)
                       "\t\tproxy:NotNetMessage_end();\n"
                       "\t\treturn;\n"
                       "\tend\n"
-                      "\tif SeamlessHostDown == true then\n"
+                      "\tif proxy:IsCompleteEvent(20297) == true then\n"
                       "\t\tproxy:RequestFullRecover();\n"
                       "\t\tproxy:SetEventFlag(4047, false);\n"
                       "\t\tproxy:SetEventFlag(4000, false);\n"
@@ -295,15 +313,71 @@ bool edit_global(std::string& t, const std::string& nl)
         return false;
     // The host's death: the host's respawn takes everyone back together (des_seamless_game.cpp's follow), so a blue
     // phantom isn't recalled and sent home (MissionFailed's 8943, HostDead_1's trip). A phantom watching a boss fight
-    // goes back with it (PartyGhostDeath_2).
+    // goes back with it (PartyGhostDeath_2, from flag 20297).
     if (!replace_func(t, "HostDead",
                       "function HostDead(proxy, param)\n"
                       "\t--SEAMLESS: the host's respawn takes the group back together; no recall, no trip home\n"
                       "\tif proxy:IsHost() == true or proxy:IsGreyGhost() == true then\n"
                       "\t\treturn;\n"
                       "\tend\n"
-                      "\tSeamlessHostDown = true;\n"
                       "\tprint(\"SEAMLESS HostDead\");\n"
+                      "end\n", nl))
+        return false;
+    // The host's own death (des_seamless_game.cpp's host_death_flags has the rest). By default (flag 20298 set on the
+    // host), its guests' HostDead waits for SeamlessHostWait, after SoloPlayDeath's 3 s: while a friend stands (flag
+    // 20299), the host respawns alone (flag 19996 tells des_seamless_game.cpp, which keeps the dead enemies dead and
+    // its guests where they are), in a boss fight once the boss is dead (it looks again each second, as a friend's
+    // watch does); with no friend standing, the guests get their HostDead and the load is the old one: everyone back.
+    // Flag 19995 (past the game's last flag) just before each HostDead: des_seamless_game.cpp tells the guests which
+    // load takes them back (flag 20297 in their games).
+    if (!replace_in(t, "OnEvent_4000", "proxy:LuaCallStart(4000, 1 );",
+                    "if proxy:IsCompleteEvent(20298) == false then proxy:SetEventFlag(19995, true); "
+                    "proxy:LuaCallStart(4000, 1 ); end --SEAMLESS: else SeamlessHostWait"))
+        return false;
+    // The host's HP at 0 (OnEvent_4000_Hp) sends call 99999 to every game, and five areas' scripts answer it with
+    // their boss's parts in dead mode 2 (OnEvent_4000_Hp_1's SetDeadMode2: m02_00 Phalanx 800-802 and 821, m03_01,
+    // m04_00, m05_00, m06_00): the boss's HP stops at 1, so no one kills it after the host died, as the host's death
+    // reloads everyone. While the host respawns alone, it waits for the boss's death (SeamlessHostWait), so the call
+    // doesn't go out then: 11-22, Phalanx stood at 1 HP in both games and the dead host waited for good.
+    if (!replace_in(t, "OnEvent_4000_Hp", "proxy:LuaCallStart( 99999 , 0 );",
+                    "if proxy:IsCompleteEvent(20298) == false or proxy:IsCompleteEvent(20299) == false or "
+                    "proxy:IsInParty() == false then proxy:LuaCallStart( 99999 , 0 ); end "
+                    "--SEAMLESS: the boss stays mortal while the host respawns alone"))
+        return false;
+    if (!replace_func(t, "SoloPlayDeath_1",
+                      "function SoloPlayDeath_1(proxy,param)\n"
+                      "\tprint(\"SoloPlayDeath_1 begin\");\n"
+                      "\tif proxy:IsCompleteEvent(20298) == true and proxy:IsHost() == true and proxy:IsInParty() == true then\n"
+                      "\t\tSeamlessHostWait(proxy,param); --SEAMLESS: alone or together\n"
+                      "\t\treturn;\n"
+                      "\tend\n"
+                      "\tproxy:NotNetMessage_begin();\n"
+                      "\t\tSoloPlayDeath_2(proxy,param);\n"
+                      "\tproxy:NotNetMessage_end();\n"
+                      "\tprint(\"SoloPlayDeath_1 end\");\n"
+                      "end\n"
+                      "\n"
+                      "function SeamlessHostWait(proxy,param)\n"
+                      "\t--SEAMLESS: the host respawns alone while a friend stands, after the boss fight if one is on\n"
+                      "\tlocal up = proxy:IsCompleteEvent(20299) == true and proxy:IsInParty() == true;\n"
+                      "\tif up == true and SeamlessBossFight == true and ClearBoss == false then\n"
+                      "\t\tif SeamlessWatchSlot == 6 then SeamlessWatchSlot = 8 else SeamlessWatchSlot = 6 end\n"
+                      "\t\tproxy:NotNetMessage_begin();\n"
+                      "\t\t\tproxy:OnKeyTime2(4000,\"SeamlessHostWait\",1.0,0,SeamlessWatchSlot,once);\n"
+                      "\t\tproxy:NotNetMessage_end();\n"
+                      "\t\treturn;\n"
+                      "\tend\n"
+                      "\tif up == true then\n"
+                      "\t\tproxy:SetEventFlag(19996, true);\n"
+                      "\t\tprint(\"SEAMLESS the host respawns alone\");\n"
+                      "\telse\n"
+                      "\t\tproxy:SetEventFlag(19995, true);\n"
+                      "\t\tproxy:LuaCallStart(4000, 1 );\n"
+                      "\t\tprint(\"SEAMLESS the host's death takes everyone back\");\n"
+                      "\tend\n"
+                      "\tproxy:NotNetMessage_begin();\n"
+                      "\t\tSoloPlayDeath_2(proxy,param);\n"
+                      "\tproxy:NotNetMessage_end();\n"
                       "end\n", nl))
         return false;
     // A boss's extra health with blue phantoms (Lua_MultiDoping, at the boss room's first entry, per boss part): one
@@ -318,7 +392,8 @@ bool edit_global(std::string& t, const std::string& nl)
     // A boss's health bar cleared: its fight is over (BlockClear's kill; see edit_area)
     const std::regex clear("proxy:ClearBossGauge\\s*\\(");
     if (!std::regex_search(t, clear)) return false;
-    t = std::regex_replace(t, clear, "SeamlessBossFight = false; proxy:ClearBossGauge(");
+    t = std::regex_replace(t, clear,
+                           "SeamlessBossFight = false; proxy:SetEventFlag(19994, false); proxy:ClearBossGauge(");
     return true;
 }
 
@@ -487,6 +562,137 @@ int walls_for_watchers(std::string& t)
     std::sort(adds.begin(), adds.end());
     for (auto a = adds.rbegin(); a != adds.rend(); ++a) t.insert(a->first, a->second);
     return (int)adds.size();
+}
+
+// The light walls that aren't a boss's (1-1's three, one each in 1-2 and 1-3, three each in 2-1, 2-2, 4-1 and 4-2): each
+// area's script offers the walk through one only to the host, alive or a soul
+// (OnDistanceActionAttribute(<id>, LOCAL_PLAYER or 10000, <wall>, "OnEvent_<id>", ..., HELPID_GO_TO_IN, ...,
+// possible_chr_type or ATTR_HOST + ATTR_LIVE + ATTR_GREY, everytime)). A friend got no prompt and waited for the host to
+// walk through first. It is offered to a blue phantom too (ATTR_WHITE). Its handler has no check of who walks, so a
+// friend's walk runs as the host's does in the host's game: the walk, the wall dropped, the wall's flag set (in 2-1 and
+// 2-2 a progress flag, kept for the friend's own world). The others' games drop it too (light_walls_for_all). A boss's
+// fog is a region's prompt (OnPlayerActionInRegionAttribute) and stays as it is: the host walks in first. Returns the
+// number of edits.
+const std::regex& light_wall_prompt()
+{
+    static const std::regex re("(OnDistanceActionAttribute\\(\\s*(\\d+)\\s*,\\s*(?:LOCAL_PLAYER|10000)\\s*,\\s*\\d+\\s*,\\s*\"(\\w+)\"\\s*,"
+                               "[^,\\n]*,\\s*HELPID_GO_TO_IN\\s*,[^,\\n]*,[^,\\n]*,\\s*)(possible_chr_type|ATTR_HOST\\s*\\+\\s*ATTR_LIVE\\s*\\+"
+                               "\\s*ATTR_GREY)(\\s*,\\s*everytime\\s*\\))");
+    return re;
+}
+
+int light_walls_for_friends(std::string& t)
+{
+    const std::regex& wall = light_wall_prompt();
+    const auto n = std::distance(std::sregex_iterator(t.begin(), t.end(), wall), std::sregex_iterator());
+    if (n) t = std::regex_replace(t, wall, "$1$4 + ATTR_WHITE$5");
+    return (int)n;
+}
+
+// The light walls of light_walls_for_friends, gone in every game whoever walks through, and kept gone. The walker's
+// game drops its wall with LuaCallStart(<id>, 1) (each game's OnEvent_<id>_delete_wall, registered with LuaCall(<id>,
+// 1, ..., once) while the wall stands), and the others' games drop theirs from it too, but nothing sets the wall's
+// flag there: when a friend walked through, the host's wall went for the moment, its flag stayed clear, and the wall
+// was back for everyone at the host's next load (two copies, 11-22: the delete ran in the host's game, the handler's
+// walk branch didn't). So the walker's game also tells the others, outside NotNetMessage, as flights_for_all's calls
+// do: LuaCallStart(<7600000 + id>, 76) after the walk's local block, and each game's SEAMLESS_WallPassed_<id>
+// (LuaCall(<7600000 + id>, 76, ..., once), registered beside the delete's) takes it from another player
+// (param:IsNetMessage()): the flags the walk's branch for another player sets (Luafunc_PlaySynchroAnimation(...,
+// ANIMEID_WALK); 2-2's 572 sets 571's too) and the walls the walker's game drops (its LuaCallStart(<x>, 1), in the
+// handler or in the one its walk's end runs: OnChrAnimEnd(<id>, 10000, ANIMEID_WALK, "<f>", once)). It has an ID of
+// its own, one the scripts don't use, because the delete's DeleteEvent(<id>) takes every handler of <id> with it:
+// under <id> it ran only when it came before the delete (one run in three). The host's flag is then set, so the wall
+// stays gone at its next load, for the friends too. Returns the number of edits.
+constexpr unsigned long kWallPassedIds = 7600000;   // SEAMLESS_WallPassed_<id>'s call: 7600000 + <id> (unused IDs)
+int light_walls_for_all(std::string& t)
+{
+    const std::string nl = t.find("\r\n") != std::string::npos ? "\r\n" : "\n";
+    // a line's text before pos has no comment
+    const auto live = [&](size_t pos) {
+        const size_t bol = t.rfind('\n', pos);
+        const size_t ls = bol == std::string::npos ? 0 : bol + 1;
+        return t.substr(ls, pos - ls).find("--") == std::string::npos;
+    };
+    const auto ids_in = [&](const std::string& body, const std::regex& re) {
+        std::vector<std::string> out;
+        for (auto it = std::sregex_iterator(body.begin(), body.end(), re); it != std::sregex_iterator(); ++it) {
+            const size_t bol = body.rfind('\n', (size_t)it->position(0));
+            const size_t ls = bol == std::string::npos ? 0 : bol + 1;
+            if (body.substr(ls, (size_t)it->position(0) - ls).find("--") != std::string::npos) continue;
+            if (std::find(out.begin(), out.end(), (*it)[1].str()) == out.end()) out.push_back((*it)[1].str());
+        }
+        return out;
+    };
+    const std::regex sync("\\n([ \\t]*)if\\s+Luafunc_PlaySynchroAnimation\\(\\s*proxy\\s*,\\s*param\\s*,\\s*ANIMEID_WALK\\s*\\)"
+                          "\\s*==\\s*true\\s+then[^\\n]*\\n(?:[^\\n]*\\n)*?\\1end[^\\n]*\\n");
+    const std::regex flag("SetEventFlag\\(\\s*(\\d+)\\s*,\\s*(?:true|1)\\s*\\)");
+    const std::regex drop("LuaCallStart\\(\\s*(\\d+)\\s*,\\s*1\\s*\\)");
+    const std::regex anim_end("OnChrAnimEnd\\(\\s*\\d+\\s*,\\s*10000\\s*,\\s*ANIMEID_WALK\\s*,\\s*\"(\\w+)\"");
+    std::vector<std::pair<std::string, std::string>> walls;   // {id, handler}
+    for (auto it = std::sregex_iterator(t.begin(), t.end(), light_wall_prompt()); it != std::sregex_iterator(); ++it)
+        if (live((size_t)it->position(0))) walls.push_back({(*it)[2].str(), (*it)[3].str()});
+    std::string tail;
+    int n = 0;
+    for (const auto& [id, handler] : walls) {
+        size_t a, e;
+        if (!func_span(t, handler, &a, &e)) continue;
+        const std::string body = t.substr(a, e - a);
+        std::smatch m;
+        if (!std::regex_search(body, m, sync)) continue;
+        const size_t walk = (size_t)m.position(0) + (size_t)m.length(0);   // the walker's part, after the branch
+        const std::vector<std::string> flags = ids_in(m[0].str(), flag);
+        const std::string rest = body.substr(walk);
+        std::vector<std::string> dropped = ids_in(rest, drop);
+        for (const std::string& f : ids_in(rest, anim_end)) {
+            size_t fa, fe;
+            if (!func_span(t, f, &fa, &fe)) continue;
+            for (const std::string& x : ids_in(t.substr(fa, fe - fa), drop))
+                if (std::find(dropped.begin(), dropped.end(), x) == dropped.end()) dropped.push_back(x);
+        }
+        std::vector<std::string> deletes;   // each dropped wall's delete function, from its registration
+        for (const std::string& x : dropped) {
+            std::smatch r;
+            size_t da, de;
+            if (std::regex_search(t, r, std::regex("LuaCall\\(\\s*" + x + "\\s*,\\s*1\\s*,\\s*\"(\\w+)\"")) &&
+                func_span(t, r[1].str(), &da, &de))
+                deletes.push_back(r[1].str());
+        }
+        // where the walker tells the others: after the walk's local block (the first NotNetMessage_end after the branch)
+        const size_t local_end = rest.find("NotNetMessage_end");
+        const std::regex reg("\\n([ \\t]*)proxy:LuaCall\\(\\s*" + id + "\\s*,\\s*1\\s*,\\s*\"\\w+\"\\s*,\\s*once\\s*\\)\\s*;[^\\n]*\\n");
+        std::smatch rm;
+        if (flags.empty() || deletes.empty() || local_end == std::string::npos || !std::regex_search(t, rm, reg) ||
+            !live((size_t)rm.position(0) + 1 + rm[1].length()))
+            continue;
+        const size_t tell_line = t.find('\n', a + walk + local_end);
+        if (tell_line == std::string::npos) continue;
+        // (inserted from the end of the text backwards: the registration may come before or after the handler)
+        const size_t reg_at = (size_t)rm.position(0) + (size_t)rm.length(0);
+        size_t ind_a = t.rfind('\n', a + walk + local_end) + 1;
+        std::string ind;
+        while (ind_a < t.size() && (t[ind_a] == ' ' || t[ind_a] == '\t')) ind += t[ind_a++];
+        const std::string call = std::to_string(kWallPassedIds + std::stoul(id));
+        const std::string tell = ind + "proxy:LuaCallStart( " + call + " , 76 ); --SEAMLESS: the others' games drop it too" + nl;
+        const std::string add = rm[1].str() + "proxy:LuaCall( " + call + " , 76 , \"SEAMLESS_WallPassed_" + id +
+                                "\" , once ); --SEAMLESS: another player's walk" + nl;
+        if (reg_at > tell_line) {
+            t.insert(reg_at, add);
+            t.insert(tell_line + 1, tell);
+        } else {
+            t.insert(tell_line + 1, tell);
+            t.insert(reg_at, add);
+        }
+        tail += nl + "--SEAMLESS: light wall " + id + " another player walked through, gone here too (light_walls_for_all)" +
+                nl + "function SEAMLESS_WallPassed_" + id + "(proxy, param)" + nl +
+                "\tprint(\"SEAMLESS_WallPassed_" + id + " begin\");" + nl +
+                "\tif param:IsNetMessage() == false then return; end" + nl;
+        for (const std::string& f : flags) tail += "\tproxy:SetEventFlag( " + f + " , true );" + nl;
+        for (const std::string& d : deletes) tail += "\t" + d + "(proxy, param);" + nl;
+        tail += "end" + nl;
+        n += 3;
+    }
+    t += tail;
+    return n;
 }
 
 // A boss that wakes only in the game of the player who walks through its fog. Phalanx (1-1) is drawn and can be hit
@@ -958,6 +1164,56 @@ int gifts_for_all(std::string& t)
     return n;
 }
 
+// The items an NPC's talk gives: the talk system starts LuaCall(<id>, 0, "OnEvent_<id>", once), and its steps
+// (OnEvent_<id>_1) give the item to the player who talked (GetRateItem under param:IsNetMessage() == false), set flag
+// <id> and move the NPC on. 1-1's Ostrava (10501, after he is saved) is the one. The call is a network event (the
+// original has its NotNetMessage_begin and _end in a comment), so one player's talk moved the NPC on in every
+// player's game, without their item: the others never had that talk. The IDs.
+std::set<std::string> talk_gift_ids(const std::string& t)
+{
+    std::set<std::string> out;
+    const std::regex reg("proxy:LuaCall\\(\\s*(\\d+)\\s*,\\s*0\\s*,\\s*\"OnEvent_(\\d+)\"\\s*,\\s*once\\s*\\)");
+    const std::regex mine("if\\s+param:IsNetMessage\\(\\)\\s*==\\s*false\\s+then\\s*(?:--[^\\n]*\\n\\s*)*proxy:GetRateItem\\(");
+    for (auto it = std::sregex_iterator(t.begin(), t.end(), reg); it != std::sregex_iterator(); ++it) {
+        const std::string id = (*it)[1].str();
+        size_t a, e;
+        if (id != (*it)[2].str() || out.count(id) || !func_span(t, "OnEvent_" + id + "_1", &a, &e)) continue;
+        const std::string body = t.substr(a, e - a);
+        if (std::regex_search(body, mine) &&
+            std::regex_search(body, std::regex("SetEventFlag\\(\\s*" + id + "\\s*,\\s*(?:true|1)\\s*\\)")))
+            out.insert(id);
+    }
+    return out;
+}
+
+// Each player's own talk (talk_gift_ids): the call registered between NotNetMessage_begin and _end, as the scripts'
+// other talk calls are, so a talk's steps run only in the game of the player who talked; each player has that talk
+// and gets the item. The item only while flag <id> is clear: in a friend's game that is its own world's flag
+// (des_seamless_game.cpp keeps it as a pickup's, own_flags), so a friend who talked, then loaded into the host's
+// world where nobody has talked yet, doesn't get the item again from the same talk. Returns the number of edits.
+int talk_gifts_for_each(std::string& t)
+{
+    int n = 0;
+    for (const std::string& id : talk_gift_ids(t)) {
+        const std::regex reg("proxy:(LuaCall\\(\\s*" + id + "\\s*,\\s*0\\s*,\\s*\"OnEvent_" + id + "\"\\s*,\\s*once\\s*\\)\\s*;)");
+        const auto calls = std::distance(std::sregex_iterator(t.begin(), t.end(), reg), std::sregex_iterator());
+        t = std::regex_replace(t, reg,
+                               "proxy:NotNetMessage_begin(); proxy:$1 proxy:NotNetMessage_end(); --SEAMLESS: each player's own talk ");
+        n += (int)calls;
+        size_t a, e;
+        if (!func_span(t, "OnEvent_" + id + "_1", &a, &e)) continue;
+        const std::string body = t.substr(a, e - a);
+        const std::string ed = std::regex_replace(body, std::regex("if(\\s+param:IsNetMessage\\(\\)\\s*==\\s*false)(\\s+then)"),
+                                                  "if$1 and proxy:IsCompleteEvent( " + id + " ) == false$2",
+                                                  std::regex_constants::format_first_only);
+        if (ed != body) {
+            t.replace(a, e - a, ed);
+            n++;
+        }
+    }
+    return n;
+}
+
 // A statement at the top of function `name`, after its first line; false if the function isn't there.
 bool insert_first(std::string& t, const std::string& name, const std::string& line, const std::string& nl)
 {
@@ -1159,6 +1415,74 @@ int poses_for_watchers(std::string& t)
 }
 
 // An area's script: the party walls, the warp-out pose and the Archstones. Returns the number of edits.
+// A boss's Archstone for a player whose own world has the boss's soul already. Each player's soul flag is its own in
+// a session (des_seamless_area_read puts a friend's own in play as the area starts), and a boss kill's handler shows
+// the stone and its pickup when the flag is clear. In five areas (1-1 to 1-4, 5-3) the handler hides the stone when
+// the flag is set ("it goes once taken"), a branch the original game never reaches: there the boss dies only once. A
+// friend who had taken Phalanx's soul in its own world saw no Archstone at the kill, while everyone else did (a
+// tester's report, 11-24). That branch now shows what the other branch shows (the stone, and in some areas a second
+// object), as the other areas do: no glow, no prompt, no second soul. Returns the number of edits.
+int stones_for_friends(std::string& t)
+{
+    const std::string nl = t.find("\r\n") != std::string::npos ? "\r\n" : "\n";
+    std::map<std::string, std::string> stones;   // the soul's event ID -> its object (the stone)
+    const std::regex prompt("OnDistanceActionAttribute\\(\\s*(\\d+)\\s*,[^\\n]*?,\\s*(\\d+)\\s*,\\s*\"OnEvent_(\\d+)\"[^\\n]*?,"
+                            "\\s*10010180\\s*,");
+    for (auto it = std::sregex_iterator(t.begin(), t.end(), prompt); it != std::sregex_iterator(); ++it)
+        if ((*it)[1].str() == (*it)[3].str()) stones[(*it)[1].str()] = (*it)[2].str();
+    // the line at a, its end (at its '\n' or t's end) and its indentation
+    auto line_end = [&](size_t a) { const size_t e = t.find('\n', a); return e == std::string::npos ? t.size() : e; };
+    auto indent_of = [&](size_t a) {
+        size_t i = a;
+        while (i < t.size() && (t[i] == ' ' || t[i] == '\t')) i++;
+        return t.substr(a, i - a);
+    };
+    auto word_at = [&](size_t i, const char* w) {   // w at i, then no letter, digit or '_'
+        const size_t n = std::strlen(w);
+        if (t.compare(i, n, w) != 0) return false;
+        return i + n >= t.size() || !(std::isalnum((unsigned char)t[i + n]) || t[i + n] == '_');
+    };
+    int n = 0;
+    for (const auto& [id, obj] : stones) {
+        const std::regex head("[ \\t]*if\\s+proxy:IsCompleteEvent\\(\\s*" + id + "\\s*\\)\\s*==\\s*false\\s+then\\b");
+        const std::regex hide("(proxy:Set(?:Draw|Coli)Enable\\(\\s*" + obj + "\\s*,\\s*)false(\\s*\\))");
+        const std::regex show("[ \\t]*proxy:Set(?:Draw|Coli)Enable\\(\\s*(\\d+)\\s*,\\s*true\\s*\\)\\s*;[^\\r\\n]*");
+        std::vector<std::pair<size_t, size_t>> heads;   // each such if's line: start, end
+        for (size_t a = 0; a < t.size(); a = line_end(a) + 1) {
+            const size_t e = line_end(a);
+            std::smatch m;
+            const std::string line = t.substr(a, e - a);
+            if (line.find("IsCompleteEvent") != std::string::npos && std::regex_search(line, m, head) &&
+                m.position(0) == 0)
+                heads.emplace_back(a, e);
+        }
+        for (auto h = heads.rbegin(); h != heads.rend(); ++h) {   // from the end, so the earlier ones stay put
+            const std::string in = indent_of(h->first);
+            size_t els = std::string::npos, end = std::string::npos;
+            for (size_t a = h->second + 1; a < t.size(); a = line_end(a) + 1) {
+                if (indent_of(a) != in) continue;   // deeper (or a blank line)
+                const size_t i = a + in.size();
+                if (word_at(i, "else")) els = a;
+                else if (word_at(i, "end")) { end = a; break; }
+                else if (word_at(i, "elseif")) break;
+            }
+            if (els == std::string::npos || end == std::string::npos) continue;
+            const std::string then_part = t.substr(h->second + 1, els - h->second - 1);
+            const size_t eb = line_end(els) + 1;
+            std::string else_part = t.substr(eb, end - eb);
+            if (!std::regex_search(else_part, hide)) continue;
+            std::string extra;   // what the other branch shows, but the stone (its lines here say so)
+            for (auto it = std::sregex_iterator(then_part.begin(), then_part.end(), show); it != std::sregex_iterator();
+                 ++it)
+                if ((*it)[1].str() != obj) extra += it->str() + " --SEAMLESS: as the other branch" + nl;
+            else_part = std::regex_replace(else_part, hide, "$1true$2") + extra;
+            t.replace(eb, end - eb, in + "\t--SEAMLESS: shown, as in the other areas" + nl + else_part);
+            n++;
+        }
+    }
+    return n;
+}
+
 int edit_area(std::string& t, bool nexus)
 {
     int n = 0;
@@ -1189,8 +1513,10 @@ int edit_area(std::string& t, bool nexus)
     // script): a guest who dies in it watches until it ends (global_event.lua's PartyGhostDeath_2). The Nexus's script
     // holds the final area and its boss too, so it gets this as well (its other edits first).
     auto boss_fight = [&] {
-        sub(std::regex("proxy:SetBossGauge\\s*\\("), "SeamlessBossFight = true; proxy:SetBossGauge(");
-        sub(std::regex("proxy:ClearBossGauge\\s*\\("), "SeamlessBossFight = false; proxy:ClearBossGauge(");
+        sub(std::regex("proxy:SetBossGauge\\s*\\("),
+            "SeamlessBossFight = true; proxy:SetEventFlag(19994, true); proxy:SetBossGauge(");
+        sub(std::regex("proxy:ClearBossGauge\\s*\\("),
+            "SeamlessBossFight = false; proxy:SetEventFlag(19994, false); proxy:ClearBossGauge(");
     };
     if (nexus) {
         // The Nexus's Archstones (OnDistanceAction(<id>, 10000, <stone>, "OnEvent_<id>", WarpGimmickDist_A, ...)) have
@@ -1260,6 +1586,11 @@ int edit_area(std::string& t, bool nexus)
     n += local_wander_loops(t);
     // The light walls: one a player walks through is gone in every player's game (walls_for_watchers)
     n += walls_for_watchers(t);
+    // ... and the light walls that aren't a boss's: gone in every player's game whoever walks through
+    // (light_walls_for_all; it finds them by their prompts as the game has them, so it goes first), and a friend may
+    // walk through them, not only the host (light_walls_for_friends)
+    n += light_walls_for_all(t);
+    n += light_walls_for_friends(t);
     // A boss that wakes only for the player who walked through its fog wakes for a player put in its room too
     n += standby_in_the_room(t);
     // A friend in a session goes with its host, not on an area script's trip of its own (no_travel_alone)
@@ -1275,6 +1606,8 @@ int edit_area(std::string& t, bool nexus)
         if (body.find("10010710") != std::string::npos || body.find("10010720") != std::string::npos)
             ids.insert((*it)[1].str());
     }
+    // A boss's Archstone for a player who has its soul already (stones_for_friends; before the prompts' edits below)
+    n += stones_for_friends(t);
     // A boss's soul (the prompt 10010180 at the Archstone or the boss's remains): a blue phantom may take its own too,
     // and each player's prompt is its own. A prompt is a network event, so one player's pickup would also fire every
     // other player's (they see the pickup animation) and use up their once-only prompt; registered between
@@ -1294,6 +1627,8 @@ int edit_area(std::string& t, bool nexus)
     n += pickups_for_all(t);
     // ... and the items the host alone took at an item prompt
     n += gifts_for_all(t);
+    // An NPC's talk that gives an item: each player's own (talk_gifts_for_each)
+    n += talk_gifts_for_each(t);
     // The treasures the host alone turned on in the moment (treasures_for_all)
     n += treasures_for_all(t);
     // A handler that does nothing in a party (party_gates), and a watch the host alone starts after a kill
@@ -1403,7 +1738,8 @@ long read_number(const std::string& t, size_t* i)
     return v;
 }
 
-std::vector<uint32_t> progress_flags(const std::string& t, std::vector<uint32_t>* boss, std::vector<uint32_t>* seal)
+std::vector<uint32_t> progress_flags(const std::string& t, std::vector<uint32_t>* boss, std::vector<uint32_t>* seal,
+                                     std::vector<std::pair<uint32_t, uint32_t>>* tale)
 {
     std::set<uint32_t> out, kills, sealed;
     // the functions, by name
@@ -1504,17 +1840,42 @@ std::vector<uint32_t> progress_flags(const std::string& t, std::vector<uint32_t>
         }
         a = e + 1;
     }
+    // ... and what the functions that call a seal handler set (the Nexus's OnEvent_303_1, at the end of the
+    // Monumental's tale: it calls OnEvent_34 and then sets 303, the flag the Maiden checks before she levels anyone).
+    // Those flags go with the seal: a player who has the seal but not 303 can never hear the tale again.
+    std::vector<long> ids;
+    for (long id : seen)
+        if (sealed.count((uint32_t)id)) ids.push_back(id);
+    for (const auto& f : funcs) {
+        bool own = false;   // one of the seal's own handlers
+        for (long id : ids) {
+            const std::string base = "OnEvent_" + std::to_string(id);
+            own = own || f.first == base || f.first.compare(0, base.size() + 1, base + "_") == 0;
+        }
+        if (own) continue;
+        for (long id : ids) {
+            const std::string call = "OnEvent_" + std::to_string(id) + "(";
+            const size_t p = t.find(call, f.second.first + 10);
+            if (p == std::string::npos || p >= f.second.second) continue;
+            std::set<uint32_t> set;
+            set_true(f.second.first, f.second.second, &set);
+            for (uint32_t s : set) {
+                if (sealed.insert(s).second && tale) tale->push_back({(uint32_t)id, s});
+            }
+        }
+    }
     if (seal) seal->assign(sealed.begin(), sealed.end());
     return std::vector<uint32_t>(out.begin(), out.end());
 }
 
-// The soul pickups (the prompt 10010180), the keys (key_pickups) and the host's item prompts (gift_pickups): the
-// event's ID is the flag its handler sets once the item is taken.
+// The soul pickups (the prompt 10010180), the keys (key_pickups), the host's item prompts (gift_pickups) and the
+// items an NPC's talk gives (talk_gift_ids): the event's ID is the flag its handler sets once the item is taken.
 std::vector<uint32_t> own_flags(const std::string& t)
 {
     std::set<uint32_t> out;
     std::set<std::string> ids = key_pickups(t);
     for (const auto& g : gift_pickups(t)) ids.insert(g.first);
+    for (const std::string& id : talk_gift_ids(t)) ids.insert(id);
     for (const std::string& id : ids) {
         const unsigned long v = std::stoul(id);
         if (v < kProgressMax) out.insert((uint32_t)v);
@@ -1578,7 +1939,59 @@ struct Copy {
     std::vector<uint32_t> scenes;     // the cutscenes each player sees: the Nexus's, an area's opening
     std::vector<uint32_t> chain;      // of those, the opening's (the area's start plays one: opening_flags)
     std::vector<uint32_t> seal;       // and the Archstones' seal (the Nexus)
+    std::vector<std::pair<uint32_t, uint32_t>> tale;   // of those, what its caller sets: {the seal's flag, the flag}
+    uint32_t pick[2] = {0, 0};        // the Nexus: where the Maiden's two numbers go in the copy (maiden_pick)
 };
+
+// The Maiden in Black's place in the Nexus (Lua_SetPos, from Lua_SetHeroinPos at the area's start, once she waits for
+// the player and flag 304 is set): two numbers from GetRandom(0, 100) pick one of her places for the world last
+// visited and the pose that goes with it there (sitting, 7003-7008, or standing). In co-op the host's game moves her
+// (each game runs its own copy of the script, the host's sends where she is), but the pose isn't sent: a friend's game
+// made its own pick, so she was where the host's game put her in the pose of the friend's pick (11-20: on the stairs,
+// then on the floor in a sitting pose). So the two numbers come from the host's load of the area, the same in every
+// game (des_seamless_shared_seed; the world last visited is the host's too, as the friend plays with the host's
+// flags). The script's GetRandom calls become 3-digit numbers ("local randA = 042;", 42 to Lua), written into the copy
+// each time it is handed to the game (set_pick); out of a session, in a friend's own world, they are random as before.
+int maiden_pick(std::string& t)
+{
+    int n = 0;
+    for (const char* v : {"randA", "randB"}) {
+        const std::string from = std::string("local ") + v + " = proxy:GetRandom(0,100);";
+        const size_t at = t.find(from);
+        if (at == std::string::npos || t.find(from, at + 1) != std::string::npos) continue;
+        t.replace(at, from.size(), std::string("local ") + v + " = 000;");
+        n++;
+    }
+    return n;
+}
+
+uint64_t fnv(const std::string& s);
+
+// The Maiden's two numbers into the Nexus's copy (maiden_pick), as this load has them.
+void set_pick(const Copy& c)
+{
+    if (!c.addr || !c.pick[0] || !c.pick[1]) return;
+    uint64_t seed = 0;
+    unsigned v[2];
+    const bool shared = des_seamless_shared_seed(&seed);
+    if (shared) {
+        const uint64_t h = fnv("maiden " + std::to_string(seed));
+        v[0] = (unsigned)(h % 101);
+        v[1] = (unsigned)((h >> 32) % 101);
+    } else {
+        static std::minstd_rand r((unsigned)std::chrono::steady_clock::now().time_since_epoch().count());
+        v[0] = (unsigned)(r() % 101);
+        v[1] = (unsigned)(r() % 101);
+    }
+    for (int k = 0; k < 2; k++) {
+        char d[4];
+        std::snprintf(d, sizeof d, "%03u", v[k]);
+        for (int i = 0; i < 3; i++) vm_write8(c.addr + c.pick[k] + i, (uint8_t)d[i]);
+    }
+    if (shared)
+        std::fprintf(stderr, "[coop] the Maiden's place in the Nexus: %u, %u (from the host's load %llu, as in every "
+                     "game)\n", v[0], v[1], (unsigned long long)seed);
+}
 
 // The final area's cutscenes in the Nexus's script: the trip down (40, and 60, which its end runs), the one after King
 // Allant (71) and the endings (80, 81). Each plays in every player's game when it happens (40 through the talk's
@@ -1591,6 +2004,7 @@ std::mutex sLock;
 std::map<std::tuple<uint32_t, uint64_t, int>, Copy> sCopies;
 // Each world's flags, from its area scripts (a load reads every area script of its world): sorted, no repeats.
 std::map<uint32_t, std::vector<uint32_t>> sProgress, sBoss, sOwn, sScenes, sSeal;
+std::map<uint32_t, std::vector<std::pair<uint32_t, uint32_t>>> sTale;
 
 void merge(std::vector<uint32_t>& into, const std::vector<uint32_t>& from)
 {
@@ -1607,6 +2021,9 @@ void learn(const Copy& c)   // under sLock
     merge(sOwn[c.world], c.own);
     merge(sScenes[c.world], c.scenes);
     merge(sSeal[c.world], c.seal);
+    auto& tale = sTale[c.world];
+    for (const auto& p : c.tale)
+        if (std::find(tale.begin(), tale.end(), p) == tale.end()) tale.push_back(p);
 }
 
 uint64_t fnv(const std::string& s)
@@ -1653,6 +2070,7 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
             g.unlock();
             if (!global) des_seamless_area_read(c.world, c.scenes, c.chain, c.own);
             if (!c.addr) return false;
+            set_pick(c);
             *out = c.addr;
             *out_size = c.size;
             return true;
@@ -1675,7 +2093,9 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
         }
     } else {
         static const char kNexus[] = "function Initialize_m01_00_00_00(";   // the Nexus: no Archstone edits
-        edits = edit_area(ed, t.compare(ar, sizeof kNexus - 1, kNexus) == 0);
+        const bool nexus = t.compare(ar, sizeof kNexus - 1, kNexus) == 0;
+        edits = edit_area(ed, nexus);
+        if (coop && nexus) edits += maiden_pick(ed);
     }
     uint32_t addr = 0, n = 0;
     if ((edits || lizard_edit) && ed != t) {
@@ -1686,8 +2106,13 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
     Copy c;
     c.addr = addr;
     c.size = n;
+    for (int k = 0; k < 2 && addr; k++) {
+        const std::string at = std::string("local ") + (k ? "randB" : "randA") + " = 000;";
+        const size_t i = ed.find(at);
+        if (i != std::string::npos) c.pick[k] = (uint32_t)(i + at.size() - 4);
+    }
     if (!global) {
-        c.progress = progress_flags(t, &c.boss, &c.seal);
+        c.progress = progress_flags(t, &c.boss, &c.seal, &c.tale);
         c.own = own_flags(t);
         // "function Initialize_mXX_": the world is XX - 1
         const char d0 = t[ar + 21], d1 = t[ar + 22];
@@ -1701,6 +2126,10 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
                                           [](uint32_t f) { return std::find(std::begin(kFinalScenes), std::end(kFinalScenes), f) !=
                                                                   std::end(kFinalScenes); }),
                            c.scenes.end());
+        // The seal's flags follow the host's world, not each player's (the tale's end, 303, is a movie's flag too)
+        c.scenes.erase(std::remove_if(c.scenes.begin(), c.scenes.end(),
+                                      [&](uint32_t f) { return std::binary_search(c.seal.begin(), c.seal.end(), f); }),
+                       c.scenes.end());
     }
     if (coop)
         std::fprintf(stderr, "[coop] script %s: %s%s\n", global ? "global_event.lua" : t.substr(ar + 20, 12).c_str(),
@@ -1716,6 +2145,7 @@ bool des_seamless_script(ppu_context* ctx, uint32_t buf, uint32_t size, uint32_t
     }
     if (!global) des_seamless_area_read(c.world, c.scenes, c.chain, c.own);
     if (!addr) return false;
+    set_pick(c);
     *out = addr;
     *out_size = n;
     return true;
@@ -1733,4 +2163,13 @@ int des_seamless_flag_kind(uint32_t world, uint32_t flag)
         return it != m.end() && std::binary_search(it->second.begin(), it->second.end(), flag);
     };
     return has(sBoss) ? 3 : has(sSeal) ? 5 : has(sProgress) ? 1 : has(sOwn) ? 2 : has(sScenes) ? 4 : 0;
+}
+
+// The flags world's seal handlers' callers set ({the seal's flag, the flag}: the Nexus's {34, 303}): where the first
+// is set, the original game has the second set too.
+std::vector<std::pair<uint32_t, uint32_t>> des_seamless_tale_flags(uint32_t world)
+{
+    std::lock_guard<std::mutex> g(sLock);
+    const auto it = sTale.find(world);
+    return it == sTale.end() ? std::vector<std::pair<uint32_t, uint32_t>>() : it->second;
 }

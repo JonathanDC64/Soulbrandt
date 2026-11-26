@@ -4,14 +4,19 @@
 // kept in full, or relative in a portable install, and goes when the usual folder is chosen again. A folder picked
 // that holds other things gets a folder of setup's own in it, and the program's own folders are refused. And how
 // setup's own files can be missing beside the program (issue #431). And game-folders.txt, the game folders
-// the game ran from (docs/164 section 5).
+// the game ran from (docs/164 section 5). And whether a folder's drive can hold the build (issue #673): on Linux, CI
+// mounts a FAT drive and a noexec one and names them in SETUP_CHECK_FAT_FOLDER and SETUP_CHECK_NOEXEC_FOLDER. And
+// path_utf8.hpp: a name that isn't valid UTF-16 as text, never a throw (setup crashed at its start on one).
 //
 // Each case runs in made-up folders under the system's temporary folder, removed at the end. Prints one line a case
 // and "setup_folder_check: N passed, M failed"; exit 1 on a failure. The same on every platform (CI runs it on Windows
 // and Linux, host.yml). Built on demand: cmake --build <build> --target setup_folder_check.
 #include "setup_folder.hpp"
 
+#include "path_utf8.hpp"
+
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <functional>
 #include <sstream>
@@ -209,7 +214,7 @@ int main() {
     });
     run("pick_a_folder_with_things_in_it", [](const fs::path& t) {
         write(t / "Games" / "notes.txt", "mine\n");
-        return same("folder", folder_for_pick(t / "Games"), t / "Games" / kFolderName);
+        return same("folder", folder_for_pick(t / "Games"), t / "Games" / kOneFolderName);
     });
     run("pick_a_folder_moved_by_hand", [](const fs::path& t) {
         write(t / "moved" / "setup" / "ready.txt", "format=1\n");
@@ -223,12 +228,114 @@ int main() {
         return same("folder", folder_for_pick(t / "shared"), t / "shared");
     });
     run("pick_a_folder_named_for_setup", [](const fs::path& t) {
-        write(t / "Games" / kFolderName / "tools" / "x", "\n");  // (a first check's Python, say)
-        return same("folder", folder_for_pick(t / "Games" / kFolderName), t / "Games" / kFolderName);
+        write(t / "Games" / kOneFolderName / "tools" / "x", "\n");  // (a first check's Python, say)
+        write(t / "Games" / kFolderName / "tools" / "x", "\n");     // (an earlier version's)
+        return all({same("folder", folder_for_pick(t / "Games" / kOneFolderName), t / "Games" / kOneFolderName),
+                    same("old", folder_for_pick(t / "Games" / kFolderName), t / "Games" / kFolderName)});
     });
     run("pick_a_drive", [](const fs::path& t) {
         const auto root = t.root_path();
-        return same("folder", folder_for_pick(root), root / kFolderName);
+        return same("folder", folder_for_pick(root), root / kOneFolderName);
+    });
+
+    // ---- The one data folder (docs/164): which place each part uses ----
+    // (UserFolders as Windows has them; on Linux both are the same folder, as in old_folders_on_linux)
+    const auto user = [](const fs::path& t) { return UserFolders{t / "Roaming", t / "Local"}; };
+    const auto source = [](const char* what, FolderSource got, FolderSource want) {
+        if (got == want) return std::string();
+        return std::string(what) + " is " + source_words(got) + ", not " + source_words(want);
+    };
+    run("one_folder_and_the_old_ones", [&](const fs::path& t) {
+        return all({same("one", one_folder(user(t)), t / "Local" / kOneFolderName),
+                    same("old settings", old_settings_folder(user(t)), t / "Roaming" / kFolderName / "DemonsSouls"),
+                    same("old shared", old_shared_folder(user(t)), t / "Local" / kFolderName),
+                    one_folder({}).empty() ? "" : "a folder without the system's folders"});
+    });
+    run("settings_new_install", [&](const fs::path& t) {
+        const Pick p = settings_folder(user(t), {});
+        return all({same("settings", p.dir, t / "Local" / kOneFolderName),
+                    source("place", p.source, FolderSource::One)});
+    });
+    run("settings_an_earlier_versions", [&](const fs::path& t) {
+        fs::create_directories(old_settings_folder(user(t)));  // (empty: as if nothing had been kept there)
+        const Pick empty = settings_folder(user(t), {});
+        write(old_settings_folder(user(t)) / "settings.ini", "DES_FPS=60\n");
+        const Pick p = settings_folder(user(t), {});
+        return all({source("empty old folder", empty.source, FolderSource::One),
+                    same("settings", p.dir, old_settings_folder(user(t))),
+                    source("place", p.source, FolderSource::Old)});
+    });
+    run("settings_portable", [&](const fs::path& t) {
+        write(old_settings_folder(user(t)) / "settings.ini", "DES_FPS=60\n");
+        const Pick p = settings_folder(user(t), t / "prog");
+        return all({same("settings", p.dir, t / "prog" / "data"), source("place", p.source, FolderSource::Portable)});
+    });
+    run("setup_shared_new_install", [&](const fs::path& t) {
+        write(old_shared_folder(user(t)) / "tools" / "python" / "x", "\n");  // (a first check's Python only)
+        write(old_shared_folder(user(t)) / "DemonsSouls" / "settings.ini", "\n");  // (Linux's old settings live here)
+        return same("shared", setup_shared_folder(user(t)), t / "Local" / kOneFolderName / "setup-data");
+    });
+    run("setup_shared_an_earlier_versions", [&](const fs::path& t) {
+        const auto old = old_shared_folder(user(t));
+        std::string out;
+        for (const char* f : {"setup/ready.txt", "setup/journal.json", kChoiceFile}) {
+            std::error_code ec;
+            fs::remove_all(old, ec);
+            write(old / from_utf8(f), "\n");
+            if (out.empty()) out = same(f, setup_shared_folder(user(t)), old);
+        }
+        return out;
+    });
+    run("setup_a_choice_kept_by_an_earlier_version", [&](const fs::path& t) {
+        write(old_shared_folder(user(t)) / kChoiceFile, utf8(t / "D" / "build") + "\n");
+        const Folders f = find_folders({}, setup_shared_folder(user(t)), {});
+        return all({same("dir", f.dir, t / "D" / "build"), same("usual", f.usual, old_shared_folder(user(t))),
+                    f.chosen ? "" : "not chosen"});
+    });
+    run("saves_new_install", [&](const fs::path& t) {
+        fs::create_directories(t / "prog" / "gamedata" / "dev_hdd0" / "home" / "00000001" / "savedata");  // (empty)
+        const Pick p = saves_folder(user(t), t / "prog", false);
+        return all({same("saves", p.dir, t / "Local" / kOneFolderName),
+                    source("place", p.source, FolderSource::One)});
+    });
+    run("saves_an_earlier_versions", [&](const fs::path& t) {
+        const fs::path home = t / "prog" / "gamedata" / "dev_hdd0" / "home" / "00000001";
+        std::string out;
+        for (const fs::path& f : {home / "savedata" / "BLUS30443DEMONSS005" / "USER.DAT",
+                                  home / "savedata-coop" / "BLUS30443DEMONSS005" / "USER.DAT",
+                                  t / "prog" / "gamedata" / "trophies" / "BLUS30443.dat"}) {
+            std::error_code ec;
+            fs::remove_all(t / "prog", ec);
+            write(f, "save\n");
+            const Pick p = saves_folder(user(t), t / "prog", false);
+            if (out.empty())
+                out = all({same(utf8(f).c_str(), p.dir, t / "prog"), source("place", p.source, FolderSource::Old)});
+        }
+        return out;
+    });
+    run("saves_portable", [&](const fs::path& t) {
+        const Pick p = saves_folder(user(t), t / "prog", true);
+        return all({same("saves", p.dir, t / "prog"), source("place", p.source, FolderSource::Portable)});
+    });
+    run("shader_cache_new_old_portable", [&](const fs::path& t) {
+        const Pick fresh = shader_cache_folder(user(t), t / "prog", false);
+        fs::create_directories(t / "prog" / "shader_cache");
+        const Pick old = shader_cache_folder(user(t), t / "prog", false);
+        const Pick portable = shader_cache_folder(user(t), t / "other", true);
+        return all({same("new", fresh.dir, t / "Local" / kOneFolderName / "shader_cache"),
+                    source("new place", fresh.source, FolderSource::One),
+                    same("old", old.dir, t / "prog" / "shader_cache"),
+                    source("old place", old.source, FolderSource::Old),
+                    same("portable", portable.dir, t / "other" / "shader_cache"),
+                    source("portable place", portable.source, FolderSource::Portable)});
+    });
+    run("old_folders_on_linux", [&](const fs::path& t) {
+        // One base for both (XDG_DATA_HOME): the old settings are inside the old shared folder, which stays unused for
+        // the build until it holds one.
+        const UserFolders u{t / "share", t / "share"};
+        write(old_settings_folder(u) / "settings.ini", "\n");
+        return all({same("settings", settings_folder(u, {}).dir, t / "share" / kFolderName / "DemonsSouls"),
+                    same("shared", setup_shared_folder(u), t / "share" / kOneFolderName / "setup-data")});
     });
 
     // ---- Folders setup refuses ----
@@ -254,6 +361,39 @@ int main() {
     run("refuses_a_relative_folder", [](const fs::path&) {
         return cannot_use("build", {}).empty() ? std::string("not refused") : std::string();
     });
+
+    // ---- A drive that cannot hold the build (issue #673) ----
+    run("holds_programs_here", [](const fs::path& t) {
+        if (const std::string why = cannot_hold_programs(t); !why.empty()) return "refused: " + why;
+        return fs::is_empty(t) ? std::string() : std::string("its check's files are left");
+    });
+    run("holds_programs_asks_the_folder_above", [](const fs::path& t) {
+        if (const std::string why = cannot_hold_programs(t / "not" / "made"); !why.empty()) return "refused: " + why;
+        std::error_code ec;
+        return all({fs::exists(t / "not", ec) ? "a folder made" : "",
+                    fs::is_empty(t) ? "" : "its check's files are left"});
+    });
+#ifndef _WIN32
+    // Drives CI mounts on Linux (host.yml): a FAT one, as a player's USB stick or exFAT drive, which holds no links,
+    // and one mounted with noexec. Both refused, with nothing of the check's left there.
+    const auto refused = [](const char* variable, const char* word) {
+        const char* at = std::getenv(variable);
+        if (!at || !*at) return;
+        run(variable, [at, word](const fs::path&) {
+            const fs::path drive = from_utf8(at);
+            if (const std::string why = cannot_hold_programs(drive); why.find(word) == std::string::npos)
+                return std::string("not refused for '") + word + "': '" + why + "'";
+            if (cannot_use(drive / "build", {}).empty()) return std::string("cannot_use took it");
+            std::error_code ec;
+            const bool left = !fs::is_empty(drive / "build", ec) || fs::exists(drive / ".setup-program-check", ec) ||
+                              fs::exists(drive / ".setup-link-check", ec);
+            fs::remove_all(drive / "build", ec);
+            return left ? std::string("its check's files are left") : std::string();
+        });
+    };
+    refused("SETUP_CHECK_FAT_FOLDER", "links");
+    refused("SETUP_CHECK_NOEXEC_FOLDER", "noexec");
+#endif
 
     // ---- Setup's own files beside the program (issue #431) ----
     const auto gone = [](EngineGone got, EngineGone want) {
@@ -347,6 +487,39 @@ int main() {
         std::error_code ec;
         return fs::exists(t / "data" / kGameFoldersFile, ec) ? std::string("a file written") : std::string();
     });
+
+    // ---- Names that aren't valid text (path_utf8.hpp) ----
+    run("utf16_names_as_text", [](const fs::path&) {
+        struct Case {
+            std::u16string in;
+            const char* want;
+        };
+        const Case cases[] = {
+            {u"rpcs3.exe", "rpcs3.exe"},
+            {std::u16string{u'a', char16_t(0xE9)}, "a\xC3\xA9"},
+            {std::u16string{u'a', char16_t(0xD83D), char16_t(0xDE00)}, "a\xF0\x9F\x98\x80"},  // (a pair: one character)
+            {std::u16string{u'a', char16_t(0xD800), u'b'}, "a\xEF\xBF\xBD" "b"},      // a high one alone
+            {std::u16string{char16_t(0xDC00), u'c'}, "\xEF\xBF\xBD" "c"},            // a low one alone
+            {std::u16string{u'd', char16_t(0xDBFF)}, "d\xEF\xBF\xBD"},              // a high one last
+        };
+        for (const Case& c : cases)
+            if (const std::string got = ui::utf8_from_utf16(c.in.data(), c.in.size()); got != c.want)
+                return "a name became " + got + ", not " + c.want;
+        return std::string();
+    });
+#ifdef _WIN32
+    // A file whose name holds an unpaired surrogate, as Windows allows: read back from the folder, its name is text
+    // with U+FFFD (std::filesystem's u8string() throws on it).
+    run("bad_file_name_read_back", [](const fs::path& t) {
+        const fs::path bad = t / std::wstring{L'b', L'a', L'd', wchar_t(0xD800), L'.', L't', L'x', L't'};
+        std::ofstream(bad, std::ios::binary) << "x";
+        std::error_code ec;
+        if (!fs::exists(bad, ec)) return std::string("could not make the file");
+        std::string got;
+        for (const auto& e : fs::directory_iterator(t, ec)) got = ui::path_utf8(e.path().filename());
+        return got == "bad\xEF\xBF\xBD.txt" ? std::string() : "read back as " + got;
+    });
+#endif
 
     // ---- What differs by platform ----
     run("same_folder_by_case", [](const fs::path& t) {

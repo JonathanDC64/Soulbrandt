@@ -2,6 +2,7 @@
 // texts are the screens'; the engine's lines say only what it found (@rpcs3, @user, @library, @check, @found, @setting)
 // and what failed (setup_protocol.hpp, docs/90 section 3.8).
 #include "setup_rpcs3_window.hpp"
+#include "path_utf8.hpp"
 
 #include "host.hpp"
 #include "settings.hpp"
@@ -21,8 +22,7 @@ namespace ui {
 namespace {
 
 std::string utf8(const std::filesystem::path& p) {
-    const std::u8string s = p.u8string();
-    return std::string(s.begin(), s.end());
+    return path_utf8(p);  // (never throws: path_utf8.hpp)
 }
 
 std::string grouped(long long v) {

@@ -6,6 +6,7 @@
 #include "RmlUi_Platform_Win32.h"
 
 #include "host.hpp"
+#include "host_pads.hpp"
 #include "input.hpp"
 #include "modal.hpp"
 #include "report_ack.hpp"
@@ -17,7 +18,6 @@
 // (after windows.h)
 #include <d3d12.h>
 #include <dxgi1_4.h>
-#include <xinput.h>
 
 #include <algorithm>
 #include <chrono>
@@ -84,21 +84,14 @@ LRESULT CALLBACK wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     }
 }
 
-// The gamepads (XInput) as the menu's pad state: the D-pad and left stick move, Cross (A) confirms, Circle (B) cancels.
+// The gamepads as the menu's pad state: the D-pad and left stick move, Cross confirms, Circle cancels.
 input::PadState read_pads() {
     input::PadState pad;
-    for (DWORD i = 0; i < XUSER_MAX_COUNT; i++) {
-        XINPUT_STATE st{};
-        if (XInputGetState(i, &st) != ERROR_SUCCESS) continue;
-        const WORD b = st.Gamepad.wButtons;
-        if (b & XINPUT_GAMEPAD_DPAD_UP) pad.buttons |= 1u << 4;
-        if (b & XINPUT_GAMEPAD_DPAD_RIGHT) pad.buttons |= 1u << 5;
-        if (b & XINPUT_GAMEPAD_DPAD_DOWN) pad.buttons |= 1u << 6;
-        if (b & XINPUT_GAMEPAD_DPAD_LEFT) pad.buttons |= 1u << 7;
-        if (b & XINPUT_GAMEPAD_B) pad.buttons |= 1u << 13;
-        if (b & XINPUT_GAMEPAD_A) pad.buttons |= 1u << 14;
-        const float lx = std::clamp(st.Gamepad.sThumbLX / 32767.0f, -1.0f, 1.0f);
-        const float ly = std::clamp(-st.Gamepad.sThumbLY / 32767.0f, -1.0f, 1.0f);
+    CellPadHostPad pads[8];
+    const int n = cellPad_host_pads(pads, 8);
+    for (int i = 0; i < n; i++) {
+        pad.buttons |= pads[i].buttons & ((0xFu << 4) | (1u << 13) | (1u << 14));  // the D-pad, Circle, Cross
+        const float lx = (pads[i].lx - 128) / 127.0f, ly = (pads[i].ly - 128) / 127.0f;
         if (std::abs(lx) > std::abs(pad.lx)) pad.lx = lx;
         if (std::abs(ly) > std::abs(pad.ly)) pad.ly = ly;
     }

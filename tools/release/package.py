@@ -27,7 +27,7 @@ and release-files.txt, the list of the download's files, which tells the update 
 (tools/setup/des_setup/update.py, docs/105).
 
 --linux-host DIR also writes <out>/DemonsSoulsRecomp-<version>-linux.tar.xz, the Linux player's download: the same,
-with DIR's files at the top (host.yml's host-linux folder: des_host, renamed, the SDL2, vkd3d and FFmpeg libraries it
+with DIR's files at the top (host.yml's host-linux folder: des_host, renamed, the vkd3d and FFmpeg libraries it
 finds beside it, and their licences in licenses/). A tar, which keeps the execute bits that a zip unpacked by Python
 loses, with the same fixed dates, owner and modes.
 
@@ -380,14 +380,15 @@ def cmd_check_tag(args):
 
 def host_files(exe, top, program):
     """The player's zip's extra entries, at the top of the tree: the host exe as `program`, and what host.yml stages
-    beside it for the movies: FFmpeg's DLLs (avcodec-*.dll, avutil-*.dll) and licenses/ with their licence."""
+    beside it: FFmpeg's DLLs for the movies (avcodec-*.dll, avutil-*.dll), libusb-1.0.dll for the Switch 2
+    controllers over USB, and licenses/ with their licences."""
     if not os.path.isfile(exe):
         raise Error(f"--host {exe}: no such file")
     folder = os.path.dirname(os.path.abspath(exe))
     with open(exe, "rb") as f:
         entries = [(top + program, 0o755, f.read())]
     for n in sorted(os.listdir(folder)):
-        if re.fullmatch(r"(avcodec|avutil)-\d+\.dll", n) and os.path.isfile(os.path.join(folder, n)):
+        if re.fullmatch(r"(avcodec|avutil)-\d+\.dll|libusb-1\.0\.dll", n) and os.path.isfile(os.path.join(folder, n)):
             with open(os.path.join(folder, n), "rb") as f:
                 entries.append((top + n, 0o644, f.read()))
     licenses = os.path.join(folder, "licenses")

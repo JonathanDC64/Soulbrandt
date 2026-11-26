@@ -13,7 +13,7 @@
 #   usr/share/des/EBOOT.ELF             work/game/EBOOT.ELF
 #   usr/share/des/libsre/libsre_image.bin   work/libsre/libsre_image.bin
 #   AppRun                              the launcher (below): the environment play.sh sets, and a writable folder
-# SDL2, the Vulkan loader and driver, and FFmpeg come from the system. FFmpeg is loaded for the movies when one
+# SDL3 is in the build (static); the Vulkan loader and driver, and FFmpeg come from the system. FFmpeg is loaded for the movies when one
 # starts and must be the major version the runtime was built against; without it a movie ends at once.
 set -euo pipefail
 

@@ -1200,6 +1200,36 @@ So with the fix, 240 fps matches 30 fps at both speeds. `DES_SLIDEFIX=2` is kind
 - Wrapper `+0x184` is not Havok's supported state. It is the ground's material id (2 for the Tutorial floor); `+0x32` is on-ground, `+0x33` too-steep, `+0x220` the slope angle in degrees, `+0x150` the ground normal, `+0x160` the time in the air.
 - Other per-frame accumulators may hide in the same class (`0x001FE778`'s neighbours `0x001FF160`, `0x001FF8F0` also write `+0x33`). They were not on this path.
 
+## Falling straight down above 30 fps (port `des_air_rate`, 2026-11-25)
+
+**Symptom:** above 30 fps a character that leaves the ground loses its speed across the ground much faster than at 30 fps, so it drops nearly straight down and lands short. Nobody reported it; it turned up in a check of the game's per-frame values.
+
+**Cause:** the same velocity update `0x001FE778` has an airborne branch (`0x001FEBA8`, taken while wrapper `+0x190` is set). Each frame it:
+1. adds `+0x210` times the step's dt (`r26 + 0x20`) to the proxy's velocity (`+0xC0`), into `r1 + 0x1A0`;
+2. clamps x and z to 6 m/s each way and y to between -50 and 1;
+3. multiplies x and z by 0.95 (`lfs f12, -0x7DE0(r30)` at `0x001FEC74`, stored to `r1 + 0x74` at `0x001FECA8`, splatted, then a `vmaddfp` with a -0.0 addend at `0x001FECC0`: a plain multiply).
+
+The result becomes the proxy's velocity, so the 0.95 compounds once a frame. After a second in the air a character keeps 0.95^30 = 0.21 of its speed across the ground at 30 fps, and 0.95^240, almost nothing, at 240 fps. The ground covered while falling is about v * dt / 0.05: 0.67 s of the starting speed at 30 fps, 0.08 s at 240.
+
+**Fix:** one line in [`port/insn_hooks.txt`](../port/insn_hooks.txt) calls `des_air_rate` (port/des_options.cpp) after the store at `0x001FECA8`. It raises the stored drag to `dt * 30`, with dt the step's own, as `des_slide_rate` does with the 0.65 decay a few lines earlier. The drag per second then matches 30 fps.
+- The function's instructions are the same on all four discs (only call targets and one TOC slot differ), so the same registers hold on each.
+- It does nothing at 30 fps or without DES_FPS.
+- `DES_AIRFIX=0` turns it off live. `DES_AIRLOG=1` prints each step in the air: the wrapper, dt, the speed across the ground before the drag, and the speed down.
+
+**Result:**
+
+A scripted run on the dev host: run forward for 2 s, then `DES_WARP` lifts the character into the air with the stick still held (the warp keeps the run speed). `DES_AIRLOG=1` gives the speed across the ground at each step of the fall.
+
+| | Speed across, start | after 0.25 s | after 0.5 s | Ground covered in the fall | Time in the air |
+|---|---|---|---|---|---|
+| 30 fps | 3.67 m/s | 2.99 | 2.56 | 3.68 m | 2.00 s |
+| 240 fps, `DES_AIRFIX=0` | 3.67 m/s | 0.79 | 0.17 | 0.58 m | 2.09 s |
+| 240 fps, fixed | 3.67 m/s | 3.04 | 2.50 | 3.80 m | 2.09 s |
+
+- With the fix the fall covers the 30 fps distance to within 3%. The small rest comes from the finer steps (the same speed is applied over more, shorter steps).
+- The fall lasts about 4% longer at 240 fps with or without the fix: the downward speed adds up in finer steps too. That is not changed here.
+- The route's later warps (stick released, then a dodge) aren't compared: the two 240 fps runs went apart after the first fall, so they don't start from the same speed.
+
 ## Locked-on direction changes above 30 fps (port `des_twist_rate`, 2026-10-25)
 
 **Symptom:** moving while locked on, above 30 fps (reported unlocked), the character's change from one direction to another looked jumpy, and so did holding the stick on a diagonal. Rolls felt odd too. At 30 fps it all looked right.
@@ -1310,6 +1340,37 @@ The fix can't remove a fade's first frame. How much reference pose that frame sh
 **Watch out:**
 - The weights in these jobs are above 0, so a count of zero-weight bones finds nothing. Look for weights under the threshold.
 - Frame dumps slow the game to about 150 fps, so a fade spans fewer frames in a dump than in play.
+
+## A dash cost less stamina above 30 fps (port `des_stamina_carry`, 2026-11-25)
+
+**Symptom:** with DES_FPS set, a dash cost less stamina than on the PS3: 8.9 a second with `DES_FPS=30`, 9 at 45 fps, 9.4 at 75 and 9.6 at 144, instead of 10. Nobody reported it; it turned up in a check of the game's per-frame timers.
+
+**Cause:** the dash update `0x00286020` adds each update's dt to the character's dash timer (`+0x144`). When the timer reaches 0.1 s (the constant at `0x019DA2A8`), the dash costs 1 stamina (`+0x3D4`) and the timer is set to 0 (`stw r9, 0x144(r31)` at `0x00286654`). The part of the update past 0.1 s is thrown away, so each 0.1 s takes a whole number of frames:
+- 3 at the PS3's 30 fps, so 10 a second;
+- 5 at 45 fps (0.111 s), 9 a second;
+- 8 at 75 fps (0.107 s), 9.4 a second;
+- 15 at 144 fps (0.104 s), 9.6 a second.
+
+Under DES_FPS even 30 fps lost a little: our frame time is the measured one, and a frame a hair under 1/30 s left the third frame short of 0.1 s.
+
+**Fix:** one line in [`port/insn_hooks.txt`](../port/insn_hooks.txt) calls `des_stamina_carry` (port/des_options.cpp) after that store. The timer the update reached is still in `f13` and the 0.1 in `f0`, with the same registers on all four discs. The hook sets the timer to what is left past 0.1 s instead of 0, so the ticks keep 0.1 s apart on average at any frame rate.
+- A frame is at most 50 ms, so what is left never holds a second 0.1.
+- It does nothing without DES_FPS.
+- `DES_STAMFIX=0` turns it off live.
+
+**Result** (two 6 s dashes forward from the Tutorial's start, the frame log's stamina column; the cost a second is 1 / the mean time between ticks, leaving out a gap where a stumble broke the dash):
+
+| Frame rate | Fix off (`DES_STAMFIX=0`) | Fix on |
+|---|---|---|
+| The game's own 30 fps mode (no DES_FPS) | 10.00 a second, 3 frames every tick | the same (the hook does nothing) |
+| `DES_FPS=30` | 8.90: 35 of 95 ticks took 4 frames | 10.02 |
+| 45 fps | 9.00: 5 frames every tick | 10.02 |
+| 75 fps | 9.38: 8 frames every tick | 10.01 |
+| 144 fps | 9.60: 15 frames every tick | 10.00 |
+| Unlocked (about 650 fps) | 9.92 | 10.00 |
+
+**Watch out:**
+- The second dash in that route stumbles over something about 3 s in, and stamina comes back for half a second. Measure from the time between ticks, not from the first and last tick.
 
 ## SPU regions for every image (port `scripts/build_spu.py`, 2026-11-08)
 

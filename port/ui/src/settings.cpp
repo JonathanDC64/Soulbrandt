@@ -119,9 +119,16 @@ constexpr Def kDefs[] = {
     {"DES_SEAMLESS_INTRO", "", Apply::Restart},
     {"DES_SEAMLESS_STUN", "", Apply::Restart},
     {"DES_SEAMLESS_PLAYERS", "4", Apply::Live},    // the most players a seamless co-op host takes, itself included: 2-4
+    // seamless co-op, the host's (it counts for its guests too): "bosses" = every enemy's health scaled by the players,
+    // as a boss's is (des_seamless_game.cpp's enemy_health), "1.5" to "4" = by that; "" = the game's own. With a
+    // scale, "1" scales the enemies' attacks and defenses by as much too (enemy_damage).
+    {"DES_SEAMLESS_DIFFICULTY", "", Apply::Live},
+    {"DES_SEAMLESS_DIFFICULTY_ATTACK", "0", Apply::Live},
+    {"DES_SEAMLESS_DIFFICULTY_DEFENSE", "0", Apply::Live},
     {"DES_SEAMLESS_GLOW", "1", Apply::Live},       // seamless co-op: "0" = the other players see this one without its phantom glow
     {"DES_SEAMLESS_GLOW_COLOR", "", Apply::Live},  // seamless co-op: this player's glow colour, "RRGGBB"; "" = the game's blue
     {"glow_hue_custom", "30", Apply::UiOnly},      // Your glow colour's Custom hue (0-350), kept while a named colour is on
+    {"DES_SEAMLESS_HOST_DEATH", "", Apply::Live},  // the host's death: "" = alone while a friend stands, "together" = all back
     {"DES_NET_PASSWORD", "", Apply::Live},     // matchmaking password; a hash of it goes to the server; "" = everyone
     {"DES_NET_TENDENCY", "own", Apply::Live},  // des_qwc_local: "own" = yours only, "server" = the server's mixed in (the game's)
     {"DES_NET_RATING_POLL", "", Apply::Live},  // des_net_grade_poll: seconds between rating checks; "" = the game's 300
@@ -144,14 +151,19 @@ constexpr Def kDefs[] = {
     {"menu_hint", "1", Apply::UiOnly},
     {"trophy_popups", "1", Apply::UiOnly},     // trophy_toasts.cpp; off hides the toast, the unlock is still kept
     {"trophy_sound", "1", Apply::UiOnly},      // trophy_toasts.cpp; off = no tune when a trophy is earned
+    {"coop_notices", "1", Apply::UiOnly},      // coop_notices.cpp; off hides seamless co-op's notes (not "didn't start")
     {"DES_CURSOR3D", "1", Apply::Live},        // host.cpp, each frame: 0 = the system's arrow, not the sword (docs/112)
-    {"DES_CURSOR_SWORD", "moonlight", Apply::Live},  // host.cpp, each frame: which sword (souls_model.hpp's swords())
+    {"DES_CURSOR_SWORD", "soulbrandt", Apply::Live},  // host.cpp, each frame: which sword (souls_model.hpp's swords());
+                                                      // until 0.2.0 the default was moonlight (load_file keeps it)
     {"DES_CURSOR_SIZE", "64", Apply::Live},    // host.cpp, each frame: the sword's length in dp
     {"DES_UI_LIZARD", "1", Apply::Live},       // host.cpp, each frame: 0 = no dancing crystal lizard in the corner
     {"start_smoke", "1", Apply::UiOnly},       // prelaunch.cpp: 0 = no smoke behind the start screen (DeS UI)
     {"start_flame", "1", Apply::UiOnly},       // prelaunch.cpp: 0 = no flame off the start screen's logo (DeS UI)
     {"trophies_show_hidden", "0", Apply::UiOnly},  // trophies_window.cpp: hidden trophies listed with their names
     {"pad_menu_chord", "0", Apply::UiOnly},    // 0 = L3 + R3, 1 = Select + Start
+    // input.cpp, each frame: 1 = these menus read the gamepad through Change Buttons (PAD_MAP) and take the keys for
+    // Cross and Circle as Enter and Esc, as the game's own menus do; 0 = the pad's own buttons, and Enter and Esc only
+    {"menu_follow_buttons", "1", Apply::UiOnly},
     {"PAD_MAP", "", Apply::Live},              // cellPad, gamepad buttons (controls_window.cpp)
     {"PAD_KEYS", "", Apply::Live},             // cellPad, changes to the keyboard and mouse layout (kKeysLayout)
     {"PAD_CONTROLLER", "auto", Apply::Live},   // cellPad, each poll: the controller the game reads (port 0)
@@ -522,7 +534,7 @@ void load_file() {
     if (!f) return;
     char line[8192];  // (DES_MODS lists mod folders by name: dozens of long names fit)
     int applied = 0;
-    bool layout_line = false;
+    bool layout_line = false, sword_line = false;
     while (std::fgets(line, sizeof line, f)) {
         const std::string l = trim(line);
         if (l.empty() || l[0] == '#' || l[0] == ';') continue;
@@ -537,6 +549,7 @@ void load_file() {
         const Def* d = find(key);
         if (!d || d->apply == Apply::Session) continue;  // (a per-session value is never read from the file)
         if (key == "keys_layout") layout_line = true;
+        if (key == "DES_CURSOR_SWORD" && !value.empty()) sword_line = true;
         // World tendency's empty value was "With the server's", then the default, so every file has it, picked or not.
         // Now the default is Yours only and the server's is "server": an empty one reads as the default.
         if (key == "DES_NET_TENDENCY" && value.empty()) continue;
@@ -562,6 +575,10 @@ void load_file() {
                      "layout again\n", get("PAD_KEYS").c_str());
         sValues["PAD_KEYS"] = "";
     }
+    // The cursor's sword was the moonlight until 0.2.0, and a settings.ini a setup wrote says so (save() writes every
+    // key), so a player keeps theirs and only a new one gets the new default. A file with no sword in it (from before
+    // the row, or edited) is a player's too: the moonlight as well.
+    if (!sword_line) sValues["DES_CURSOR_SWORD"] = "moonlight";
 }
 
 std::string sNetStatus = "Off";
@@ -678,8 +695,7 @@ static void apply_seamless() {
         std::fprintf(stderr, "[coop] mods on%s: %s\n", ok && *ok ? ", accepted" : " (no warning: not started from "
                      "the Co-op window)", mods::join(names, ", ").c_str());
     }
-    const std::string name = env_set("PS3_NP_ONLINE_ID") ? std::string(std::getenv("PS3_NP_ONLINE_ID"))
-                                                         : effective("DES_NET_NAME");
+    const std::string name = seamless_name();
     if (!net_name_ok(name)) {
         sNetStatus = name.empty() ? "Off: no online name" : "Off: the online name is not valid";
         std::fprintf(stderr, "[ui] seamless co-op: off, %s (Settings > Network)\n",
@@ -691,19 +707,9 @@ static void apply_seamless() {
     int port = std::atoi(effective("DES_NET_P2P_PORT").c_str());
     if (port < kNetP2pPortMin || port > kNetP2pPortMax) port = kNetP2pPortDefault;
     set_net_knob("PS3_NET_P2P_PORT", std::to_string(port));
-    // The endpoint: settings.ini's (or the environment's) when it names one or says 0, else the Server row's. A test
-    // run never reaches the project's server unless it says so, as for online.
-    std::string intro = trim(effective("DES_SEAMLESS_INTRO"));
-    if (intro.empty() && harness_run()) {
-        intro = "0";
+    const std::string intro = seamless_endpoint();
+    if (intro == "0" && trim(effective("DES_SEAMLESS_INTRO")).empty() && harness_run())
         std::fprintf(stderr, "[ui] seamless co-op: no room code in a test run unless DES_SEAMLESS_INTRO is given\n");
-    }
-    if (intro.empty()) {
-        const NetServer* s = net_server(effective("DES_NET_SERVER"));
-        const bool ours = s && *s->address &&
-                          (s->key == std::string_view("project") || s->key == std::string_view("local"));
-        intro = ours ? std::string(s->address) + ":" + std::to_string(kNetPsnrPort) : "0";
-    }
     set_net_knob("DES_SEAMLESS_INTRO", intro);
     if (const std::string stun = trim(effective("DES_SEAMLESS_STUN")); !stun.empty())
         set_net_knob("DES_SEAMLESS_STUN", stun);
@@ -885,6 +891,24 @@ void write_in_use() {
 }
 
 }  // namespace
+
+std::string seamless_name() {
+    return env_set("PS3_NP_ONLINE_ID") ? std::string(std::getenv("PS3_NP_ONLINE_ID")) : effective("DES_NET_NAME");
+}
+
+// The endpoint: settings.ini's (or the environment's) when it names one or says 0, else the Server row's. A test run
+// never reaches the project's server unless it says so, as for online.
+std::string seamless_endpoint() {
+    std::string intro = trim(effective("DES_SEAMLESS_INTRO"));
+    if (intro.empty() && harness_run()) return "0";
+    if (intro.empty()) {
+        const NetServer* s = net_server(effective("DES_NET_SERVER"));
+        const bool ours = s && *s->address &&
+                          (s->key == std::string_view("project") || s->key == std::string_view("local"));
+        intro = ours ? std::string(s->address) + ":" + std::to_string(kNetPsnrPort) : "0";
+    }
+    return intro;
+}
 
 void load_and_apply_env() {
     for (const Def& d : kDefs) {

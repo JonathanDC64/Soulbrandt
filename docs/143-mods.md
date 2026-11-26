@@ -7,7 +7,8 @@ place of its own. Nothing is copied into the game's files, so turning a mod off 
 the start screen's Mods button. It is made for players who have never used a mod, top to bottom:
 
 - **A summary:** how many mods are on, "Restart the game to use your changes" when the list differs from what this
-  session runs with, and "Playing offline" when a gameplay mod is on.
+  session runs with, and "Playing offline" when a gameplay mod is on (in seamless co-op: that the party should have
+  the same mods).
 - **Restart now,** while the list differs from what this session runs with (section 2b): the game starts again with
   the mods as the list has them.
 - **Two buttons:** Open the mods folder, and Refresh the list (after you add, remove or rename a mod's folder).
@@ -84,9 +85,11 @@ A mod manager (issue #404) installs, updates, removes, orders and turns mods on 
 alone. The game never writes anywhere else for mods, and never changes a mod's files, except when the player presses
 **Fix it** on a mod with loose files.
 
-- **Where:** `<data folder>\mods`, where `<data folder>` holds `settings.ini`: `%APPDATA%\DemonsSoulsRecomp\DemonsSouls`
-  on Windows, `$XDG_DATA_HOME/DemonsSoulsRecomp/DemonsSouls` (else `~/.local/share/...`) on Linux, and `data` beside
-  the program in a portable install. `DES_MODS_DIR` points the game elsewhere.
+- **Where:** `<data folder>\mods`, where `<data folder>` holds `settings.ini`: the one data folder (docs/164),
+  `%LOCALAPPDATA%\Soulbrandt` on Windows and `$XDG_DATA_HOME/Soulbrandt` (else `~/.local/share/Soulbrandt`) on Linux;
+  an earlier version's settings folder when it holds anything (`%APPDATA%\DemonsSoulsRecomp\DemonsSouls`, on Linux
+  `$XDG_DATA_HOME/DemonsSoulsRecomp/DemonsSouls`); and `data` beside the program in a portable install.
+  `DES_MODS_DIR` points the game elsewhere.
 - **A mod:** one folder, its name the mod's name. Inside, the game's folders as below the disc's `PS3_GAME\USRDIR`
   (section 1 lists what else is found). Installing is unpacking into a new folder; updating is replacing that
   folder; rolling back is putting the old folder back.
@@ -144,6 +147,11 @@ is the same restart as Settings' (`menu_pages.cpp`'s `restart_now`), so a second
 A mod that changes how the game plays keeps the whole session offline, so that players with and without such mods
 never meet. Mods that only change how the game looks or sounds keep online play.
 
+Seamless co-op is not held off by mods: its games talk only to the friends' games, never to the server, so any mod
+plays (settings.cpp's `apply_seamless`; Host and Join warn first, docs/146). The Mods screens say so: a gameplay
+mod's line reads "Online play is off while it's on (seamless co-op still works)", and in co-op the summary asks for
+the same mods in the party in place of "Playing offline".
+
 **Look only** (the rest is gameplay):
 
 | Files | Why |
@@ -178,11 +186,12 @@ says the likely reason: one is a copy of the game's own file, to move out of the
 
 **What happens when a gameplay mod is on:**
 - Online stays off for the session, whatever Settings > Network says, and the runtime's network is locked off (also
-  for network settings given in the environment).
+  for network settings given in the environment). Not in seamless co-op (above).
 - If Online is on in the settings, a notice says so at start: "Playing offline: gameplay mods are on", with the mods'
   names and how to play online again.
 - Settings > Network > Online says why in its help, and This session > Network reads "Off: gameplay mods are on".
-- The Mods window's summary says "Playing offline", with the mods' names.
+- The Mods window's summary says "Playing offline", with the mods' names, and that seamless co-op still works; in
+  co-op, that everyone in the party should have the same mods.
 
 **What this protects, and what it doesn't.** The check keeps honest players apart. It does not stop someone who edits
 the game's own files in place, or changes the program. That is the server's job: reports, bans and server-side checks.

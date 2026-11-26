@@ -59,7 +59,7 @@ public:
     MenuShell();
     // One entry's page on its own (the start screen's, setup's): Back closes it.
     struct Standalone {
-        std::string entry = "Settings";  // its title (menu_pages.hpp)
+        std::string entry = "Settings";  // its title (menu_pages.hpp), or "Co-op settings": co-op's settings alone
     };
     explicit MenuShell(Standalone alone);
     ~MenuShell() override;

@@ -30,6 +30,11 @@ env:
   FFMPEG_VERSION: 8.1.3
   FFMPEG_SIZE: '11732036'
   FFMPEG_SHA256: 7138d28c96d9d3e3af4ee3d8cad72741f8ffb40da90c1112235dea3ecd3178a3
+  # libusb's release archive, which ps3recomp's cmake/libusb_dep.cmake builds libusb-1.0.dll from (the Windows host
+  # ships it, for SDL3's Switch 2 controllers over USB). The same two values as that file's pin, checked when the
+  # artifact is staged; the third-party-sources release holds the archive (LGPL 2.1, like FFmpeg).
+  LIBUSB_VERSION: 1.0.30
+  LIBUSB_SHA256: fea36f34f9156400209595e300840767ab1a385ede1dc7ee893015aea9c6dbaf
 
 jobs:
   # FFmpeg for the Windows host's movies: libavcodec with only the MPEG-2 video decoder and its parser, and
@@ -399,6 +404,13 @@ jobs:
           cmake --build build/host --target report_addresses_check
           build/host/ui/report_addresses_check.exe
 
+      # The runs the logs keep (port/ui/tests/log_runs_check.cpp): des.log and coop.log, and the four before each.
+      - name: The runs the logs keep
+        shell: bash
+        run: |
+          cmake --build build/host --target log_runs_check
+          build/host/ui/log_runs_check.exe
+
       # The menus' shaders kept compiled between starts (port/ui/tests/shader_cache_check.cpp): a stored one is used
       # only for exactly its input, and only whole. Linux runs it below.
       - name: The menus' shader cache
@@ -490,6 +502,23 @@ jobs:
           done
           [ -d "$ff/share/licenses/ffmpeg" ] || { echo "::error::no licence files for ffmpeg"; exit 1; }
           cp -r "$ff/share/licenses/ffmpeg" dist/host/licenses/
+          # libusb-1.0.dll, which SDL3 opens for the Switch 2 controllers over USB (ps3recomp's cmake/libusb_dep.cmake
+          # builds it into the runtime's build folder), and its licence, LGPL 2.1. The pin there must be this
+          # workflow's LIBUSB_VERSION and LIBUSB_SHA256 (the archive on the source-libusb-<version> release).
+          usb=ps3recomp/build_split/libusb-win64
+          [ -f "$usb/libusb-1.0.dll" ] && [ -f "$usb/COPYING" ] || { echo "::error::no libusb-1.0.dll or its COPYING in $usb"; exit 1; }
+          grep -q "^set(PS3RECOMP_LIBUSB_VERSION $LIBUSB_VERSION)" ps3recomp/cmake/libusb_dep.cmake \
+            && grep -q "URL_HASH SHA256=$LIBUSB_SHA256" ps3recomp/cmake/libusb_dep.cmake \
+            || { echo "::error::ps3recomp's cmake/libusb_dep.cmake does not pin libusb $LIBUSB_VERSION ($LIBUSB_SHA256)"; exit 1; }
+          cp "$usb/libusb-1.0.dll" dist/host/
+          mkdir -p dist/host/licenses/libusb
+          cp "$usb/COPYING" dist/host/licenses/libusb/
+          {
+            echo "libusb $LIBUSB_VERSION, unchanged: libusb-1.0.dll, LGPL 2.1 or later."
+            echo "Source: libusb-$LIBUSB_VERSION.tar.bz2 at https://github.com/JonathanDC64/Soulbrandt/releases/tag/source-libusb-$LIBUSB_VERSION,"
+            echo "the same archive as https://github.com/libusb/libusb/releases/download/v$LIBUSB_VERSION/libusb-$LIBUSB_VERSION.tar.bz2 (SHA-256 $LIBUSB_SHA256)."
+            echo "Built from it by ps3recomp's cmake/libusb_dep.cmake. You may replace this DLL with your own build of libusb 1.0."
+          } > dist/host/licenses/libusb/README.txt
           # mbedTLS is compiled into the runtime (TLS to the online server), under Apache-2.0: its licence goes along.
           [ -f ps3recomp/third_party/mbedtls/LICENSE ] || { echo "::error::no licence file for mbedTLS"; exit 1; }
           mkdir -p dist/host/licenses/mbedtls
@@ -500,7 +529,7 @@ jobs:
           cp ps3recomp/third_party/smaa/LICENSE.txt dist/host/licenses/smaa/
           # The portable renderer's libraries are compiled into the runtime too: glslang, SPIRV-Tools and
           # SPIRV-Headers (fetched at their pins, ps3recomp's cmake/gpu_deps.cmake), volk (vendored) and the Vulkan
-          # headers. Each licence goes along, from where the build took the sources: the cached copies when the
+          # headers; and SDL3 (the pads; ps3recomp's cmake/sdl3_dep.cmake). Each licence goes along, from where the build took the sources: the cached copies when the
           # configure was handed them (FETCHCONTENT_SOURCE_DIR_* in its cache), else FetchContent's own clones.
           src_of() {
             local v
@@ -509,7 +538,8 @@ jobs:
           }
           for d in glslang:$(src_of GLSLANG glslang) spirv-tools:$(src_of SPIRV_TOOLS spirv_tools) \
                    spirv-headers:$(src_of SPIRV_HEADERS spirv_headers) \
-                   vulkan-headers:$(src_of VULKAN_HEADERS vulkan_headers) volk:ps3recomp/third_party/volk; do
+                   vulkan-headers:$(src_of VULKAN_HEADERS vulkan_headers) volk:ps3recomp/third_party/volk \
+                   sdl3:$(src_of SDL3 sdl3); do
             n=${d%%:*}; src=${d#*:}; f=
             for c in LICENSE.txt LICENSE.md LICENSE; do [ -f "$src/$c" ] && { f=$src/$c; break; }; done
             [ -n "$f" ] || { echo "::error::no licence file for $n in $src"; exit 1; }
@@ -520,9 +550,9 @@ jobs:
           ls -laR dist/host
           find dist/host -type f -exec sha256sum {} +
 
-      - name: No Visual C++ runtime DLL among FFmpeg's imports
+      - name: No Visual C++ runtime DLL among FFmpeg's and libusb's imports
         shell: bash
-        run: python tools/ci/check_host_imports.py dist/host/av*.dll
+        run: python tools/ci/check_host_imports.py dist/host/av*.dll dist/host/libusb-1.0.dll
 
       # The check treats every .exe and .map as holding the compiled game. These two are built from no lift,
       # so a list of their own lets them through (.github/host-files-allow.txt, docs/85 3.3); anything else
@@ -558,15 +588,16 @@ jobs:
   # it:
   #   - the C++ library linked in: LLVM's libc++ (ubuntu-22.04's libstdc++ 12 has no <format>), with GCC's runtime
   #     static too (-static-libgcc);
-  #   - SDL2 and vkd3d built from their pinned sources and shipped beside it, found through RUNPATH $ORIGIN. SDL2
-  #     opens X11, Wayland, PulseAudio, PipeWire, ALSA and the rest at run time, as distros build it; vkd3d opens
-  #     the Vulkan loader the same way.
+  #   - SDL3 built from its pinned source into the runtime (ps3recomp's cmake/sdl3_dep.cmake), static: it opens X11,
+  #     Wayland, PulseAudio, PipeWire, ALSA and the rest at run time, as distros build it;
+  #   - vkd3d built from its pinned source and shipped beside it, found through RUNPATH $ORIGIN; it opens the Vulkan
+  #     loader at run time the same way.
   # The compiler is LLVM's own 22.1.8 Linux build, the one setup uses for the game part (docs/86; llvm-archive.yml
   # checks its attestation and signature, this job its size and SHA-256). For the movies, FFmpeg's libavcodec and
   # libavutil go beside it too, built from FFmpeg's release with only the MPEG-2 video decoder and its parser
   # (LGPL); the runtime opens them when a movie starts (PS3RECOMP_FFMPEG_RUNTIME).
   host-linux:
-    name: des_host (Linux, clang 22.1.8, libc++, SDL2 and vkd3d beside it)
+    name: des_host (Linux, clang 22.1.8, libc++, SDL3 in it, vkd3d beside it)
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
@@ -576,9 +607,6 @@ jobs:
       LLVM_SHA256: df0e1ecf16caf3489a272a5eea4eec9b0d82878f6477fa309504f918a0006384
       # LLVM_DIR, DEPS_DIR and FFMPEG_DIR are cached inside the workspace: actions/cache refuses a path with '..' in it, and saved nothing while these were beside it.
       LLVM_DIR: ${{ github.workspace }}/.ci-cache/llvm
-      SDL2_VERSION: 2.32.10
-      SDL2_SIZE: '7630262'
-      SDL2_SHA256: 5f5993c530f084535c65a6879e9b26ad441169b3e25d789d83287040a9ca5165
       VKD3D_VERSION: "2.1"
       VKD3D_SHA256: 7510146aff2adfb4ae07ab890701a607e5ff7c66e57100cfc9f630ec92eeda6a
       # vkd3d 2.1 needs Vulkan headers 1.3.228 or newer; ubuntu-22.04 has 1.3.204. Khronos' v1.3.275 (Ubuntu
@@ -608,8 +636,8 @@ jobs:
           path: ps3recomp
           persist-credentials: false
 
-      # Build tools and the headers SDL2 opens its back ends with; patchelf for the libraries' RUNPATH; nasm for
-      # FFmpeg's x86 code.
+      # Build tools and the headers SDL3 (built in the runtime's configure) opens its back ends with; patchelf for the
+      # libraries' RUNPATH; nasm for FFmpeg's x86 code.
       - name: Install build dependencies
         run: |
           sudo apt-get update
@@ -620,12 +648,12 @@ jobs:
             libpipewire-0.3-dev libdbus-1-dev libudev-dev libibus-1.0-dev
 
       # Restored and saved as separate steps, so a later failure still keeps what was built.
-      - name: Restore SDL2 and vkd3d
+      - name: Restore vkd3d
         id: deps-cache
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ env.DEPS_DIR }}
-          key: host-linux-deps-sdl2-${{ env.SDL2_VERSION }}-vkd3d-${{ env.VKD3D_VERSION }}-vulkan-${{ env.VULKAN_HEADERS_VERSION }}-ubuntu-22.04-v3
+          key: host-linux-deps-vkd3d-${{ env.VKD3D_VERSION }}-vulkan-${{ env.VULKAN_HEADERS_VERSION }}-ubuntu-22.04-v4
 
       - name: Check out the Vulkan headers
         if: steps.deps-cache.outputs.cache-hit != 'true'
@@ -637,7 +665,7 @@ jobs:
           persist-credentials: false
 
       # The Vulkan headers go into the same folder, so vkd3d, the runtime and des_host all build against them.
-      - name: Build SDL2 and vkd3d
+      - name: Build vkd3d
         if: steps.deps-cache.outputs.cache-hit != 'true'
         run: |
           grep -q "VK_HEADER_VERSION ${VULKAN_HEADERS_VERSION##*.}$" vulkan-headers/include/vulkan/vulkan_core.h \
@@ -646,15 +674,6 @@ jobs:
           cp -r vulkan-headers/include/vulkan vulkan-headers/include/vk_video "$DEPS_DIR/include/"
           rm -rf vulkan-headers
           cd "$RUNNER_TEMP"
-          curl -fsSL --retry 5 --retry-all-errors -o sdl2.tar.gz \
-            "https://github.com/libsdl-org/SDL/releases/download/release-$SDL2_VERSION/SDL2-$SDL2_VERSION.tar.gz"
-          [ "$(stat -c %s sdl2.tar.gz)" = "$SDL2_SIZE" ] || { echo "::error::sdl2.tar.gz has the wrong size"; exit 1; }
-          echo "$SDL2_SHA256  sdl2.tar.gz" | sha256sum -c -
-          tar xf sdl2.tar.gz
-          cmake -S "SDL2-$SDL2_VERSION" -B sdl2-build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX="$DEPS_DIR" -DSDL_SHARED=ON -DSDL_STATIC=OFF -DSDL_TEST=OFF
-          cmake --build sdl2-build
-          cmake --install sdl2-build
           curl -fsSL --retry 5 --retry-all-errors -O "https://dl.winehq.org/vkd3d/source/vkd3d-$VKD3D_VERSION.tar.xz"
           echo "$VKD3D_SHA256  vkd3d-$VKD3D_VERSION.tar.xz" | sha256sum -c -
           tar xf "vkd3d-$VKD3D_VERSION.tar.xz"
@@ -662,7 +681,7 @@ jobs:
           ./configure -q --prefix="$DEPS_DIR" --disable-doxygen-doc CPPFLAGS="-I$DEPS_DIR/include"
           make -s -j"$(nproc)"
           make -s install
-          # vkd3d is LGPL 2.1 or later: its licence and notices go with its libraries (SDL2's install has its own).
+          # vkd3d is LGPL 2.1 or later: its licence and notices go with its libraries.
           mkdir -p "$DEPS_DIR/share/licenses/vkd3d"
           cp LICENSE COPYING AUTHORS "$DEPS_DIR/share/licenses/vkd3d/"
           {
@@ -671,7 +690,7 @@ jobs:
             echo "the same archive as https://dl.winehq.org/vkd3d/source/vkd3d-$VKD3D_VERSION.tar.xz (SHA-256 $VKD3D_SHA256)."
           } > "$DEPS_DIR/share/licenses/vkd3d/README.txt"
 
-      - name: Save SDL2 and vkd3d
+      - name: Save vkd3d
         if: steps.deps-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
@@ -901,11 +920,22 @@ jobs:
       - name: Build des_host
         run: cmake --build build/host --target des_host
 
-      # setup_folder.cpp on its own, as on Windows above: the same code path, with Linux's folders.
+      # setup_folder.cpp on its own, as on Windows above: the same code path, with Linux's folders. And two drives setup
+      # must not build on (issue #673): a FAT one, as a player's USB stick or exFAT drive (no links: setup's Python
+      # cannot be unpacked there), and one mounted with noexec, both mounted as a desktop mounts them for its user.
       - name: The build folder's choice
         run: |
           cmake --build build/host --target setup_folder_check
-          build/host/ui/setup_folder_check
+          python3 port/ui/tests/make_fat_image.py "$RUNNER_TEMP/fat.img" 64
+          mkdir -p "$RUNNER_TEMP/fat" "$RUNNER_TEMP/noexec"
+          sudo mount -o loop,uid=$(id -u),gid=$(id -g) "$RUNNER_TEMP/fat.img" "$RUNNER_TEMP/fat"
+          sudo mount -t tmpfs -o noexec,size=16m,uid=$(id -u),gid=$(id -g) tmpfs "$RUNNER_TEMP/noexec"
+          SETUP_CHECK_FAT_FOLDER="$RUNNER_TEMP/fat" SETUP_CHECK_NOEXEC_FOLDER="$RUNNER_TEMP/noexec" \
+            build/host/ui/setup_folder_check > "$RUNNER_TEMP/folder_check.txt" || { cat "$RUNNER_TEMP/folder_check.txt"; exit 1; }
+          cat "$RUNNER_TEMP/folder_check.txt"
+          grep -qx "ok    SETUP_CHECK_FAT_FOLDER" "$RUNNER_TEMP/folder_check.txt"
+          grep -qx "ok    SETUP_CHECK_NOEXEC_FOLDER" "$RUNNER_TEMP/folder_check.txt"
+          sudo umount "$RUNNER_TEMP/fat" "$RUNNER_TEMP/noexec"
 
       # Settings' rows, as on Windows above: Linux's choices (Display mode has no exclusive fullscreen).
       - name: Settings' rows
@@ -942,6 +972,12 @@ jobs:
         run: |
           cmake --build build/host --target report_addresses_check
           build/host/ui/report_addresses_check
+
+      # The runs the logs keep, as on Windows above.
+      - name: The runs the logs keep
+        run: |
+          cmake --build build/host --target log_runs_check
+          build/host/ui/log_runs_check
 
       # The menus' shader cache, as on Windows above. It knows the build by des_host's build id, which lld writes only
       # when asked (port/CMakeLists.txt): without one a copy of des_host would count as another build.
@@ -985,7 +1021,7 @@ jobs:
         run: |
           mkdir -p dist/host-linux/licenses
           cp build/host/des_host build/host/des_host.map dist/host-linux/
-          for so in libSDL2-2.0.so.0 libvkd3d.so.1 libvkd3d-shader.so.1 libvkd3d-utils.so.1; do
+          for so in libvkd3d.so.1 libvkd3d-shader.so.1 libvkd3d-utils.so.1; do
             cp -L "$DEPS_DIR/lib/$so" dist/host-linux/
             patchelf --set-rpath '$ORIGIN' "dist/host-linux/$so"
           done
@@ -997,10 +1033,8 @@ jobs:
             cp -L "$FFMPEG_DIR/lib/lib$lib.so.$maj" dist/host-linux/
             patchelf --set-rpath '$ORIGIN' "dist/host-linux/lib$lib.so.$maj"
           done
-          for lib in SDL2 vkd3d; do
-            [ -d "$DEPS_DIR/share/licenses/$lib" ] || { echo "::error::no licence files for $lib"; exit 1; }
-            cp -r "$DEPS_DIR/share/licenses/$lib" dist/host-linux/licenses/
-          done
+          [ -d "$DEPS_DIR/share/licenses/vkd3d" ] || { echo "::error::no licence files for vkd3d"; exit 1; }
+          cp -r "$DEPS_DIR/share/licenses/vkd3d" dist/host-linux/licenses/
           [ -d "$FFMPEG_DIR/share/licenses/ffmpeg" ] || { echo "::error::no licence files for ffmpeg"; exit 1; }
           cp -r "$FFMPEG_DIR/share/licenses/ffmpeg" dist/host-linux/licenses/
           # mbedTLS is compiled into the runtime (TLS to the online server), under Apache-2.0: its licence goes along.
@@ -1011,8 +1045,8 @@ jobs:
           [ -f ps3recomp/third_party/smaa/LICENSE.txt ] || { echo "::error::no licence file for SMAA"; exit 1; }
           mkdir -p dist/host-linux/licenses/smaa
           cp ps3recomp/third_party/smaa/LICENSE.txt dist/host-linux/licenses/smaa/
-          # The portable renderer compiles in glslang and SPIRV-Tools, with SPIRV-Headers, volk and the Vulkan headers:
-          # each licence goes along, from where the build took the sources, as in the Windows job.
+          # The portable renderer compiles in glslang and SPIRV-Tools, with SPIRV-Headers, volk and the Vulkan headers,
+          # and the runtime SDL3: each licence goes along, from where the build took the sources, as in the Windows job.
           src_of() {
             local v
             v=$(sed -n "s/^FETCHCONTENT_SOURCE_DIR_$1:[A-Z]*=//p" ps3recomp/build_split/CMakeCache.txt)
@@ -1020,7 +1054,8 @@ jobs:
           }
           for d in glslang:$(src_of GLSLANG glslang) spirv-tools:$(src_of SPIRV_TOOLS spirv_tools) \
                    spirv-headers:$(src_of SPIRV_HEADERS spirv_headers) \
-                   vulkan-headers:$(src_of VULKAN_HEADERS vulkan_headers) volk:ps3recomp/third_party/volk; do
+                   vulkan-headers:$(src_of VULKAN_HEADERS vulkan_headers) volk:ps3recomp/third_party/volk \
+                   sdl3:$(src_of SDL3 sdl3); do
             n=${d%%:*}; src=${d#*:}; f=
             for c in LICENSE.txt LICENSE.md LICENSE; do [ -f "$src/$c" ] && { f=$src/$c; break; }; done
             [ -n "$f" ] || { echo "::error::no licence file for $n in $src"; exit 1; }

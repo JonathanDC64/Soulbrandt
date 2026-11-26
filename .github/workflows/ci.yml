@@ -83,7 +83,7 @@ jobs:
           ls -la build/ui/des_ui/des_ui.lib
           test -s build/ui/des_ui/des_ui.lib
 
-  # Linux, Ubuntu 24.04, clang: the wrapper UI library, where it draws through D3D12 on vkd3d and takes SDL's mouse
+  # Linux, Ubuntu 24.04, clang: the wrapper UI library, where it draws through D3D12 on vkd3d and takes SDL3's mouse
   # and the POSIX crash reports (docs/76), files the Windows build never compiles; then the game build description
   # (below). vkd3d comes from its release tarball (Ubuntu's 1.2 has no HLSL compiler) and is cached on its version.
   #
@@ -116,7 +116,7 @@ jobs:
         id: deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build pkg-config clang libsdl2-dev libvulkan-dev \
+          sudo apt-get install -y cmake ninja-build pkg-config clang libvulkan-dev \
             flex bison libjson-perl spirv-headers
           /usr/bin/cmake --version
 
@@ -140,35 +140,9 @@ jobs:
           make -s -j"$(nproc)"
           make -s install
 
-      # FreeType, RmlUi and stb, cached as in the Windows UI job above (its comment says why). On a miss, the copy
-      # the step after the UI's configure keeps also serves the description's configure below.
-      - name: Cache the wrapper UI's sources
-        id: ui-src
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: ${{ github.workspace }}/.ci-cache/ui-src
-          key: ui-src-${{ runner.os }}-${{ hashFiles('port/ui/CMakeLists.txt', 'port/ui/cmake/rmlui_fixes.cmake') }}-v1
-
-      - name: Wrapper UI, configure
-        id: ui-cfg
-        run: |
-          mapfile -t src < <(python tools/ci/fetch_src.py args .ci-cache/ui-src freetype rmlui stb)
-          PKG_CONFIG_PATH="$VKD3D_PREFIX/lib/pkgconfig" CC=clang CXX=clang++ \
-            cmake -S .github/ci/des_ui -B build/ui -G Ninja -DCMAKE_BUILD_TYPE= "${src[@]}"
-
-      - name: Wrapper UI, keep its sources for the cache
-        if: steps.ui-src.outputs.cache-hit != 'true' && steps.ui-cfg.outcome == 'success'
-        run: python tools/ci/fetch_src.py keep .ci-cache/ui-src build/ui freetype rmlui stb
-
-      - name: Wrapper UI, build
-        run: cmake --build build/ui
-
-      - name: Wrapper UI, verify the library exists
-        run: |
-          ls -la build/ui/des_ui/libdes_ui.a
-          test -s build/ui/des_ui/libdes_ui.a
-
-      # The description runs after the UI failed too. As host.yml: the pinned commit of the fork, beside port/.
+      # The pinned commit of the fork, beside port/, as host.yml: the UI takes SDL3's headers from its
+      # cmake/sdl3_dep.cmake (the runtime's SDL3, which a UI build alone doesn't build), and the description below
+      # configures against it.
       - name: Read the ps3recomp pin
         id: pin
         if: ${{ !cancelled() && steps.deps.outcome == 'success' && steps.vkd3d.outcome != 'failure' }}
@@ -183,6 +157,34 @@ jobs:
           ref: ${{ steps.pin.outputs.commit }}
           path: ps3recomp
           persist-credentials: false
+
+      # FreeType, RmlUi and stb, cached as in the Windows UI job above (its comment says why). On a miss, the copy
+      # the step after the UI's configure keeps also serves the description's configure below.
+      - name: Cache the wrapper UI's sources
+        id: ui-src
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ github.workspace }}/.ci-cache/ui-src
+          key: ui-src-${{ runner.os }}-${{ hashFiles('port/ui/CMakeLists.txt', 'port/ui/cmake/rmlui_fixes.cmake') }}-v1
+
+      - name: Wrapper UI, configure
+        id: ui-cfg
+        run: |
+          mapfile -t src < <(python tools/ci/fetch_src.py args .ci-cache/ui-src freetype rmlui stb)
+          PKG_CONFIG_PATH="$VKD3D_PREFIX/lib/pkgconfig" CC=clang CXX=clang++ \
+            cmake -S .github/ci/des_ui -B build/ui -G Ninja -DCMAKE_BUILD_TYPE= "-DPS3RECOMP_DIR=$PWD/ps3recomp" "${src[@]}"
+
+      - name: Wrapper UI, keep its sources for the cache
+        if: steps.ui-src.outputs.cache-hit != 'true' && steps.ui-cfg.outcome == 'success'
+        run: python tools/ci/fetch_src.py keep .ci-cache/ui-src build/ui freetype rmlui stb
+
+      - name: Wrapper UI, build
+        run: cmake --build build/ui
+
+      - name: Wrapper UI, verify the library exists
+        run: |
+          ls -la build/ui/des_ui/libdes_ui.a
+          test -s build/ui/des_ui/libdes_ui.a
 
       - name: Game build description, empty files where the lift goes
         id: lift

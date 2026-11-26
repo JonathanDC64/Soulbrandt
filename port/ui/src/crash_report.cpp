@@ -158,6 +158,8 @@ void write_report(const char* what, CONTEXT* context, EXCEPTION_POINTERS* info, 
         if (const char* r = report::renderer_name(&why))  // (the dialog's report takes it from here: its own is not the game's)
             out("renderer %s%s%s%s\n", r, why ? " (" : "", why ? why : "", why ? ")" : "");
     }
+    // (before the stack walk and the minidump, which can take long or fail in a damaged process)
+    if (char note[256]; report::renderer_crash_note(note, sizeof note)) out("%s\n", note);
     const HANDLE process = GetCurrentProcess();
     SymRefreshModuleList(process);  // (the modules loaded since install)
     CONTEXT ctx = *context;

@@ -159,6 +159,19 @@ struct TabDesc {
 // Settings' tabs in order, made the first time they are asked for.
 const std::vector<TabDesc>& tabs();
 
+// The Network tab's three Seamless co-op sections are headed kCoopHeading + kCoopHost (the host's game: only the host's
+// setting counts there, for everyone in it), kCoopHeading + kCoopJoin (each player's own, in a host's world) and
+// kCoopHeading + kCoopScreen (each player's own, hosting or joining: what its screen shows).
+inline constexpr char kCoopHeading[] = "Seamless co-op: ";
+inline constexpr char kCoopHost[] = "when you host";
+inline constexpr char kCoopJoin[] = "when you join";
+inline constexpr char kCoopScreen[] = "on your screen";
+
+// Co-op's settings on their own (Settings on the Seamless co-op screen): one tab, made from the Network tab's three
+// Seamless co-op sections (headed "When you host", "When you join" and "On your screen" there), so a row added there
+// shows in both.
+const std::vector<TabDesc>& coop_tabs();
+
 // The label a choice shows: "16:9 (original)".
 std::string choice_label(const Choice& c);
 

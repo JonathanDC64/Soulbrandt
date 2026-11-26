@@ -4,6 +4,8 @@
 // Demon's Souls from FFCCEOT-Recomp's report.hpp.
 #pragma once
 
+#include "setup_folder.hpp"  // (UserFolders, Pick: the one data folder's rules)
+
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
@@ -19,15 +21,26 @@ struct File {
     std::vector<uint8_t> data;
 };
 
-// The folder of this player's data (settings.ini, logs, crashes, reports): DES_DATA_DIR, else <exe dir>\data when
-// portable.txt is next to the exe, else %APPDATA%\DemonsSoulsRecomp\DemonsSouls. Empty for a test harness run
-// (tools/des scripts other than play.sh) without DES_DATA_DIR: those keep no settings, log or reports. The game's
-// saves are not here: they stay in the PS3 file system (gamedata/dev_hdd0).
+// The folder of this player's data (settings.ini, the online key, mods, logs, crashes, reports): DES_DATA_DIR, else
+// setup_folder.hpp's settings_folder (<exe dir>\data when portable.txt is next to the exe; else the earlier versions'
+// %APPDATA%\DemonsSoulsRecomp\DemonsSouls when it holds anything; else the one data folder, docs/164). Empty for a
+// test harness run (tools/des scripts other than play.sh) without DES_DATA_DIR: those keep no settings, log or
+// reports. The game's saves are not here: they are in saves_pick's gamedata (the PS3 file system's dev_hdd0).
 const std::filesystem::path& data_dir();
 void set_data_dir(const std::filesystem::path& dir);  // (the crash dialog process: the crashed game's)
-// A portable install: portable.txt next to the exe. The player's data (data_dir) and setup's folder (setup::data_dir)
-// are then both in data\ beside the exe, so the whole install moves as one folder.
+// A portable install: portable.txt next to the exe. The player's data (data_dir), setup's folder (setup::data_dir),
+// the saves and the shader cache are then all in the exe's folder, so the whole install moves as one folder.
 bool portable();
+// The system's folders the player's files go under: %APPDATA% and %LOCALAPPDATA%; on Linux both $XDG_DATA_HOME, else
+// ~/.local/share. DES_USER_FOLDERS=<folder> (tests) puts them in a folder of the test's: <folder>\Roaming and
+// <folder>\Local on Windows, <folder> itself on Linux.
+setup::UserFolders user_folders();
+// Where this PC's player keeps each part (setup_folder.hpp), found once a process, from what is on disk: the settings
+// folder (data_dir's, when nothing is given), the folder that holds the saves' gamedata (where a player's start of the
+// game works, des_ui.cpp), and the shader cache. Empty dir when the system's folders cannot be told.
+setup::Pick settings_pick();
+setup::Pick saves_pick();
+setup::Pick shader_cache_pick();
 // The folder of the running exe, and the exe itself; empty if it cannot be told.
 std::filesystem::path program_dir();
 std::filesystem::path program_path();
@@ -50,6 +63,11 @@ std::string system_info();
 // nullptr); nullptr where none started (a second process such as the crash dialog, whose own route would be the
 // default, not the game's) or in a build without the route switch. Allocates nothing: the crash handler calls it.
 const char* renderer_name(const char** why);
+// For the crash handler, on the crashing thread: when the game crashed inside the renderer's pipeline library (the
+// driver's compiled shaders on disk, which D3D12 throws at when one is damaged), the renderer leaves a note so the next
+// start makes a new library instead of crashing the same way, and `line` gets a sentence for the report. False, with
+// `line` empty, for any other crash, and in a build without the route switch. Allocates nothing.
+bool renderer_crash_note(char* line, size_t cap);
 // The environment variables of the port's and the runtime's own options (DES_, PS3_, RSX_, SPU_ and the like) that
 // are set, and the command line (this process's, or `command_line`): what a run was started with, beyond settings.ini.
 // The online name and password show only as set.
@@ -63,13 +81,18 @@ std::string redact(std::string text);
 std::string redact_log(std::string text);
 
 // Sends this process's standard output and error to logs\des.log in the data folder as well as where they went (the
-// previous run's log is kept as des.prev.log). Called once, before main() (crash_report.cpp). Nothing without a data
-// folder.
+// four runs before it are kept as des.prev.log to des.prev4.log, newest first). Called once, before main()
+// (crash_report.cpp). Nothing without a data folder.
 void start_log();
+#ifndef _WIN32
+// Where descriptor 1 or 2 went before start_log took it over (a descriptor of its own, closed when a program is
+// started), -1 when nowhere that still reads it, or `fd` itself when start_log hasn't taken it over.
+int original_output(int fd);
+#endif
 std::filesystem::path log_path();
 // The co-op log, logs\coop.log beside des.log: the session's lines of the log ([coop], the rooms, matching, the
-// network, the router, reports), each with its time (UTC). Made at this run's first such line; the one before it is
-// kept as coop.prev.log. Its path once this run made it, else empty.
+// network, the router, reports), each with its time (UTC). Made at this run's first such line; the four before it are
+// kept as coop.prev.log to coop.prev4.log. Its path once this run made it, else empty.
 std::filesystem::path coop_log_path();
 // Waits (briefly) until what was printed so far is in the log file (a crash, before reading the log).
 void flush_log();
@@ -133,10 +156,10 @@ void flip_hook();
 //   settings.ini    every setting, with its default where it differs, and those set in the environment
 //   environment.txt environment_info()
 //   runtime.txt     the runtime's snapshot: what every thread is doing (ps3_diag_report, 2 s of sampling)
-//   des.log         the log's start and its last 512 KB; des.prev.log the end of the previous run's (a freeze or
-//                   crash the player restarted after), when it is from the last day
-//   coop.log        this run's co-op log whole (its last 4 MB at most); coop.prev.log the session before it, when it
-//                   is from the last day
+//   des.log         the log's start and its last 512 KB; des.prev.log to des.prev4.log the ends of the four runs
+//                   before it (a freeze or crash the player restarted after), those from the last day
+//   coop.log        this run's co-op log whole (its last 4 MB at most); coop.prev.log to coop.prev4.log the four
+//                   sessions before it, those from the last day
 //   save/...        the player's save (save_files)
 // Nothing of the game's files or memory: names, numbers, settings, the log and the save only.
 void send_issue_report(void* back_buffer, unsigned index, int width, int height, std::string session);

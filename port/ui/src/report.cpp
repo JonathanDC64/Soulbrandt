@@ -4,6 +4,8 @@
 
 #include "crc32.hpp"
 #include "host.hpp"
+#include "host_pads.hpp"
+#include "log_runs.hpp"
 #include "mods.hpp"
 #include "portable.hpp"
 #include "report_addresses.hpp"
@@ -28,7 +30,6 @@
 #include <intrin.h>
 #include <psapi.h>
 #include <setupapi.h>  // (the graphics card's PCI Express link, system_info)
-#include <xinput.h>
 #include <io.h>
 #include <objbase.h>
 #include <shellapi.h>
@@ -38,8 +39,11 @@
 #else
 #include "platform.hpp"
 
-#include <SDL.h>  // (the displays, for system_info)
+#include <SDL3/SDL.h>  // (the displays, for system_info)
+#include <dirent.h>
 #include <fcntl.h>
+#include <poll.h>
+#include <signal.h>
 #include <spawn.h>
 #include <sys/file.h>
 #include <sys/ioctl.h>
@@ -72,7 +76,6 @@ extern char** environ;
 extern "C" void ps3_setenv(const char* name, const char* value);  // boot_main.cpp: through the getenv cache
 extern "C" void ps3_diag_report(FILE* out, unsigned sample_sec);   // boot_main.cpp: what every thread is doing
 extern "C" void* rsx_d3d12_device(void);                           // the D3D12 backend's device, or null
-extern "C" int pad_hid_sony_poll(void* out, int max);              // the DualSense / DualShock 4 reader
 extern "C" int cellPad_host_controller(int i, char* id, int idn, char* name, int namen);  // cellPad.h: the i-th pad
 extern "C" unsigned ppu_boot_frames_presented(void);               // boot_main.cpp: the game's frames so far
 
@@ -141,14 +144,24 @@ std::filesystem::path exe_path() {
     return std::filesystem::path(std::wstring(buf, n));
 }
 
-// %APPDATA%\DemonsSoulsRecomp\DemonsSouls (what SDL_GetPrefPath("DemonsSoulsRecomp", "DemonsSouls") gives).
-std::filesystem::path pref_dir() {
-    PWSTR roaming = nullptr;
+// A folder of the user's that Windows knows (%APPDATA%, %LOCALAPPDATA%), wherever it has been moved.
+std::filesystem::path known_user_folder(REFKNOWNFOLDERID id) {
+    PWSTR p = nullptr;
     std::filesystem::path out;
-    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, nullptr, &roaming)) && roaming)
-        out = std::filesystem::path(roaming) / L"DemonsSoulsRecomp" / L"DemonsSouls";
-    CoTaskMemFree(roaming);
+    if (SUCCEEDED(SHGetKnownFolderPath(id, 0, nullptr, &p)) && p) out = std::filesystem::path(p);
+    CoTaskMemFree(p);
     return out;
+}
+
+// %APPDATA% and %LOCALAPPDATA% (user_folders).
+setup::UserFolders system_user_folders() {
+    return {known_user_folder(FOLDERID_RoamingAppData), known_user_folder(FOLDERID_LocalAppData)};
+}
+
+// DES_USER_FOLDERS's (user_folders).
+setup::UserFolders test_user_folders(const std::string& given) {
+    const std::filesystem::path base(widen(given));
+    return {base / L"Roaming", base / L"Local"};
 }
 
 // The command line's arguments (the program first), and the command line as the process got it.
@@ -234,13 +247,18 @@ std::filesystem::path exe_path() {
 }
 [[maybe_unused]] const std::filesystem::path g_exe_at_start = exe_path();  // (read before main, before any update)
 
-// $XDG_DATA_HOME/DemonsSoulsRecomp/DemonsSouls, else ~/.local/share/... (what SDL_GetPrefPath gives there).
-std::filesystem::path pref_dir() {
+// $XDG_DATA_HOME, else ~/.local/share, for both (user_folders).
+setup::UserFolders system_user_folders() {
     const std::string xdg = env("XDG_DATA_HOME"), home = env("HOME");
     const std::filesystem::path base = !xdg.empty()    ? std::filesystem::path(xdg)
                                        : !home.empty() ? std::filesystem::path(home) / ".local" / "share"
                                                        : std::filesystem::path{};
-    return base.empty() ? base : base / "DemonsSoulsRecomp" / "DemonsSouls";
+    return {base, base};
+}
+
+// DES_USER_FOLDERS's (user_folders).
+setup::UserFolders test_user_folders(const std::string& given) {
+    return {std::filesystem::path(given), std::filesystem::path(given)};
 }
 
 // The command line's arguments (the program first), and the command line as the process got it (quoted where an
@@ -470,12 +488,22 @@ uint64_t g_log_bytes = 0;
 int g_tees = 0;
 std::atomic<int> g_tee_idle{0};  // tee threads waiting for output with everything before it in the log file
 
+// ---- The runs kept: des.log and coop.log, and the four before each (log_runs.hpp) ----
+// A report quotes those of the last day. A friend's Leave co-op starts the game again twice (on the normal characters,
+// then back in co-op), so with one run kept, the run a report was about was often gone (11-21: both lost-progress
+// reports).
+constexpr int kOlderRuns = runs::kOlder;
+std::filesystem::path older_run(const std::filesystem::path& log, int back) { return runs::older(log, back); }
+void keep_older_runs(const std::filesystem::path& log) { runs::keep(log, replace_file); }
+bool kept_log(const std::wstring& name) { return runs::kept(name); }
+
 // ---- The co-op log: a session's lines from the log, each with its time, in logs/coop.log ----
 // A co-op session's story (the room, who joined and left, the loads the friends followed, what each game kept for the
 // others) is a few lines a minute among thousands, and a report keeps only des.log's start and end. coop.log keeps those
 // lines whole, each with the time it was printed (UTC, so that a host's and a friend's line up). The tee threads pick
 // them out of what they copy to des.log, so the game's own threads do nothing more. It is made at the first such line:
-// a run without one leaves the last session's as it was. The one before it is kept as coop.prev.log.
+// a run without one leaves the last session's as it was. The ones before it are kept as coop.prev.log to
+// coop.prev4.log.
 
 constexpr uint64_t kCoopCap = 32ull << 20;  // past this the file stops, with a note (des.log goes on)
 constexpr size_t kCoopLine = 4096;          // of a longer line, its start
@@ -504,7 +532,7 @@ void coop_write(const char* line, size_t n) {
     if (!g_coop_file) {
         if (g_coop_path.empty() || g_coop_failed) return;
         // The main one's last session becomes coop.prev.log (another copy's, coop.<process>.log, has none)
-        if (g_coop_path.filename() == "coop.log") replace_file(g_coop_path, g_coop_path.parent_path() / "coop.prev.log");
+        if (g_coop_path.filename() == "coop.log") keep_older_runs(g_coop_path);
         g_coop_file = open_file(g_coop_path, "wb");
         if (!g_coop_file) {
             g_coop_failed = true;
@@ -673,9 +701,40 @@ bool tee(std::initializer_list<int> fds, HANDLE original, int slot) {
     return thread != nullptr;
 }
 #else
+// Where standard output and error went before the tee took them over (a descriptor of their own, kept for start_again:
+// crash_report_posix.cpp), -1 when they went nowhere that still reads, or -2 while the tee hasn't taken them over.
+int g_original_out = -2;
+int g_original_err = -2;
+
+// Copies to `out`, never holding the game up for long: a terminal or a program reading the game's output that stops
+// taking it would otherwise stop the game's every thread that prints, once the pipe behind them is full (#670: a
+// game started by an older version's Play wrote to a pipe that nobody read). 4 KB at a time, each when `out` has
+// room; when it has had none for 2 s, the copy to it stops for good (the log goes on). false then.
+bool copy_out(int out, const char* p, size_t n) {
+    while (n) {
+        pollfd pf{out, POLLOUT, 0};
+        int ready;
+        do ready = poll(&pf, 1, 2000);
+        while (ready < 0 && errno == EINTR);
+        if (ready <= 0 || (pf.revents & (POLLERR | POLLHUP | POLLNVAL))) return false;
+        const ssize_t w = ::write(out, p, n < 4096 ? n : 4096);
+        if (w < 0 && errno == EINTR) continue;
+        if (w <= 0) return false;  // (that terminal or file is gone: the log goes on)
+        p += w;
+        n -= size_t(w);
+    }
+    return true;
+}
+
 // One per pipe, as on Windows: what the program prints, to where it was going (a copy of that descriptor, or -1) and
 // into the log, which is flushed whenever the pipe has nothing more waiting.
 void tee_thread(int read_fd, int out) {
+    // A reader that has gone is an error for the write, not SIGPIPE ending the game (the network ignores it for the
+    // whole process later; this can come before).
+    sigset_t pipe_signal;
+    sigemptyset(&pipe_signal);
+    sigaddset(&pipe_signal, SIGPIPE);
+    pthread_sigmask(SIG_BLOCK, &pipe_signal, nullptr);
     std::vector<char> buf(1 << 16);
     bool idle = true;
     g_tee_idle.fetch_add(1);
@@ -686,10 +745,11 @@ void tee_thread(int read_fd, int out) {
         if (idle) g_tee_idle.fetch_sub(1);
         idle = false;
         if (n <= 0) break;
-        for (const char* p = buf.data(); out >= 0 && p < buf.data() + n;) {
-            const ssize_t w = ::write(out, p, size_t(buf.data() + n - p));
-            if (w <= 0 && errno != EINTR) out = -1;  // (that terminal or file is gone: the log goes on)
-            if (w > 0) p += w;
+        if (out >= 0 && !copy_out(out, buf.data(), size_t(n))) {
+            out = -1;
+            static const char kNote[] = "[log] what the game prints stopped going where it went (nothing takes it "
+                                        "there any more): it goes on in this log only\n";
+            log_write(kNote, sizeof kNote - 1);
         }
         log_write(buf.data(), size_t(n));
         int waiting = 0;
@@ -705,7 +765,7 @@ void tee_thread(int read_fd, int out) {
 // descriptor of its own, or -1) and the log.
 bool tee(std::initializer_list<int> fds, int original) {
     int p[2];
-    if (pipe(p) != 0) {
+    if (pipe2(p, O_CLOEXEC) != 0) {  // (its ends are this process's only: see start_again)
         if (original >= 0) close(original);
         return false;
     }
@@ -717,9 +777,60 @@ bool tee(std::initializer_list<int> fds, int original) {
         std::setvbuf(stream, nullptr, _IONBF, 0);
     }
     close(p[1]);  // (the descriptors above hold it)
+    for (int target : fds) (target == 1 ? g_original_out : g_original_err) = original;  // (the thread never closes it)
     g_tees++;
     std::thread(tee_thread, p[0], original).detach();
     return true;
+}
+
+// What an older version's Play or update left this process (its start_again passed on all its descriptors): its log
+// pipe as standard output and error, with the pipe's read end, which only this process holds (nobody reads it, so
+// this one's every printing thread waited once 1 MB was in it: #670), and its log files, whose lock made this one
+// write des.<pid>.log. Closes those (before this process opens anything in `logs`) and puts /dev/null in the pipe's
+// place: what was printed there went nowhere anyway. Prints nothing (standard error may be that pipe): `note` says
+// what it did, for the log.
+void drop_inherited(const std::filesystem::path& logs, std::string& note) {
+    struct stat out {}, err {};
+    const bool out_pipe = fstat(1, &out) == 0 && S_ISFIFO(out.st_mode);
+    const bool err_pipe = fstat(2, &err) == 0 && S_ISFIFO(err.st_mode);
+    std::error_code ec;
+    const std::string folder = std::filesystem::weakly_canonical(logs, ec).string() + "/";
+    bool out_orphaned = false, err_orphaned = false;
+    DIR* d = opendir("/proc/self/fd");
+    if (!d) return;
+    std::vector<int> drop;
+    while (const dirent* e = readdir(d)) {
+        const int fd = std::atoi(e->d_name);
+        if (fd < 3 || fd == dirfd(d)) continue;
+        struct stat st {};
+        if (fstat(fd, &st) != 0) continue;
+        const int mode = fcntl(fd, F_GETFL);
+        const bool reads = S_ISFIFO(st.st_mode) && mode >= 0 && (mode & O_ACCMODE) == O_RDONLY;
+        const bool of_out = reads && out_pipe && st.st_ino == out.st_ino && st.st_dev == out.st_dev;
+        const bool of_err = reads && err_pipe && st.st_ino == err.st_ino && st.st_dev == err.st_dev;
+        if (of_out || of_err) {
+            drop.push_back(fd);
+            out_orphaned = out_orphaned || of_out;
+            err_orphaned = err_orphaned || of_err;
+            continue;
+        }
+        char target[4096];
+        const ssize_t k = readlink(("/proc/self/fd/" + std::string(e->d_name)).c_str(), target, sizeof target - 1);
+        if (S_ISREG(st.st_mode) && k > 0 && std::string(target, size_t(k)).rfind(folder, 0) == 0) drop.push_back(fd);
+    }
+    closedir(d);
+    if (out_orphaned || err_orphaned) {
+        const int null = open("/dev/null", O_WRONLY | O_CLOEXEC);
+        if (null >= 0) {
+            if (out_orphaned) dup2(null, 1);
+            if (err_orphaned) dup2(null, 2);
+            close(null);
+        }
+    }
+    for (int fd : drop) close(fd);
+    if (!drop.empty())
+        note = "[log] closed " + std::to_string(drop.size()) + " file(s) an older version's restart handed down" +
+               (out_orphaned || err_orphaned ? " (among them its log's pipe, which nothing read)" : "") + "\n";
 }
 #endif
 
@@ -810,22 +921,29 @@ void make_issue_report(std::vector<uint8_t> rgba, int width, int height, std::st
     if (!g_log_path.empty()) {
         flush_log();
         files.push_back({"des.log", bytes(redact_log(read_head_tail(g_log_path, 120, 512 << 10)))});
-        std::error_code ec;
-        const auto prev = g_log_path.parent_path() / L"des.prev.log";
-        if (std::filesystem::exists(prev, ec) &&
-            std::filesystem::file_time_type::clock::now() - std::filesystem::last_write_time(prev, ec) <
-                std::chrono::hours(24))
-            files.push_back({"des.prev.log", bytes(redact_log(read_head_tail(prev, 40, 192 << 10)))});
-        // The co-op log whole (its last 4 MB at most), and the previous session's when it is from the last day. Until
-        // this run has a co-op line, coop.log is still the last session's.
-        const auto coop_prev = g_coop_path.parent_path() / L"coop.prev.log";
+        const auto recent = [](const std::filesystem::path& p) {
+            std::error_code ec;
+            return !p.empty() && std::filesystem::exists(p, ec) &&
+                   std::filesystem::file_time_type::clock::now() - std::filesystem::last_write_time(p, ec) <
+                       std::chrono::hours(24);
+        };
+        // The runs before this one, of the last day: the end of each (the last one's longer)
+        const auto main_log = g_log_path.parent_path() / L"des.log";
+        for (int k = 1; k <= kOlderRuns; k++)
+            if (const auto p = older_run(main_log, k); recent(p))
+                files.push_back({narrow(p.filename().wstring()),
+                                 bytes(redact_log(read_head_tail(p, 40, (k == 1 ? 192 : 128) << 10)))});
+        // The co-op log whole (its last 4 MB at most), and the sessions before it of the last day. Until this run has a
+        // co-op line, coop.log is still the last session's: it goes in as coop.prev.log, and each older one a place on.
         const bool started = g_coop_open.load();
         if (started) files.push_back({"coop.log", bytes(redact_log(read_head_tail(g_coop_path, 200, 4 << 20)))});
-        const auto last = started ? coop_prev : g_coop_path;
-        if (!last.empty() && std::filesystem::exists(last, ec) &&
-            std::filesystem::file_time_type::clock::now() - std::filesystem::last_write_time(last, ec) <
-                std::chrono::hours(24))
-            files.push_back({"coop.prev.log", bytes(redact_log(read_head_tail(last, 100, 1 << 20)))});
+        const auto coop_main = g_coop_path.parent_path() / L"coop.log";
+        for (int k = 1; k <= kOlderRuns; k++) {
+            const auto p = started ? older_run(coop_main, k) : k == 1 ? g_coop_path : older_run(coop_main, k - 1);
+            if (recent(p))
+                files.push_back({narrow(older_run(coop_main, k).filename().wstring()),
+                                 bytes(redact_log(read_head_tail(p, 100, (k == 1 ? 1024 : 512) << 10)))});
+        }
     }
     for (File& f : save) files.push_back(std::move(f));
     const auto zip = write_bundle("issue-" + stamp, files);
@@ -843,6 +961,35 @@ void make_issue_report(std::vector<uint8_t> rgba, int width, int height, std::st
 }
 
 std::filesystem::path exe_dir() { return exe_path().parent_path(); }
+
+// Where each part of the player's files is (docs/164), in words: the paths would hold the user's name.
+std::string folders_words() {
+    const auto place = [](setup::FolderSource p) -> std::string {
+        if (p == setup::FolderSource::Portable) return "portable install";
+        return p == setup::FolderSource::Old ? "earlier version's" : "one data folder";
+    };
+    const bool test = settings::harness_run();
+    std::string out = "settings ";
+    if (!env("DES_DATA_DIR").empty()) out += "given";
+    else out += test ? "none (test run)" : place(settings_pick().source);
+    out += "; setup's build ";
+    if (!env("DES_SETUP_DATA").empty()) out += "given";
+    else if (setup::data_dir_chosen()) out += "chosen on setup's screens";
+    else if (portable()) out += "portable install";
+    else if (setup::same_folder(setup::usual_data_dir(), setup::old_shared_folder(user_folders())))
+        out += "earlier version's";
+    else out += "one data folder";
+    out += "; saves ";
+    if (!env("PS3_SAVEDATA_ROOT").empty() || !env("PS3_HDD0_ROOT").empty()) out += "given";
+    else out += test ? "beside the program (test run)" : place(saves_pick().source);
+    out += "; shader cache ";
+    const std::string cache = env("PS3_SHADER_CACHE");
+    if (cache.empty()) out += "beside the program";
+    else if (setup::same_folder(std::filesystem::path(widen(cache)), shader_cache_pick().dir))
+        out += place(shader_cache_pick().source);
+    else out += "given";
+    return out;
+}
 
 }  // namespace
 
@@ -921,7 +1068,7 @@ std::string narrow(const std::wstring& w) {
 }
 
 FILE* open_file(const std::filesystem::path& path, const char* mode) {
-    return std::fopen(path.c_str(), mode);
+    return std::fopen(path.c_str(), (std::string(mode) + "e").c_str());  // ("e": not handed to programs started)
 }
 
 bool replace_file(const std::filesystem::path& from, const std::filesystem::path& to) {
@@ -940,14 +1087,38 @@ const std::filesystem::path& data_dir() {
     g_data_dir_resolved = true;
     if (const char* given = std::getenv("DES_DATA_DIR"); given && *given) {
         g_data_dir = std::filesystem::path(widen(given));
+        std::error_code ec;   // (absolute, against the folder the program started in: issue #667)
+        if (g_data_dir.is_relative()) {
+            if (auto abs = std::filesystem::absolute(g_data_dir, ec); !ec) g_data_dir = abs.lexically_normal();
+        }
     } else if (settings::harness_run()) {
         g_data_dir.clear();  // test runs keep nothing
-    } else if (portable()) {
-        g_data_dir = exe_dir() / L"data";
     } else {
-        g_data_dir = pref_dir();
+        g_data_dir = settings_pick().dir;
     }
     return g_data_dir;
+}
+
+setup::UserFolders user_folders() {
+    if (const std::string given = env("DES_USER_FOLDERS"); !given.empty()) return test_user_folders(given);
+    return system_user_folders();
+}
+
+// (each found once, at its first call: the answer is what was on disk then, and later writes do not change it)
+setup::Pick settings_pick() {
+    static const setup::Pick pick =
+        setup::settings_folder(user_folders(), portable() ? exe_dir() : std::filesystem::path{});
+    return pick;
+}
+
+setup::Pick saves_pick() {
+    static const setup::Pick pick = setup::saves_folder(user_folders(), exe_dir(), portable());
+    return pick;
+}
+
+setup::Pick shader_cache_pick() {
+    static const setup::Pick pick = setup::shader_cache_folder(user_folders(), exe_dir(), portable());
+    return pick;
 }
 
 void set_data_dir(const std::filesystem::path& dir) {
@@ -1307,17 +1478,14 @@ void platform_facts(std::ostringstream& o, bool game_process) {
           << " where its data is\n";
     }
     {
-        // Gamepads: XInput slots that answer, and the DualSense / DualShock 4 reader's pads.
-        int xinput = 0;
-        for (DWORD i = 0; i < XUSER_MAX_COUNT; i++) {
-            XINPUT_STATE st{};
-            if (XInputGetState(i, &st) == ERROR_SUCCESS) xinput++;
-        }
-        alignas(8) uint8_t hid[4][64];  // (room for 4 of pad_hid_sony.h's PadHidSonyState, 28 bytes each)
-        const int sony = pad_hid_sony_poll(hid, 4);
+        // Gamepads: every pad the game's input reads (XInput or SDL, and the DualSense / DualShock 4 reader).
+        CellPadHostPad pads[8];
+        const int n = cellPad_host_pads(pads, 8);
+        std::string ids;
+        for (int i = 0; i < n; i++) ids += std::string(i ? ", " : " (") + pads[i].id + (i + 1 == n ? ")" : "");
         char layout[KL_NAMELENGTH] = "";
         GetKeyboardLayoutNameA(layout);
-        o << "Gamepads: " << xinput << " XInput, " << sony << " DualSense or DualShock 4; keyboard layout " << layout << "\n";
+        o << "Gamepads: " << n << ids << "; keyboard layout " << layout << "\n";
     }
     if (game_process) o << other_modules();
 }
@@ -1424,7 +1592,7 @@ std::string driver_resets() {
 // The libraries loaded into the game that are neither the system's nor the game's own: overlays, recorders, injectors,
 // as other_modules on Windows. A library outside the system's folders, any LD_PRELOAD one, and a known overlay or
 // Vulkan layer wherever it is (a distribution installs MangoHud or vkBasalt beside the system's libraries). "beside
-// the game" for one in the program's folder (the libraries the download brings, such as SDL2).
+// the game" for one in the program's folder (the libraries the download brings, such as vkd3d's).
 std::string other_modules() {
     const std::string game = exe_dir().string(), module_dir = setup::data_dir().string();
     std::error_code ec;
@@ -1561,10 +1729,13 @@ void platform_facts(std::ostringstream& o, bool game_process) {
     o << "Session: " << (no_desktop() ? "gamescope, no desktop" : "desktop") << ", XDG_SESSION_TYPE=" << env("XDG_SESSION_TYPE")
       << ", XDG_CURRENT_DESKTOP=" << env("XDG_CURRENT_DESKTOP") << ", SteamDeck=" << env("SteamDeck") << "\n";
     if (const char* driver = SDL_GetCurrentVideoDriver()) o << "SDL video driver: " << driver << "\n";
-    for (int i = 0, n = SDL_GetNumVideoDisplays(); i < n; i++) {
-        SDL_DisplayMode m{};
-        if (SDL_GetCurrentDisplayMode(i, &m) == 0)
-            o << "Display " << i + 1 << ": " << m.w << "x" << m.h << " at " << m.refresh_rate << " Hz\n";
+    {
+        int n = 0;
+        SDL_DisplayID* ids = SDL_GetDisplays(&n);
+        for (int i = 0; ids && i < n; i++)
+            if (const SDL_DisplayMode* m = SDL_GetCurrentDisplayMode(ids[i]))
+                o << "Display " << i + 1 << ": " << m->w << "x" << m->h << " at " << m->refresh_rate << " Hz\n";
+        SDL_free(ids);
     }
     {
         // The batteries and the mains in sysfs (a Steam Deck, a laptop); a mouse's or a pad's battery is not one.
@@ -1594,10 +1765,11 @@ void platform_facts(std::ostringstream& o, bool game_process) {
           << " where its data is\n";
     }
     if (SDL_WasInit(SDL_INIT_JOYSTICK)) {
-        int pads = 0;
-        const int sticks = SDL_NumJoysticks();
-        for (int i = 0; i < sticks; i++) pads += SDL_IsGameController(i) ? 1 : 0;
-        o << "Gamepads: " << pads << " SDL game controllers (" << (sticks < 0 ? 0 : sticks) << " joysticks)\n";
+        int pads = 0, sticks = 0;
+        SDL_JoystickID* ids = SDL_GetJoysticks(&sticks);
+        for (int i = 0; ids && i < sticks; i++) pads += SDL_IsGamepad(ids[i]) ? 1 : 0;
+        SDL_free(ids);
+        o << "Gamepads: " << pads << " SDL gamepads (" << sticks << " joysticks)\n";
     }
     if (game_process) o << other_modules();
 }
@@ -1617,6 +1789,15 @@ const char* renderer_name(const char** why) {
 #endif
 }
 
+bool renderer_crash_note(char* line, size_t cap) {
+    if (line && cap) *line = 0;
+#if defined(PS3RECOMP_RSX_HAL)
+    return rsx_out_crash_note(line, cap) != 0;
+#else
+    return false;
+#endif
+}
+
 std::string system_info() {
     std::ostringstream o;
     // The game's own process (it has shown a frame of its own), not the crash dialog's or setup's: only then are this
@@ -1630,6 +1811,7 @@ std::string system_info() {
     o << "ps3recomp: " << kPs3recompVersion << "\n";
     o << "Game dump (EBOOT.ELF SHA-256): " << (*kDumpSha256 ? kDumpSha256 : "unknown") << "\n";
     o << "Disc copy: " << setup::disc_summary() << "\n";  // (setup/disc_check.txt: its files are in the zip)
+    o << "Folders: " << folders_words() << "\n";
     // The mods in use (mods.hpp), as the game found them at start; the crash dialog's process reads none itself (its
     // environment's PS3_VFS_MODS, below, names them).
     if (game_process) o << "Mods: " << mods::summary() << "\n";
@@ -1750,10 +1932,18 @@ bool save_file_taken(const std::string& name) {
 std::vector<File> save_files(std::string& note) {
     constexpr uintmax_t kMaxFile = 8u << 20, kMaxAll = 32u << 20;  // (a Demon's Souls save is about 2.6 MB)
     std::error_code ec;
-    // (as cellSaveData.c finds it: PS3_SAVEDATA_ROOT, else this folder in the working folder; the crash dialog has the
-    // game's environment and working folder)
+    // (as cellSaveData.c finds it: PS3_SAVEDATA_ROOT, else this folder in the working folder, which a player's start of
+    // the game makes saves_pick's (des_ui.cpp); the crash dialog has the game's environment and working folder. Before
+    // the game has started, on setup's screens, saves_pick's, when it has a gamedata.)
     std::filesystem::path root = "gamedata/dev_hdd0/home/00000001/savedata";
-    if (const char* given = std::getenv("PS3_SAVEDATA_ROOT"); given && *given) root = std::filesystem::path(widen(given));
+    const auto home = saves_pick().dir;
+    std::error_code home_ec;
+    if (const char* given = std::getenv("PS3_SAVEDATA_ROOT"); given && *given) {
+        root = std::filesystem::path(widen(given));
+    } else if (!settings::harness_run() && !env_on("DES_KEEP_CWD") && !home.empty() &&
+               std::filesystem::is_directory(home / "gamedata", home_ec)) {
+        root = home / root;
+    }
     std::vector<File> files;
     std::string what;
     uintmax_t total = 0;
@@ -1951,10 +2141,12 @@ void start_log() {
     std::error_code ec;
     const auto dir = data_dir() / "logs";
     std::filesystem::create_directories(dir, ec);
+    std::string inherited;
+    drop_inherited(dir, inherited);
     auto path = dir / "des.log";
     // Another copy of the game running at the same time holds a lock on des.log: this one then writes its own, which
     // its reports quote (those of finished copies are cleared away after a day). Otherwise des.log starts over and
-    // the previous run's is kept as des.prev.log.
+    // the previous run's is kept as des.prev.log, the older ones behind it (keep_older_runs).
     const auto locked = [](const std::filesystem::path& p) {
         const int fd = open(p.c_str(), O_RDONLY | O_CLOEXEC);
         if (fd < 0) return false;
@@ -1966,16 +2158,15 @@ void start_log() {
         const auto now = std::filesystem::file_time_type::clock::now();
         for (const auto& e : std::filesystem::directory_iterator(dir, ec)) {
             const std::string name = e.path().filename().string();
-            if ((name.rfind("des.", 0) == 0 || name.rfind("coop.", 0) == 0) && name != "des.log" &&
-                name != "des.prev.log" && name != "coop.log" && name != "coop.prev.log" &&
+            if ((name.rfind("des.", 0) == 0 || name.rfind("coop.", 0) == 0) && !kept_log(widen(name)) &&
                 now - e.last_write_time(ec) > std::chrono::hours(24))
                 std::filesystem::remove(e.path(), ec);
         }
         path = dir / ("des." + std::to_string(getpid()) + ".log");
     } else {
-        std::filesystem::rename(path, dir / "des.prev.log", ec);
+        keep_older_runs(path);
     }
-    g_log_file = std::fopen(path.c_str(), "wb");
+    g_log_file = open_file(path, "wb");  // (its lock stays this process's: see start_again)
     if (!g_log_file) return;
     flock(fileno(g_log_file), LOCK_EX | LOCK_NB);
     std::setvbuf(g_log_file, nullptr, _IOFBF, 1 << 16);
@@ -1990,11 +2181,17 @@ void start_log() {
     const bool same = (fstat(1, &so) == 0 && fstat(2, &se) == 0 && so.st_dev == se.st_dev && so.st_ino == se.st_ino) ||
                       (isatty(1) && isatty(2));
     bool ok;
-    if (same) ok = tee({1, 2}, dup(2));
-    else ok = tee({2}, dup(2)) && tee({1}, dup(1));
+    if (same) ok = tee({1, 2}, fcntl(2, F_DUPFD_CLOEXEC, 3));
+    else ok = tee({2}, fcntl(2, F_DUPFD_CLOEXEC, 3)) && tee({1}, fcntl(1, F_DUPFD_CLOEXEC, 3));
     if (!ok) return;
     g_log_path = path;
     std::atexit(flush_at_exit);
+    if (!inherited.empty()) std::fputs(inherited.c_str(), stderr);
+}
+
+int original_output(int fd) {
+    const int kept = fd == 1 ? g_original_out : fd == 2 ? g_original_err : -2;
+    return kept == -2 ? fd : kept;
 }
 
 void flush_log() {
@@ -2020,7 +2217,7 @@ void start_log() {
     const auto dir = data_dir() / L"logs";
     std::filesystem::create_directories(dir, ec);
     auto path = dir / L"des.log";
-    std::filesystem::rename(path, dir / L"des.prev.log", ec);
+    keep_older_runs(path);   // (not while another copy has it open: then des.log can't be moved)
     g_log_file = _wfsopen(path.c_str(), L"wb", _SH_DENYWR);
     if (!g_log_file) {
         // Another copy of the game running at the same time keeps des.log: this one writes its own, which its reports
@@ -2028,8 +2225,7 @@ void start_log() {
         const auto now = std::filesystem::file_time_type::clock::now();
         for (const auto& e : std::filesystem::directory_iterator(dir, ec)) {
             const std::wstring name = e.path().filename().wstring();
-            if ((name.rfind(L"des.", 0) == 0 || name.rfind(L"coop.", 0) == 0) && name != L"des.log" &&
-                name != L"des.prev.log" && name != L"coop.log" && name != L"coop.prev.log" &&
+            if ((name.rfind(L"des.", 0) == 0 || name.rfind(L"coop.", 0) == 0) && !kept_log(name) &&
                 now - e.last_write_time(ec) > std::chrono::hours(24))
                 std::filesystem::remove(e.path(), ec);
         }

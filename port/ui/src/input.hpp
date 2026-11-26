@@ -1,5 +1,6 @@
 // Adapted from Dusklight (CC0), src/dusk/ui/input.hpp, by way of FFCCEOT-Recomp. Adapted for Demon's Souls: the
-// gamepad comes from the port's own pad readers (XInput and the Sony HID reader) as a polled state, not as events.
+// gamepad comes from the runtime's pad readers (cellPad_host_pads: XInput or SDL, and the Sony HID reader) as a
+// polled state, not as events.
 #pragma once
 
 #include "prompts.hpp"
@@ -20,6 +21,17 @@ struct PadState {
 // Enter, Circle: Escape, R1/R2 and L1/L2: next and previous tab, Start or the menu chord: F1, Triangle: P, Square: C,
 // Select: H, R3: Shift), with key repeat for the arrows and the tabs.
 void update_pad(const PadState& pad, int chord) noexcept;
+// The buttons the menus act on: a pad's own, or with Same buttons as the game on (settings.cpp's menu_follow_buttons)
+// the game's, through Change Buttons (controls_model.hpp's game_button_sources), so Cross is the game's Cross wherever
+// the player put it. A binding being chosen still reads the pad's own (pad_buttons).
+unsigned menu_buttons(unsigned buttons);
+// The key a keyboard key stands for in the menus: with Same buttons as the game on, Enter for the game's Cross key and
+// Esc for its Circle key (controls_model.hpp's menu_key_for); else, and for every other key, the key itself.
+int menu_key(int vk);
+// The glyph a menu prompt shows for `key` (prompts.hpp's glyph), with Same buttons as the game on: on a pad, the pad
+// button the game's button is on (Cross's prompt shows Circle when Change Buttons swapped them; the D-pad's stay); on
+// the keyboard, Page Up and Page Down for the tabs when Q or E confirms or goes back (prompts.hpp's page_glyph).
+prompts::Glyph menu_glyph(prompts::Device device, prompts::Key key);
 void update_input() noexcept;
 // Lets go of every key the pads hold (the window lost the focus, or a binding is being chosen).
 void reset_input_state() noexcept;

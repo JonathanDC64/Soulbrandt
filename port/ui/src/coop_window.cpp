@@ -1,14 +1,17 @@
 // The Co-op window (coop_window.hpp). One modal: what co-op is and Host / Join when off; the invite code, the router's
 // answer and the players while hosting; Leave while in a game. The host's part is drawn again each half second (the
 // router answers a few seconds after the start, and players come and go). Each code has a small Copy button beside it,
-// besides the window's Copy code.
+// besides the window's Copy code. Join tries the code first (JoinCheckWindow), and starts the game again into co-op
+// only once the host's game answered.
 #include "coop_window.hpp"
 
 #include "ack.hpp"
 #include "app.hpp"
+#include "coop_session.hpp"
 #include "crash_report.hpp"
 #include "event.hpp"
 #include "menu_model.hpp"
+#include "menu_pages.hpp"
 #include "mods.hpp"
 #include "osk_window.hpp"
 #include "platform.hpp"
@@ -145,7 +148,139 @@ void open_host_now() {
     }));
 }
 
-// Join with a code the player pasted or typed; a toast says why not if it doesn't read as one.
+void open_join_check(const std::string& code);
+
+// Into co-op with a code the check got through with.
+void join_now(const std::string& code) {
+    start_coop({"DES_SEAMLESS=join", "DES_SEAMLESS_CODE=" + code});
+}
+
+// The check's answer, when it is not a plain yes: a question (full, a boss fight) or why not, with Try again where it
+// may help. Cancel is first, as in every question here.
+void open_join_answer(const std::string& code, const co::JoinCheck::Result& r) {
+    std::vector<ModalAction> actions{ModalAction{.label = "Cancel", .onPressed = close_action}};
+    std::string title, body;
+    if (r.is == co::JoinCheck::Is::Full) {
+        title = "Your friend's game is full";
+        body = "It has all the players your friend takes. Join anyway and wait for a place? You join as soon as one "
+               "frees up.";
+        actions.push_back({.label = "Join and wait", .onPressed = [code](Modal&) { join_now(code); }});
+    } else if (r.is == co::JoinCheck::Is::Fight) {
+        title = "Your friend is in a boss fight";
+        body = "No one joins during one, as in the original game. You join as soon as it's over.";
+        actions.push_back({.label = "Join", .onPressed = [code](Modal&) { join_now(code); }});
+    } else {
+        title = "Couldn't join your friend's game";
+        body = "<modal-warning>" + escape(r.text) + "</modal-warning>";
+        if (r.again)
+            actions.push_back({.label = "Try again",
+                               .onPressed = [code](Modal& m) {
+                                   play_sound(kSoundItemChange);
+                                   m.pop();
+                                   open_join_check(code);
+                               }});
+    }
+    push_document(std::make_unique<Modal>(Modal::Props{
+        .title = title,
+        .bodyRml = body,
+        .actions = std::move(actions),
+        .focusAction = r.is == co::JoinCheck::Is::Failed && r.again ? 1 : 0,
+    }));
+}
+
+// While the code is tried: what the check does, drawn again as it goes; then, once it's over, the restart (the host's
+// game answered), or the answer's window in its place. Cancel (or Back) ends the check. A yes says so for a second
+// before the restart: on a fast link the check takes a few milliseconds, and the first play test (11-23) saw the
+// game start again the instant it pressed Paste and join, with no word that the code had been tried.
+class JoinCheckWindow final : public Modal {
+public:
+    JoinCheckWindow(Props props, std::unique_ptr<co::JoinCheck> check, std::string code)
+        : Modal(std::move(props)), mCheck(std::move(check)), mCode(std::move(code)) {}
+
+    void stop() { mCheck.reset(); }
+
+    void update() override {
+        const auto now = std::chrono::steady_clock::now();
+        if (!mJoinCode.empty() && !pending_close() && now >= mJoinAt) {
+            const std::string code = mJoinCode;
+            mJoinCode.clear();
+            pop();
+            join_now(code);
+        }
+        if (mCheck && now >= mNext && !pending_close()) {
+            mNext = now + std::chrono::milliseconds(100);
+            const co::JoinCheck::Result r = mCheck->result();
+            if (r.is == co::JoinCheck::Is::Running) {
+                if (r.text != mShown) {
+                    mShown = r.text;
+                    set_body(escape(r.text));
+                }
+            } else {
+                mCheck.reset();
+                std::fprintf(stderr, "[ui] co-op: the join check: %s\n",
+                             r.is == co::JoinCheck::Is::Ok      ? "the host's game answered, joining"
+                             : r.is == co::JoinCheck::Is::Full  ? "the host's game is full"
+                             : r.is == co::JoinCheck::Is::Fight ? "the host is in a boss fight"
+                                                                : r.text.c_str());
+                const std::string code = mCode;
+                if (r.is == co::JoinCheck::Is::Ok) {
+                    set_body(escape("Found your friend's game. Starting co-op..."));
+                    mJoinCode = code;
+                    mJoinAt = now + std::chrono::seconds(1);
+                } else {
+                    pop();
+                    if (r.is == co::JoinCheck::Is::Failed) play_sound(kSoundItemDisable);
+                    open_join_answer(code, r);
+                }
+            }
+        }
+        if (pending_close()) {   // (Back or Esc: the check, or the restart it was about to make, ends with the window)
+            mCheck.reset();
+            mJoinCode.clear();
+        }
+        Modal::update();
+    }
+
+private:
+    std::unique_ptr<co::JoinCheck> mCheck;
+    std::string mCode;
+    std::chrono::steady_clock::time_point mNext{};
+    std::string mShown;
+    std::string mJoinCode;                           // a yes: the code it starts again with, at mJoinAt
+    std::chrono::steady_clock::time_point mJoinAt{};
+};
+
+// Tries the code (des_seamless.h's JoinCheck) with the name and the server a join will use.
+void open_join_check(const std::string& code) {
+    std::string why;
+    std::unique_ptr<co::JoinCheck> check =
+        co::check_join(code, settings::seamless_name(), settings::seamless_endpoint(), &why);
+    if (!check) {
+        play_sound(kSoundItemDisable);
+        co::JoinCheck::Result r;
+        r.is = co::JoinCheck::Is::Failed;
+        r.text = why;
+        r.again = false;
+        open_join_answer(code, r);
+        return;
+    }
+    const std::string first = check->result().text;
+    push_document(std::make_unique<JoinCheckWindow>(
+        Modal::Props{
+            .title = "Joining your friend's game",
+            .bodyRml = escape(first),
+            .actions = {ModalAction{.label = "Cancel",
+                                    .onPressed =
+                                        [](Modal& m) {
+                                            static_cast<JoinCheckWindow&>(m).stop();
+                                            close_action(m);
+                                        }}},
+        },
+        std::move(check), code));
+}
+
+// Join with a code the player pasted or typed; a toast says why not if it doesn't read as one. Then the check, before
+// the restart.
 void join_with(const std::string& text, const char* if_empty) {
     std::string code;
     const std::string why = co::check_code(text, &code);
@@ -154,13 +289,15 @@ void join_with(const std::string& text, const char* if_empty) {
         toast("warning", text.empty() ? if_empty : why);
         return;
     }
-    start_coop({"DES_SEAMLESS=join", "DES_SEAMLESS_CODE=" + code});
+    play_sound(kSoundItemChange);
+    open_join_check(code);
 }
 
 void open_join_now() {
     push_document(std::make_unique<Modal>(Modal::Props{
         .title = "Join seamless co-op?",
-        .bodyRml = "Copy your friend's invite code, then paste it or type it. The game starts again in their world.",
+        .bodyRml = "Copy your friend's invite code, then paste it or type it. Once their game answers, yours starts "
+                   "again in their world.",
         .actions = {ModalAction{.label = "Cancel", .onPressed = close_action},
                     ModalAction{.label = "Type code",
                                 .onPressed = [](Modal&) {
@@ -312,12 +449,16 @@ void open_new_code() {
     }));
 }
 
-void leave_now() {
+// Out of co-op: the game starts again on the normal characters.
+void restart_alone() {
     play_sound(kSoundWindowClose);
     restart_with({"DES_SEAMLESS=", "DES_SEAMLESS_CODE=", "DES_SEAMLESS_MODS_OK="});
 }
 
-// A guest's leave: its game goes back to its own world and saves there (des_seamless_game.cpp), then starts again.
+// A guest's leave: its game goes back to its own world where it stands (in a boss fight, to the area's start) and
+// saves there (des_seamless_game.cpp's going_home), then starts again.
+// Leave now doesn't wait for the trip home: the game saves the guest's progress where it stands if it can save there
+// (else at home, at once), and the window starts the game again when that save is written.
 class LeavingWindow final : public Modal {
 public:
     explicit LeavingWindow(Props props) : Modal(std::move(props)) {}
@@ -330,7 +471,7 @@ public:
             // The game side gives up after 2 minutes; this is for a game that never gets to look.
             if (co::left() || now - mStart > std::chrono::seconds(150)) {
                 mDone = true;
-                leave_now();
+                restart_alone();
             }
         }
         Modal::update();
@@ -343,13 +484,23 @@ private:
 
 void open_leaving() {
     co::leave();
+    static bool now_pressed;
+    now_pressed = false;
     push_document(std::make_unique<LeavingWindow>(Modal::Props{
         .title = "Leaving seamless co-op",
-        .bodyRml = "Going back to your own world, then to your normal characters.",
+        .bodyRml = "Going back to your own world where you stand, then to your normal characters.",
         .actions = {ModalAction{.label = "Leave now",
-                                .onPressed = [](Modal&) { leave_now(); }}},
+                                .onPressed =
+                                    [](Modal& m) {
+                                        if (now_pressed) return;
+                                        now_pressed = true;
+                                        play_sound(kSoundItemEnable);
+                                        co::leave_now();
+                                        m.set_body("Saving your game first, then going to your normal characters.");
+                                    },
+                                .isDisabled = [] { return now_pressed; }}},
         // Back or Esc doesn't close it: the leave is under way (the session left), and only this window starts the
-        // game again. Leave now is the way out.
+        // game again, once the game has saved (or the leave gave up).
         .onDismiss = [](Modal&) {},
     }));
 }
@@ -358,14 +509,15 @@ void open_leave() {
     const bool guest = co::status().mode == co::Mode::Join;
     push_document(std::make_unique<Modal>(Modal::Props{
         .title = "Leave seamless co-op?",
-        .bodyRml = guest ? "Your game saves in your own world, then starts again on your normal characters."
+        .bodyRml = guest ? "Your game saves where you stand, in your own world, then starts again on your normal "
+                           "characters."
                          : "The game starts again on your normal characters. Your friends go back to their own "
                            "worlds.",
         .actions = {ModalAction{.label = "Cancel", .onPressed = close_action},
                     ModalAction{.label = "Leave",
                                 .onPressed = [guest](Modal& m) {
                                     if (!guest) {
-                                        leave_now();
+                                        restart_alone();
                                         return;
                                     }
                                     play_sound(kSoundWindowClose);
@@ -387,7 +539,13 @@ std::string body(const co::Status& s) {
         if (s.link == co::Status::Link::Connecting && !s.join.empty())
             return s.join_warn ? "<modal-warning>" + escape(s.join) + "</modal-warning>" : escape(s.join);
         if (s.link == co::Status::Link::Connecting) return "Reaching the host's game...";
-        if (s.link == co::Status::Link::Connected) return "You're connected to the host's game.";
+        if (s.link == co::Status::Link::Connected) {
+            const std::string who = coop_session::window_rml(0);
+            return who.empty() ? "You're connected to the host's game." : who;
+        }
+        if (s.link == co::Status::Link::Fight)
+            return "You're connected to the host's game. The host is in a boss fight, and no one joins during one, as "
+                   "in the original game. You join as soon as it's over.";
         if (s.link == co::Status::Link::Full)
             return "You're connected to the host's game, but it is full: it has all the players the host takes. You "
                    "join as soon as a place frees up.";
@@ -414,6 +572,8 @@ std::string body(const co::Status& s) {
     if (s.show_direct) b += escape(s.router.empty() ? "Asking your router to open the port..." : s.router);
     if (!s.lan_code.empty() && (s.code.empty() || s.lan_code != s.code) && s.show_direct)
         b += "<br/><br/>On your own network: <b>" + escape(s.lan_code) + "</b>" + coop::copy_button("lan");
+    if (const std::string who = coop_session::window_rml(s.max_players); !who.empty())
+        return b + (s.show_direct ? "<br/><br/>" : "") + who;
     b += std::string(s.show_direct ? "<br/><br/>" : "") + "Players: " +
          std::to_string(s.players > 0 ? s.players : 1) + " of " + std::to_string(s.max_players) +
          " (Settings > Network).";
@@ -497,6 +657,9 @@ std::unique_ptr<Modal> make_coop_window() {
         }
         actions.push_back({.label = "Leave co-op", .onPressed = [](Modal&) { open_leave(); }});
     }
+    // Co-op's settings alone, over the window (the Seamless co-op page's Settings, in DeS UI)
+    actions.push_back(
+        {.label = "Settings", .onPressed = [](Modal&) { push_document(menu::screen_alone("Co-op settings")); }});
     return std::make_unique<CoopWindow>(Modal::Props{
         .title = "Seamless co-op",
         .bodyRml = body(s),
@@ -575,6 +738,10 @@ void before_restart(std::function<void(const std::vector<std::string>&)> restart
 
 void open_join() {
     ui::open_join();
+}
+
+void join_code(const std::string& code) {
+    ui::join_with(code, "No code to join with (DES_UI_JOIN_CODE).");
 }
 void copy_code() {
     copy_code_now();

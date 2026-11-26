@@ -1,6 +1,8 @@
 // Written for Demon's Souls. The mods folder as the Mods screens show it (mods_state.hpp).
 #include "mods_state.hpp"
 
+#include "../../des_seamless.h"
+
 #include "input.hpp"
 #include "prompts.hpp"
 #include "report.hpp"
@@ -26,17 +28,32 @@ std::vector<std::string> mods_good_to_know() {
     const prompts::Device device = input::menu_device();
     const std::string buttons = device == prompts::Device::Keyboard
                                     ? "Page Up and Page Down"
-                                    : std::string(prompts::glyph(device, prompts::Key::PrevTab).text) + " and " +
-                                          std::string(prompts::glyph(device, prompts::Key::NextTab).text);
+                                    : std::string(input::menu_glyph(device, prompts::Key::PrevTab).text) + " and " +
+                                          std::string(input::menu_glyph(device, prompts::Key::NextTab).text);
     return {
         "Mods are made by players. Back up your save before you try one.",
         "Mods that only change how the game looks or sounds keep online play. Any other mod keeps you offline while "
-        "it's on.",
+        "it's on. Seamless co-op works with any mod, when everyone in the party has the same ones.",
         "When two mods change the same thing, the one higher in the list wins. To move a mod, use the arrows on its "
         "card, or " + buttons + ".",
         "Mods made for the PS3 game or for RPCS3 work when they replace the game's files. Very large texture mods can "
         "run out of memory, as on a PS3.",
     };
+}
+
+std::string mods_gameplay_line() {
+    return "Changes how the game plays. Online play is off while it's on (seamless co-op still works).";
+}
+
+std::string mods_gameplay_note(bool* offline) {
+    if (!mods::gameplay_in_use()) return {};
+    const bool coop = des::seamless::mode() != des::seamless::Mode::Off;
+    if (offline) *offline = !coop;
+    if (coop)
+        return "Seamless co-op with a mod that changes how the game plays (" + mods::gameplay_names() +
+               "): everyone in the party should have the same mods.";
+    return "Playing offline: a mod that changes how the game plays is on (" + mods::gameplay_names() +
+           "). Seamless co-op still works.";
 }
 
 bool ModsState::fixed() {

@@ -6,6 +6,7 @@
 // uncovering anything and opens the progress screen over the start screen, still covered, so that the start screen
 // comes back, with its state read again, when the progress screen closes.
 #include "setup_screens.hpp"
+#include "path_utf8.hpp"
 
 #include "app.hpp"
 #include "host.hpp"
@@ -35,8 +36,7 @@ namespace ui {
 namespace {
 
 std::string utf8(const std::filesystem::path& p) {
-    const std::u8string s = p.u8string();
-    return std::string(s.begin(), s.end());
+    return path_utf8(p);  // (never throws: path_utf8.hpp)
 }
 
 std::filesystem::path from_utf8(const std::string& s) {
@@ -1122,9 +1122,7 @@ SetupBeforeWindow::SetupBeforeWindow(Props props) : SetupPage("setup-before"), m
     set_heading("Ready to build", "Everything setup needs is here. The build runs on this PC and keeps its processor "
                                   "busy for a while.");
     mRows = append(content(), "setup-body");
-    mActionsRow = footer_row();
-    set_buttons(mActions, mActionsRow,
-                {{"Start building", [this] { start(); }, Look::Primary}, {"Back", [this] { back(); }, Look::Quiet}});
+    mActionsRow = footer_row();  // (its buttons: draw)
     set_hints({{"cross", nullptr, "Select"}, {"circle", nullptr, "Back"}});
     draw();
 }
@@ -1135,6 +1133,7 @@ std::vector<std::vector<Button*>> SetupBeforeWindow::nav_lines() const {
 
 bool SetupBeforeWindow::focus() {
     if (asking()) return SetupPage::focus();
+    if (!mHoldProblem.empty() && !mFolderButton.empty() && mFolderButton[0]->focus()) return true;
     if (!mSpaceButton.empty() && mSpaceButton[0]->focus()) return true;
     if (!mActions.empty() && mActions[0]->focus()) return true;
     return SetupPage::focus();
@@ -1150,8 +1149,15 @@ void SetupBeforeWindow::tick() {
 
 // The rows: the game, the build folder (with Change), the free space there (with Check again when it is short), this
 // PC's time, and the power. Start building stays open with too little space: the need is an estimate, and the engine
-// stops on a full disk itself.
+// stops on a full disk itself. It waits for another folder when the folder's drive cannot hold the build: its first
+// step would fail for certain (issue #673).
 void SetupBeforeWindow::draw() {
+    if (mHeldAsked.empty() || !setup::same_folder(mHeldAsked, setup::data_dir())) {
+        mHeldAsked = setup::data_dir();
+        mHoldProblem = setup::cannot_hold_programs(mHeldAsked);
+        if (!mHoldProblem.empty())
+            std::fprintf(stderr, "[setup] build folder %s: %s\n", utf8(mHeldAsked).c_str(), mHoldProblem.c_str());
+    }
     const setup::Space space = setup::data_space();
     const setup::Estimate time = setup::setup_time();
     const setup::Power power = setup::power();
@@ -1186,8 +1192,13 @@ void SetupBeforeWindow::draw() {
         found(box, "setup-warn", "On battery", "Plug it in first: setup keeps this PC busy for a long time.");
     else if (power.battery)
         found(box, "setup-info", "On a laptop", "Keep it plugged in: the build is heavy work.");
-    if (!mFolderProblem.empty()) callout(mRows, "err", mFolderProblem, "");
+    if (const std::string& problem = !mFolderProblem.empty() ? mFolderProblem : mHoldProblem; !problem.empty())
+        callout(mRows, "err", problem, "");
     text(mRows, "setup-note", "You can stop setup and carry on later.")->SetClass("after", true);
+    std::function<void()> go;  // (none: shown, but it cannot be pressed)
+    if (mHoldProblem.empty()) go = [this] { start(); };
+    set_buttons(mActions, mActionsRow,
+                {{"Start building", std::move(go), Look::Primary}, {"Back", [this] { back(); }, Look::Quiet}});
     if (hadFocus && !button_focused() && visible()) focus();
     std::fprintf(stderr, "[setup] ready to build: %s free on %s, %u jobs, about %d to %d minutes, %s, in %s\n",
                  space.known ? gigabytes(space.free).c_str() : "unknown", where.c_str(), time.jobs, time.lowMinutes,
@@ -1216,6 +1227,7 @@ void SetupBeforeWindow::back() {
 }
 
 void SetupBeforeWindow::start() {
+    if (!mHoldProblem.empty()) return;  // (its button cannot be pressed then)
     mFolderPick.forget();  // (the folder stays as it is shown: a dialog still open is not waited for)
     if (!mProps.onStart) {
         pop();

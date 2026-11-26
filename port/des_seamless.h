@@ -31,8 +31,12 @@
 // (savedata-coop beside the normal one), so a co-op session never writes the normal characters.
 #pragma once
 
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
+
+struct psnr_join_check;   // (ps3recomp's ps3emu/psnr_host.h)
 
 namespace des::seamless {
 
@@ -46,7 +50,7 @@ Mode mode();
 // offline). name: the player's online name, already checked.
 bool start(const std::string& name, std::string* why);
 
-// In place of start when co-op is asked for (mode()) but held off before it (gameplay mods on, no online name): the
+// In place of start when co-op is asked for (mode()) but held off before it (no online name, or not a valid one): the
 // status says so (mode, not started, why), so the Co-op window shows why and offers Leave, not Host and Join.
 void held(const std::string& why);
 
@@ -65,9 +69,10 @@ struct Status {
     int waiting = 0;         // host: other games connected to it but not in the session (full, or between sessions)
     int max_players = 4;     // host: the most it takes (DES_SEAMLESS_PLAYERS)
     bool code_spent = false; // host: too many wrong codes came, so the code lets no one else in (new_code())
-    enum class Link { Connecting, Connected, Lost, Full };
+    enum class Link { Connecting, Connected, Lost, Full, Fight };
     Link link = Link::Connecting;  // join: the connection to the host's game (Lost: it was there, and is gone; Full:
-                                   // the host has all the players it takes, and this one waits for a place)
+                                   // the host has all the players it takes, and this one waits for a place;
+                                   // Fight: the host is in a boss fight, and this one joins once it's over)
     // Host, with the endpoint on (DES_SEAMLESS_INTRO): the room code, once the endpoint has the room ("" before, and
     // with it off), and the endpoint's answer in plain words ("" with it off).
     std::string room_code;
@@ -107,12 +112,49 @@ std::string new_code();
 // XXXXX-XXXXX-XXXXX or XXXX-XXXX-XXXX-XXXX), else why not, in plain words.
 std::string check_code(const std::string& text, std::string* clean);
 
+// The Join window's check (coop_window.cpp): the code is tried once before the restart into co-op, the way the join
+// will try it (ps3recomp's psnr_join_check, on a socket of its own, so this game's own network stays as it is). A room
+// code: the server that introduces players finds the host's game, and the two games get through to each other; a
+// direct code: the host's address. Then the host's game gets the key and is asked about its session, as a joining
+// game asks (ROM?): it answers with its room (Ok), that it is full (Full), or first that it is in a boss fight (Fight).
+// With no answer within a few seconds (the host's game in a load), the check counts as Ok. Ended when destroyed.
+class JoinCheck {
+public:
+    enum class Is { Running, Ok, Full, Fight, Failed };
+    struct Result {
+        Is is = Is::Running;
+        std::string text;   // what it does now, while it runs; why not, in plain words, when Failed
+        bool again = true;  // Failed: trying again may help (not with another version, or a key the host refused)
+    };
+    // port: the host's room server port the texts name (a direct code's own, else the default)
+    JoinCheck(psnr_join_check* jc, std::string name, uint16_t port)
+        : mCheck(jc), mName(std::move(name)), mPort(port) {}
+    ~JoinCheck();
+    JoinCheck(const JoinCheck&) = delete;
+    JoinCheck& operator=(const JoinCheck&) = delete;
+    Result result() const;
+
+private:
+    psnr_join_check* mCheck;
+    std::string mName;
+    uint16_t mPort;
+};
+
+// A check of a code check_code took (its clean form), with the online name and the endpoint (DES_SEAMLESS_INTRO's
+// value, "0" for none) a start into co-op will use. None, with why in plain words, when the join couldn't work at all:
+// no online name, a room code with no server to introduce the games.
+std::unique_ptr<JoinCheck> check_join(const std::string& code, const std::string& name, const std::string& endpoint,
+                                      std::string* why);
+
 // Cheap, for the game side (des_seamless_game.cpp, every frame): co-op started, as the host or as a guest.
 Mode active();
 
 // A guest's leave (des_seamless_game.cpp): leave() asks its game to go back to its own world first, where the game
 // saves what the group did; left() is true once that is done (or after 2 minutes), and always when not a guest.
+// leave_now() (the leaving window's Leave now) ends it as soon as a save holds the guest's progress: where it stands,
+// with its own world, when it can save there, else at home as a leave does, with no wait for the game's own save.
 void leave();
+void leave_now();
 bool left();
 
 // ---- co-op's own save (des_seamless_save.cpp) ----
