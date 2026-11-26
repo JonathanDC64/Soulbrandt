@@ -4,6 +4,7 @@
 #include "path_utf8.hpp"
 
 #include "report.hpp"
+#include "settings.hpp"  // (harness_run: a test run's saves stay beside the program)
 #include "setup_folder.hpp"
 #include "version.hpp"
 
@@ -42,15 +43,6 @@ std::string env(const char* name) {
 
 #ifdef _WIN32
 
-// %LOCALAPPDATA%: not the roaming folder, since the build is large and belongs to this PC.
-std::filesystem::path local_data_base() {
-    PWSTR local = nullptr;
-    std::filesystem::path out;
-    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &local)) && local) out = local;
-    CoTaskMemFree(local);
-    return out;
-}
-
 // Whether the runtime's narrow file calls (the C library's, and Windows' "A" calls) can name `p`: always when the
 // process's code page is UTF-8 (des_utf8.manifest, Windows 10 1903 and later), else only when the system's code page
 // has every letter of it.
@@ -74,12 +66,6 @@ constexpr const char* kFromArchive =
     "All, then start the game from the new folder.";
 
 #else
-
-std::filesystem::path local_data_base() {
-    if (const std::string xdg = env("XDG_DATA_HOME"); !xdg.empty()) return xdg;
-    const std::string home = env("HOME");
-    return home.empty() ? std::filesystem::path{} : std::filesystem::path(home) / ".local" / "share";
-}
 
 bool narrow_can_name(const std::filesystem::path&) { return true; }  // (names are UTF-8 bytes)
 void tell(const std::string&, const std::string&) {}                // (standard error has it)
@@ -127,8 +113,10 @@ std::vector<std::filesystem::path> split_paths(const std::string& s) {
 // later, on the UI's thread, between runs.
 Folders& folders() {
     static Folders f = [] {
-        const auto base = local_data_base();
-        const auto shared = base.empty() ? base : base / kFolderName;
+        // The usual folder: the earlier versions' shared one when it holds a build or a choice, else the one data
+        // folder's setup-data (setup_folder.hpp, docs/164). In %LOCALAPPDATA%, not the roaming folder, since the build
+        // is large and belongs to this PC.
+        const auto shared = setup_shared_folder(report::user_folders());
         // A portable install (issue #364, docs/45 section 4.4): beside the player's data, in data\ beside the program.
         const auto program = report::portable() ? report::program_dir() : std::filesystem::path{};
         // DES_SETUP_DATA as an absolute path, against the folder the program started in (issue #667: a relative one
@@ -226,7 +214,9 @@ Request request_from_env() {
 }
 
 std::filesystem::path gamedata_dir() {
-    const auto dir = report::program_dir();
+    // (as the launch hook's work_in_saves_folder: a test run, or one with a save root of its own, the program's folder)
+    const bool test = settings::harness_run() || std::getenv("PS3_SAVEDATA_ROOT") || std::getenv("PS3_HDD0_ROOT");
+    const auto dir = test ? report::program_dir() : report::saves_pick().dir;
     return dir.empty() ? dir : dir / "gamedata";
 }
 
@@ -245,6 +235,31 @@ bool folders_usable(const std::vector<std::filesystem::path>& folders, bool quie
         return false;
     }
     return true;
+}
+
+bool portable_writable(bool quiet) {
+    if (!report::portable()) return true;
+    const auto dir = report::program_dir();
+    if (dir.empty()) return true;
+    // A file made and removed beside the program, as the settings, the build and the saves will be.
+    const auto probe = dir / ".write-check";
+    bool ok = false;
+    {
+        std::ofstream f(probe, std::ios::binary);
+        ok = f && (f << "check\n") && f.flush();
+    }
+    std::error_code ec;
+    std::filesystem::remove(probe, ec);
+    if (ok) return true;
+    std::fprintf(stderr, "[setup] launch: a portable install, but %s cannot be written: the game stops (docs/164)\n",
+                 utf8(dir).c_str());
+    if (!quiet)
+        tell(std::string(kProductName) + " cannot start",
+             "This is a portable install (portable.txt is in its folder), so it keeps its settings, its build and "
+             "your saves in that folder. But it cannot write there:\n\n" +
+                 utf8(dir) +
+                 "\n\nMove the whole folder to one you own, such as one in your user folder, and start it from there.");
+    return false;
 }
 
 std::filesystem::path disc_record() {

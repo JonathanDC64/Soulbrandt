@@ -214,7 +214,7 @@ int main() {
     });
     run("pick_a_folder_with_things_in_it", [](const fs::path& t) {
         write(t / "Games" / "notes.txt", "mine\n");
-        return same("folder", folder_for_pick(t / "Games"), t / "Games" / kFolderName);
+        return same("folder", folder_for_pick(t / "Games"), t / "Games" / kOneFolderName);
     });
     run("pick_a_folder_moved_by_hand", [](const fs::path& t) {
         write(t / "moved" / "setup" / "ready.txt", "format=1\n");
@@ -228,12 +228,114 @@ int main() {
         return same("folder", folder_for_pick(t / "shared"), t / "shared");
     });
     run("pick_a_folder_named_for_setup", [](const fs::path& t) {
-        write(t / "Games" / kFolderName / "tools" / "x", "\n");  // (a first check's Python, say)
-        return same("folder", folder_for_pick(t / "Games" / kFolderName), t / "Games" / kFolderName);
+        write(t / "Games" / kOneFolderName / "tools" / "x", "\n");  // (a first check's Python, say)
+        write(t / "Games" / kFolderName / "tools" / "x", "\n");     // (an earlier version's)
+        return all({same("folder", folder_for_pick(t / "Games" / kOneFolderName), t / "Games" / kOneFolderName),
+                    same("old", folder_for_pick(t / "Games" / kFolderName), t / "Games" / kFolderName)});
     });
     run("pick_a_drive", [](const fs::path& t) {
         const auto root = t.root_path();
-        return same("folder", folder_for_pick(root), root / kFolderName);
+        return same("folder", folder_for_pick(root), root / kOneFolderName);
+    });
+
+    // ---- The one data folder (docs/164): which place each part uses ----
+    // (UserFolders as Windows has them; on Linux both are the same folder, as in old_folders_on_linux)
+    const auto user = [](const fs::path& t) { return UserFolders{t / "Roaming", t / "Local"}; };
+    const auto source = [](const char* what, FolderSource got, FolderSource want) {
+        if (got == want) return std::string();
+        return std::string(what) + " is " + source_words(got) + ", not " + source_words(want);
+    };
+    run("one_folder_and_the_old_ones", [&](const fs::path& t) {
+        return all({same("one", one_folder(user(t)), t / "Local" / kOneFolderName),
+                    same("old settings", old_settings_folder(user(t)), t / "Roaming" / kFolderName / "DemonsSouls"),
+                    same("old shared", old_shared_folder(user(t)), t / "Local" / kFolderName),
+                    one_folder({}).empty() ? "" : "a folder without the system's folders"});
+    });
+    run("settings_new_install", [&](const fs::path& t) {
+        const Pick p = settings_folder(user(t), {});
+        return all({same("settings", p.dir, t / "Local" / kOneFolderName),
+                    source("place", p.source, FolderSource::One)});
+    });
+    run("settings_an_earlier_versions", [&](const fs::path& t) {
+        fs::create_directories(old_settings_folder(user(t)));  // (empty: as if nothing had been kept there)
+        const Pick empty = settings_folder(user(t), {});
+        write(old_settings_folder(user(t)) / "settings.ini", "DES_FPS=60\n");
+        const Pick p = settings_folder(user(t), {});
+        return all({source("empty old folder", empty.source, FolderSource::One),
+                    same("settings", p.dir, old_settings_folder(user(t))),
+                    source("place", p.source, FolderSource::Old)});
+    });
+    run("settings_portable", [&](const fs::path& t) {
+        write(old_settings_folder(user(t)) / "settings.ini", "DES_FPS=60\n");
+        const Pick p = settings_folder(user(t), t / "prog");
+        return all({same("settings", p.dir, t / "prog" / "data"), source("place", p.source, FolderSource::Portable)});
+    });
+    run("setup_shared_new_install", [&](const fs::path& t) {
+        write(old_shared_folder(user(t)) / "tools" / "python" / "x", "\n");  // (a first check's Python only)
+        write(old_shared_folder(user(t)) / "DemonsSouls" / "settings.ini", "\n");  // (Linux's old settings live here)
+        return same("shared", setup_shared_folder(user(t)), t / "Local" / kOneFolderName / "setup-data");
+    });
+    run("setup_shared_an_earlier_versions", [&](const fs::path& t) {
+        const auto old = old_shared_folder(user(t));
+        std::string out;
+        for (const char* f : {"setup/ready.txt", "setup/journal.json", kChoiceFile}) {
+            std::error_code ec;
+            fs::remove_all(old, ec);
+            write(old / from_utf8(f), "\n");
+            if (out.empty()) out = same(f, setup_shared_folder(user(t)), old);
+        }
+        return out;
+    });
+    run("setup_a_choice_kept_by_an_earlier_version", [&](const fs::path& t) {
+        write(old_shared_folder(user(t)) / kChoiceFile, utf8(t / "D" / "build") + "\n");
+        const Folders f = find_folders({}, setup_shared_folder(user(t)), {});
+        return all({same("dir", f.dir, t / "D" / "build"), same("usual", f.usual, old_shared_folder(user(t))),
+                    f.chosen ? "" : "not chosen"});
+    });
+    run("saves_new_install", [&](const fs::path& t) {
+        fs::create_directories(t / "prog" / "gamedata" / "dev_hdd0" / "home" / "00000001" / "savedata");  // (empty)
+        const Pick p = saves_folder(user(t), t / "prog", false);
+        return all({same("saves", p.dir, t / "Local" / kOneFolderName),
+                    source("place", p.source, FolderSource::One)});
+    });
+    run("saves_an_earlier_versions", [&](const fs::path& t) {
+        const fs::path home = t / "prog" / "gamedata" / "dev_hdd0" / "home" / "00000001";
+        std::string out;
+        for (const fs::path& f : {home / "savedata" / "BLUS30443DEMONSS005" / "USER.DAT",
+                                  home / "savedata-coop" / "BLUS30443DEMONSS005" / "USER.DAT",
+                                  t / "prog" / "gamedata" / "trophies" / "BLUS30443.dat"}) {
+            std::error_code ec;
+            fs::remove_all(t / "prog", ec);
+            write(f, "save\n");
+            const Pick p = saves_folder(user(t), t / "prog", false);
+            if (out.empty())
+                out = all({same(utf8(f).c_str(), p.dir, t / "prog"), source("place", p.source, FolderSource::Old)});
+        }
+        return out;
+    });
+    run("saves_portable", [&](const fs::path& t) {
+        const Pick p = saves_folder(user(t), t / "prog", true);
+        return all({same("saves", p.dir, t / "prog"), source("place", p.source, FolderSource::Portable)});
+    });
+    run("shader_cache_new_old_portable", [&](const fs::path& t) {
+        const Pick fresh = shader_cache_folder(user(t), t / "prog", false);
+        fs::create_directories(t / "prog" / "shader_cache");
+        const Pick old = shader_cache_folder(user(t), t / "prog", false);
+        const Pick portable = shader_cache_folder(user(t), t / "other", true);
+        return all({same("new", fresh.dir, t / "Local" / kOneFolderName / "shader_cache"),
+                    source("new place", fresh.source, FolderSource::One),
+                    same("old", old.dir, t / "prog" / "shader_cache"),
+                    source("old place", old.source, FolderSource::Old),
+                    same("portable", portable.dir, t / "other" / "shader_cache"),
+                    source("portable place", portable.source, FolderSource::Portable)});
+    });
+    run("old_folders_on_linux", [&](const fs::path& t) {
+        // One base for both (XDG_DATA_HOME): the old settings are inside the old shared folder, which stays unused for
+        // the build until it holds one.
+        const UserFolders u{t / "share", t / "share"};
+        write(old_settings_folder(u) / "settings.ini", "\n");
+        return all({same("settings", settings_folder(u, {}).dir, t / "share" / kFolderName / "DemonsSouls"),
+                    same("shared", setup_shared_folder(u), t / "share" / kOneFolderName / "setup-data")});
     });
 
     // ---- Folders setup refuses ----

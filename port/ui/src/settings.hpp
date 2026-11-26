@@ -32,8 +32,8 @@ struct Def {
 };
 
 // The file's location (UTF-8): DES_SETTINGS, else settings.ini in the data folder (report::data_dir(): DES_DATA_DIR,
-// <exe dir>\data when portable.txt is there, else %APPDATA%\DemonsSoulsRecomp\DemonsSouls). Empty when the settings
-// are not kept (a test harness run).
+// <exe dir>\data when portable.txt is there, else an earlier version's folder that holds anything or the one data
+// folder, docs/164). Empty when the settings are not kept (a test harness run).
 const std::string& path();
 
 // The settings in use, as settings.ini lines, with the values the environment set noted (for an issue report).

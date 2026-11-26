@@ -132,15 +132,93 @@ std::filesystem::path folder_for_pick(const std::filesystem::path& picked) {
     const auto p = tidy(picked);
     if (p.empty()) return p;
     std::error_code ec;
-    // Setup's already: its work in it, the usual folder (the choice's file in it), or one with setup's own name.
+    // Setup's already: its work in it, the usual folder (the choice's file in it), or one with setup's own name
+    // (today's or the earlier versions').
     if (holds_setup(p) || std::filesystem::exists(p / kChoiceFile, ec) ||
+        same_name(p.filename().native(), std::filesystem::path(kOneFolderName).native()) ||
         same_name(p.filename().native(), std::filesystem::path(kFolderName).native()))
         return p;
     // A drive's root is never a folder of setup's own, empty or not.
     const bool root = p == p.root_path();
     if (!root && !std::filesystem::exists(p, ec)) return p;
     if (!root && std::filesystem::is_directory(p, ec) && std::filesystem::is_empty(p, ec) && !ec) return p;
-    return p / kFolderName;
+    return p / kOneFolderName;
+}
+
+// ---- The one data folder ----
+
+std::filesystem::path one_folder(const UserFolders& u) {
+    return u.local.empty() ? u.local : tidy(u.local / kOneFolderName);
+}
+
+std::filesystem::path old_settings_folder(const UserFolders& u) {
+    return u.roaming.empty() ? u.roaming : tidy(u.roaming / kFolderName / "DemonsSouls");
+}
+
+std::filesystem::path old_shared_folder(const UserFolders& u) {
+    return u.local.empty() ? u.local : tidy(u.local / kFolderName);
+}
+
+const char* source_words(FolderSource p) {
+    switch (p) {
+    case FolderSource::Portable: return "portable install";
+    case FolderSource::Old: return "an earlier version's, which holds files";
+    case FolderSource::One: return "the one data folder";
+    }
+    return "";
+}
+
+bool holds_anything(const std::filesystem::path& folder) {
+    std::error_code ec;
+    std::filesystem::directory_iterator it(folder, ec);
+    return !ec && it != std::filesystem::directory_iterator();
+}
+
+bool holds_saves(const std::filesystem::path& folder) {
+    if (folder.empty()) return false;
+    const auto gamedata = folder / "gamedata";
+    if (holds_anything(gamedata / "trophies")) return true;
+    std::error_code ec;
+    std::filesystem::directory_iterator user(gamedata / "dev_hdd0" / "home", ec), end;
+    for (; !ec && user != end; user.increment(ec)) {  // (the forms that throw would end the start)
+        std::error_code ec2;
+        std::filesystem::directory_iterator part(user->path(), ec2);
+        for (; !ec2 && part != end; part.increment(ec2)) {
+            const std::string name = utf8(part->path().filename());
+            if (name.rfind("savedata", 0) == 0 && holds_anything(part->path())) return true;
+        }
+    }
+    return false;
+}
+
+Pick settings_folder(const UserFolders& u, const std::filesystem::path& portableProgram) {
+    if (!portableProgram.empty()) return {tidy(portableProgram / "data"), FolderSource::Portable};
+    if (const auto old = old_settings_folder(u); !old.empty() && holds_anything(old)) return {old, FolderSource::Old};
+    return {one_folder(u), FolderSource::One};
+}
+
+std::filesystem::path setup_shared_folder(const UserFolders& u) {
+    std::error_code ec;
+    if (const auto old = old_shared_folder(u);
+        !old.empty() && (holds_setup(old) || std::filesystem::exists(old / kChoiceFile, ec)))
+        return old;
+    const auto one = one_folder(u);
+    return one.empty() ? one : one / "setup-data";
+}
+
+Pick saves_folder(const UserFolders& u, const std::filesystem::path& program, bool portable) {
+    if (portable && !program.empty()) return {tidy(program), FolderSource::Portable};
+    if (holds_saves(program)) return {tidy(program), FolderSource::Old};
+    return {one_folder(u), FolderSource::One};
+}
+
+Pick shader_cache_folder(const UserFolders& u, const std::filesystem::path& program, bool portable) {
+    if (portable && !program.empty()) return {tidy(program / "shader_cache"), FolderSource::Portable};
+    std::error_code ec;
+    if (!program.empty() && std::filesystem::is_directory(program / "shader_cache", ec))
+        return {tidy(program / "shader_cache"), FolderSource::Old};
+    const auto one = one_folder(u);
+    return {one.empty() ? one : one / "shader_cache", FolderSource::One};
 }
 
 std::string cannot_use(const std::filesystem::path& folder, const std::filesystem::path& program) {
