@@ -1725,6 +1725,15 @@ const char* renderer_name(const char** why) {
 #endif
 }
 
+bool renderer_crash_note(char* line, size_t cap) {
+    if (line && cap) *line = 0;
+#if defined(PS3RECOMP_RSX_HAL)
+    return rsx_out_crash_note(line, cap) != 0;
+#else
+    return false;
+#endif
+}
+
 std::string system_info() {
     std::ostringstream o;
     // The game's own process (it has shown a frame of its own), not the crash dialog's or setup's: only then are this

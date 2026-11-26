@@ -50,6 +50,11 @@ std::string system_info();
 // nullptr); nullptr where none started (a second process such as the crash dialog, whose own route would be the
 // default, not the game's) or in a build without the route switch. Allocates nothing: the crash handler calls it.
 const char* renderer_name(const char** why);
+// For the crash handler, on the crashing thread: when the game crashed inside the renderer's pipeline library (the
+// driver's compiled shaders on disk, which D3D12 throws at when one is damaged), the renderer leaves a note so the next
+// start makes a new library instead of crashing the same way, and `line` gets a sentence for the report. False, with
+// `line` empty, for any other crash, and in a build without the route switch. Allocates nothing.
+bool renderer_crash_note(char* line, size_t cap);
 // The environment variables of the port's and the runtime's own options (DES_, PS3_, RSX_, SPU_ and the like) that
 // are set, and the command line (this process's, or `command_line`): what a run was started with, beyond settings.ini.
 // The online name and password show only as set.
