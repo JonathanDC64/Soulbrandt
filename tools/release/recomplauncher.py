@@ -17,7 +17,10 @@ program does not do:
 - the file has a field this script does not check (KNOWN): a new field gets its checks here first;
 - the start has arguments or environment variables. The program takes any argument as the game's file to run, and a
   variable set in the environment wins over settings.ini and locks its row in the menu;
-- the name or the program is not PRODUCT_NAME's (the program's file name: package.py's program_name).
+- the name or the program is not PRODUCT_NAME's (the program's file name: package.py's program_name);
+- a place in {config} or {local} (config.file's, saves') is in neither of setup_folder.hpp's folders (kFolderName:
+  the earlier versions', kOneFolderName: the one data folder, docs/164), the last settings.ini is not the one data
+  folder's, or no save folder is in it.
 
 It reads the C++ sources as text. A change to how kDefs or a catalog row is written can make it miss a key; it then
 says that it cannot find the key, rather than pass. Standard library only.
@@ -33,6 +36,7 @@ FILE = "recomplauncher.json"
 SETTINGS = "port/ui/src/settings.cpp"
 CATALOG = "port/ui/src/settings_catalog.cpp"
 VALUES = "port/ui/src/settings_values.hpp"
+FOLDERS = "port/ui/src/setup_folder.hpp"
 SCHEMA = "https://recomplauncher.com/schema/recomplauncher.json"
 
 # The fields this script checks, at the top and in each part. Anything else fails until it has its checks here.
@@ -230,9 +234,43 @@ def parse_rows(catalog, tables):
     return rows
 
 
-def check(doc, defs, rows, product):
+def parse_folder_names(text):
+    """setup_folder.hpp's folder names: (kFolderName, kOneFolderName), the earlier versions' and the one data
+    folder's."""
+    names = []
+    for name in ("kFolderName", "kOneFolderName"):
+        m = re.search(r'inline constexpr const char\*\s*' + name + r'\s*=\s*(' + STRING + r')\s*;', text)
+        if not m:
+            raise ValueError(f"{FOLDERS}: cannot find {name}")
+        names.append(unquote(m.group(1)))
+    return tuple(names)
+
+
+def check_places(doc, old, one):
+    """The places' problems: each {config} or {local} place is in `old` (the earlier versions' folder) or `one` (the
+    one data folder), the last settings.ini is the one folder's, and a save folder is in it."""
+    configs = doc.get("config")
+    files = configs[0].get("file") if isinstance(configs, list) and configs and isinstance(configs[0], dict) else None
+    files = [f for f in files if isinstance(f, dict)] if isinstance(files, list) else []
+    saves = [s for s in doc.get("saves", []) if isinstance(s, str)] if isinstance(doc.get("saves"), list) else []
+    problems = []
+    for where, place in ([("config.file", f.get(k)) for f in files for k in ("path", "if") if k in f] +
+                         [("saves", s) for s in saves]):
+        parts = str(place).split("/")
+        if parts[0] in ("{config}", "{local}") and (len(parts) < 2 or parts[1] not in (old, one)):
+            problems.append(f"{where}: {place!r} is in neither {old!r} (the earlier versions' folder) nor {one!r} "
+                            f"(the one data folder), {FOLDERS}'s names")
+    last = f"{{local}}/{one}/settings.ini"
+    if files and files[-1].get("path") != last:
+        problems.append(f"config.file: the last place is not {last}, the one data folder's (docs/164)")
+    if not any(s.startswith(f"{{local}}/{one}/gamedata/") for s in saves):
+        problems.append(f"saves: none in the one data folder ({{local}}/{one}/gamedata/...)")
+    return problems
+
+
+def check(doc, defs, rows, product, folders=None):
     """The problems of `doc` (recomplauncher.json, parsed), as sentences; none when it says only what the program
-    does."""
+    does. folders: parse_folder_names' pair, to check the places too."""
     problems = []
     if not isinstance(doc, dict):
         return ["it is not a JSON object"]
@@ -277,6 +315,8 @@ def check(doc, defs, rows, product):
     saves = doc.get("saves", [])
     if not isinstance(saves, list) or not all(isinstance(s, str) and s for s in saves):
         problems.append("saves: not a list of places")
+    if folders:
+        problems += check_places(doc, *folders)
     looks = doc.get("looks", {})
     if not isinstance(looks, dict) or set(looks) - LOOKS_KNOWN:
         problems.append(f"looks: only {sorted(LOOKS_KNOWN)} are checked here")
@@ -393,7 +433,8 @@ def cmd_check(args):
         try:
             defs = parse_defs(read(SETTINGS))
             rows = parse_rows(read(CATALOG), parse_value_tables(read(VALUES)))
-            problems = check(doc, defs, rows, read("PRODUCT_NAME").splitlines()[0].strip())
+            problems = check(doc, defs, rows, read("PRODUCT_NAME").splitlines()[0].strip(),
+                             parse_folder_names(read(FOLDERS)))
         except (OSError, ValueError) as e:
             problems = [str(e)]
     name = os.path.relpath(path, ROOT).replace(os.sep, "/")

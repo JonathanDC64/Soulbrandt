@@ -136,10 +136,11 @@ settings.cpp's `kDefs` and settings_catalog.cpp's rows as text and fails when:
 - two rows change one key, or one row's choices set different keys;
 - the file has a field the check does not know. Adding `game`, `prepare`, `inputs`, `mods` or the like means adding
   its checks first, so nothing that handles game files or downloads comes in unnoticed;
-- `start` has arguments or variables, or the name and program are not PRODUCT_NAME's.
+- `start` has arguments or variables, or the name and program are not PRODUCT_NAME's;
+- a place in `{config}` or `{local}` is in neither of setup_folder.hpp's folders (`kFolderName`, `kOneFolderName`),
+  the last `settings.ini` is not the one data folder's, or no save folder is in it.
 
-It does not check the places (settings.ini, the saves) or the help texts. `check_product_name.py` leaves the file to
-it.
+It does not check which earlier places are listed, or the help texts. `check_product_name.py` leaves the file to it.
 
 The release dry run checks that the file is at the top of both downloads. It is in `release-files.txt` too, so our
 own update replaces it with the program.
@@ -149,7 +150,7 @@ own update replaces it with the program.
 - A new setting in the menu needs nothing here. A change to a listed row's values or default fails the check until
   the file follows.
 - **The places** are setup_folder.cpp's (docs/164). A change to where settings or saves go needs section 2.1 and the
-  file changed with it.
+  file changed with it. The check fails when a folder's name changes, not when a rule does.
 - **The download's new name** for 0.2.1 (`Soulbrandt-X.Y.Z-windows.zip`, with the old name kept beside it) puts two
   Windows zips in one release (question 7.2).
 
@@ -226,8 +227,10 @@ All settled on 2026-11-20.
 
 ## 9. Tests
 
-- **Measured:** the check passes on the file; its 23 unit tests pass (made-up sources: a value missing, a value too
-  many, a wrong default, developer and per-session keys, a default per system, start arguments, unknown fields). A
+- **Measured:** the check passes on the file; its 25 unit tests pass (made-up sources: a value missing, a value too
+  many, a wrong default, developer and per-session keys, a default per system, start arguments, unknown fields, the
+  folder names, places outside them). Copies of the file with a place in another folder, no last place in the one
+  data folder, or no save folder there each fail the check. A
   package dry run with stand-in programs put `recomplauncher.json` at the top of the Windows zip and the Linux
   tarball and in `release-files.txt`, the same bytes as committed.
 - **Not tested:** the launcher itself. It is not installed here, and installing it needs asking.

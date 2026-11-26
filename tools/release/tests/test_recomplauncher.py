@@ -126,6 +126,13 @@ class SourcesTest(unittest.TestCase):
         self.assertEqual(rows["DES_GOD"], [("toggle", ["1", "0"], None, True)])
         self.assertEqual(rows["DES_NET_SERVER"], [("made", [], None, False)])
 
+    def test_folder_names(self):
+        text = ('inline constexpr const char* kFolderName = "OldName";\n'
+                'inline constexpr const char* kOneFolderName = "OneName";  // (the fixed folder name)\n')
+        self.assertEqual(r.parse_folder_names(text), ("OldName", "OneName"))
+        with self.assertRaises(ValueError):
+            r.parse_folder_names(text.splitlines()[0])
+
     def test_values_from_an_unknown_table(self):
         with self.assertRaises(ValueError):
             r.parse_rows(CATALOG, {})
@@ -250,6 +257,31 @@ class CheckTest(unittest.TestCase):
         found = self.problems(doc)
         self.assertTrue(any(p.startswith("config.always:") for p in found), found)
         self.assertTrue(any("the last place has an if" in p for p in found), found)
+
+    def places(self):
+        doc = manifest()
+        doc["config"][0]["file"] = [
+            {"path": "{install}/data/settings.ini", "if": "{install}/portable.txt"},
+            {"path": "{config}/Old/Game/settings.ini", "if": "{config}/Old/Game"},
+            {"path": "{local}/One/settings.ini"}]
+        doc["saves"] = ["{install}/gamedata/savedata", "{local}/One/gamedata/savedata"]
+        return doc
+
+    def test_the_places(self):
+        def found(doc):
+            return r.check(doc, self.defs, self.rows, "Game", ("Old", "One"))
+        self.assertEqual(found(self.places()), [])
+        doc = self.places()
+        doc["config"][0]["file"][1]["if"] = "{config}/Other/Game"
+        self.assertTrue(any("'{config}/Other/Game' is in neither" in p for p in found(doc)), found(doc))
+        doc = self.places()
+        doc["config"][0]["file"].append({"path": "{config}/Old/Game/settings.ini"})
+        self.assertTrue(any("the last place is not {local}/One/settings.ini" in p for p in found(doc)), found(doc))
+        doc = self.places()
+        doc["saves"] = ["{install}/gamedata/savedata"]
+        self.assertTrue(any(p.startswith("saves: none in the one data folder") for p in found(doc)), found(doc))
+        # Without the folders (the file's other tests), the places are not checked.
+        self.assertEqual(self.problems(manifest()), [])
 
     def test_looks_off_says_why(self):
         doc = manifest()
