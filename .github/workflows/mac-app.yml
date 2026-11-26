@@ -1,0 +1,158 @@
+# The Mac app (docs/178 section 1): the Windows program in a macOS app that carries Wine, made on a Mac runner.
+# A tester build, not part of a release yet. It keeps the zip as this run's artifact, and wraps one of:
+#   - a released Windows download (the latest, or the release asked for), checked against that release's SHA256SUMS;
+#   - "master": master's newest des_host.exe (host.yml's artifact, from its last good run on master), packaged here as
+#     the release does it (tools/release/package.py build).
+# tools/release/macos_app.py makes the app; tools/release/macos/launcher.c is its program; macos_app.json pins Wine.
+# No Apple account: the app is signed ad hoc, and macOS asks the player to allow it once (docs/178 decision 2).
+name: Mac app
+
+on:
+  pull_request:
+    paths:
+      - 'tools/release/macos/**'
+      - 'tools/release/macos_app.py'
+      - 'tools/release/macos_app.json'
+      - 'tools/release/tests/test_macos_app.py'
+      - '.github/workflows/mac-app.yml'
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "What goes in the app: a release tag, master (its newest Windows build), or empty (the latest release)"
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  actions: read   # master's des_host.exe: host.yml's artifact
+
+concurrency:
+  group: mac-app-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    name: The Mac app (Wine and the Windows program)
+    runs-on: macos-15
+    timeout-minutes: 40
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0   # "master": package.py packages a commit of the history
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
+
+      - name: The pins and the tests
+        run: |
+          python tools/release/macos_app.py check
+          python -m unittest discover -s tools/release/tests -p 'test_macos_app.py'
+
+      - name: The Windows download (a release's, checked against its SHA256SUMS, or master's newest build, packaged)
+        env:
+          WANT: ${{ inputs.release }}
+        run: |
+          mkdir -p in
+          if [ "$WANT" = master ]; then
+            run=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow host.yml --branch master --event push \
+              --status success --limit 1 --json databaseId -q '.[0].databaseId')
+            [ -n "$run" ] || { echo "::error::no good host.yml run on master"; exit 1; }
+            sha=$(gh run view "$run" --repo "$GITHUB_REPOSITORY" --json headSha -q .headSha)
+            echo "master: host.yml run $run, commit $sha"
+            gh run download "$run" --repo "$GITHUB_REPOSITORY" --name "des_host-$sha" --dir in/host
+            python tools/release/package.py build --rev "$sha" --host in/host/des_host.exe --out in/win
+            unzip -q in/win/*-windows.zip -d in/program
+          else
+            tag="$WANT"
+            [ -n "$tag" ] || tag=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)
+            echo "release: $tag"
+            gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir in --pattern '*-windows.zip' \
+              --pattern SHA256SUMS
+            (cd in && grep -- '-windows\.zip$' SHA256SUMS | shasum -a 256 -c -)
+            unzip -q in/*-windows.zip -d in/program
+          fi
+          ls in/program
+
+      - name: Wine, as macos_app.json pins it (macos_app.py checks its SHA-256)
+        run: |
+          url=$(python -c "import json; print(json.load(open('tools/release/macos_app.json'))['wine']['url'])")
+          curl -fsSL --retry 3 -o in/wine.tar.xz "$url"
+
+      # x86-64 only: macOS then offers to install Rosetta, which Wine needs, when the player has none.
+      - name: The launcher
+        run: |
+          mkdir -p build
+          clang -arch x86_64 -mmacosx-version-min=11.0 -O2 -Wall -Wextra -Werror \
+            -o build/launcher tools/release/macos/launcher.c
+          file build/launcher
+
+      # The logo on black, made square, at the sizes an icon set has.
+      - name: The icon
+        run: |
+          sips -p 4628 4628 --padColor 000000 assets/brand/soulbrandt-logo-on-black.png --out build/square.png >/dev/null
+          set_dir=build/AppIcon.iconset
+          mkdir -p "$set_dir"
+          for s in 16 32 128 256 512; do
+            sips -z "$s" "$s" build/square.png --out "$set_dir/icon_${s}x${s}.png" >/dev/null
+            sips -z "$((s * 2))" "$((s * 2))" build/square.png --out "$set_dir/icon_${s}x${s}@2x.png" >/dev/null
+          done
+          iconutil -c icns "$set_dir" -o build/AppIcon.icns
+
+      - name: The app
+        run: |
+          top=$(ls in/program)
+          python tools/release/macos_app.py build --program "in/program/$top" --wine in/wine.tar.xz \
+            --launcher build/launcher --icns build/AppIcon.icns --out dist
+
+      # Every Mach-O file inside first, then the app: an ad-hoc signature (no Apple account).
+      - name: Signed ad hoc
+        run: |
+          app=$(ls -d dist/*.app)
+          n=0
+          while IFS= read -r -d '' f; do
+            if file -b "$f" | grep -q '^Mach-O'; then
+              codesign --force --sign - "$f"
+              n=$((n + 1))
+            fi
+          done < <(find "$app/Contents/Resources/wine" -type f -print0)
+          echo "signed $n Mach-O files in Wine"
+          codesign --force --sign - "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+
+      - name: The zip
+        run: |
+          app=$(ls -d dist/*.app)
+          version=$(grep '^version=' "$app/Contents/Resources/program/setup/release-info.txt" | cut -d= -f2 | tr -d '\r')
+          ditto -c -k --sequesterRsrc --keepParent "$app" "dist/DemonsSoulsRecomp-$version-macos.zip"
+          ls -l dist
+          shasum -a 256 dist/*.zip
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mac-app-${{ github.sha }}
+          path: dist/*.zip
+          compression-level: 0
+          if-no-files-found: error
+
+      # The launcher as the player's first start runs it: the program copied out, Wine's first start, and the Windows
+      # program loaded with all its libraries (--program-check returns at once, 0). Wine's errors are kept.
+      - name: Smoke test
+        env:
+          WINEDEBUG: fixme-all
+        run: |
+          app=$(ls -d dist/*.app)
+          exe=$(ls "$app/Contents/MacOS")
+          set +e
+          time "$app/Contents/MacOS/$exe" --program-check
+          code=$?
+          set -e
+          for log in "$HOME/Library/Application Support"/*/launcher.log "$HOME/Library/Application Support"/*/wine.log; do
+            [ -f "$log" ] || continue
+            echo "== $log"
+            tail -n 60 "$log"
+          done
+          echo "exit: $code"
+          exit "$code"
