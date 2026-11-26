@@ -38,7 +38,8 @@ BUNDLE_ID = f"org.{NAME.lower()}.game"         # fixed: a rename of the project 
 MIN_MACOS = "11.0"
 INFO = "setup/release-info.txt"
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-VERSION_RE = re.compile(r"^([0-9]+\.[0-9]+\.[0-9]+)(?:-[0-9A-Za-z.-]+)?$")
+# X.Y.Z, then a pre-release part and a build part (package.py's for a commit that isn't a tag: 0.2.1-dev+g40c8247a2)
+VERSION_RE = re.compile(r"^([0-9]+\.[0-9]+\.[0-9]+)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$")
 MACHO_64 = b"\xcf\xfa\xed\xfe"
 CPU_X86_64 = 0x01000007
 

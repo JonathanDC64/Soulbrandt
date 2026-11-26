@@ -1,6 +1,8 @@
 # The Mac app (docs/178 section 1): the Windows program in a macOS app that carries Wine, made on a Mac runner.
-# A tester build, not part of a release yet. It wraps a released Windows download (the latest, or the release asked
-# for), checked against that release's SHA256SUMS, and keeps the zip as this run's artifact.
+# A tester build, not part of a release yet. It keeps the zip as this run's artifact, and wraps one of:
+#   - a released Windows download (the latest, or the release asked for), checked against that release's SHA256SUMS;
+#   - "master": master's newest des_host.exe (host.yml's artifact, from its last good run on master), packaged here as
+#     the release does it (tools/release/package.py build).
 # tools/release/macos_app.py makes the app; tools/release/macos/launcher.c is its program; macos_app.json pins Wine.
 # No Apple account: the app is signed ad hoc, and macOS asks the player to allow it once (docs/178 decision 2).
 name: Mac app
@@ -16,12 +18,13 @@ on:
   workflow_dispatch:
     inputs:
       release:
-        description: "The release whose Windows download goes in the app (empty: the latest)"
+        description: "What goes in the app: a release tag, master (its newest Windows build), or empty (the latest release)"
         required: false
         default: ''
 
 permissions:
   contents: read
+  actions: read   # master's des_host.exe: host.yml's artifact
 
 concurrency:
   group: mac-app-${{ github.ref }}
@@ -36,6 +39,8 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0   # "master": package.py packages a commit of the history
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
@@ -46,19 +51,30 @@ jobs:
           python tools/release/macos_app.py check
           python -m unittest discover -s tools/release/tests -p 'test_macos_app.py'
 
-      - name: The Windows download, checked against its release's SHA256SUMS
+      - name: The Windows download (a release's, checked against its SHA256SUMS, or master's newest build, packaged)
         env:
           WANT: ${{ inputs.release }}
         run: |
-          tag="$WANT"
-          [ -n "$tag" ] || tag=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)
-          echo "release: $tag"
           mkdir -p in
-          cd in
-          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern '*-windows.zip' --pattern SHA256SUMS
-          grep -- '-windows\.zip$' SHA256SUMS | shasum -a 256 -c -
-          unzip -q ./*-windows.zip -d program
-          ls program
+          if [ "$WANT" = master ]; then
+            run=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow host.yml --branch master --event push \
+              --status success --limit 1 --json databaseId -q '.[0].databaseId')
+            [ -n "$run" ] || { echo "::error::no good host.yml run on master"; exit 1; }
+            sha=$(gh run view "$run" --repo "$GITHUB_REPOSITORY" --json headSha -q .headSha)
+            echo "master: host.yml run $run, commit $sha"
+            gh run download "$run" --repo "$GITHUB_REPOSITORY" --name "des_host-$sha" --dir in/host
+            python tools/release/package.py build --rev "$sha" --host in/host/des_host.exe --out in/win
+            unzip -q in/win/*-windows.zip -d in/program
+          else
+            tag="$WANT"
+            [ -n "$tag" ] || tag=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)
+            echo "release: $tag"
+            gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir in --pattern '*-windows.zip' \
+              --pattern SHA256SUMS
+            (cd in && grep -- '-windows\.zip$' SHA256SUMS | shasum -a 256 -c -)
+            unzip -q in/*-windows.zip -d in/program
+          fi
+          ls in/program
 
       - name: Wine, as macos_app.json pins it (macos_app.py checks its SHA-256)
         run: |

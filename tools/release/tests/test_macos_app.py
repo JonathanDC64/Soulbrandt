@@ -168,6 +168,14 @@ class BuildTest(unittest.TestCase):
         with self.assertRaises(m.Error):   # never over an app that is there
             m.build(self.program, self.tar, self.launcher, None, self.out, self.wine, "Game Name")
 
+    def test_a_build_of_master(self):
+        # package.py's name for a commit that isn't a tag: a pre-release part and a build part
+        program = os.path.join(self.tmp.name, "master")
+        program_folder(program, "version=0.2.1-dev+g40c8247a2\ncommit=40c8247a2\nexe=Game.exe\n")
+        app = m.build(program, self.tar, self.launcher, None, self.out, self.wine, "Game Name")
+        with open(os.path.join(app, "Contents", "Info.plist"), "rb") as f:
+            self.assertEqual(plistlib.load(f)["CFBundleShortVersionString"], "0.2.1")
+
     def test_a_wine_build_that_is_not_the_pinned_one(self):
         with self.assertRaises(m.Error):
             m.build(self.program, self.tar, self.launcher, None, self.out, dict(self.wine, sha256="0" * 64), "G")

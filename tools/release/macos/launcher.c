@@ -94,7 +94,19 @@ static void info_value(const char* file, const char* key, char* out, size_t n)
     fclose(f);
 }
 
-/* Compares two versions, X.Y.Z with an optional -pre part (a pre-release comes before its release): <0, 0, >0. */
+/* The pre-release part of a version (after '-', before a '+build' part) into out; empty for a release. */
+static void pre_part(const char* v, char* out, size_t n)
+{
+    out[0] = 0;
+    const char* dash = strchr(v, '-');
+    const char* plus = strchr(v, '+');
+    if (!dash || (plus && plus < dash)) return;
+    const size_t len = plus ? (size_t)(plus - dash) : strlen(dash);
+    snprintf(out, n, "%.*s", (int)len, dash);
+}
+
+/* Compares two versions by X.Y.Z, then the pre-release part (a pre-release comes before its release); a '+build'
+ * part is not compared (two builds of one version are equal here): <0, 0, >0. */
 static int version_cmp(const char* a, const char* b)
 {
     unsigned long va[3] = {0, 0, 0}, vb[3] = {0, 0, 0};
@@ -109,11 +121,12 @@ static int version_cmp(const char* a, const char* b)
     }
     for (int i = 0; i < 3; i++)
         if (va[i] != vb[i]) return va[i] < vb[i] ? -1 : 1;
-    const char* ra = strchr(a, '-');
-    const char* rb = strchr(b, '-');
-    if (!ra && !rb) return 0;
-    if (!ra) return 1;
-    if (!rb) return -1;
+    char ra[128], rb[128];
+    pre_part(a, ra, sizeof ra);
+    pre_part(b, rb, sizeof rb);
+    if (!ra[0] && !rb[0]) return 0;
+    if (!ra[0]) return 1;
+    if (!rb[0]) return -1;
     return strcmp(ra, rb);
 }
 
@@ -178,7 +191,10 @@ int main(int argc, char** argv)
         say("the app's program is incomplete: no version or exe in %s", app_info);
         return 1;
     }
-    if (!copy_version[0] || version_cmp(app_version, copy_version) > 0) {
+    /* The app's program replaces the copy when it is newer, or the same version from another build (a tester build
+     * of master: the one just opened wins). A copy an update made newer stays. */
+    const int order = copy_version[0] ? version_cmp(app_version, copy_version) : 1;
+    if (order > 0 || (order == 0 && strcmp(app_version, copy_version) != 0)) {
         /* ditto copies the folder's contents over the copy, keeping the files only the copy has (setup's). */
         say("program %s: copying it out of the app (the copy: %s)", app_version, copy_version[0] ? copy_version : "none");
         char from[PATH_MAX];
