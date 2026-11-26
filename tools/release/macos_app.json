@@ -1,0 +1,17 @@
+{
+  "comment": "What the Mac app carries beside the Windows program (tools/release/macos_app.py, docs/178 section 1). Each download is pinned by its SHA-256.",
+  "wine": {
+    "name": "wine-stable-11.0_1-osx64.tar.xz",
+    "url": "https://github.com/Gcenx/macOS_Wine_builds/releases/download/11.0_1/wine-stable-11.0_1-osx64.tar.xz",
+    "sha256": "b50dc50ec7f41d58b115a6b685d4d1315ba3c797bd3aa0f49213f2703cb82388",
+    "size": 185303032,
+    "inside": "Wine Stable.app/Contents/Resources/wine",
+    "leave_out": ["share/wine/mono", "share/wine/gecko"],
+    "version": "Wine 11.0 (stable), the 11.0_1 macOS build, with MoltenVK 1.4.1",
+    "source": [
+      "https://dl.winehq.org/wine/source/11.0/",
+      "https://github.com/Gcenx/macOS_Wine_builds (the 11.0_1 release, and how it is built)",
+      "https://github.com/KhronosGroup/MoltenVK (v1.4.1)"
+    ]
+  }
+}
