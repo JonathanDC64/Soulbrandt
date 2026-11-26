@@ -120,6 +120,10 @@
 0x001FEAF4=des_slide_rate   # decay 0.65 (0x019D9C40), slide *= decay
 0x001FED50=des_slide_rate   # gain 1.0 (0x019D9C3C), slide += gravity along the slope * gain
 
+# des_air_rate (port/des_options.cpp): in the same update, a proxy in the air keeps
+# 0.95 of its speed across the ground each frame, tuned for 30 fps (docs/28).
+0x001FECA8=des_air_rate   # stfs f12, 0x74(r1): the drag 0.95 (r30 - 0x7DE0) on the stack, splatted next
+
 # des_phys_rate (port/des_options.cpp): DES_PHYS_HZ caps Havok steps a second
 # (default 30); des_phys_kf gives the pose passes the same step; des_rest_gate
 # keeps broken pieces from being taken as at rest before they have fallen.

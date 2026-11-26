@@ -81,6 +81,7 @@ DES_REGION_ADDR(0x001DF83C, 0x001E06C4)  /* hook des_phys_kf */
 DES_REGION_ADDR(0x001E2E00, 0x001E3C88)  /* hook des_rest_gate */
 DES_REGION_ADDR(0x001EF6D0, 0x001F0558)  /* hook des_phys_kf */
 DES_REGION_ADDR(0x001FEAF4, 0x001FF97C)  /* hook des_slide_rate */
+DES_REGION_ADDR(0x001FECA8, 0x001FFB30)  /* hook des_air_rate */
 DES_REGION_ADDR(0x001FED50, 0x001FFBD8)  /* hook des_slide_rate */
 DES_REGION_ADDR(0x0020D3C0, 0x0020E248)  /* call des_seamless_game (by address): Tutorial_end's */
 DES_REGION_ADDR(0x0020E788, 0x0020F610)  /* call des_seamless_game (by address) */
