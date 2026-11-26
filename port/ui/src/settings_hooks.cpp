@@ -116,8 +116,10 @@ void open_update_notes() {
         .open = UpdateWindow::Open::Notes, .release = updates::found(), .overGame = updates::over_game()}));
 }
 
+// None in a copy RecompLauncher installed: going back would put another version in place behind the launcher's back,
+// as our own update would (docs/166 section 6).
 std::string update_kept_version() {
-    return updates::kept_version();
+    return updates::from_launcher() ? std::string() : updates::kept_version();
 }
 
 // Go back to the version the last update kept (updates.hpp), asked first. Over the game, the program starts again with

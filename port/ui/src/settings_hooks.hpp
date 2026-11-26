@@ -49,7 +49,7 @@ bool update_checking();
 void update_check();
 std::string update_found_version();  // "" when no newer release was found
 void open_update_notes();
-std::string update_kept_version();   // the version an update kept to go back to; ""
+std::string update_kept_version();   // the version an update kept to go back to; "" (or from the launcher)
 void ask_go_back(const std::string& version);
 bool data_dir_known();  // logs and reports have a folder (report::data_dir)
 

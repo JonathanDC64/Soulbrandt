@@ -158,6 +158,7 @@ All settled on 2026-11-20.
    - **What changes then:**
      - no check at the start;
      - Settings > About's Check now is greyed out;
+     - Settings > About has no Go back: it would put another version in place, as our update would;
      - the Updates line reads "RecompLauncher brings each new version.";
      - its help says how to undo it: delete the file, and start the game without the launcher.
    - **Measured** (the branch's host in a copy shaped like a player's install, a missing update feed):
