@@ -151,4 +151,24 @@ std::vector<std::filesystem::path> game_folders(const std::string& text);
 bool remember_game_folder(const std::filesystem::path& dataDir, const std::filesystem::path& folder,
                           const std::string& when, std::string& why);
 
+// ---- An earlier game folder's saves, offered to this install (docs/164 section 5) ----
+
+// In the player's data folder: the folders the player answered Never for, one a line as game-folders.txt has them. An
+// earlier game folder there is not offered again; this install's own saves folder there means nothing is asked here.
+inline constexpr const char* kNeverCopyFile = "save-copy-never.txt";
+// The folder to offer copying saves from: the newest of `gameFolders` (game-folders.txt's) that holds saves
+// (holds_saves), is not `home` (this install's saves folder) and is not in `never`. Empty: none.
+std::filesystem::path save_offer(const std::vector<std::filesystem::path>& gameFolders,
+                                 const std::vector<std::filesystem::path>& never, const std::filesystem::path& home);
+// The game folder a folder picked by the player names: the first of it and the folders it is in that holds saves, so
+// the game's folder, its gamedata or one save's folder all name the same one. Empty: none of them holds saves.
+std::filesystem::path saves_owner(const std::filesystem::path& picked);
+// `folder` is in `list` (same_folder).
+bool listed(const std::vector<std::filesystem::path>& list, const std::filesystem::path& folder);
+// Notes `folder` in <dataDir>/save-copy-never.txt, as remember_game_folder does in game-folders.txt.
+bool never_copy_from(const std::filesystem::path& dataDir, const std::filesystem::path& folder,
+                     const std::string& when, std::string& why);
+// A file's text: empty when it is not there or cannot be read.
+std::string read_text(const std::filesystem::path& file);
+
 }  // namespace ui::setup

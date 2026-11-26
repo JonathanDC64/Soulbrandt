@@ -43,6 +43,7 @@
 #include "privacy.hpp"
 #include "privacy_window.hpp"
 #include "report.hpp"
+#include "save_offer.hpp"
 #include "settings.hpp"
 #include "setup_engine.hpp"
 #include "path_utf8.hpp"
@@ -1555,6 +1556,8 @@ extern "C" int des_ui_launch(int* argc, char*** argv) {
     }
     work_in_saves_folder();
     note_game_folder();
+    // Saves the start screen's offer asked to copy (save_offer.hpp), before this game boots and reads them.
+    ui::saves::copy_at_launch();
     // What setup found of the disc copy, and whether the player went on anyway (tools/setup/des_setup/disc.py): a copy
     // that lacks files the game reads crashes later, far from the cause (issue #418).
     {

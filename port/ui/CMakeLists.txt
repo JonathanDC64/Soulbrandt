@@ -224,11 +224,13 @@ if(MSVC)
 endif()
 target_link_libraries(ui_style_check PRIVATE RmlUi::RmlUi)
 
-# setup_folder.cpp on its own (tests/setup_folder_check.cpp): where setup builds, the usual folder or the one chosen on
-# setup's screens (docs/88 section 3), in made-up folders under the system's temporary folder. The same on every
-# platform; CI runs it on both (host.yml). Built on demand:
+# setup_folder.cpp and save_copy.cpp on their own (tests/setup_folder_check.cpp): where setup builds, the usual
+# folder or the one chosen on setup's screens (docs/88 section 3), and an earlier folder's saves copied, in made-up
+# folders under the system's temporary folder. The same on every platform; CI runs it on both (host.yml). Built on
+# demand:
 #   cmake --build <build> --target setup_folder_check, then setup_folder_check
-add_executable(setup_folder_check EXCLUDE_FROM_ALL tests/setup_folder_check.cpp src/setup_folder.cpp)
+add_executable(setup_folder_check EXCLUDE_FROM_ALL tests/setup_folder_check.cpp src/setup_folder.cpp
+  src/save_copy.cpp src/sha256.cpp)
 target_include_directories(setup_folder_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_definitions(setup_folder_check PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
 if(MSVC)

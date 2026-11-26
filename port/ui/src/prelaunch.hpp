@@ -4,6 +4,7 @@
 #include "button.hpp"
 #include "document.hpp"
 
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <vector>
@@ -37,6 +38,11 @@ private:
     void play();
     void show_update();
     void update_prompts();
+    // The saves' question at this start, once (save_offer.hpp, docs/164 section 5): how the copy the last start asked
+    // for went, or the offer to copy an earlier game folder's saves, or to find that folder.
+    void ask_saves();
+    void pick_saves_folder();  // the system's folder dialog, for the earlier game folder
+    void saves_picked(const std::filesystem::path& folder);
     // The sword's look (start_sword.hpp): 1 to its count, 0 none, any other wraps; it starts after `delay` seconds.
     void set_sword_look(int look, double delay = 0.0);
 
@@ -61,6 +67,9 @@ private:
     Rml::Element* mPrompts = nullptr;
     std::string mPromptsShown;
     float mRoomHeight = 0.f;  // --start-room, in dp (room_height())
+    bool mSavesAsked = false;
+    struct SavesPick;                       // the folder dialog's answer, from the dialog's thread
+    std::shared_ptr<SavesPick> mSavesPick;  // (shared with that thread: this screen may close first)
 };
 
 }  // namespace ui

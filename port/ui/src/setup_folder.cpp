@@ -355,6 +355,10 @@ namespace {
 constexpr const char* kGameFoldersHeader =
     "# The game folders this PC's game ran from, newest first: when (UTC), a tab, the folder. Each one's saves are in\n"
     "# its gamedata folder. A later version reads this to offer copying old saves into a new install.\n";
+constexpr const char* kNeverCopyHeader =
+    "# The folders whose saves the player chose never to copy (the start screen's offer: Never), newest first: when\n"
+    "# (UTC), a tab, the folder. An install's own saves folder here: nothing is offered to it.\n";
+constexpr int kNeverCopyKept = 50;
 
 struct Noted {
     std::string when;
@@ -376,39 +380,32 @@ std::vector<Noted> noted(const std::string& text) {
     return out;
 }
 
-}  // namespace
-
-std::string game_folders_text(const std::string& old, const std::filesystem::path& folder, const std::string& when) {
-    std::string out = std::string(kGameFoldersHeader) + when + "\t" + utf8(folder) + "\n";
+// `old`'s folders with `folder` first, stamped `when`, under `header`: each folder once, at most `keep`.
+std::string list_text(const char* header, int keep, const std::string& old, const std::filesystem::path& folder,
+                      const std::string& when) {
+    std::string out = std::string(header) + when + "\t" + utf8(folder) + "\n";
     std::vector<std::filesystem::path> kept{folder};
     for (const Noted& n : noted(old)) {
-        if (int(kept.size()) >= kGameFoldersKept) break;
-        bool again = false;
-        for (const auto& k : kept) again = again || same_folder(n.folder, k);
-        if (again) continue;
+        if (int(kept.size()) >= keep) break;
+        if (listed(kept, n.folder)) continue;
         out += n.when + "\t" + utf8(n.folder) + "\n";
         kept.push_back(n.folder);
     }
     return out;
 }
 
-std::vector<std::filesystem::path> game_folders(const std::string& text) {
-    std::vector<std::filesystem::path> out;
-    for (const Noted& n : noted(text)) out.push_back(n.folder);
-    return out;
-}
-
-bool remember_game_folder(const std::filesystem::path& dataDir, const std::filesystem::path& folder,
-                          const std::string& when, std::string& why) {
-    const std::string name = utf8(folder);
-    if (dataDir.empty() || !folder.is_absolute() || name.find_first_of("\t\r\n") != std::string::npos ||
+// `folder` noted first in <dataDir>/<name>: the new text is written beside it, then put in its place.
+bool note_folder(const std::filesystem::path& dataDir, const char* name, const char* header, int keep,
+                 const std::filesystem::path& folder, const std::string& when, std::string& why) {
+    const std::string named = utf8(folder);
+    if (dataDir.empty() || !folder.is_absolute() || named.find_first_of("\t\r\n") != std::string::npos ||
         when.empty() || when.find_first_of("\t\r\n") != std::string::npos) {
         why = "no folder to note";
         return false;
     }
     std::error_code ec;
     std::filesystem::create_directories(dataDir, ec);
-    const std::filesystem::path file = dataDir / kGameFoldersFile;
+    const std::filesystem::path file = dataDir / name;
     std::string old;
     if (std::filesystem::exists(file, ec)) {
         std::ifstream in(file, std::ios::binary);
@@ -424,7 +421,7 @@ bool remember_game_folder(const std::filesystem::path& dataDir, const std::files
     next += ".new";
     {
         std::ofstream out(next, std::ios::binary | std::ios::trunc);
-        out << game_folders_text(old, folder, when);
+        out << list_text(header, keep, old, folder, when);
         out.flush();
         if (!out) {
             out.close();
@@ -441,6 +438,62 @@ bool remember_game_folder(const std::filesystem::path& dataDir, const std::files
         return false;
     }
     return true;
+}
+
+}  // namespace
+
+std::string game_folders_text(const std::string& old, const std::filesystem::path& folder, const std::string& when) {
+    return list_text(kGameFoldersHeader, kGameFoldersKept, old, folder, when);
+}
+
+std::vector<std::filesystem::path> game_folders(const std::string& text) {
+    std::vector<std::filesystem::path> out;
+    for (const Noted& n : noted(text)) out.push_back(n.folder);
+    return out;
+}
+
+bool remember_game_folder(const std::filesystem::path& dataDir, const std::filesystem::path& folder,
+                          const std::string& when, std::string& why) {
+    return note_folder(dataDir, kGameFoldersFile, kGameFoldersHeader, kGameFoldersKept, folder, when, why);
+}
+
+// ---- An earlier game folder's saves, offered to this install ----
+
+bool listed(const std::vector<std::filesystem::path>& list, const std::filesystem::path& folder) {
+    for (const auto& f : list)
+        if (same_folder(f, folder)) return true;
+    return false;
+}
+
+std::filesystem::path save_offer(const std::vector<std::filesystem::path>& gameFolders,
+                                 const std::vector<std::filesystem::path>& never, const std::filesystem::path& home) {
+    if (listed(never, home)) return {};
+    for (const auto& f : gameFolders)
+        if (!same_folder(f, home) && !listed(never, f) && holds_saves(f)) return tidy(f);
+    return {};
+}
+
+std::filesystem::path saves_owner(const std::filesystem::path& picked) {
+    // (a save's own folder is <game>/gamedata/dev_hdd0/home/<user>/savedata/<save>: six levels below the game's)
+    int up = 0;
+    for (auto p = tidy(picked); !p.empty() && up <= 6; p = p.parent_path(), up++) {
+        if (holds_saves(p)) return p;
+        if (p == p.parent_path()) break;
+    }
+    return {};
+}
+
+bool never_copy_from(const std::filesystem::path& dataDir, const std::filesystem::path& folder,
+                     const std::string& when, std::string& why) {
+    return note_folder(dataDir, kNeverCopyFile, kNeverCopyHeader, kNeverCopyKept, folder, when, why);
+}
+
+std::string read_text(const std::filesystem::path& file) {
+    std::ifstream in(file, std::ios::binary);
+    if (!in) return {};
+    std::stringstream s;
+    s << in.rdbuf();
+    return s.str();
 }
 
 }  // namespace ui::setup
