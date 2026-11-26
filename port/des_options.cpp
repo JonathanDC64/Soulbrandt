@@ -3548,6 +3548,29 @@ extern "C" void des_souls_use_init(void);  /* des_souls_use.cpp */
 extern "C" void des_item_keys_init(void);  /* des_item_hotkeys.cpp */
 extern "C" void des_pantheon_init(void);   /* des_pantheon.cpp */
 
+#ifdef __linux__
+/* One line of a /sys file, without its newline; empty when it can't be read. */
+static std::string sys_line(const char* path)
+{
+    char buf[64] = {};
+    if (FILE* f = std::fopen(path, "r")) {
+        if (!std::fgets(buf, sizeof buf, f)) buf[0] = 0;
+        std::fclose(f);
+    }
+    buf[std::strcspn(buf, "\r\n")] = 0;
+    return buf;
+}
+
+/* A Steam Deck, LCD (Jupiter) or OLED (Galileo), by the machine's own
+ * firmware names: the machine RSX_CORE's gain was measured on. */
+static bool on_steam_deck_hw()
+{
+    if (sys_line("/sys/class/dmi/id/sys_vendor") != "Valve") return false;
+    const std::string product = sys_line("/sys/class/dmi/id/product_name");
+    return product == "Jupiter" || product == "Galileo";
+}
+#endif
+
 /* The run defaults every start needs, from setup's Play, Explorer or a
  * shortcut as much as from tools/des (docs/45 1.3). Without them a player's
  * start hung on the loading screen: libsre was never loaded, so every SPURS
@@ -3606,13 +3629,6 @@ static void run_defaults()
          * went from 68-88 to 8-11 (docs/73). libmixer's threads still go up
          * by name (PPU_MIXER_RAISE). */
         {"PPU_RAISE_BELOW", "0"},
-#ifdef __linux__
-        /* The RSX thread alone on one CPU of a core, and the rest of the
-         * process off that core (ps3recomp's RSX_CORE). On a Steam Deck that
-         * thread holds the frame, and it ran 4-8% faster so. auto: only with
-         * SMT and at least 4 cores, from the game's first frame. */
-        {"RSX_CORE", "auto"},
-#endif
     };
     /* libsre is loaded only for a family that isn't on our code: LIBSRE_OWN=0
      * (both on Sony's code, the old boot) or lf / queue (one of them). Read
@@ -3621,6 +3637,15 @@ static void run_defaults()
     const std::string own = own_env ? own_env : "1";
     for (const auto& d : kDefaults)
         if (!getenv(d.name)) ps3_setenv(d.name, d.value);
+#ifdef __linux__
+    /* The RSX thread alone on one CPU of a core, and the rest of the process
+     * off that core, from the game's first frame (ps3recomp's RSX_CORE).
+     * auto: only where enough cores are left for the rest, which ps3recomp's
+     * plat_core_reserve decides; 4 may be too few (a 4-core laptop's sound
+     * fell behind with 3 left for the rest). On a Steam Deck, 1: there that
+     * thread holds the frame, and it ran 4-8% faster so. */
+    if (!getenv("RSX_CORE")) ps3_setenv("RSX_CORE", on_steam_deck_hw() ? "1" : "auto");
+#endif
     if (!getenv("LIBSRE_LLE")) ps3_setenv("LIBSRE_LLE", own == "1" || own == "all" ? "0" : "1");
 #ifdef DES_LIBSRE_IMAGE
     /* A source build's libsre glue gives its image from the working folder, and a direct start of des_boot.exe
