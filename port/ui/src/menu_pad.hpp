@@ -7,10 +7,13 @@
 // - A button of the menu chord (L3 + R3, or Select + Start) does its own thing only alone: R3 hides while L3 isn't
 //   down, and stops once the chord is made; Select's Help is a tap, given as Select comes up, unless Start went down
 //   while it was held. What the chord made stays done until its buttons come up.
+// - With Same buttons as the game on (input.hpp's menu_buttons), the buttons come in as the game reads them through
+//   Change Buttons (through_map), so each of these is the game's button of that name, wherever the player put it.
 #pragma once
 
 #include <RmlUi/Core/Input.h>
 
+#include <array>
 #include <bitset>
 
 namespace ui::input {
@@ -54,6 +57,10 @@ struct PadKeysState {
 
 // The keys the pad holds down this frame. chord: 0 = L3 + R3, 1 = Select + Start (input.hpp's chord_mask).
 PadKeys pad_keys(const PadState& pad, int chord, PadKeysState& state) noexcept;
+
+// A pad's buttons as the game reads them: game button g (a CELL_PAD_CTRL_* bit) is down when pad button from[g] is;
+// -1, nothing presses it (the Kick's button, with the Kick on). from[g] = g for every g gives the buttons back.
+unsigned through_map(unsigned buttons, const std::array<signed char, 16>& from) noexcept;
 
 // Whether a held key repeats (the arrows and the tabs).
 bool pad_key_repeats(int key) noexcept;

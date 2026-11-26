@@ -378,7 +378,12 @@ std::vector<TabDesc> make_tabs() {
                 }),
             info("In the menus", "Arrows, Enter, Esc",
                 "Keyboard: arrows, Enter, Esc; Page Up and Page Down change tabs. The mouse works too.<br/><br/>"
-                "Gamepad: D-pad, Cross, Circle; L1 and R1 change tabs."),
+                "Gamepad: D-pad, Cross, Circle; L1 and R1 change tabs.<br/><br/>"
+                "With Same buttons as the game on, these are the buttons you set in Change Buttons, and the keys "
+                "for Cross and Circle (E and Space at first) confirm and go back too."),
+            own_setting(toggle("Same buttons as the game", "menu_follow_buttons",
+                "These menus use the buttons and keys you set in Change Buttons, as the game's own menus do. Off: "
+                "Cross confirms and Circle goes back, whatever you set. Enter and Esc always work.")),
         }},
         {"The game", {
             action("Change Buttons", Opens::Controls, "Change which buttons and keys do what."),

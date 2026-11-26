@@ -32,6 +32,13 @@ struct Glyph {
     Art art[2]{};
 };
 Glyph glyph(Device device, Key key) noexcept;
+// The keyboard's other tab keys, Page Up (PrevTab) and Page Down (NextTab): shown in place of Q and E when one of those
+// works Cross or Circle in the menus (Same buttons as the game, input.hpp's menu_key).
+Glyph page_glyph(Key key) noexcept;
+// A pad button's glyph on a pad device, by its cellPad name ("circle", "l2", "start", "up"): what a prompt shows when
+// Same buttons as the game puts the game's button on another pad button (input.hpp's menu_glyph). Empty for the
+// keyboard or a name it doesn't know.
+Glyph button_glyph(Device device, std::string_view name) noexcept;
 
 // A prompt of a page's: the button and what it does ("Open"). Its kind, when it has one, is a class for the look's
 // style sheet: "tabs", Settings' buttons that change its tab (a look that draws those at the tabs' ends hides these).

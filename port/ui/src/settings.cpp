@@ -161,6 +161,9 @@ constexpr Def kDefs[] = {
     {"start_flame", "1", Apply::UiOnly},       // prelaunch.cpp: 0 = no flame off the start screen's logo (DeS UI)
     {"trophies_show_hidden", "0", Apply::UiOnly},  // trophies_window.cpp: hidden trophies listed with their names
     {"pad_menu_chord", "0", Apply::UiOnly},    // 0 = L3 + R3, 1 = Select + Start
+    // input.cpp, each frame: 1 = these menus read the gamepad through Change Buttons (PAD_MAP) and take the keys for
+    // Cross and Circle as Enter and Esc, as the game's own menus do; 0 = the pad's own buttons, and Enter and Esc only
+    {"menu_follow_buttons", "1", Apply::UiOnly},
     {"PAD_MAP", "", Apply::Live},              // cellPad, gamepad buttons (controls_window.cpp)
     {"PAD_KEYS", "", Apply::Live},             // cellPad, changes to the keyboard and mouse layout (kKeysLayout)
     {"PAD_CONTROLLER", "auto", Apply::Live},   // cellPad, each poll: the controller the game reads (port 0)

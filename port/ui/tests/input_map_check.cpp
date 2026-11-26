@@ -8,6 +8,7 @@
 #include "menu_pad.hpp"
 #include "prompts.hpp"
 
+#include <array>
 #include <cstdio>
 #include <initializer_list>
 #include <string>
@@ -104,6 +105,39 @@ void check_pad() {
           "Confirm, Preview, Hide, Help and Menu don't");
 }
 
+// Same buttons as the game: a pad's buttons through Change Buttons (through_map), then as the menus' keys.
+void check_through_map() {
+    g_where = "through_map";
+    std::array<signed char, 16> same{};
+    for (int g = 0; g < 16; g++) same[g] = static_cast<signed char>(g);
+    check(through_map(kCross | kL1 | kStart, same) == (kCross | kL1 | kStart), "unchanged: the buttons back");
+    check(through_map(0xFFFFu, same) == 0xFFFFu, "unchanged: every button");
+
+    // Cross and Circle swapped (PAD_MAP circle=cross,cross=circle): the game's Cross reads the pad's Circle.
+    std::array<signed char, 16> swapped = same;
+    swapped[14] = 13;  // the game's Cross: the pad's Circle
+    swapped[13] = 14;  // the game's Circle: the pad's Cross
+    check(through_map(kCircle, swapped) == kCross, "swapped: Circle is the game's Cross");
+    check(through_map(kCross, swapped) == kCircle, "swapped: Cross is the game's Circle");
+    check(through_map(kCircle | kUp, swapped) == (kCross | kUp), "swapped: the others stay");
+    PadKeysState st;
+    PadState pad;
+    pad.buttons = through_map(kCircle, swapped);
+    const PadKeys k = pad_keys(pad, 0, st);
+    check(k[kPadConfirm] && !k[kPadCancel], "swapped: the pad's Circle confirms");
+
+    // A game button nothing presses (-1): never down.
+    std::array<signed char, 16> none = same;
+    none[0] = -1;
+    check(through_map(kSelect, none) == 0, "nothing presses Select: never down");
+    check(through_map(kSelect | kCross, none) == kCross, "nothing presses Select: Cross still confirms");
+
+    // One pad button for two game buttons (a hand-written PAD_MAP): both go down.
+    std::array<signed char, 16> two = same;
+    two[15] = 14;  // the game's Square reads the pad's Cross too
+    check(through_map(kCross, two) == (kCross | kSquare), "two game buttons on one pad button");
+}
+
 void check_commands() {
     g_where = "commands";
     const struct {
@@ -166,6 +200,29 @@ void check_prompts() {
     using ui::prompts::Device;
     using ui::prompts::Key;
     g_where = "prompts";
+    const ui::prompts::Glyph pgUp = ui::prompts::page_glyph(Key::PrevTab), pgDn = ui::prompts::page_glyph(Key::NextTab);
+    check(pgUp.text == "PgUp" && pgUp.art[0].code == 0x21, "the tabs' other keys: Page Up");
+    check(pgDn.text == "PgDn" && pgDn.art[0].code == 0x22, "the tabs' other keys: Page Down");
+    check(ui::prompts::page_glyph(Key::Confirm).text.empty(), "no other key has one");
+    // A pad button's glyph by name (a prompt whose game button Change Buttons moved).
+    using ui::prompts::button_glyph;
+    check(button_glyph(Device::PlayStation, "circle").text == "○", "PlayStation circle");
+    check(button_glyph(Device::PlayStation, "cross").art[0].name == "cross", "PlayStation cross: its art");
+    check(button_glyph(Device::Xbox, "circle").text == "B" && button_glyph(Device::Xbox, "l2").text == "LT",
+          "Xbox B and LT");
+    check(button_glyph(Device::Nintendo, "cross").text == "B" && button_glyph(Device::Nintendo, "start").text == "+",
+          "Nintendo B and +");
+    check(button_glyph(Device::SteamDeck, "r2").text == "R2" && button_glyph(Device::PlayStation, "l3").text == "L3",
+          "Deck R2, PlayStation L3");
+    check(button_glyph(Device::PlayStation, "up").art[0].is == ui::prompts::Art::Is::Dpad &&
+              button_glyph(Device::PlayStation, "up").art[0].code == 1 && button_glyph(Device::Xbox, "left").art[0].code == 8,
+          "the D-pad's ways");
+    check(button_glyph(Device::Keyboard, "cross").text.empty() && button_glyph(Device::PlayStation, "x").text.empty(),
+          "none for the keyboard or an unknown name");
+    for (int d = int(Device::PlayStation); d <= int(Device::SteamDeck); d++)
+        for (const char* b : {"select", "l3", "r3", "start", "up", "right", "down", "left", "l2", "r2", "l1", "r1",
+                              "triangle", "circle", "cross", "square"})
+            check(!button_glyph(Device(d), b).text.empty(), std::string("a glyph for ") + b + " on every pad");
     for (int d = 0; d <= int(Device::SteamDeck); d++)
         for (int k = 0; k < int(Key::Count); k++) {
             const ui::prompts::Glyph g = ui::prompts::glyph(Device(d), Key(k));
@@ -240,6 +297,7 @@ void check_prompts() {
 
 int main() {
     check_pad();
+    check_through_map();
     check_commands();
     check_holds();
     check_prompts();

@@ -18,6 +18,7 @@
 
 #include "app.hpp"
 #include "button_icons.hpp"
+#include "controls_model.hpp"
 #include "coop_window.hpp"
 #include "crash_report.hpp"
 #include "discord_presence.hpp"
@@ -193,6 +194,18 @@ ui::gpu::CoreFrame sCore;  // frame_gpu's frame, for the renderer (begin_frame's
 bool on_core();
 #endif
 std::atomic<unsigned> sChordMask{kL3 | kR3};  // the menu chord, refreshed while the UI is awake
+// The pad's own buttons that make the chord, for the watch thread, which reads the pads as they are: with Same buttons
+// as the game on, the ones Change Buttons put the chord's buttons on (chord_pad_mask; refreshed with sChordMask).
+std::atomic<unsigned> sChordPadMask{kL3 | kR3};
+
+unsigned chord_pad_mask(unsigned mask) {
+    if (ui::settings::get_int("menu_follow_buttons") == 0) return mask;
+    const auto from = ui::controls::game_button_sources();
+    unsigned out = 0;
+    for (int g = 0; g < 16; g++)
+        if (mask & (1u << g)) out |= from[g] >= 0 ? 1u << from[g] : 1u << 31;  // (nothing presses it: never made)
+    return out;
+}
 
 // DES_UI_SHOT=path[,frame][;path[,frame]...]: write the back buffer after the UI draws, at that presented frame.
 struct Shot {
@@ -690,6 +703,35 @@ bool steam_layout_key(const InputEvent& e, Rml::Context* ctx) {
     return true;
 }
 
+// Same buttons as the game (input.hpp's menu_key): the key a key going down stands for in the menus (E for Enter, Space
+// for Esc in the Souls layout), kept until it comes up so its key up matches (sKeyAs, 0: as it is). Not while typing
+// (a text field, the on-screen keyboard), nor with Shift, Ctrl or Alt held. The character the key also types is
+// dropped (sDropChar): E is Enter then, and must not type an e into a text field that Enter just opened.
+int sKeyAs[256];
+bool sDropChar = false;
+
+int menu_key_down(const InputEvent& e, Rml::Context* ctx) {
+    const int vk = e.a;
+    if (vk <= 0 || vk >= 256) return vk;
+    sKeyAs[vk] = 0;
+    if (e.mods & (Rml::Input::KM_SHIFT | Rml::Input::KM_CTRL | Rml::Input::KM_ALT)) return vk;
+    if (ui::active_osk()) return vk;
+    const Rml::Element* f = ctx ? ctx->GetFocusElement() : nullptr;
+    if (f && (f->GetTagName() == "input" || f->GetTagName() == "textarea")) return vk;
+    const int as = ui::input::menu_key(vk);
+    if (as == vk) return vk;
+    sKeyAs[vk] = as;
+    sDropChar = true;
+    return as;
+}
+
+int menu_key_up(int vk) {
+    if (vk <= 0 || vk >= 256 || sKeyAs[vk] == 0) return vk;
+    const int as = sKeyAs[vk];
+    sKeyAs[vk] = 0;
+    return as;
+}
+
 void process_queue() {
     std::vector<InputEvent> events;
     {
@@ -699,6 +741,11 @@ void process_queue() {
     }
     Rml::Context* ctx = ui::host::context();
     for (const InputEvent& e : events) {
+        if (e.type == InputEvent::Char && sDropChar) {  // (the character of a key the menus took as Enter or Esc)
+            sDropChar = false;
+            continue;
+        }
+        if (e.type == InputEvent::KeyDown) sDropChar = false;
         if (steam_layout_key(e, ctx)) continue;
         if (ui::OskWindow* osk = ui::active_osk()) {  // the on-screen keyboard is up: typing goes into it
             if (e.type == InputEvent::Char) {
@@ -719,11 +766,11 @@ void process_queue() {
                 break;
             }
             ctx->ProcessMouseLeave();
-            ctx->ProcessKeyDown(ui::keys::to_rml(e.a), e.mods);
+            ctx->ProcessKeyDown(ui::keys::to_rml(menu_key_down(e, ctx)), e.mods);
             break;
         case InputEvent::KeyUp:
             if (ui::input::binding_capture()) break;
-            ctx->ProcessKeyUp(ui::keys::to_rml(e.a), e.mods);
+            ctx->ProcessKeyUp(ui::keys::to_rml(menu_key_up(e.a)), e.mods);
             break;
         case InputEvent::Char:
             // Typing into a text field (Custom frame rate's): printable characters only, as RmlUi's own Win32
@@ -927,7 +974,7 @@ void watch_thread() {
         if (!stopped) noticed = dialogShown = false;
         if (stopped && !sCapturing.load()) {  // (the menu is not up: the chord opens it)
             bool neutral = true;
-            const unsigned mask = sChordMask.load();
+            const unsigned mask = sChordPadMask.load();
             const bool down = (read_pads(neutral).buttons & mask) == mask;
             if (down && !chordWasDown) {
                 std::fprintf(stderr, "[ui] the menu chord, with no new frame for %lld s\n", since / 1000);
@@ -1122,6 +1169,7 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
     sOpenPending = false;
     const int chord = ui::settings::get_int("pad_menu_chord");
     sChordMask = ui::input::chord_mask(chord);
+    sChordPadMask = chord_pad_mask(sChordMask);
 
     if (!sActive) {
         // Waking: what is held now is not a press (the chord, or the key that opened the menu, is handled here).
@@ -1530,6 +1578,7 @@ extern "C" void des_ui_early_init(void) {
     if (!sCrashDialog) parse_debug_knobs();  // (the dialog's are crash_dialog_env's: these are the game's)
     sOpenPending = sSetupOnly || env_on("DES_UI_OPEN");
     sChordMask = ui::input::chord_mask(ui::settings::get_int("pad_menu_chord"));
+    sChordPadMask = chord_pad_mask(sChordMask);
 
     sStartScreen = !sSetupOnly && (env_on("DES_UI_START") || (ui::settings::get_int("show_start_screen") != 0 &&
                                                               !env_on("DES_SKIP_UI") && !ui::settings::scripted_run()));
