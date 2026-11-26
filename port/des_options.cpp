@@ -2713,6 +2713,47 @@ extern "C" void des_slide_rate(ppu_context* ctx, uint32_t addr)
     }
 }
 
+/* A character proxy in the air (wrapper + 0x190 set), in the same velocity
+ * update 0x001FE778: the game adds gravity times dt to the proxy's velocity,
+ * clamps it (x and z to 6 m/s each way, y to 50 m/s down) and then keeps 0.95
+ * of its speed across the ground (r30 - 0x7DE0, x and z only). That drag is once a
+ * frame: a character that runs off a ledge keeps 0.95^30 of that speed after a
+ * second at 30 fps but 0.95^240 at 240 fps, so it falls almost straight down
+ * and lands short of where it lands at 30 fps (docs/28). The lifter
+ * calls this after 0x001FECA8 (stfs f12, 0x74(r1): the drag, put on the stack
+ * and splatted into the multiply next); it raises the stored drag to dt * 30,
+ * with dt the step's (r26 + 0x20), as des_slide_rate does with the 0.65 decay.
+ * All characters, any thread, every disc. DES_AIRFIX=0 turns it off live.
+ * DES_AIRLOG=1 prints each step in the air: the wrapper (r29), dt, the speed
+ * across the ground before the drag and the speed down. */
+extern "C" void des_air_rate(ppu_context* ctx, uint32_t addr)
+{
+    static int on = 1, log = 0;
+    PS3_KNOB(on, ps3_env_int("DES_AIRFIX", 1) != 0);
+    PS3_KNOB(log, env_on("DES_AIRLOG"));
+    const uint32_t insn = hook_insn(addr);
+    if ((insn >> 26) != 52) return;   /* stfs only */
+    const uint32_t at = (uint32_t)ctx->gpr[(insn >> 16) & 31] + (uint32_t)(int16_t)(insn & 0xFFFF);
+    if (!guest_ptr_ok(at)) return;
+    const float drag = vm_readf(at);
+    const float dt = vm_readf((uint32_t)ctx->gpr[26] + 0x20), steps = dt * 30.0f;
+    const bool scale = on && s_fps > 0 && steps > 0.0f && steps < 30.0f && steps != 1.0f && drag > 0.0f &&
+                       drag < 1.0f;
+    if (log) {
+        /* x and z of the velocity before the drag (r1 + 0xD0, + 0xD8), y after its clamp (r8) */
+        const uint32_t sp = (uint32_t)ctx->gpr[1];
+        const float x = vm_readf(sp + 0xD0), z = vm_readf(sp + 0xD8);
+        const uint32_t py = (uint32_t)ctx->gpr[8];
+        const float y = guest_ptr_ok(py) ? vm_readf(py) : 0.0f;
+        using clock = std::chrono::steady_clock;
+        static const clock::time_point t0 = clock::now();
+        const double ms = std::chrono::duration<double, std::milli>(clock::now() - t0).count();
+        fprintf(stderr, "[airlog] %.1f ms %08X dt %.5f across %.3f down %.3f drag %.4f%s\n", ms,
+                (uint32_t)ctx->gpr[29], dt, std::sqrt(x * x + z * z), y, drag, scale ? " scaled" : "");
+    }
+    if (scale) vm_writef(at, (float)std::pow((double)drag, (double)steps));
+}
+
 /* DES_ROLLDIR=1 (the default; 0 is the original): a roll while locked on goes
  * where the stick points. Locked on, the game rolls only forward, back, left
  * or right of the target (docs/47, section 3): the player's script asks its
