@@ -1311,6 +1311,37 @@ The fix can't remove a fade's first frame. How much reference pose that frame sh
 - The weights in these jobs are above 0, so a count of zero-weight bones finds nothing. Look for weights under the threshold.
 - Frame dumps slow the game to about 150 fps, so a fade spans fewer frames in a dump than in play.
 
+## A dash cost less stamina above 30 fps (port `des_stamina_carry`, 2026-11-25)
+
+**Symptom:** with DES_FPS set, a dash cost less stamina than on the PS3: 8.9 a second with `DES_FPS=30`, 9 at 45 fps, 9.4 at 75 and 9.6 at 144, instead of 10. Nobody reported it; it turned up in a check of the game's per-frame timers.
+
+**Cause:** the dash update `0x00286020` adds each update's dt to the character's dash timer (`+0x144`). When the timer reaches 0.1 s (the constant at `0x019DA2A8`), the dash costs 1 stamina (`+0x3D4`) and the timer is set to 0 (`stw r9, 0x144(r31)` at `0x00286654`). The part of the update past 0.1 s is thrown away, so each 0.1 s takes a whole number of frames:
+- 3 at the PS3's 30 fps, so 10 a second;
+- 5 at 45 fps (0.111 s), 9 a second;
+- 8 at 75 fps (0.107 s), 9.4 a second;
+- 15 at 144 fps (0.104 s), 9.6 a second.
+
+Under DES_FPS even 30 fps lost a little: our frame time is the measured one, and a frame a hair under 1/30 s left the third frame short of 0.1 s.
+
+**Fix:** one line in [`port/insn_hooks.txt`](../port/insn_hooks.txt) calls `des_stamina_carry` (port/des_options.cpp) after that store. The timer the update reached is still in `f13` and the 0.1 in `f0`, with the same registers on all four discs. The hook sets the timer to what is left past 0.1 s instead of 0, so the ticks keep 0.1 s apart on average at any frame rate.
+- A frame is at most 50 ms, so what is left never holds a second 0.1.
+- It does nothing without DES_FPS.
+- `DES_STAMFIX=0` turns it off live.
+
+**Result** (two 6 s dashes forward from the Tutorial's start, the frame log's stamina column; the cost a second is 1 / the mean time between ticks, leaving out a gap where a stumble broke the dash):
+
+| Frame rate | Fix off (`DES_STAMFIX=0`) | Fix on |
+|---|---|---|
+| The game's own 30 fps mode (no DES_FPS) | 10.00 a second, 3 frames every tick | the same (the hook does nothing) |
+| `DES_FPS=30` | 8.90: 35 of 95 ticks took 4 frames | 10.02 |
+| 45 fps | 9.00: 5 frames every tick | 10.02 |
+| 75 fps | 9.38: 8 frames every tick | 10.01 |
+| 144 fps | 9.60: 15 frames every tick | 10.00 |
+| Unlocked (about 650 fps) | 9.92 | 10.00 |
+
+**Watch out:**
+- The second dash in that route stumbles over something about 3 s in, and stamina comes back for half a second. Measure from the time between ticks, not from the first and last tick.
+
 ## SPU regions for every image (port `scripts/build_spu.py`, 2026-11-08)
 
 Issue #310: when the dragon's fire sweeps the bridge in 1-1, the frame rate halves for about two seconds. The test: a copy of a save from just before the bridge, invincible, warped to the same spot, then wait for the flame. Unlocked, V-sync off (`DES_FPS=unlocked RSX_VSYNC=0 DES_VSYNC=0`). The dip starts 12 s after the warp, in every run.

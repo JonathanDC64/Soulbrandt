@@ -121,6 +121,7 @@ DES_REGION_ADDR(0x00280E64, 0x0027EF6C)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x00280F88, 0x0027F090)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x002818D0, 0x0027F9D8)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x00286614, 0x0028464C)  /* hook des_dev_hook */
+DES_REGION_ADDR(0x00286654, 0x0028468C)  /* hook des_stamina_carry */
 DES_REGION_ADDR(0x0028B224, 0x0028925C)  /* hook des_dev_hook */
 DES_REGION_ADDR(0x0028B228, 0x00289260)  /* hook des_coop_hook: a hit's damage after its calculation (enemy difficulty) */
 DES_REGION_ADDR(0x002977C0, 0x002957F8)  /* call des_seamless_game (by address) */

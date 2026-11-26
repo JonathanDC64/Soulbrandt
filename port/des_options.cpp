@@ -3056,6 +3056,35 @@ extern "C" void des_ghost_rate(ppu_context* ctx, uint32_t addr)
     else ctx->fpr[12] = 3.0f * (float)n;                        /* 0x00314ABC, lfs f12: the step's speed factor */
 }
 
+/* A dash's stamina (docs/28). 0x00286020 adds each update's dt to the
+ * character's dash timer (+0x144); once it reaches 0.1 s (the constant at
+ * 0x019DA2A8) the dash costs 1 stamina (+0x3D4) and the timer is set to 0.
+ * The part of the update past 0.1 s was lost, so 0.1 s took a whole number of
+ * frames: 3 at the PS3's fixed 1/30 s, 10 a second. At 45 fps it took 5
+ * (0.111 s, 9 a second), at 75 fps 8 (9.4 a second), and under DES_FPS even 30
+ * fps lost some, since our frame time is the real one and a frame a hair under
+ * 1/30 s made the third not enough. The lifter calls this after the store of
+ * the 0 (0x00286654, stw r9, 0x144(r31)); the timer the update reached is
+ * still in f13 and the 0.1 in f0, on all four discs. It keeps the rest,
+ * between 0 and 0.1 s, so a dash costs 10 a second at any frame rate, as on the
+ * PS3. A frame is at most 50 ms (kMaxFrameDt), so the rest never holds a
+ * second 0.1. Nothing without DES_FPS. DES_STAMFIX=0 turns it off live. Main
+ * thread. */
+extern "C" void des_stamina_carry(ppu_context* ctx, uint32_t addr)
+{
+    static int on = 1;
+    PS3_KNOB(on, ps3_env_int("DES_STAMFIX", 1) != 0);
+    if (!on || s_fps <= 0) return;
+    const uint32_t insn = hook_insn(addr);
+    if ((insn >> 26) != 36) return;   /* stw only */
+    const uint32_t timer = (uint32_t)ctx->gpr[(insn >> 16) & 31] + (uint32_t)(int16_t)(insn & 0xFFFF);
+    const float t = (float)ctx->fpr[13], tick = (float)ctx->fpr[0];
+    if (!guest_ptr_ok(timer) || !(tick > 0.0f && t >= tick)) return;
+    float rest = t - tick;
+    if (!(rest < tick)) rest = 0.0f;
+    vm_writef(timer, rest);
+}
+
 #if !DES_DEV
 /* Release builds: the dev hook lines in insn_hooks.txt (docs/55) call this
  * empty function, and no cheat is ever used. Developer builds (cmake
