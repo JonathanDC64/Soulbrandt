@@ -57,12 +57,12 @@ The data folder (`report::data_dir`): `<install>/data` with `portable.txt` besid
 and `{local}` (AppData\Local, or `~/.local/share`). Its file list takes the first entry whose `if` exists, so:
 
 1. `{install}/data/settings.ini`, if `{install}/portable.txt` exists.
-2. `{local}/DemonsSoulsRecomp/DemonsSouls/settings.ini`, if it exists: Linux, once the game has written it. Windows
-   never has it.
-3. `{config}/DemonsSoulsRecomp/DemonsSouls/settings.ini`: Windows, and the place for a file that does not exist yet.
+2. `{local}/DemonsSoulsRecomp/DemonsSouls/settings.ini`, if `{install}/Soulbrandt` exists: the Linux download's
+   program (the Windows one is `Soulbrandt.exe`).
+3. `{config}/DemonsSoulsRecomp/DemonsSouls/settings.ini`: Windows.
 
-On Linux, a pick made in the launcher before the game's first start goes to `~/.config`, which the game does not read
-(inferred). From the first start on, the game's own file is used.
+So on Linux a pick made in the launcher before the game's first start goes to the file the game reads, not to
+`~/.config`. A program renamed by PRODUCT_NAME needs the `if` to follow it.
 
 ### 2.2 The program starts itself again
 

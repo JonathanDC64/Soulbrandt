@@ -11,7 +11,7 @@
       "format": "ini",
       "file": [
         { "path": "{install}/data/settings.ini", "if": "{install}/portable.txt" },
-        { "path": "{local}/DemonsSoulsRecomp/DemonsSouls/settings.ini", "if": "{local}/DemonsSoulsRecomp/DemonsSouls/settings.ini" },
+        { "path": "{local}/DemonsSoulsRecomp/DemonsSouls/settings.ini", "if": "{install}/Soulbrandt" },
         { "path": "{config}/DemonsSoulsRecomp/DemonsSouls/settings.ini" }
       ]
     }
