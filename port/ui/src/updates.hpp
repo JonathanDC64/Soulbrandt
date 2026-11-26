@@ -34,13 +34,17 @@ std::filesystem::path install_dir();
 // it, not a git checkout), the setup engine and its Python are there (setup fetches the Python at its first run), and
 // this is not a test run. DES_UPDATE_FEED (a test's list of releases, update.py) allows a test run too.
 bool possible();
-// The check at the start: possible() and Check for updates on.
+// RecompLauncher installed this copy and brings each new version (docs/166): it started this program
+// (RECOMPLAUNCHER=1), or started this install before (setup/recomplauncher.txt, left then). The game then never
+// looks for updates itself, at the start or by Check now.
+bool from_launcher();
+// The check at the start: possible(), Check for updates on, and not from_launcher().
 bool wanted();
 // The game runs below the UI (not setup's screens alone): its Update and Go back start the program again first
 // (restart_into). des_ui.cpp says which at its start.
 void set_over_game(bool over);
 bool over_game();
-// Starts a check unless one is under way (the start, when wanted(); Check now, when possible()).
+// Starts a check unless one is under way or from_launcher() (the start, when wanted(); Check now, when possible()).
 void start_check();
 // The check's state, with what the engine said since the last call taken in (the UI's thread, once a frame).
 State state();

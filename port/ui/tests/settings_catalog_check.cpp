@@ -114,6 +114,7 @@ bool start_effects_used() { return true; }
 void party_size_changed() {}
 std::string update_status() { return "Up to date."; }
 bool update_possible() { return true; }
+bool update_from_launcher() { return false; }
 bool update_checking() { return false; }
 void update_check() {}
 std::string update_found_version() { return "9.9.9"; }

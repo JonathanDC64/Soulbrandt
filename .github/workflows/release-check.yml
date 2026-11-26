@@ -9,6 +9,7 @@ on:
       - '.github/workflows/release*.yml'
       - 'ps3recomp.pin'
       - 'VERSION'
+      - 'recomplauncher.json'
       # what the player's download takes from the tree (tools/release/player-files.txt)
       - 'scripts/**'
       - 'tools/setup/**'
@@ -73,6 +74,9 @@ jobs:
           unzip -l dist/DemonsSoulsRecomp-*-windows.zip | grep -E ' DemonsSoulsRecomp-[^/]+/licenses/ffmpeg/COPYING\.LGPLv2\.1$'
           unzip -p dist/DemonsSoulsRecomp-*-windows.zip '*/release-files.txt' | grep -x 'avutil-60.dll'
           unzip -p dist/DemonsSoulsRecomp-*-windows.zip '*/release-info.txt' | grep -x "exe=$program.exe"
+          # RecompLauncher's file beside the program, in both downloads (docs/166).
+          unzip -l dist/DemonsSoulsRecomp-*-windows.zip | grep -E ' DemonsSoulsRecomp-[^/]+/recomplauncher\.json$'
+          tar -tJf dist/DemonsSoulsRecomp-*-linux.tar.xz | grep -E '^DemonsSoulsRecomp-[^/]+/recomplauncher\.json$'
           tar -tvJf dist/DemonsSoulsRecomp-*-linux.tar.xz | grep -E "^-rwxr-xr-x .* DemonsSoulsRecomp-[^/]+/$program\$"
           tar -tvJf dist/DemonsSoulsRecomp-*-linux.tar.xz | grep -E ' DemonsSoulsRecomp-[^/]+/licenses/vkd3d/LICENSE$'
           tar -xOJf dist/DemonsSoulsRecomp-*-linux.tar.xz --wildcards '*/release-files.txt' | grep -x "$program"

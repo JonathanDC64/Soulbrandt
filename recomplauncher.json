@@ -1,0 +1,187 @@
+{
+  "$schema": "https://recomplauncher.com/schema/recomplauncher.json",
+  "format": 1,
+  "name": "Soulbrandt",
+  "start": {
+    "program": ["Soulbrandt.exe", "Soulbrandt"]
+  },
+  "config": [
+    {
+      "id": "main",
+      "format": "ini",
+      "file": [
+        { "path": "{install}/data/settings.ini", "if": "{install}/portable.txt" },
+        { "path": "{config}/DemonsSoulsRecomp/DemonsSouls/settings.ini", "if": "{config}/DemonsSoulsRecomp/DemonsSouls" },
+        { "path": "{local}/DemonsSoulsRecomp/DemonsSouls/settings.ini", "if": "{local}/DemonsSoulsRecomp/DemonsSouls" },
+        { "path": "{local}/Soulbrandt/settings.ini" }
+      ]
+    }
+  ],
+  "saves": [
+    "{install}/gamedata/dev_hdd0/home/00000001/savedata",
+    "{local}/Soulbrandt/gamedata/dev_hdd0/home/00000001/savedata"
+  ],
+  "looks": {
+    "allowed": false,
+    "reason": "The game has its own anti-aliasing, scaling filter and HDR in its Settings."
+  },
+  "system": {
+    "windows": { "version": "10", "graphics": { "d3d12": "12" } },
+    "linux": { "glibc": "2.35", "graphics": { "vulkan": "1.3" } }
+  },
+  "settings": [
+    {
+      "id": "display_mode", "label": "Display mode", "group": "Display",
+      "help": "Borderless fills the screen. Exclusive (Windows only) gives the game the screen to itself.",
+      "choices": [
+        { "label": "Window", "set": { "DES_FULLSCREEN": "0" } },
+        { "label": "Borderless fullscreen", "set": { "DES_FULLSCREEN": "1" } },
+        { "label": "Exclusive fullscreen", "set": { "DES_FULLSCREEN": "2" } }
+      ],
+      "defaults": { "DES_FULLSCREEN": "0" }
+    },
+    {
+      "id": "aspect", "label": "Aspect ratio", "group": "Display",
+      "help": "Wider shows more at the sides. Raise Render resolution to keep a wide picture sharp.",
+      "choices": [
+        { "label": "16:9 (original)", "set": { "DES_ASPECT": "" } },
+        { "label": "16:10 (Steam Deck)", "set": { "DES_ASPECT": "16:10" } },
+        { "label": "21:9 (2560 × 1080)", "set": { "DES_ASPECT": "2560:1080" } },
+        { "label": "21:9 (3440 × 1440)", "set": { "DES_ASPECT": "3440:1440" } },
+        { "label": "21:9 (3840 × 1600)", "set": { "DES_ASPECT": "3840:1600" } },
+        { "label": "32:9", "set": { "DES_ASPECT": "32:9" } },
+        { "label": "Match the display", "set": { "DES_ASPECT": "auto" } }
+      ],
+      "defaults": { "DES_ASPECT": "" }
+    },
+    {
+      "id": "hdr", "label": "HDR", "group": "Display",
+      "help": "Brighter lights and sky on an HDR display. Turn on HDR in Windows or your desktop first.",
+      "choices": [
+        { "label": "Off", "set": { "RSX_HDR": "0" } },
+        { "label": "On", "set": { "RSX_HDR": "1" } }
+      ],
+      "defaults": { "RSX_HDR": "0" }
+    },
+    {
+      "id": "frame_rate", "label": "Frame rate", "group": "Frame rate",
+      "help": "30 fps is the PS3's. The game's timing is fixed above it, so it plays the same; above 60 is less tested.",
+      "choices": [
+        { "label": "30 fps (original)", "set": { "DES_FPS": "" } },
+        { "label": "30 fps, real frame time", "set": { "DES_FPS": "30" } },
+        { "label": "60 fps", "set": { "DES_FPS": "60" } },
+        { "label": "120 fps", "set": { "DES_FPS": "120" } },
+        { "label": "144 fps", "set": { "DES_FPS": "144" } },
+        { "label": "165 fps", "set": { "DES_FPS": "165" } },
+        { "label": "240 fps", "set": { "DES_FPS": "240" } },
+        { "label": "Unlocked", "set": { "DES_FPS": "unlocked" } }
+      ],
+      "defaults": { "DES_FPS": "" }
+    },
+    {
+      "id": "vsync", "label": "V-sync", "group": "Frame rate",
+      "help": "On waits for the display. Even frames keeps motion smooth. Off can tear.",
+      "choices": [
+        { "label": "On", "set": { "DES_VSYNC": "1" } },
+        { "label": "Even frames", "set": { "DES_VSYNC": "even" } },
+        { "label": "G-Sync / FreeSync", "set": { "DES_VSYNC": "vrr" } },
+        { "label": "Off", "set": { "DES_VSYNC": "0" } }
+      ],
+      "defaults": { "DES_VSYNC": "1" }
+    },
+    {
+      "id": "resolution", "label": "Render resolution", "group": "Picture",
+      "help": "Above 100% is sharper and needs a faster graphics card. Below 100% suits handhelds.",
+      "choices": [
+        { "label": "50% (640 × 360)", "set": { "RSX_SCALE": "50" } },
+        { "label": "60% (768 × 432)", "set": { "RSX_SCALE": "60" } },
+        { "label": "70% (896 × 504)", "set": { "RSX_SCALE": "70" } },
+        { "label": "80% (1024 × 576)", "set": { "RSX_SCALE": "80" } },
+        { "label": "90% (1152 × 648)", "set": { "RSX_SCALE": "90" } },
+        { "label": "100% (1280 × 720, original)", "set": { "RSX_SCALE": "100" } },
+        { "label": "150% (1920 × 1080)", "set": { "RSX_SCALE": "150" } },
+        { "label": "200% (2560 × 1440)", "set": { "RSX_SCALE": "200" } },
+        { "label": "300% (3840 × 2160)", "set": { "RSX_SCALE": "300" } }
+      ],
+      "defaults": { "RSX_SCALE": "100" }
+    },
+    {
+      "id": "anti_aliasing", "label": "Anti-aliasing", "group": "Picture",
+      "help": "Smooths jagged edges. SMAA keeps textures sharper than FXAA.",
+      "choices": [
+        { "label": "Off (original)", "set": { "RSX_AA": "0" } },
+        { "label": "FXAA", "set": { "RSX_AA": "1" } },
+        { "label": "SMAA", "set": { "RSX_AA": "2" } }
+      ],
+      "defaults": { "RSX_AA": "0" }
+    },
+    {
+      "id": "scaling_filter", "label": "Scaling filter", "group": "Picture",
+      "help": "How the picture is fitted to the window. Sharp is cleaner.",
+      "choices": [
+        { "label": "Bilinear", "set": { "RSX_OUTFILTER": "0" } },
+        { "label": "Sharp", "set": { "RSX_OUTFILTER": "1" } }
+      ],
+      "defaults": { "RSX_OUTFILTER": "0" }
+    },
+    {
+      "id": "anisotropic", "label": "Anisotropic filtering", "group": "Picture",
+      "help": "Keeps floors and walls sharp into the distance.",
+      "choices": [
+        { "label": "Original (4x)", "set": { "RSX_ANISO": "0" } },
+        { "label": "Off", "set": { "RSX_ANISO": "1" } },
+        { "label": "2x", "set": { "RSX_ANISO": "2" } },
+        { "label": "4x", "set": { "RSX_ANISO": "4" } },
+        { "label": "8x", "set": { "RSX_ANISO": "8" } },
+        { "label": "16x", "set": { "RSX_ANISO": "16" } }
+      ],
+      "defaults": { "RSX_ANISO": "0" }
+    },
+    {
+      "id": "motion_blur", "label": "Motion blur", "group": "Picture",
+      "help": "The game's blur when the camera moves.",
+      "choices": [
+        { "label": "On", "set": { "DES_MOTION_BLUR": "1" } },
+        { "label": "Off", "set": { "DES_MOTION_BLUR": "0" } }
+      ],
+      "defaults": { "DES_MOTION_BLUR": "1" }
+    },
+    {
+      "id": "depth_of_field", "label": "Depth of field", "group": "Picture",
+      "help": "The game's blur on distant scenery.",
+      "choices": [
+        { "label": "On", "set": { "DES_DOF": "1" } },
+        { "label": "Off", "set": { "DES_DOF": "0" } }
+      ],
+      "defaults": { "DES_DOF": "1" }
+    },
+    {
+      "id": "start_screen", "label": "Start screen", "group": "Start",
+      "help": "Play, Settings and Quit before the game. Skip goes straight in; F1 still opens the menu.",
+      "choices": [
+        { "label": "Show", "set": { "show_start_screen": "1" } },
+        { "label": "Skip", "set": { "show_start_screen": "0" } }
+      ],
+      "defaults": { "show_start_screen": "1" }
+    },
+    {
+      "id": "logos", "label": "Boot logos", "group": "Start",
+      "help": "The company logos at start.",
+      "choices": [
+        { "label": "Show", "set": { "DES_SKIP_INTRO": "0" } },
+        { "label": "Skip", "set": { "DES_SKIP_INTRO": "1" } },
+        { "label": "Last logo only", "set": { "DES_SKIP_INTRO": "2" } }
+      ],
+      "defaults": { "DES_SKIP_INTRO": "0" }
+    },
+    {
+      "id": "opening_movie", "label": "Opening movie", "group": "Start",
+      "help": "The movie after the logos. Other movies still play.",
+      "choices": [
+        { "label": "Play", "set": { "DES_SKIP_INTRO_MOVIE": "0" } },
+        { "label": "Skip", "set": { "DES_SKIP_INTRO_MOVIE": "1" } }
+      ],
+      "defaults": { "DES_SKIP_INTRO_MOVIE": "0" }
+    }
+  ]
+}

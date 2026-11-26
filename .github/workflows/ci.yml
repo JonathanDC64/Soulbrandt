@@ -339,6 +339,11 @@ jobs:
       - name: The shown name in one place
         run: python tools/ci/check_product_name.py
 
+      # RecompLauncher's file offers only settings the menu has, with their values and defaults (docs/166). Its
+      # unit tests run with the release tools' above.
+      - name: RecompLauncher's file
+        run: python tools/release/recomplauncher.py check
+
       # The menus' own images (port/ui/res/img) are what tools/ui/make_ui_art.py makes, byte for byte.
       - name: The menus' images
         run: python tools/ui/make_ui_art.py --check

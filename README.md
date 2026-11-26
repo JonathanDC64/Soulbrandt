@@ -7,6 +7,8 @@
 
 **Demon's Souls, running natively on PC.**
 
+<a href="https://recomplauncher.com/game/soulbrandt"><picture><source media="(prefers-color-scheme: dark)" srcset="https://recomplauncher.com/assets/press/launcher/badge-light.svg"><img alt="Get it on RecompLauncher" src="https://recomplauncher.com/assets/press/launcher/badge-dark.svg" height="48"></picture></a>
+
 [![release](https://img.shields.io/github/v/release/JonathanDC64/Soulbrandt?filter=v%2A&sort=semver&display_name=tag&label=release&color=orange)](https://github.com/JonathanDC64/Soulbrandt/releases/latest)
 [![downloads](https://img.shields.io/github/downloads/JonathanDC64/Soulbrandt/latest/total?label=downloads&color=brightgreen)](https://github.com/JonathanDC64/Soulbrandt/releases/latest)
 [![stars](https://img.shields.io/github/stars/JonathanDC64/Soulbrandt?style=flat&label=stars&color=yellow)](https://github.com/JonathanDC64/Soulbrandt/stargazers)

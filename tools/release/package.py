@@ -20,10 +20,11 @@ version and both commits; port/cmake/DesVersion.cmake reads it where there is no
 is made from the game (the game-file check), so nothing in the zip is.
 
 The player's download holds what the program needs and no more (docs/54 section 8.5). At its top: the program, named
-after PRODUCT_NAME (host.yml's des_host.exe, renamed), FFmpeg's DLLs, README.md, LICENSE and licenses/. In setup/: the
-files of the tree that player-files.txt lists, in the tree's layout, where the program finds setup's engine; its
-release-info.txt, with the program's name in exe=; and release-files.txt, the list of the download's files, which tells
-the update which files are the program's (tools/setup/des_setup/update.py, docs/105).
+after PRODUCT_NAME (host.yml's des_host.exe, renamed), FFmpeg's DLLs, README.md, LICENSE, recomplauncher.json
+(RecompLauncher reads it there, docs/166) and licenses/. In setup/: the files of the tree that player-files.txt lists,
+in the tree's layout, where the program finds setup's engine; its release-info.txt, with the program's name in exe=;
+and release-files.txt, the list of the download's files, which tells the update which files are the program's
+(tools/setup/des_setup/update.py, docs/105).
 
 --linux-host DIR also writes <out>/DemonsSoulsRecomp-<version>-linux.tar.xz, the Linux player's download: the same,
 with DIR's files at the top (host.yml's host-linux folder: des_host, renamed, the vkd3d and FFmpeg libraries it
@@ -70,7 +71,8 @@ PS3RECOMP_SKIP = (re.compile(r"^\.github/"), re.compile(r"^\.trail/"), re.compil
                   re.compile(r"^libs/filesystem/tests/test_edat_paths\.c$"), re.compile(r"^tools/test_pkg_extract\.py$"),
                   *(re.compile("^" + re.escape(p) + "$") for p in KEY_SOURCES))
 PLAYER_LIST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "player-files.txt")
-PLAYER_TOP = ("LICENSE", "README.md")   # of the tree's files, those at the top of the player's download
+# Of the tree's files, those at the top of the player's download (recomplauncher.json beside the program: docs/166).
+PLAYER_TOP = ("LICENSE", "README.md", "recomplauncher.json")
 SETUP = "setup"                         # the folder beside the program with the rest (setup_engine.cpp, update.py)
 # Plain text, so the archives come out byte for byte as committed (LF) whatever this machine's git settings.
 GIT_PLAIN = ["-c", "core.autocrlf=false", "-c", "core.eol=lf"]
