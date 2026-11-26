@@ -679,6 +679,73 @@ def _compile(data, jr, jobs, progress, libsre, cc=None, ld=None, memory=None):
                                 libsre=libsre).run_all()
 
 
+# The most memory one part of the shaders pass may use (des_prework_shaders_part, one thread): shader_parts runs no
+# more parts than the free memory holds this many times.
+SHADER_PART_BYTES = 1 << 30
+
+
+def under_wine() -> bool:
+    """True when this Python runs under Wine (the Mac app, docs/178): its ntdll has wine_get_version."""
+    if os.name != "nt":
+        return False
+    try:
+        import ctypes
+        return hasattr(ctypes.WinDLL("ntdll"), "wine_get_version")
+    except OSError:
+        return False
+
+
+def shader_parts() -> int:
+    """How many processes the shaders pass runs in. 1, the host's own threads, except under Wine: there a process's
+    threads wait on each other, since Wine's heap has one lock per process (setup's 4,179 Vulkan shaders took 1,551 s
+    on 15 threads, where Windows takes about 12 s; docs/178). There it is one per processor, as many as the free
+    memory holds (SHADER_PART_BYTES each). DES_SETUP_SHADER_PARTS=<n> sets it (tests, and checks elsewhere)."""
+    given = os.environ.get("DES_SETUP_SHADER_PARTS", "").strip()
+    if given.isdigit():
+        return max(1, min(64, int(given)))
+    if not under_wine():
+        return 1
+    return max(1, min(os.cpu_count() or 1, 32, compile_step.free_memory() // SHADER_PART_BYTES))
+
+
+def _shader_parts(prog, game, eboot, logs, parts, total) -> list:
+    """The pass in parts (`--shaders-part <i> <n>`), each in a process of its own, all at once, with one bar: their
+    counts added up. Each part's lines go to shaders_part<i>.log. Returns the exit statuses (None: did not start) and
+    the shaders the parts compiled. A part that fails leaves its shaders to the whole pass that comes after."""
+    lock = threading.Lock()
+    done, whole = [0] * parts, [0] * parts
+    codes, built = [None] * parts, [0] * parts
+
+    def one(i):
+        cmd = prog + ["--shaders-part", str(i), str(parts), str(game)] + ([str(eboot)] if eboot.is_file() else [])
+        try:
+            with open(logs / f"shaders_part{i}.log", "w", encoding="utf-8", errors="replace") as lf:
+                lf.write("+ " + subprocess.list2cmdline(cmd) + "\n")
+                lf.flush()
+                with subprocess.Popen(cmd, cwd=str(Path(prog[-1]).parent), stdin=subprocess.DEVNULL,
+                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+                                      errors="replace", creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)) as p:
+                    for line in p.stdout:
+                        lf.write(line)
+                        w = line.split()
+                        if len(w) == 3 and w[0] == "shaders" and w[1].isdigit() and w[2].isdigit():
+                            with lock:
+                                done[i], whole[i] = int(w[1]), int(w[2])
+                                total.step("shaders", sum(done), max(1, sum(whole)))
+                        elif len(w) >= 3 and w[0] == "shaders" and not w[1].isdigit() and w[2].isdigit():
+                            built[i] = int(w[2])   # (shaders <result> <built> <cached> <failed> <seconds>)
+                    codes[i] = p.wait()
+        except OSError:
+            codes[i] = None
+
+    threads = [threading.Thread(target=one, args=(i,), daemon=True) for i in range(parts)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    return codes, sum(built)
+
+
 def _shaders(host, game, data, emit, total) -> bool:
     """The shaders phase (docs/52 section 5): the host fills the game's shader cache with no window, the pass the
     game's start runs (port/des_prework.cpp), so the first start finds the cache full; its own stamp makes a second
@@ -693,6 +760,14 @@ def _shaders(host, game, data, emit, total) -> bool:
     logs = data / "setup" / "logs"
     logs.mkdir(parents=True, exist_ok=True)
     eboot = data / "inputs" / lift.EBOOT
+    parts = shader_parts()
+    if parts > 1:
+        # (the parts compile the shaders; the whole pass below then finds them all there, in about a second, and
+        # writes the stamp and the pipeline index as it always does)
+        t0 = time.monotonic()
+        codes, built = _shader_parts(prog, game, eboot, logs, parts, total)
+        emit.text(f"note shaders: {built} compiled in {parts} processes at once (under Wine), "
+                  f"{codes.count(0)} of {parts} finished, in {time.monotonic() - t0:.0f} s")
     cmd = prog + ["--shaders", str(game)] + ([str(eboot)] if eboot.is_file() else [])
     result, rc = [], None
     try:

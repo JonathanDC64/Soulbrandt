@@ -332,15 +332,25 @@ class RunTest(unittest.TestCase):
 # A stand-in for `des_host --shaders <game folder>` (port/des_prework.cpp's des_prework_shaders): it writes its
 # arguments beside itself, then prints the lines that mode.txt there asks for and exits with its status.
 FAKE_HOST = r'''
-import os, sys
+import os, sys, time
 from pathlib import Path
 here = Path(__file__).resolve().parent
+if sys.argv[1] == "--shaders-part":   # (a part: its arguments in args_part<i>.txt, 10 shaders, 1 of them compiled)
+    (here / f"args_part{sys.argv[2]}.txt").write_text("\n".join(sys.argv[1:]), encoding="utf-8")
+    (here / "order.txt").open("a", encoding="utf-8").write(f"part {sys.argv[2]}\n")
+    if (here / "mode.txt").read_text(encoding="utf-8").strip() == "part-crash" and sys.argv[2] == "1":
+        sys.exit(3)
+    print("shaders 5 10", flush=True)
+    print("shaders 10 10", flush=True)
+    print("shaders done 1 9 0 0.5", flush=True)
+    sys.exit(0)
+(here / "order.txt").open("a", encoding="utf-8").write("whole\n")
 (here / "args.txt").write_text("\n".join(sys.argv[1:]), encoding="utf-8")
 ready = os.environ.get("FAKE_READY", "")
 (here / "ready_seen.txt").write_text(str(bool(ready) and Path(ready).exists()), encoding="utf-8")
 mode = (here / "mode.txt").read_text(encoding="utf-8").strip()
 print("[des] shaders: a line for the log", file=sys.stderr, flush=True)
-if mode == "done":
+if mode in ("done", "part-crash"):
     print("shaders 10 100", flush=True)
     print("shaders 100 100", flush=True)
     print("shaders done 90 10 0 1.5", flush=True)
@@ -422,6 +432,61 @@ class ShadersTest(unittest.TestCase):
 
     def test_in_the_whole_build(self):
         self.assertEqual(pipeline.default_phases()[-2:], ["compile", "shaders"])
+
+    def run_in_parts(self, mode, parts):
+        os.environ["DES_SETUP_SHADER_PARTS"] = str(parts)
+        try:
+            return self.run_with(mode)
+        finally:
+            os.environ.pop("DES_SETUP_SHADER_PARTS", None)
+
+    def test_in_parts_then_the_whole_pass(self):
+        """Under Wine (DES_SETUP_SHADER_PARTS here): the parts at once, each in its own process, then the whole pass,
+        which writes the stamp and the index (port/des_prework.cpp's des_prework_shaders_part)."""
+        rc, lines = self.run_in_parts("done", 3)
+        self.assertEqual(rc, 0, lines)
+        eboot = str(self.s.data / "inputs" / lift.EBOOT)
+        for i in range(3):
+            self.assertEqual((self.host / f"args_part{i}.txt").read_text(encoding="utf-8").split("\n"),
+                             ["--shaders-part", str(i), "3", str(self.s.game.root), eboot])
+            log = (self.s.data / "setup" / "logs" / f"shaders_part{i}.log").read_text(encoding="utf-8")
+            self.assertIn("--shaders-part", log)
+            self.assertIn("shaders done 1 9 0 0.5", log)
+        order = (self.host / "order.txt").read_text(encoding="utf-8").split()
+        self.assertEqual(order[-1], "whole")                         # the whole pass last, once
+        self.assertEqual(sorted(order[:-1]), ["0", "1", "2", "part", "part", "part"])
+        self.assertIn("@progress shaders 30/30", lines)               # the parts' counts added up
+        self.assertTrue(any("3 compiled in 3 processes at once" in x and "3 of 3 finished" in x for x in lines), lines)
+        self.assertIn("@step shaders done", lines)
+
+    def test_a_part_that_fails_leaves_its_shaders_to_the_whole_pass(self):
+        rc, lines = self.run_in_parts("part-crash", 3)
+        self.assertEqual(rc, 0, lines)
+        self.assertTrue(any("2 of 3 finished" in x for x in lines), lines)
+        self.assertEqual((self.host / "order.txt").read_text(encoding="utf-8").split()[-1], "whole")
+        self.assertIn("@done ok", lines)
+
+    def test_one_part_is_the_whole_pass_alone(self):
+        rc, lines = self.run_in_parts("done", 1)
+        self.assertEqual(rc, 0, lines)
+        self.assertEqual((self.host / "order.txt").read_text(encoding="utf-8").split(), ["whole"])
+
+    def test_parts_only_under_wine(self):
+        os.environ.pop("DES_SETUP_SHADER_PARTS", None)
+        wine, free = pipeline.under_wine, pipeline.compile_step.free_memory
+        try:
+            pipeline.under_wine = lambda: False
+            self.assertEqual(pipeline.shader_parts(), 1)
+            pipeline.under_wine = lambda: True
+            pipeline.compile_step.free_memory = lambda: 64 * pipeline.SHADER_PART_BYTES
+            self.assertEqual(pipeline.shader_parts(), max(1, min(os.cpu_count() or 1, 32)))
+            pipeline.compile_step.free_memory = lambda: 2 * pipeline.SHADER_PART_BYTES   # (as many as memory holds)
+            self.assertEqual(pipeline.shader_parts(), min(2, os.cpu_count() or 1))
+            pipeline.compile_step.free_memory = lambda: 0
+            self.assertEqual(pipeline.shader_parts(), 1)
+        finally:
+            pipeline.under_wine, pipeline.compile_step.free_memory = wine, free
+        self.assertFalse(pipeline.under_wine())   # (this Python: Windows' or Linux's own, not Wine's)
 
 
 class LocalCompilerTest(unittest.TestCase):
@@ -607,6 +672,8 @@ class HostAgreesTest(unittest.TestCase):
         cpp = (REAL / "port" / "des_prework.cpp").read_text(encoding="utf-8")
         self.assertIn('std::printf("shaders %u %u\\n"', cpp)
         self.assertIn('std::printf("shaders %s %u %u %u %.1f\\n"', cpp)
+        self.assertIn("des_prework_shaders_part", cpp)
+        self.assertIn('"--shaders-part"', (REAL / "port" / "des_options.cpp").read_text(encoding="utf-8"))
         words = re.search(r"kResult\[\]\s*=\s*\{([^}]*)\}", cpp).group(1)
         self.assertEqual(set(re.findall(r'"([\w-]+)"', words)), {"none", "up-to-date", "failed", "skipped", "done"})
         self.assertIn('"--shaders"', (REAL / "port" / "des_options.cpp").read_text(encoding="utf-8"))

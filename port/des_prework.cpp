@@ -107,6 +107,17 @@ std::string s_elf;
 std::atomic<int> s_state{0};   /* 0 idle, 1 reading, 2 compiling, 3 done */
 std::atomic<bool> s_skip{false};
 
+/* Setup's shaders phase in parts (des_prework_shaders_part): this process takes every s_parts-th program from the
+ * s_part-th, in the order the pass meets them (the archives sorted by name, each one's entries, then the
+ * executable's), which is the same in every process. 0 of 1: the whole pass. */
+unsigned s_part = 0, s_parts = 1;
+unsigned s_ordinal = 0;   /* the programs met so far in this pass */
+
+bool in_part()
+{
+    return s_parts <= 1 || s_ordinal++ % s_parts == s_part;
+}
+
 #ifdef _WIN32
 constexpr const char* kSep = "\\";
 #else
@@ -361,7 +372,7 @@ int queue_archive(const std::string& path, const std::string& name)
         const std::string ext(ename + elen - 4, 4);
         if (!same_nocase(ext.c_str(), ".vpo") && !same_nocase(ext.c_str(), ".fpo")) continue;
         const uint32_t hdr = be32(&b[off + 4]);
-        if (hdr >= size) continue;
+        if (hdr >= size || !in_part()) continue;
         char label[256];
         std::snprintf(label, sizeof label, "%s#%u", name.c_str(), i);
         rsx_shader_precompile_add_flags(label, &b[off + hdr], size - hdr, flags);
@@ -389,10 +400,12 @@ int queue_elf(const std::string& path)
         if (total < 32 || total > b.size() - o || params > total || uint64_t(prog) + 24 > total || uoff > total ||
             !usz || usz > total - uoff || usz % 16)
             continue;
-        char label[64];
-        std::snprintf(label, sizeof label, "EBOOT@%08zx", o);
-        rsx_shader_precompile_add_flags(label, &b[o], total, RSX_PRECOMPILE_2D);
-        n++;
+        if (in_part()) {
+            char label[64];
+            std::snprintf(label, sizeof label, "EBOOT@%08zx", o);
+            rsx_shader_precompile_add_flags(label, &b[o], total, RSX_PRECOMPILE_2D);
+            n++;
+        }
         o += (total - 4) & ~size_t(3);   /* with the loop's += 4: to the program's end */
     }
     return n;
@@ -485,10 +498,13 @@ Pass run_pass(const char* root, const std::string& elf, bool force, void (*poll)
         return Pass::NoArchives;
     }
     /* The pipeline index, unless its pipelines are all built (pso_index.built says so). Over an up-to-date
-     * cache the pass then does only the index's work. */
+     * cache the pass then does only the index's work. A part (des_prework_shaders_part) leaves the index, the
+     * predicted rows' file and the stamp to the whole pass that setup runs after the parts. */
+    const bool part = s_parts > 1;
+    s_ordinal = 0;
     std::string index_name;
-    std::string index = read_index(index_name);
-    add_predicted(root, elf, cache, predict_key, index);
+    std::string index = part ? std::string() : read_index(index_name);
+    if (!part) add_predicted(root, elf, cache, predict_key, index);
     if (!index.empty() && rsx_shader_precompile_index_built(index.data(), index.size())) index.clear();
     const bool up_to_date = !force && read_file(stamp_path, old) && std::string(old.begin(), old.end()) == stamp;
     const int rows = index.empty() ? 0 : rsx_shader_precompile_index(index.data(), index.size(), up_to_date);
@@ -507,9 +523,10 @@ Pass run_pass(const char* root, const std::string& elf, bool force, void (*poll)
         programs += queue_archive(dir + kSep + n, n);
     }
     if (!s_skip.load()) programs += queue_elf(elf);
-    /* One processor is left for the window and its progress bar. */
+    /* One processor is left for the window and its progress bar. A part has one thread: setup runs one part per
+     * processor. */
     const unsigned cpus = std::thread::hardware_concurrency();
-    const int threads = cpus > 2 ? int(cpus) - 1 : 1;
+    const int threads = part ? 1 : cpus > 2 ? int(cpus) - 1 : 1;
     if (s_skip.load() || rsx_shader_precompile_start(threads) != 0) {
         std::fprintf(stderr, "[des] shaders: precompile %s\n", s_skip.load() ? "skipped" : "did not start");
         return s_skip.load() ? Pass::Skipped : Pass::NotStarted;
@@ -524,8 +541,9 @@ Pass run_pass(const char* root, const std::string& elf, bool force, void (*poll)
     rsx_shader_precompile_wait();
     rsx_shader_precompile_get(&s);
     std::fprintf(stderr,
-                 "[des] shaders: %d programs, %u shaders -> %u compiled, %u already cached, %u failed%s; %.1f s on %d threads\n",
-                 programs, s.shaders, s.built, s.cached, s.failed, s.cancelled ? " (skipped: the rest compile in play)" : "",
+                 "[des] shaders: %d programs%s, %u shaders -> %u compiled, %u already cached, %u failed%s; %.1f s on %d threads\n",
+                 programs, part ? (" (part " + std::to_string(s_part + 1) + " of " + std::to_string(s_parts) + ")").c_str() : "",
+                 s.shaders, s.built, s.cached, s.failed, s.cancelled ? " (skipped: the rest compile in play)" : "",
                  s.seconds, s.threads);
     if (rows > 0)
         std::fprintf(stderr, "[des] shaders: pipeline index: %u of %d pipelines have both programs in the game's files\n",
@@ -533,7 +551,7 @@ Pass run_pass(const char* root, const std::string& elf, bool force, void (*poll)
     /* A full pass is remembered. The game adds to fp_variants.txt as it
      * draws, which changes the stamp, so the next start builds the new
      * variants. */
-    if (!up_to_date && !s.cancelled && !s.failed) {
+    if (!part && !up_to_date && !s.cancelled && !s.failed) {
         if (FILE* f = std::fopen(stamp_path.c_str(), "wb")) {
             std::fwrite(stamp.data(), 1, stamp.size(), f);
             std::fclose(f);
@@ -675,6 +693,24 @@ extern "C" int des_prework_shaders(const char* game, const char* eboot)
     std::printf("shaders %s %u %u %u %.1f\n", kResult[int(p)], s.built, s.cached, s.failed, s.seconds);
     std::fflush(stdout);
     return p == Pass::Done || p == Pass::UpToDate || p == Pass::Off || p == Pass::NoArchives ? 0 : 1;
+}
+
+/* `des_host --shaders-part <i> <n> <game folder> [<EBOOT.elf>]`: des_prework_shaders' pass for every n-th program
+ * from the i-th (0 to n-1), on one thread, with the same lines on standard output. Under Wine, setup runs one part
+ * per processor, each in a process of its own, then the whole pass, which finds them all compiled and writes the
+ * stamp and the index (pipeline.py's _shaders). In one process the compiler's threads wait on each other: Wine's
+ * heap has one lock for the whole process, and setup's 4,179 Vulkan shaders took 1,551 s on 15 threads where Windows
+ * takes about 12 s. A part writes only shaders: the stamp, the index and the predicted rows are the whole pass's.
+ * Returns 2 for a wrong i or n, else as des_prework_shaders. */
+extern "C" int des_prework_shaders_part(const char* game, const char* eboot, unsigned part, unsigned parts)
+{
+    if (parts < 1 || parts > 256 || part >= parts) {
+        std::fprintf(stderr, "[des] shaders: --shaders-part %u %u: the part must be 0 to n-1, n 1 to 256\n", part, parts);
+        return 2;
+    }
+    s_part = part;
+    s_parts = parts;
+    return des_prework_shaders(game, eboot);
 }
 
 /* `des_host --pso-predict <game folder> <EBOOT.elf> <out.tsv> [hdr]`: the

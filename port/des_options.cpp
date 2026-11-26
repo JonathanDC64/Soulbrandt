@@ -3733,6 +3733,7 @@ static void run_defaults()
 
 extern "C" int des_icon_render(const char* game, const char* out);   /* ui/src/souls_icon.cpp */
 extern "C" int des_prework_shaders(const char* game, const char* eboot);   /* des_prework.cpp */
+extern "C" int des_prework_shaders_part(const char* game, const char* eboot, unsigned part, unsigned parts);
 extern "C" int des_prework_pso_predict(const char* game, const char* eboot, const char* out, int hdr);
 extern "C" void des_prework_elf(const char* path);
 
@@ -3762,6 +3763,10 @@ extern "C" int ps3_title_launch(int* argc, char*** argv)
 {
     if ((*argc == 3 || *argc == 4) && std::strcmp((*argv)[1], "--shaders") == 0)
         return des_prework_shaders((*argv)[2], *argc == 4 ? (*argv)[3] : nullptr);
+    if ((*argc == 5 || *argc == 6) && std::strcmp((*argv)[1], "--shaders-part") == 0)
+        return des_prework_shaders_part((*argv)[4], *argc == 6 ? (*argv)[5] : nullptr,
+                                        unsigned(std::strtoul((*argv)[2], nullptr, 10)),
+                                        unsigned(std::strtoul((*argv)[3], nullptr, 10)));
     if (*argc == 4 && std::strcmp((*argv)[1], "--icon") == 0) return des_icon_render((*argv)[2], (*argv)[3]);
     if ((*argc == 5 || *argc == 6) && std::strcmp((*argv)[1], "--pso-predict") == 0)
         return des_prework_pso_predict((*argv)[2], (*argv)[3], (*argv)[4], *argc == 6 && std::strcmp((*argv)[5], "hdr") == 0);
