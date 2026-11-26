@@ -85,7 +85,12 @@ changed a setting would send no settings at all.
 - CPU per host thread over the sample window, with the hot function. On Linux
   it is each thread's time on a CPU and its time ready to run but waiting for
   one, from the kernel's counts, with the threads named after the guest's
-  threads, SPU groups, the RSX thread, the vblank clock and the sound mixer;
+  threads, SPU groups, the RSX thread, the vblank clock and the sound mixer.
+  Each thread also has how often it ran a second (`runs/s`) and its average
+  wait each time (`wait/run`), and a line above the table says how many of
+  the machine's CPUs were busy, and so about how much other programs used
+  (ps3recomp #331). Many short waits mean the threads wake each other often;
+  a few long ones mean the CPUs were full;
 - the calls each guest thread finished in that window;
 - the host threads; the last 60 SPU history events; the knobs that are set.
 
