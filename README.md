@@ -149,7 +149,9 @@ These steps are for the release download.
 
 Then press **Play**.
 
-**A portable install:** put an empty file named `portable.txt` next to `Soulbrandt.exe` before its first start. Your settings, logs and setup's build then stay inside the program's folder, as your saves already do, and you can move or rename that folder.
+**Where your files go:** your settings, logs, saves, shader cache and setup's build go in one folder, `%LOCALAPPDATA%\Soulbrandt` on Windows (`~/.local/share/Soulbrandt` on Linux), unless you chose another build folder. Files an earlier version already keeps in its own places (saves and the shader cache beside the program, settings in `%APPDATA%\DemonsSoulsRecomp`, the build in `%LOCALAPPDATA%\DemonsSoulsRecomp`) stay where they are and are still used. Nothing is moved or deleted.
+
+**A portable install:** put an empty file named `portable.txt` next to `Soulbrandt.exe` before its first start. Your settings, logs, saves, shader cache and setup's build then stay inside the program's folder, and you can move or rename that folder. It must be a folder you can write to, not one under Program Files: if it isn't, the game says so and doesn't start.
 
 Windows may warn you the first time you start `Soulbrandt.exe` ("Windows protected your PC"), because the program isn't signed yet. Click **More info**, then **Run anyway**.
 

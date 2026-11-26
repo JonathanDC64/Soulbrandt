@@ -130,7 +130,7 @@ swap is undone and the page says "A file in the game's folder is in use".
 | Program files (`release-files.txt`'s names) | to `.previous/OLD`, NEW's in place | swapped back |
 | `gamedata/` (saves), `shader_cache/`, `data/` and `portable.txt` (a portable install's settings) | stay | stay |
 | Anything else at the install's top | stays | stays |
-| Settings (`%APPDATA%\DemonsSoulsRecomp`) | stay | stay |
+| The one data folder (`%LOCALAPPDATA%\Soulbrandt`: settings, saves, shader cache, setup's build; docs/164), or an earlier version's settings (`%APPDATA%\DemonsSoulsRecomp`) | stay | stay |
 | Setup's data folder: `inputs/`, `work/`, `build/`, `tools/`, `downloads/`, `hdd1/` | stay; the rebuild updates `work/` and `build/` | stay |
 | `<data>/game` and `setup/ready.txt` | copied into `previous/OLD`; the rebuild replaces them | swapped with `previous/OLD` |
 

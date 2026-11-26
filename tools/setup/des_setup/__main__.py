@@ -18,10 +18,11 @@ Run from tools/setup (or with it on PYTHONPATH; the host runs run_setup.py,
 docs/88). GAME is the folder of the disc dump that holds PS3_GAME. `run` does
 every phase in order with the setup screens' line protocol (pipeline.py,
 protocol.py); without GAME it takes the folders the last run used. The data
-folder defaults to %LOCALAPPDATA%\\DemonsSoulsRecomp (Linux:
-$XDG_DATA_HOME/DemonsSoulsRecomp), or to the build folder the player chose on
-setup's screens, which that folder's setup-folder.txt names (docs/88 section
-3; the host always passes --data). A developer's compiler (--cc and --ld, or
+folder defaults to the one data folder's setup-data in %LOCALAPPDATA% (Linux:
+$XDG_DATA_HOME), or the earlier versions' %LOCALAPPDATA%\\DemonsSoulsRecomp
+when it holds a build or a choice (docs/164), or to the build folder the
+player chose on setup's screens, which the usual folder's setup-folder.txt
+names (docs/88 section 3; the host always passes --data). A developer's compiler (--cc and --ld, or
 DES_SETUP_CC and DES_SETUP_LD in the environment, so the setup screens' runs
 use it too) replaces the pinned LLVM download, which is then not fetched.
 
@@ -66,7 +67,11 @@ from . import compile as compile_step, fetch, gamefiles, journal, lift
 from . import pipeline, rpcs3, rpcs3_import, rpcs3_library, update
 from .pipeline import stage  # noqa: F401 (the copy step; the tests import it from here)
 
+# The earlier versions' shared folder's name (setup_folder.hpp kFolderName): still the usual folder where it holds a
+# build or a choice of folder. And the one data folder's (kOneFolderName, docs/164): a fixed technical name, apart from
+# the name people see.
 NAME = "DemonsSoulsRecomp"
+ONE_NAME = "Soulbrandt"  # (the fixed folder name)
 
 
 # The folders and files given on the command line, made absolute against this process's folder once, at the start
@@ -86,14 +91,23 @@ def absolute_paths(a):
     return a
 
 
-def default_data() -> Path:
-    """The shared folder, or the build folder the player chose on setup's screens (pipeline.chosen_folder). A portable
-    install's folder is the host's to know (setup_engine.cpp data_dir): it always passes --data."""
+def usual_data() -> Path:
+    """The usual folder, as the host's setup_shared_folder (setup_folder.cpp) finds it: the earlier versions' shared
+    folder when setup's work or a choice of folder is in it, else the one data folder's setup-data."""
     if os.name == "nt":
-        base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+        base = Path(os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local"))
     else:
-        base = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
-    usual = Path(base) / NAME
+        base = Path(os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share"))
+    old = base / NAME
+    if any((old / f).is_file() for f in ("setup/" + pipeline.READY, "setup/journal.json", pipeline.CHOICE)):
+        return old
+    return base / ONE_NAME / "setup-data"
+
+
+def default_data() -> Path:
+    """The usual folder (usual_data), or the build folder the player chose on setup's screens (pipeline.chosen_folder).
+    A portable install's folder is the host's to know (setup_engine.cpp data_dir): it always passes --data."""
+    usual = usual_data()
     return pipeline.chosen_folder(usual) or usual
 
 

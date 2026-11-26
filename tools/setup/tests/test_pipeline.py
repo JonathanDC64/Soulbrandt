@@ -618,6 +618,7 @@ class HostAgreesTest(unittest.TestCase):
         hpp = (UI / "setup_folder.hpp").read_text(encoding="utf-8")
         self.assertIn(f'kChoiceFile = "{pipeline.CHOICE}";', hpp)
         self.assertIn(f'kFolderName = "{cli.NAME}";', hpp)
+        self.assertIn(f'kOneFolderName = "{cli.ONE_NAME}";', hpp)
 
     def test_python_pin(self):
         """The host's pins of the first Python (setup_engine.hpp), one set per platform, against toolchain.json."""
@@ -751,10 +752,27 @@ class ChosenFolderTest(unittest.TestCase):
         self.assertEqual(pipeline.chosen_folder(self.usual), self.root / "x")
 
     def test_default_data_follows_the_choice(self):
+        # (self.usual is the earlier versions' folder: a choice kept there is still the choice)
         from des_setup import __main__ as cli
-        self.assertEqual(cli.default_data(), self.usual)
+        self.assertEqual(cli.default_data(), self.root / "shared" / cli.ONE_NAME / "setup-data")
         self.choose(f"{self.root / 'D' / 'build'}\n")
         self.assertEqual(cli.default_data(), self.root / "D" / "build")
+
+    def test_default_data_an_earlier_versions_build(self):
+        # The one data folder's setup-data for a new install; the earlier versions' folder when it holds a build (or
+        # one stopped part way), as the host's setup_shared_folder has it. Their other files (a first check's Python,
+        # Linux's old settings) leave it unused.
+        from des_setup import __main__ as cli
+        (self.usual / "tools" / "python").mkdir(parents=True)
+        (self.usual / "DemonsSouls").mkdir()
+        (self.usual / "DemonsSouls" / "settings.ini").write_text("\n", encoding="utf-8")
+        self.assertEqual(cli.usual_data(), self.root / "shared" / cli.ONE_NAME / "setup-data")
+        for f in ("setup/" + pipeline.READY, "setup/journal.json"):
+            shutil.rmtree(self.usual / "setup", ignore_errors=True)
+            (self.usual / f).parent.mkdir(parents=True, exist_ok=True)
+            (self.usual / f).write_text("\n", encoding="utf-8")
+            self.assertEqual(cli.usual_data(), self.usual, f)
+            self.assertEqual(cli.default_data(), self.usual, f)
 
     def test_a_build_in_the_chosen_folder(self):
         # A whole run there: the usual folder holds only the choice, and the default folder's status is the build's.

@@ -45,6 +45,7 @@
 #include "report.hpp"
 #include "settings.hpp"
 #include "setup_engine.hpp"
+#include "path_utf8.hpp"
 #include "setup_folder.hpp"
 #include "setup_screens.hpp"
 #include "setup_window.hpp"
@@ -1445,35 +1446,70 @@ void crash_dialog_env() {
     }
 }
 
-// A player's start keeps the saves where a double-click puts them. They are the PS3 file system's gamedata/dev_hdd0
-// under the working folder (cellFs.c, cellSaveData.c), so a shortcut's "Start in", or a start from a terminal in
-// another folder, would read and write saves there. So the game works in the exe's folder (docs/90 section 4, item
-// 3). Saves in the folder it was started in are named in the log, never moved. DES_KEEP_CWD=1 (a test run with its
-// own copy of a save in its own folder) leaves the working folder as it is.
-void work_in_exe_folder() {
-    if (env_on("DES_KEEP_CWD")) return;
+// The folder whose gamedata holds the saves (report::saves_pick, docs/164): the one data folder in a new install, the
+// program's folder in a portable one or where an earlier version's saves are. A test harness run, or one with a save
+// root of its own (PS3_SAVEDATA_ROOT, PS3_HDD0_ROOT), keeps the program's folder, as before the one data folder.
+std::filesystem::path saves_home() {
     const std::filesystem::path exe = ui::report::program_dir();
+    if (ui::settings::harness_run() || std::getenv("PS3_SAVEDATA_ROOT") || std::getenv("PS3_HDD0_ROOT")) return exe;
+    const ui::setup::Pick pick = ui::report::saves_pick();
+    if (pick.dir.empty()) return exe;
+    std::error_code ec;
+    std::filesystem::create_directories(pick.dir, ec);
+    if (!std::filesystem::is_directory(pick.dir, ec)) {
+        std::fprintf(stderr, "[setup] launch: cannot make %s, so the saves stay in the game's folder\n",
+                     ui::path_utf8(pick.dir).c_str());
+        return exe;
+    }
+    std::fprintf(stderr, "[setup] launch: the saves are in %s (%s)\n", ui::path_utf8(pick.dir / "gamedata").c_str(),
+                 ui::setup::source_words(pick.source));
+    return pick.dir;
+}
+
+// A player's start keeps the saves in one place, whatever folder the program is started from. They are the PS3 file
+// system's gamedata/dev_hdd0 under the working folder (cellFs.c, cellSaveData.c; co-op's own saves and the trophies
+// too), so a shortcut's "Start in", or a start from a terminal in another folder, would read and write saves there.
+// So the game works in saves_home (docs/90 section 4, item 3; docs/164). Saves in the folder it was started in are
+// named in the log, never moved. DES_KEEP_CWD=1 (a test run with its own copy of a save in its own folder) leaves the
+// working folder as it is.
+void work_in_saves_folder() {
+    if (env_on("DES_KEEP_CWD")) return;
+    const std::filesystem::path home = saves_home();
     std::error_code ec;
     const std::filesystem::path cwd = std::filesystem::current_path(ec);
-    if (exe.empty() || ec || std::filesystem::equivalent(cwd, exe, ec)) return;
+    if (home.empty() || ec || std::filesystem::equivalent(cwd, home, ec)) return;
     std::filesystem::directory_iterator user(cwd / "gamedata" / "dev_hdd0" / "home", ec), end;
     for (; !ec && user != end; user.increment(ec)) {   // (the forms that throw would end the start)
         std::error_code ec2;
         const auto saves = user->path() / "savedata";
         if (std::filesystem::is_directory(saves, ec2) && !std::filesystem::is_empty(saves, ec2))
-            std::fprintf(stderr, "[setup] launch: %s has saves; this start uses the ones beside the game, in %s\n",
-                         saves.string().c_str(), (exe / "gamedata").string().c_str());
+            std::fprintf(stderr, "[setup] launch: %s has saves; this start uses the ones in %s\n",
+                         saves.string().c_str(), (home / "gamedata").string().c_str());
     }
-    std::filesystem::current_path(exe, ec);
-    if (ec) std::fprintf(stderr, "[setup] launch: cannot work in %s, so the saves are in %s\n", exe.string().c_str(),
+    std::filesystem::current_path(home, ec);
+    if (ec) std::fprintf(stderr, "[setup] launch: cannot work in %s, so the saves are in %s\n", home.string().c_str(),
                          (cwd / "gamedata").string().c_str());
+}
+
+// The shader cache's folder (report::shader_cache_pick, docs/164) as PS3_SHADER_CACHE, for the game, setup's shader
+// pass (`--shaders`, started by setup's engine with this process's environment) and the menus' own shaders: set before
+// anything reads it, as each reads it once. Only a player's start: one given in the environment stays, and a test run
+// or a start with a game's ELF keeps the runtime's default (shader_cache beside the program).
+void use_shader_cache_folder() {
+    if (std::getenv("PS3_SHADER_CACHE") || ui::settings::harness_run()) return;
+    const ui::setup::Pick pick = ui::report::shader_cache_pick();
+    if (pick.dir.empty()) return;
+    ps3_setenv("PS3_SHADER_CACHE", ui::path_utf8(pick.dir).c_str());
+    std::fprintf(stderr, "[setup] the shader cache is in %s (%s)\n", ui::path_utf8(pick.dir).c_str(),
+                 ui::setup::source_words(pick.source));
 }
 
 // The game folder whose saves this start uses, noted in the player's data folder (setup_folder.hpp's game-folders.txt,
 // docs/164 section 5), so that a later version unpacked into another folder can offer to copy these saves. Only a
-// player's start, whose saves are the program folder's own gamedata (work_in_exe_folder): not a test run with a save
-// root or a working folder of its own, nor one that keeps no data folder. Nothing else is written; a failure is only
-// logged.
+// player's start whose saves are the program folder's own gamedata (work_in_saves_folder: a portable install, or one
+// with an earlier version's saves there; a new install's are in the one data folder, which no unpacking leaves
+// behind): not a test run with a save root or a working folder of its own, nor one that keeps no data folder. Nothing
+// else is written; a failure is only logged.
 void note_game_folder() {
     const std::filesystem::path data = ui::report::data_dir();
     if (data.empty() || std::getenv("PS3_SAVEDATA_ROOT") || std::getenv("PS3_HDD0_ROOT") || env_on("DES_KEEP_CWD"))
@@ -1495,6 +1531,9 @@ void note_game_folder() {
 
 extern "C" int des_ui_launch(int* argc, char*** argv) {
     if (const char* v = std::getenv("DES_UI"); v && !std::strcmp(v, "0")) return -1;
+    // A player's start (no game's ELF given): the shader cache's folder first, for every process of the program (the
+    // crash dialog's and setup's too), so that none of them makes one in another place.
+    if (!elf_given(*argc, *argv)) use_shader_cache_folder();
     // The crash dialog's process: the window alone, before anything here touches the program's files.
     if (crash_dialog_process()) return -2;
     ui::updates::drop_old_program();
@@ -1508,11 +1547,13 @@ extern "C" int des_ui_launch(int* argc, char*** argv) {
             {ui::report::program_dir(), ui::setup::data_dir(), ui::report::data_dir(), launch.game},
             ui::settings::unattended_run()))
         return 1;
+    // A portable install whose folder cannot be written stops here (docs/164): it takes no other place.
+    if (!ui::setup::portable_writable(ui::settings::unattended_run())) return 1;
     if (launch.state != ui::setup::State::Ready) {
         std::fprintf(stderr, "[setup] launch: the game is not set up yet, setup opens\n");
         return -2;
     }
-    work_in_exe_folder();
+    work_in_saves_folder();
     note_game_folder();
     // What setup found of the disc copy, and whether the player went on anyway (tools/setup/des_setup/disc.py): a copy
     // that lacks files the game reads crashes later, far from the cause (issue #418).

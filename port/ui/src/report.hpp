@@ -4,6 +4,8 @@
 // Demon's Souls from FFCCEOT-Recomp's report.hpp.
 #pragma once
 
+#include "setup_folder.hpp"  // (UserFolders, Pick: the one data folder's rules)
+
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
@@ -19,15 +21,26 @@ struct File {
     std::vector<uint8_t> data;
 };
 
-// The folder of this player's data (settings.ini, logs, crashes, reports): DES_DATA_DIR, else <exe dir>\data when
-// portable.txt is next to the exe, else %APPDATA%\DemonsSoulsRecomp\DemonsSouls. Empty for a test harness run
-// (tools/des scripts other than play.sh) without DES_DATA_DIR: those keep no settings, log or reports. The game's
-// saves are not here: they stay in the PS3 file system (gamedata/dev_hdd0).
+// The folder of this player's data (settings.ini, the online key, mods, logs, crashes, reports): DES_DATA_DIR, else
+// setup_folder.hpp's settings_folder (<exe dir>\data when portable.txt is next to the exe; else the earlier versions'
+// %APPDATA%\DemonsSoulsRecomp\DemonsSouls when it holds anything; else the one data folder, docs/164). Empty for a
+// test harness run (tools/des scripts other than play.sh) without DES_DATA_DIR: those keep no settings, log or
+// reports. The game's saves are not here: they are in saves_pick's gamedata (the PS3 file system's dev_hdd0).
 const std::filesystem::path& data_dir();
 void set_data_dir(const std::filesystem::path& dir);  // (the crash dialog process: the crashed game's)
-// A portable install: portable.txt next to the exe. The player's data (data_dir) and setup's folder (setup::data_dir)
-// are then both in data\ beside the exe, so the whole install moves as one folder.
+// A portable install: portable.txt next to the exe. The player's data (data_dir), setup's folder (setup::data_dir),
+// the saves and the shader cache are then all in the exe's folder, so the whole install moves as one folder.
 bool portable();
+// The system's folders the player's files go under: %APPDATA% and %LOCALAPPDATA%; on Linux both $XDG_DATA_HOME, else
+// ~/.local/share. DES_USER_FOLDERS=<folder> (tests) puts them in a folder of the test's: <folder>\Roaming and
+// <folder>\Local on Windows, <folder> itself on Linux.
+setup::UserFolders user_folders();
+// Where this PC's player keeps each part (setup_folder.hpp), found once a process, from what is on disk: the settings
+// folder (data_dir's, when nothing is given), the folder that holds the saves' gamedata (where a player's start of the
+// game works, des_ui.cpp), and the shader cache. Empty dir when the system's folders cannot be told.
+setup::Pick settings_pick();
+setup::Pick saves_pick();
+setup::Pick shader_cache_pick();
 // The folder of the running exe, and the exe itself; empty if it cannot be told.
 std::filesystem::path program_dir();
 std::filesystem::path program_path();

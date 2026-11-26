@@ -144,14 +144,24 @@ std::filesystem::path exe_path() {
     return std::filesystem::path(std::wstring(buf, n));
 }
 
-// %APPDATA%\DemonsSoulsRecomp\DemonsSouls (what SDL_GetPrefPath("DemonsSoulsRecomp", "DemonsSouls") gives).
-std::filesystem::path pref_dir() {
-    PWSTR roaming = nullptr;
+// A folder of the user's that Windows knows (%APPDATA%, %LOCALAPPDATA%), wherever it has been moved.
+std::filesystem::path known_user_folder(REFKNOWNFOLDERID id) {
+    PWSTR p = nullptr;
     std::filesystem::path out;
-    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, nullptr, &roaming)) && roaming)
-        out = std::filesystem::path(roaming) / L"DemonsSoulsRecomp" / L"DemonsSouls";
-    CoTaskMemFree(roaming);
+    if (SUCCEEDED(SHGetKnownFolderPath(id, 0, nullptr, &p)) && p) out = std::filesystem::path(p);
+    CoTaskMemFree(p);
     return out;
+}
+
+// %APPDATA% and %LOCALAPPDATA% (user_folders).
+setup::UserFolders system_user_folders() {
+    return {known_user_folder(FOLDERID_RoamingAppData), known_user_folder(FOLDERID_LocalAppData)};
+}
+
+// DES_USER_FOLDERS's (user_folders).
+setup::UserFolders test_user_folders(const std::string& given) {
+    const std::filesystem::path base(widen(given));
+    return {base / L"Roaming", base / L"Local"};
 }
 
 // The command line's arguments (the program first), and the command line as the process got it.
@@ -237,13 +247,18 @@ std::filesystem::path exe_path() {
 }
 [[maybe_unused]] const std::filesystem::path g_exe_at_start = exe_path();  // (read before main, before any update)
 
-// $XDG_DATA_HOME/DemonsSoulsRecomp/DemonsSouls, else ~/.local/share/... (what SDL_GetPrefPath gives there).
-std::filesystem::path pref_dir() {
+// $XDG_DATA_HOME, else ~/.local/share, for both (user_folders).
+setup::UserFolders system_user_folders() {
     const std::string xdg = env("XDG_DATA_HOME"), home = env("HOME");
     const std::filesystem::path base = !xdg.empty()    ? std::filesystem::path(xdg)
                                        : !home.empty() ? std::filesystem::path(home) / ".local" / "share"
                                                        : std::filesystem::path{};
-    return base.empty() ? base : base / "DemonsSoulsRecomp" / "DemonsSouls";
+    return {base, base};
+}
+
+// DES_USER_FOLDERS's (user_folders).
+setup::UserFolders test_user_folders(const std::string& given) {
+    return {std::filesystem::path(given), std::filesystem::path(given)};
 }
 
 // The command line's arguments (the program first), and the command line as the process got it (quoted where an
@@ -947,6 +962,35 @@ void make_issue_report(std::vector<uint8_t> rgba, int width, int height, std::st
 
 std::filesystem::path exe_dir() { return exe_path().parent_path(); }
 
+// Where each part of the player's files is (docs/164), in words: the paths would hold the user's name.
+std::string folders_words() {
+    const auto place = [](setup::FolderSource p) -> std::string {
+        if (p == setup::FolderSource::Portable) return "portable install";
+        return p == setup::FolderSource::Old ? "earlier version's" : "one data folder";
+    };
+    const bool test = settings::harness_run();
+    std::string out = "settings ";
+    if (!env("DES_DATA_DIR").empty()) out += "given";
+    else out += test ? "none (test run)" : place(settings_pick().source);
+    out += "; setup's build ";
+    if (!env("DES_SETUP_DATA").empty()) out += "given";
+    else if (setup::data_dir_chosen()) out += "chosen on setup's screens";
+    else if (portable()) out += "portable install";
+    else if (setup::same_folder(setup::usual_data_dir(), setup::old_shared_folder(user_folders())))
+        out += "earlier version's";
+    else out += "one data folder";
+    out += "; saves ";
+    if (!env("PS3_SAVEDATA_ROOT").empty() || !env("PS3_HDD0_ROOT").empty()) out += "given";
+    else out += test ? "beside the program (test run)" : place(saves_pick().source);
+    out += "; shader cache ";
+    const std::string cache = env("PS3_SHADER_CACHE");
+    if (cache.empty()) out += "beside the program";
+    else if (setup::same_folder(std::filesystem::path(widen(cache)), shader_cache_pick().dir))
+        out += place(shader_cache_pick().source);
+    else out += "given";
+    return out;
+}
+
 }  // namespace
 
 std::filesystem::path program_dir() { return exe_dir(); }
@@ -1049,12 +1093,32 @@ const std::filesystem::path& data_dir() {
         }
     } else if (settings::harness_run()) {
         g_data_dir.clear();  // test runs keep nothing
-    } else if (portable()) {
-        g_data_dir = exe_dir() / L"data";
     } else {
-        g_data_dir = pref_dir();
+        g_data_dir = settings_pick().dir;
     }
     return g_data_dir;
+}
+
+setup::UserFolders user_folders() {
+    if (const std::string given = env("DES_USER_FOLDERS"); !given.empty()) return test_user_folders(given);
+    return system_user_folders();
+}
+
+// (each found once, at its first call: the answer is what was on disk then, and later writes do not change it)
+setup::Pick settings_pick() {
+    static const setup::Pick pick =
+        setup::settings_folder(user_folders(), portable() ? exe_dir() : std::filesystem::path{});
+    return pick;
+}
+
+setup::Pick saves_pick() {
+    static const setup::Pick pick = setup::saves_folder(user_folders(), exe_dir(), portable());
+    return pick;
+}
+
+setup::Pick shader_cache_pick() {
+    static const setup::Pick pick = setup::shader_cache_folder(user_folders(), exe_dir(), portable());
+    return pick;
 }
 
 void set_data_dir(const std::filesystem::path& dir) {
@@ -1738,6 +1802,7 @@ std::string system_info() {
     o << "ps3recomp: " << kPs3recompVersion << "\n";
     o << "Game dump (EBOOT.ELF SHA-256): " << (*kDumpSha256 ? kDumpSha256 : "unknown") << "\n";
     o << "Disc copy: " << setup::disc_summary() << "\n";  // (setup/disc_check.txt: its files are in the zip)
+    o << "Folders: " << folders_words() << "\n";
     // The mods in use (mods.hpp), as the game found them at start; the crash dialog's process reads none itself (its
     // environment's PS3_VFS_MODS, below, names them).
     if (game_process) o << "Mods: " << mods::summary() << "\n";
@@ -1858,10 +1923,18 @@ bool save_file_taken(const std::string& name) {
 std::vector<File> save_files(std::string& note) {
     constexpr uintmax_t kMaxFile = 8u << 20, kMaxAll = 32u << 20;  // (a Demon's Souls save is about 2.6 MB)
     std::error_code ec;
-    // (as cellSaveData.c finds it: PS3_SAVEDATA_ROOT, else this folder in the working folder; the crash dialog has the
-    // game's environment and working folder)
+    // (as cellSaveData.c finds it: PS3_SAVEDATA_ROOT, else this folder in the working folder, which a player's start of
+    // the game makes saves_pick's (des_ui.cpp); the crash dialog has the game's environment and working folder. Before
+    // the game has started, on setup's screens, saves_pick's, when it has a gamedata.)
     std::filesystem::path root = "gamedata/dev_hdd0/home/00000001/savedata";
-    if (const char* given = std::getenv("PS3_SAVEDATA_ROOT"); given && *given) root = std::filesystem::path(widen(given));
+    const auto home = saves_pick().dir;
+    std::error_code home_ec;
+    if (const char* given = std::getenv("PS3_SAVEDATA_ROOT"); given && *given) {
+        root = std::filesystem::path(widen(given));
+    } else if (!settings::harness_run() && !env_on("DES_KEEP_CWD") && !home.empty() &&
+               std::filesystem::is_directory(home / "gamedata", home_ec)) {
+        root = home / root;
+    }
     std::vector<File> files;
     std::string what;
     uintmax_t total = 0;

@@ -85,9 +85,11 @@ A mod manager (issue #404) installs, updates, removes, orders and turns mods on 
 alone. The game never writes anywhere else for mods, and never changes a mod's files, except when the player presses
 **Fix it** on a mod with loose files.
 
-- **Where:** `<data folder>\mods`, where `<data folder>` holds `settings.ini`: `%APPDATA%\DemonsSoulsRecomp\DemonsSouls`
-  on Windows, `$XDG_DATA_HOME/DemonsSoulsRecomp/DemonsSouls` (else `~/.local/share/...`) on Linux, and `data` beside
-  the program in a portable install. `DES_MODS_DIR` points the game elsewhere.
+- **Where:** `<data folder>\mods`, where `<data folder>` holds `settings.ini`: the one data folder (docs/164),
+  `%LOCALAPPDATA%\Soulbrandt` on Windows and `$XDG_DATA_HOME/Soulbrandt` (else `~/.local/share/Soulbrandt`) on Linux;
+  an earlier version's settings folder when it holds anything (`%APPDATA%\DemonsSoulsRecomp\DemonsSouls`, on Linux
+  `$XDG_DATA_HOME/DemonsSoulsRecomp/DemonsSouls`); and `data` beside the program in a portable install.
+  `DES_MODS_DIR` points the game elsewhere.
 - **A mod:** one folder, its name the mod's name. Inside, the game's folders as below the disc's `PS3_GAME\USRDIR`
   (section 1 lists what else is found). Installing is unpacking into a new folder; updating is replacing that
   folder; rolling back is putting the old folder back.
