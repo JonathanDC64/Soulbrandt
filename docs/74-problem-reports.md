@@ -51,6 +51,24 @@ startup and after each change. The dialog uses that file, and falls back to
 `settings.ini` only if it is missing. Without it, a player who had never
 changed a setting would send no settings at all.
 
+**A crash inside the pipeline library (2026-11-26, issue #731).** The renderer keeps the driver's compiled
+pipelines in `shader_cache\gpu\d3d12\pipelines.lib`. D3D12 throws at a damaged pipeline in that file, the throw ends
+the game, and every start after it crashed the same way. Now:
+
+- **The save** writes the file to the disk before it renames it over the old one, so a power cut or a hard reset
+  can't leave a file with pages that were never written.
+- **A crash while the game loads or stores a pipeline there** (or reads or saves the file) leaves a note beside it,
+  `pipelines.lib.bad`, and `crash.txt` gets a line after the renderer's:
+  `D3D12 pipeline library: crashed loading pipeline <name>; the next start makes a new library, and makes that
+  pipeline without it`.
+- **The next start** deletes the library and makes a new one (the start's build fills it again), and keeps the
+  pipeline's name in `pipelines.lib.skip`. The driver makes the pipelines listed there each time, without the
+  library, so one the driver itself crashes on can't end a run twice. The log says
+  `[D3D12] pipeline library: the last run crashed loading pipeline <name>; a new library, ...`, and on later starts
+  `[D3D12] pipeline library: <n> pipeline(s) made without it`.
+- **To test it:** `RSX_PSO_LIB_CRASH_TEST=1` ends the game inside the first load from the library, through the same
+  path. Start again without it.
+
 **Off Windows (2026-11-18).** The same dialog, with the same three forms and buttons:
 - **Its process** is the program started again with `DES_UI_OPEN=crash-dialog`, `DES_CRASH_REPORT=<the report>` and
   `DES_CRASH_PID=<the game>` (`crash_report_posix.cpp`).
