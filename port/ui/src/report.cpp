@@ -1350,6 +1350,19 @@ void platform_facts(std::ostringstream& o, bool game_process) {
                      nullptr, &ubr, &size);
         o << "OS: " << (product.empty() ? "Windows" : product) << " " << reg("DisplayVersion") << ", "
           << v.dwMajorVersion << "." << v.dwMinorVersion << " build " << v.dwBuildNumber << "." << ubr << "\n";
+        // Under Wine (the Mac app, docs/178, or Wine elsewhere) the lines above are Wine's own. Its ntdll names Wine's
+        // version and the system under it (Darwin 25 is macOS 26).
+        using WineVersionFn = const char*(__cdecl*)();
+        using WineHostFn = void(__cdecl*)(const char**, const char**);
+        const HMODULE nt = GetModuleHandleA("ntdll.dll");
+        if (auto wine = reinterpret_cast<WineVersionFn>(GetProcAddress(nt, "wine_get_version"))) {
+            const char* sys = nullptr;
+            const char* rel = nullptr;
+            if (auto host = reinterpret_cast<WineHostFn>(GetProcAddress(nt, "wine_get_host_version"))) host(&sys, &rel);
+            const char* app = std::getenv("DES_MAC_APP");
+            o << "Wine: " << wine() << " on " << (sys ? sys : "?") << " " << (rel ? rel : "?")
+              << (app && *app && std::strcmp(app, "0") != 0 ? " (the Mac app)" : "") << "\n";
+        }
     }
     {
         char cpu[128] = "?";

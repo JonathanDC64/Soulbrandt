@@ -237,13 +237,25 @@ const RendererGpu& renderer_gpu() {
     return gpu;
 }
 
+// The Mac app (docs/178): this program in the Wine the app carries, whose launcher sets DES_MAC_APP=1. There Vulkan
+// takes one step to the GPU (Wine hands it to MoltenVK, Vulkan on Metal), and D3D12 two (Wine's vkd3d makes Vulkan of
+// it, compiling the shaders with Wine's own HLSL compiler). So its Renderer default is Vulkan.
+bool in_mac_app() {
+    const char* v = std::getenv("DES_MAC_APP");
+    return v && *v && std::strcmp(v, "0") != 0;
+}
+
 // GeForce cards before the RTX 20 series (the GTX 10 series and older: Pascal, Volta, Maxwell, Kepler) hang on the
 // D3D12 renderer: Windows resets the driver in the middle of a frame, again and again, while Vulkan draws on them fine
 // (issues #205 and #372 on a GTX 1070, #398 on a GTX 1060). So their Renderer default is Vulkan. NVIDIA numbers its
 // chips in order: Turing (the RTX 20 and GTX 16 series) starts at device ID 0x1E00, and every later chip is above it.
-bool vulkan_by_default() {
+bool old_geforce() {
     const RendererGpu& g = renderer_gpu();
     return g.vendor == 0x10DE && g.device != 0 && g.device < 0x1E00;
+}
+
+bool vulkan_by_default() {
+    return in_mac_app() || old_geforce();
 }
 
 // renderer_rule's value once a saved Renderer was checked against the rule above. It is written only on a GPU the
@@ -856,9 +868,14 @@ void apply_renderer() {
         if (get("renderer_rule") != kRendererRule) {
             if (get("RSX_BACKEND") == "d3d12") {
                 sValues["RSX_BACKEND"] = "vulkan";
-                std::fprintf(stderr, "[ui] renderer: Vulkan, the default on this GPU (%s, %04x:%04x: GeForce cards "
-                             "before the RTX 20 series hang on D3D12); Settings > Display > Renderer can pick D3D12\n",
-                             renderer_gpu().name.c_str(), renderer_gpu().vendor, renderer_gpu().device);
+                if (in_mac_app())
+                    std::fprintf(stderr, "[ui] renderer: Vulkan, the default in the Mac app (one step to Metal, "
+                                 "through MoltenVK); Settings > Display > Renderer can pick D3D12\n");
+                else
+                    std::fprintf(stderr, "[ui] renderer: Vulkan, the default on this GPU (%s, %04x:%04x: GeForce cards "
+                                 "before the RTX 20 series hang on D3D12); Settings > Display > Renderer can pick "
+                                 "D3D12\n",
+                                 renderer_gpu().name.c_str(), renderer_gpu().vendor, renderer_gpu().device);
             }
             sValues["renderer_rule"] = kRendererRule;
             save();
