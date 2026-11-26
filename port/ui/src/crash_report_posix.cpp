@@ -453,8 +453,9 @@ void install() {
 }
 
 bool start_again(const std::vector<std::string>& set, bool play) {
+    // (DES_SAVE_COPY_FROM: the copy that start asked for is made once, save_offer.hpp)
     std::vector<std::string> drops = {"DES_UI_OPEN=", "DES_SKIP_UI=", "DES_LAUNCH_AFTER=", "DES_UPDATE_TO=",
-                                      "DES_CRASH_REPORT=", "DES_CRASH_PID="};
+                                      "DES_CRASH_REPORT=", "DES_CRASH_PID=", "DES_SAVE_COPY_FROM="};
     for (const std::string& v : set) drops.push_back(v.substr(0, v.find('=') + 1));
     std::vector<std::string> vars;
     for (const std::string& v : started_environment()) {

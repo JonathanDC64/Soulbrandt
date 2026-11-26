@@ -444,7 +444,9 @@ void report_guest_exit(const char* what, const char* notes) {
 bool start_again(const std::vector<std::string>& set, bool play) {
     // The environment block it started with (name=value strings, each ended by a 0), less setup's variables and those
     // `set` names, plus the new one's, sorted by name as CreateProcess wants it.
-    std::vector<std::wstring> drops = {L"DES_UI_OPEN=", L"DES_SKIP_UI=", L"DES_LAUNCH_AFTER=", L"DES_UPDATE_TO="};
+    // (DES_SAVE_COPY_FROM: the copy that start asked for is made once, save_offer.hpp)
+    std::vector<std::wstring> drops = {L"DES_UI_OPEN=", L"DES_SKIP_UI=", L"DES_LAUNCH_AFTER=", L"DES_UPDATE_TO=",
+                                       L"DES_SAVE_COPY_FROM="};
     for (const std::string& v : set) drops.push_back(report::widen(v.substr(0, v.find('=') + 1)));
     std::vector<std::wstring> vars;
     for (const wchar_t* p = g_environment.empty() ? L"" : g_environment.data(); *p; p += std::wcslen(p) + 1) {

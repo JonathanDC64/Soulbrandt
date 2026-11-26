@@ -3,18 +3,21 @@
 // <usual>/setup-folder.txt, a portable install's build in the shared folder from before, the usual folder. A choice is
 // kept in full, or relative in a portable install, and goes when the usual folder is chosen again. A folder picked
 // that holds other things gets a folder of setup's own in it, and the program's own folders are refused. And how
-// setup's own files can be missing beside the program (issue #431). And game-folders.txt, the game folders
-// the game ran from (docs/164 section 5). And whether a folder's drive can hold the build (issue #673): on Linux, CI
-// mounts a FAT drive and a noexec one and names them in SETUP_CHECK_FAT_FOLDER and SETUP_CHECK_NOEXEC_FOLDER. And
-// path_utf8.hpp: a name that isn't valid UTF-16 as text, never a throw (setup crashed at its start on one).
+// setup's own files can be missing beside the program (issue #431). And game-folders.txt, the game folders the game
+// ran from, and the offer and the copy of an earlier folder's saves (save_copy.cpp, docs/164 section 5). And whether a
+// folder's drive can hold the build (issue #673): on Linux, CI mounts a FAT drive and a noexec one and names them in
+// SETUP_CHECK_FAT_FOLDER and SETUP_CHECK_NOEXEC_FOLDER. And path_utf8.hpp: a name that isn't valid UTF-16 as text,
+// never a throw (setup crashed at its start on one).
 //
 // Each case runs in made-up folders under the system's temporary folder, removed at the end. Prints one line a case
 // and "setup_folder_check: N passed, M failed"; exit 1 on a failure. The same on every platform (CI runs it on Windows
 // and Linux, host.yml). Built on demand: cmake --build <build> --target setup_folder_check.
 #include "setup_folder.hpp"
+#include "save_copy.hpp"
 
 #include "path_utf8.hpp"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -486,6 +489,115 @@ int main() {
         if (remember_game_folder(t / "data", t / "Game", "", why)) return std::string("no stamp taken");
         std::error_code ec;
         return fs::exists(t / "data" / kGameFoldersFile, ec) ? std::string("a file written") : std::string();
+    });
+
+    // ---- An earlier game folder's saves, offered and copied (docs/164 section 5) ----
+    const auto save = [](const fs::path& game, const std::string& name, const std::string& text) {
+        write(game / "gamedata" / "dev_hdd0" / "home" / "00000001" / "savedata" / "BLUS30443DEMONSS005" / name, text);
+    };
+    run("save_offer_newest_with_saves", [&](const fs::path& t) {
+        save(t / "Old B", "USER.DAT", "b");
+        save(t / "Old C", "USER.DAT", "c");
+        fs::create_directories(t / "Old A" / "gamedata" / "dev_hdd0" / "home" / "00000001" / "savedata");  // (empty)
+        const std::vector<fs::path> list = {t / "Old A", t / "Old B", t / "Old C"};
+        return all({same("offer", save_offer(list, {}, t / "home"), t / "Old B"),
+                    same("never B", save_offer(list, {t / "Old B"}, t / "home"), t / "Old C"),
+                    save_offer(list, {t / "home"}, t / "home").empty() ? "" : "offered to a home answered Never",
+                    save_offer(list, {t / "Old B", t / "Old C"}, t / "home").empty() ? "" : "offered a Never",
+                    save_offer({t / "Old B"}, {}, t / "Old B").empty() ? "" : "offered its own folder"});
+    });
+    run("saves_owner_from_any_level", [&](const fs::path& t) {
+        save(t / "Old", "USER.DAT", "x");
+        const fs::path saveDir = t / "Old" / "gamedata" / "dev_hdd0" / "home" / "00000001" / "savedata" /
+                                 "BLUS30443DEMONSS005";
+        return all({same("game folder", saves_owner(t / "Old"), t / "Old"),
+                    same("gamedata", saves_owner(t / "Old" / "gamedata"), t / "Old"),
+                    same("a save", saves_owner(saveDir), t / "Old"),
+                    saves_owner(t).empty() ? "" : "found saves above the game folder",
+                    saves_owner(t / "nothing").empty() ? "" : "found saves in no folder"});
+    });
+    run("never_copy_list", [&](const fs::path& t) {
+        std::string why;
+        if (!never_copy_from(t / "data", t / "Old", "2026-11-26T12:00:00Z", why)) return "refused: " + why;
+        if (!never_copy_from(t / "data", t / "home", "2026-11-26T12:01:00Z", why)) return "refused: " + why;
+        const auto got = game_folders(read_text(t / "data" / kNeverCopyFile));
+        if (got.size() != 2) return "2 folders, not " + std::to_string(got.size());
+        return all({listed(got, t / "Old") ? "" : "Old not listed", listed(got, t / "home") ? "" : "home not listed",
+                    listed(got, t / "Other") ? "Other listed" : "",
+                    read_text(t / "missing.txt").empty() ? "" : "text from no file"});
+    });
+
+    // The copy (save_copy.hpp). The files a folder holds, as "<relative path>=<text>" lines, to compare.
+    const auto files_of = [](const fs::path& dir) {
+        std::vector<std::string> out;
+        std::error_code ec;
+        for (fs::recursive_directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec))
+            if (it->is_regular_file()) out.push_back(utf8(it->path().lexically_relative(dir)) + "=" + read(it->path()));
+        std::sort(out.begin(), out.end());
+        std::string s;
+        for (const auto& f : out) s += f + "\n";
+        return s;
+    };
+    run("copy_saves_copies_and_checks", [&](const fs::path& t) {
+        save(t / "Old", "USER.DAT", std::string(300000, 'u'));
+        save(t / "Old", "204USER.DAT", "system");
+        write(t / "Old" / "gamedata" / "dev_hdd0" / "home" / "00000001" / "savedata-coop" / "BLUS30443DEMONSS005" /
+                  "USER.DAT", "coop");
+        write(t / "Old" / "gamedata" / "trophies" / "NPWR00881.json", "{}");
+        write(t / "Old" / "gamedata" / "dev_hdd0" / "game" / "big.bin", "not a save");  // (not copied)
+        const std::string before = files_of(t / "Old");
+        const auto r = ui::saves::copy_saves(t / "Old", t / "home");
+        if (!r.ok) return "not copied: " + r.why;
+        if (r.files != 4) return std::to_string(r.files) + " files, not 4";
+        std::error_code ec;
+        if (fs::exists(t / "home" / ui::saves::kCopyFolder, ec)) return std::string("the copies' folder is left");
+        if (fs::exists(t / "home" / "gamedata" / "dev_hdd0" / "game", ec)) return std::string("game data copied");
+        if (files_of(t / "Old") != before) return std::string("the earlier folder changed");
+        if (!holds_saves(t / "home")) return std::string("no saves in the new folder");
+        const fs::path saves = fs::path("dev_hdd0") / "home" / "00000001";
+        return all({read(t / "home" / "gamedata" / saves / "savedata" / "BLUS30443DEMONSS005" / "USER.DAT") ==
+                            std::string(300000, 'u')
+                        ? ""
+                        : "USER.DAT differs",
+                    read(t / "home" / "gamedata" / saves / "savedata-coop" / "BLUS30443DEMONSS005" / "USER.DAT") ==
+                            "coop"
+                        ? ""
+                        : "co-op's save differs",
+                    read(t / "home" / "gamedata" / "trophies" / "NPWR00881.json") == "{}" ? "" : "trophies differ"});
+    });
+    run("copy_saves_replaces_nothing", [&](const fs::path& t) {
+        save(t / "Old", "USER.DAT", "old");
+        save(t / "Old", "204USER.DAT", "old system");
+        save(t / "home", "204USER.DAT", "this install's");
+        const std::string before = files_of(t / "home");
+        const auto r = ui::saves::copy_saves(t / "Old", t / "home");
+        if (r.ok) return std::string("copied over a file there");
+        if (r.why.find("is there already") == std::string::npos) return "why: " + r.why;
+        std::error_code ec;
+        return all({files_of(t / "home") == before ? "" : "the new folder changed",
+                    fs::exists(t / "home" / ui::saves::kCopyFolder, ec) ? "the copies' folder is left" : ""});
+    });
+    run("copy_saves_into_an_empty_skeleton_and_over_leftovers", [&](const fs::path& t) {
+        save(t / "Old", "USER.DAT", "old");
+        fs::create_directories(t / "home" / "gamedata" / "dev_hdd0" / "home" / "00000001" / "savedata");  // (empty)
+        write(t / "home" / ui::saves::kCopyFolder / "dev_hdd0" / "stale.bin", "an earlier try's");
+        const auto r = ui::saves::copy_saves(t / "Old", t / "home");
+        if (!r.ok) return "not copied: " + r.why;
+        std::error_code ec;
+        return all({fs::exists(t / "home" / ui::saves::kCopyFolder, ec) ? "the copies' folder is left" : "",
+                    fs::exists(t / "home" / "gamedata" / "dev_hdd0" / "stale.bin", ec) ? "a leftover moved in" : "",
+                    holds_saves(t / "home") ? "" : "no saves in the new folder"});
+    });
+    run("copy_saves_refuses", [&](const fs::path& t) {
+        save(t / "Old", "USER.DAT", "old");
+        fs::create_directories(t / "Empty" / "gamedata");
+        const auto none = ui::saves::copy_saves(t / "Empty", t / "home");
+        const auto self = ui::saves::copy_saves(t / "Old", t / "Old");
+        const auto blank = ui::saves::copy_saves({}, t / "home");
+        std::error_code ec;
+        return all({none.ok ? "copied from a folder with no saves" : "", self.ok ? "copied into itself" : "",
+                    blank.ok ? "copied from no folder" : "",
+                    fs::exists(t / "Old" / ui::saves::kCopyFolder, ec) ? "wrote in the earlier folder" : ""});
     });
 
     // ---- Names that aren't valid text (path_utf8.hpp) ----
