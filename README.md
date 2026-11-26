@@ -41,13 +41,14 @@ The game plays from start to finish (a tester has beaten it), but not every part
 - The US, European, Japanese and Asian versions, each with its languages, plus Japanese on the US disc and Japanese, Chinese and Korean on the European disc.
 - Online play on this project's own server: messages, bloodstains, ghosts, co-op, invasions and the Pantheon.
 - Seamless co-op (still being tested): play the whole game with up to three friends in the host's world, joined with a room code. No port forwarding needed.
+- Mods: put mods for the PS3 game or RPCS3 in the mods folder and turn each one on or off. The game's own files are never changed.
 - Roll in any direction while locked on, not only forward, back, left or right.
 - At the Nexus statue (optional): a stat respec that gives back the souls your levels cost, and a new appearance, name, body or world tendency.
 - Keyboard and mouse, and most controllers: Xbox, DualSense, DualShock 4, Switch Pro, Switch 2 Pro (USB), 8BitDo, the Steam Controller and others.
 
 ## Features
 
-Press **F1** (or **L3 + R3** on a controller) at any time to open the menu. Most settings apply right away. Each setting has a short help text in the menu.
+Press **F1** (or **L3 + R3** on a controller, or Select + Start: Settings > Interface > Gamepad menu buttons) at any time to open the menu. Most settings apply right away. Each setting has a short help text in the menu.
 
 **Picture**
 - Frame rates of 30 (the original), 60, 120, 144, 165 or 240 fps, a number of your own, or unlocked. The game's timing is fixed so it still plays the way it should. Above 60 fps is less tested.
@@ -65,6 +66,7 @@ Press **F1** (or **L3 + R3** on a controller) at any time to open the menu. Most
 - Xbox controllers, DualSense, DualShock 4, Switch Pro, Switch 2 Pro (over USB), 8BitDo, the Steam Controller and most other gamepads, over USB or Bluetooth, with vibration. With several connected, **Automatic** plays the one you used last and shows its buttons, or you can pick one (Settings > Controls > Controller). Nintendo controllers show their own letters: B (bottom) confirms, A (right) goes back.
 - Keyboard and mouse, laid out like the Souls games on PC. To turn the camera with the mouse, turn on **Mouse look** in Settings > Controls.
 - Change which buttons and keys do what.
+- **Same buttons as the game**: the port's own menus (the start screen, F1 and Settings) take the buttons and keys you set in Change Buttons, as the game's menus do, and their prompts show the button you press. On by default; turned off (Settings > Controls), Cross confirms and Circle goes back whatever you set. Enter and Esc always work.
 - The game's button prompts show the buttons of the controller you're using, a Steam Deck's among them, or your keys (Settings > Game > Button icons).
 - Keys 1 to 5 switch straight to the item in each of the five item slots, without using it (Settings > Controls > Change Buttons, Keyboard and mouse).
 - The forward attack (the kick) can go on a key or a controller button of its own, so attacking never kicks by accident (Settings > Controls > Forward attack, off by default; the button is the Kick row in Change Buttons > Gamepad). A controller's back buttons, paddles or Share button can kick, when the controller reports them to the game; not every controller does.
@@ -84,6 +86,7 @@ Press **F1** (or **L3 + R3** on a controller) at any time to open the menu. Most
 - **Change Appearance** at the statue in front of where you wake in the Nexus: the game's own Edit Appearance, with your character. Off by default: turn on **Change appearance in the Nexus** in Settings > Game.
 - **Change Name** and **Change Body** at the same statue, with Change appearance on: a new name for your character, or the other body. Armour the new body can't wear comes off and stays in your inventory.
 - **Change Tendency** at the same statue: set any world's tendency, or your character's, from Pure White to Pure Black. A world's new tendency takes effect the next time you enter it. Off by default: turn on **Change tendency in the Nexus** in Settings > Game.
+- **Escaped crystal lizards come back**: a crystal lizard that gets away is back the next time its area loads, and only a kill uses up one of its returns. Off by default, as in the original game, where getting away uses one up too: turn it on in Settings > Game.
 - Choose the language in Settings > Game > Language. The European disc has English, French, German, Spanish and Italian, plus Japanese, Chinese (Traditional) and Korean; the US disc has English and Japanese; the Asian disc has English, Chinese (Traditional) and Korean. It starts in your PC's language when it can. A change needs a restart.
 
 **Online**
@@ -93,6 +96,7 @@ Press **F1** (or **L3 + R3** on a controller) at any time to open the menu. Most
 - Setup asks for your online name. You can change it, or turn online play off, in Settings > Network.
 - A matchmaking password, so you meet only your friends.
 - Show or hide other players' messages, bloodstains and ghosts.
+- **Players you met** (Settings > Network): who helped you, who you helped and who invaded. Block a player so you never meet again, or report one to the server's admins. **Delete my data** deletes your name and what the server keeps about you.
 - World tendency: **Yours only** (the default) changes only by what you do, or **With the server's** mixes in other players' tendency, as the original does online (Settings > Network).
 - Players behind strict routers can still play together: when a direct connection fails, the session goes through the server, which passes the game's data on and keeps none of it.
 
@@ -117,7 +121,7 @@ Press **F1** (or **L3 + R3** on a controller) at any time to open the menu. Most
 - Updates: the game checks for a new version at start and asks before changing anything. Your saves and settings are kept, and you can go back one version. If a save is inside one of the program's own folders, the update stops and says where, so you can move it out first.
 - Two looks for the menus: **DeS UI**, in the style of the game's own pause menu (the default), and the first look, **Alpha UI** (Settings > Interface > Menu look). Their size follows the window, and **UI scale** makes them bigger or smaller. Settings that need a restart ask first, and can restart the game for you.
 - A start screen with the project's logo, rising smoke and a soul flame. Each can be turned off in Settings > Interface.
-- In the menu, the Large Sword of Moonlight is the cursor and a crystal lizard dances in the corner. Both can be turned off.
+- In the menu, a sword from the game is the cursor: the Soulbrandt, or the Large Sword of Moonlight, the Demonbrandt, the Northern Regalia or the Storm Ruler (Settings > Interface > Cursor). A crystal lizard dances in the corner. Both can be turned off.
 - Trophies, with pop-ups and a tune from the game. Setup can bring your trophies and save across from RPCS3.
 - A Discord status: your profile shows that you're playing, the area you're in and whether you're online (Settings > Network).
 - **Report an issue** in the menu opens a GitHub issue with your PC's details filled in, and a zip to attach that includes your save, so the problem can be seen where it happened. It has no game files, and leaves out other players' internet addresses. If the game crashes or stops responding, a window offers to do the same.
@@ -141,7 +145,7 @@ These steps are for the release download.
    - **I have decrypted files**: your disc copy, plus the 27 files you decrypted yourself (`EBOOT.elf` and the `.sdat` files).
    - **Show me how**: step by step, with free tools only.
 4. Start the build. It runs on your PC and can take a while; setup shows an estimate first. You can stop it and carry on later. Setup builds in AppData on Windows (`~/.local/share` on Linux) and needs about 4 GB free there; to build on another drive, press **Change** next to **Build folder** first. On Linux that drive must be formatted for Linux: setup can't build on a FAT32 or exFAT drive.
-5. Pick a preset: **Original** plays as on the PS3; **Enhanced** sets 60 fps, a resolution that fits your display, SMAA, 16x anisotropic filtering, fullscreen, and HDR when Windows has HDR on for your display. Then a few choices (HDR among them, on Windows) and your online name. You can change anything later in Settings.
+5. Pick a preset: **Original** plays as on the PS3; **Enhanced** sets 60 fps, a resolution that fits your display, SMAA, 16x anisotropic filtering, the sharp scaling filter, borderless fullscreen, and HDR when Windows has HDR on for your display. Then a few choices (HDR among them, on Windows) and your online name. You can change anything later in Settings.
 
 Then press **Play**.
 
@@ -248,8 +252,10 @@ This project contains only its own code, scripts and documentation. It has no ga
 - [ps3recomp](https://github.com/sp00nznet/ps3recomp) by sp00nznet and its contributors: the recompiler and runtime this port is built on
 - RPCS3: a reference for how the PS3 behaves (no RPCS3 code is copied)
 - [RmlUi](https://github.com/mikke89/RmlUi) and [FreeType](https://freetype.org) for the menus, adapted from [Dusklight](https://github.com/TwilitRealm/dusklight)'s interface code
-- The [Old Standard TT](https://fonts.google.com/specimen/Old+Standard+TT) font for the DeS UI look's text
+- The Cinzel, Alegreya Sans and [Old Standard TT](https://fonts.google.com/specimen/Old+Standard+TT) fonts for the menus' text (Old Standard TT for the DeS UI look's), and [Material Symbols](https://fonts.google.com/icons) for their icons
 - [SMAA](https://www.iryoku.com/smaa/) for the SMAA setting, [FFmpeg](https://ffmpeg.org) for the movies, [SDL](https://www.libsdl.org) for the controllers (and on Linux the window and sound), [libusb](https://libusb.info) for the Switch 2 controllers on Windows, and [vkd3d](https://gitlab.winehq.org/wine/vkd3d) for Linux
+- [glslang](https://github.com/KhronosGroup/glslang), SPIRV-Tools and SPIRV-Headers to compile the Vulkan renderer's shaders, and [volk](https://github.com/zeux/volk) and Vulkan-Headers to load and call Vulkan
+- [Mbed TLS](https://www.trustedfirmware.org/projects/mbed-tls/) for the secure connection to the online server
 
 Settings > About and [`port/ui/NOTICE.md`](port/ui/NOTICE.md) list the menus' parts with their licences. The download's `licenses` folder holds the licences of the libraries shipped beside the program. The source of its LGPL libraries is on releases of their own: FFmpeg and vkd3d on [third-party-sources](https://github.com/JonathanDC64/Soulbrandt/releases/tag/third-party-sources), and libusb (Windows) on [source-libusb-1.0.30](https://github.com/JonathanDC64/Soulbrandt/releases/tag/source-libusb-1.0.30). Each download's `licenses/<library>/README.txt` names its archive.
 
