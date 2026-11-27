@@ -311,19 +311,20 @@ jobs:
           codesign --force --sign - "$app"
           codesign --verify --deep --strict --verbose=2 "$app"
 
-      # As a player's Mac runs it: no Homebrew library path, nothing installed. The app's program must take the
-      # app's own loader, find MoltenVK through the app's ICD file, and open setup's window (as window-mac does).
+      # As a player's Mac runs it: no Homebrew library path, nothing installed, started from / as the Finder does
+      # (the job's folder holds a loader of its own). The app's program must take the app's own loader, find
+      # MoltenVK through the app's ICD file, and open setup's window (as window-mac does).
       - name: The app's program starts on the app's own Vulkan
         env:
           DES_USER_FOLDERS: ${{ runner.temp }}/des_user
           RSX_BACKEND: vulkan
           PS3_NO_USER_INPUT: '1'
         run: |
-          app=$(ls -d dist/*.app)
+          app=$(cd dist && ls -d "$PWD"/*.app)
           exe="$app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
           mkdir -p "$DES_USER_FOLDERS"
           unset DYLD_FALLBACK_LIBRARY_PATH DYLD_LIBRARY_PATH VK_ICD_FILENAMES VK_DRIVER_FILES
-          "$exe" > app.log 2>&1 &
+          (cd / && exec "$exe") > app.log 2>&1 &
           pid=$!
           for i in $(seq 1 90); do
             kill -0 $pid 2>/dev/null || break
@@ -364,4 +365,5 @@ jobs:
           path: |
             app.log
             app.png
+            ${{ runner.temp }}/des_user/Soulbrandt/crashes/
           if-no-files-found: warn
