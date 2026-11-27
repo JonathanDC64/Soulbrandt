@@ -54,7 +54,7 @@ Press **F1** (or **L3 + R3** on a controller, or Select + Start: Settings > Inte
 
 **Picture**
 - Frame rates of 30 (the original), 60, 120, 144, 165 or 240 fps, a number of your own, or unlocked. The game's timing is fixed so it still plays the way it should. Above 60 fps is less tested.
-- Cutscenes play at 30 fps by default, as they judder above it. You can play them at your frame rate instead.
+- Cutscenes play at your frame rate by default, with their camera smoothed so they don't judder. You can lock them to 30 fps as in the original (Settings > Display > Cutscene frame rate).
 - V-sync on or off, "Even frames" for smooth motion, and G-Sync / FreeSync.
 - A frame rate counter, with a graph of frame times if you like, to see how a mod or a setting runs (Settings > Display > Frame rate counter). Off by default.
 - Render resolution from 50% (for handhelds) up to 300% (4K), ultrawide aspect ratios (21:9 and 32:9), and 16:10 for the Steam Deck's screen.
