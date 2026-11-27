@@ -32,6 +32,7 @@ int des_menu_mouse_hit(float x, float y, float box[4]);
 void des_menu_mouse_click(float x, float y);
 void des_menu_mouse_release(void);
 void des_menu_mouse_back(void);
+void des_menu_mouse_middle(float x, float y);
 void des_menu_mouse_drag(float x, float y);
 void des_menu_mouse_wheel(int notches, float x, float y);
 }
@@ -149,6 +150,7 @@ void on_button(int button, bool down, int x, int y) {
     float cx, cy;
     if (button == 0 && was_shown && to_canvas(x, y, cx, cy)) des_menu_mouse_click(cx, cy);  // (hidden: it only shows)
     if (button == 1) des_menu_mouse_back();
+    if (button == 2 && was_shown && to_canvas(x, y, cx, cy)) des_menu_mouse_middle(cx, cy);  // (Unequip, #746)
 }
 
 void on_wheel(int delta) {

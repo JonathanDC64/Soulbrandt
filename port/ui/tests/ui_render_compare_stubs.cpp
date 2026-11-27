@@ -62,6 +62,10 @@ void des_menu_mouse_click(float x, float y) {
 }
 void des_menu_mouse_release(void) {}
 void des_menu_mouse_back(void) {}
+void des_menu_mouse_middle(float x, float y) {
+    (void)x;
+    (void)y;
+}
 void des_menu_mouse_drag(float x, float y) {
     (void)x;
     (void)y;

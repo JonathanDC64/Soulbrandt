@@ -1020,7 +1020,8 @@ void watch_thread() {
             ps3_setenv("DES_UI_SHOT_NOW", "");
         }
         // DES_UI_MOUSE=x,y[,down|up][;x,y[,down|up]...] (a test, likewise): the mouse moves to each point (back
-        // buffer pixels) in turn, the left button going down or up there (rdown and rup: the right button); one setenv
+        // buffer pixels) in turn, the left button going down or up there (rdown and rup: the right button, mdown and
+        // mup the middle one); one setenv
         // is one drag. Over a menu of the game (no document up) it is that menu's, as the window's messages would be,
         // with wheelup and wheeldown for a notch.
         if (const char* v = std::getenv("DES_UI_MOUSE"); v && *v) {
@@ -1037,6 +1038,7 @@ void watch_thread() {
                     ui::game_menu::on_move(x, y);
                     if (a == "down" || a == "up") ui::game_menu::on_button(0, a == "down", x, y);
                     if (a == "rdown" || a == "rup") ui::game_menu::on_button(1, a == "rdown", x, y);
+                    if (a == "mdown" || a == "mup") ui::game_menu::on_button(2, a == "mdown", x, y);
                     if (a == "wheelup" || a == "wheeldown") ui::game_menu::on_wheel(a == "wheelup" ? 120 : -120);
                     continue;
                 }
