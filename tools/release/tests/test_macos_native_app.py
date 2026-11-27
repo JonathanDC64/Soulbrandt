@@ -55,6 +55,9 @@ class NativeAppTest(unittest.TestCase):
             f"{TOP}/LICENSE": b"licence\n",
             f"{TOP}/setup/release-info.txt": b"# x\nversion=0.2.1-dev+gabc\ncommit=abc\nexe=Soulbrandt\n",
             f"{TOP}/setup/tools/setup/run_setup.py": b"print('setup')\n",
+            f"{TOP}/libavutil.60.dylib": ARM64,
+            f"{TOP}/libavcodec.62.dylib": ARM64,
+            f"{TOP}/licenses/ffmpeg/README.txt": b"ffmpeg\n",
         })
         self.loader = self.d / "libvulkan.1.dylib"
         self.loader.write_bytes(ARM64)
@@ -102,12 +105,19 @@ class NativeAppTest(unittest.TestCase):
         lib = (c / "Resources" / "vulkan" / "icd.d" / icd["ICD"]["library_path"]).resolve()
         self.assertEqual(lib, (c / "Frameworks" / "libMoltenVK.dylib").resolve())
         self.assertEqual((c / "Resources" / "licenses" / "MoltenVK" / "LICENSE").read_bytes(), b"apache\n")
+        # (the download's FFmpeg beside the program goes in Frameworks, its licence stays in Resources)
+        for lib in ("libavutil.60.dylib", "libavcodec.62.dylib"):
+            self.assertEqual((c / "Frameworks" / lib).read_bytes(), ARM64)
+            self.assertFalse((c / "Resources" / lib).exists())
+        self.assertTrue((c / "Resources" / "licenses" / "ffmpeg" / "README.txt").is_file())
         with open(c / "Info.plist", "rb") as f:
             p = plistlib.load(f)
         self.assertEqual((p["CFBundleExecutable"], p["CFBundleShortVersionString"]), ("Soulbrandt", "0.2.1"))
         self.assertEqual(p["LSMinimumSystemVersion"], "13.3")
         self.assertEqual(p["LSArchitecturePriority"], ["arm64"])
-        self.assertIn("MoltenVK 1.4.2", (c / "Resources" / "THIRD-PARTY.txt").read_text(encoding="utf-8"))
+        third = (c / "Resources" / "THIRD-PARTY.txt").read_text(encoding="utf-8")
+        self.assertIn("MoltenVK 1.4.2", third)
+        self.assertIn("FFmpeg", third)
         if os.name != "nt":
             self.assertTrue(os.access(c / "MacOS" / "Soulbrandt", os.X_OK))
         with self.assertRaises(n.Error):

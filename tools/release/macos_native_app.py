@@ -5,7 +5,8 @@
   python tools/release/macos_native_app.py check
 
 `build` makes <out>/<PRODUCT_NAME>.app from:
-  --program   package.py's DemonsSoulsRecomp-<version>-macos.tar.xz (--macos-host): the program and its setup/ folder;
+  --program   package.py's DemonsSoulsRecomp-<version>-macos.tar.xz (--macos-host): the program, the FFmpeg libraries
+              beside it and its setup/ folder;
   --loader    the Vulkan loader, libvulkan.1.dylib, built from the commit macos_native_app.json pins;
   --moltenvk  MoltenVK's release archive, checked against the SHA-256 and size macos_native_app.json pins;
   --icns      the app's icon (made with sips and iconutil on a Mac; without it the app has macOS's plain one).
@@ -19,6 +20,9 @@ The app:
   Contents/Resources/README.md, LICENSE, licenses/    the download's other files
   Contents/Frameworks/libvulkan.1.dylib               the Vulkan loader: the runtime looks here first (gpu_vk.c)
   Contents/Frameworks/libMoltenVK.dylib               Vulkan on Metal
+  Contents/Frameworks/libavutil.N.dylib, libavcodec.N.dylib
+                                                      the download's FFmpeg (the movies): the runtime looks here
+                                                      first (ffmpeg_runtime.c)
   Contents/Resources/vulkan/icd.d/MoltenVK_icd.json   where the loader looks for a driver inside an app
   Contents/Resources/THIRD-PARTY.txt                  what else the app carries, its licences and sources
 
@@ -190,7 +194,12 @@ def info_plist(product, version, icon):
     return plist
 
 
-def third_party_text(product, mvk, loader):
+def is_library(rel):
+    """A library at the top of the download (the FFmpeg ones beside the program): the app's Contents/Frameworks."""
+    return "/" not in rel and rel.endswith(".dylib")
+
+
+def third_party_text(product, mvk, loader, ffmpeg=False):
     lines = [
         f"{product} for macOS draws through Vulkan, which this app carries in Contents/Frameworks:",
         "",
@@ -202,6 +211,15 @@ def third_party_text(product, mvk, loader):
         "(https://github.com/KhronosGroup/Vulkan-Loader/blob/main/LICENSE.txt).",
         f"Built for this app from {loader['repo']} at {loader['commit']}.",
         "",
+    ]
+    if ffmpeg:
+        lines += [
+            "FFmpeg: libavcodec (only its MPEG-2 video decoder and parser) and libavutil, in Contents/Frameworks, for",
+            "the movies. Licence: LGPL 2.1 or later; how it was built and where its source is:",
+            "Resources/licenses/ffmpeg/README.txt. You may replace them with your own build of the same majors.",
+            "",
+        ]
+    lines += [
         f"{product} itself: see Resources/LICENSE and Resources/licenses/.",
     ]
     return "\n".join(lines) + "\n"
@@ -230,6 +248,9 @@ def build(program_tar, loader_path, moltenvk_tar, icns, out, pins, product):
     for rel, (mode, data) in sorted(files.items()):
         if rel == exe:
             write(os.path.join(macos, product), data, 0o755)
+        elif is_library(rel):
+            need_arm64(data, f"--program: {rel}")
+            write(os.path.join(fw, rel), data, 0o755)
         else:
             write(os.path.join(res, *rel.split("/")), data, 0o755 if mode & 0o100 else 0o644)
     if not os.path.isdir(os.path.join(res, "setup")):
@@ -239,8 +260,9 @@ def build(program_tar, loader_path, moltenvk_tar, icns, out, pins, product):
     write(os.path.join(fw, "libMoltenVK.dylib"), mvk["dylib"], 0o755)
     write(os.path.join(res, "vulkan", "icd.d", "MoltenVK_icd.json"), icd_manifest(mvk["icd"]))
     write(os.path.join(res, "licenses", "MoltenVK", "LICENSE"), mvk["licence"])
+    ffmpeg = any(is_library(rel) and rel.startswith("libav") for rel in files)
     write(os.path.join(res, "THIRD-PARTY.txt"),
-          third_party_text(product, pins["moltenvk"], pins["vulkan_loader"]).encode("utf-8"))
+          third_party_text(product, pins["moltenvk"], pins["vulkan_loader"], ffmpeg).encode("utf-8"))
     if icns:
         shutil.copyfile(icns, os.path.join(res, "AppIcon.icns"))
     with open(os.path.join(contents, "Info.plist"), "wb") as f:
