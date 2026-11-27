@@ -328,6 +328,11 @@ std::vector<TabDesc> make_tabs() {
                 "Press Cross facing the statue in front of where you wake in the Nexus and pick Change Tendency to "
                 "set a world's tendency or your character's, from Pure White to Pure Black. Some events only happen "
                 "at a tendency, and what has already happened stays."),
+            choice("Hold Up or Down for the first spell or item", "DES_SLOT_HOLD",
+                {{"0", "Off", true}, {"300", "0.3 seconds"}, {"500", "0.5 seconds"}, {"800", "0.8 seconds"},
+                    {"1000", "1 second"}},
+                "Hold Up for that long to go back to your first spell, or Down for your first item. The press "
+                "still steps once first, as in the original game."),
             toggle("Escaped crystal lizards come back", "DES_LIZARD_RETURN",
                 "A crystal lizard that gets away is back the next time its area loads, without using up a return. "
                 "Only a kill uses one. Off, as in the original game: getting away uses a return as a kill does. "
