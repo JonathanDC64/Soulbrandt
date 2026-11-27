@@ -555,8 +555,9 @@ endif()
 # Start screen, in-game menu (F1 / Esc, or L3+R3 on a pad) and settings,
 # drawn over the game frame. Its own static library, linked only: des_boot's
 # compile flags do not change. DES_UI=0 at run time leaves it uninstalled. -DDES_UI=OFF builds
-# without it (des_ui_stub.cpp). Off Windows it draws through D3D12 on vkd3d, so it needs DES_VKD3D (docs/76).
-if(WIN32 OR DES_VKD3D)
+# without it (des_ui_stub.cpp). On Linux it draws through D3D12 on vkd3d, so it needs DES_VKD3D (docs/76); on a Mac
+# through the new path's GPU layer.
+if(WIN32 OR APPLE OR DES_VKD3D)
     option(DES_UI "Build the wrapper UI (start screen, menu, settings)" ON)
 else()
     option(DES_UI "Build the wrapper UI (start screen, menu, settings)" OFF)
@@ -897,8 +898,9 @@ elseif(_des_hal)
 else()
     set(_des_hal OFF)
 endif()
-# Off Windows the switch is built only with the D3D12 backend on vkd3d (rsx_out.c).
-if(_des_hal AND NOT WIN32 AND NOT DES_VKD3D)
+# On Linux the switch is built only with the D3D12 backend on vkd3d; a Mac has it with the Vulkan backend alone
+# (rsx_out.c).
+if(_des_hal AND NOT WIN32 AND NOT APPLE AND NOT DES_VKD3D)
     message(STATUS "des_boot: the runtime's route switch needs vkd3d (DES_VKD3D); the renderer calls stay direct")
     set(_des_hal OFF)
 endif()
