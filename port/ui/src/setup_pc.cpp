@@ -16,6 +16,9 @@
 #else
 #include <SDL3/SDL.h>
 #include <unistd.h>
+#if defined(__APPLE__)
+#include <mach/mach.h>  // (the memory free now: a Mac has no /proc/meminfo)
+#endif
 #endif
 
 #include <algorithm>
@@ -167,6 +170,18 @@ std::vector<std::filesystem::path> search_roots() {
 
 // The memory free now: /proc/meminfo's MemAvailable (as compile.py's free_memory reads it), else the free pages.
 unsigned long long free_memory_bytes() {
+#if defined(__APPLE__)
+    // (a Mac: its free pages and the inactive ones, which it gives up first)
+    vm_statistics64_data_t vm{};
+    mach_msg_type_number_t count = HOST_VM_INFO64_COUNT;
+    vm_size_t page = 0;
+    const mach_port_t host = mach_host_self();
+    const bool known = host_page_size(host, &page) == KERN_SUCCESS &&
+                       host_statistics64(host, HOST_VM_INFO64, reinterpret_cast<host_info64_t>(&vm), &count) ==
+                           KERN_SUCCESS;
+    mach_port_deallocate(mach_task_self(), host);
+    return known ? (unsigned long long)(vm.free_count + vm.inactive_count) * page : 0;
+#else
     std::ifstream f("/proc/meminfo");
     std::string key;
     unsigned long long kb = 0;
@@ -176,6 +191,7 @@ unsigned long long free_memory_bytes() {
     }
     const long pages = sysconf(_SC_AVPHYS_PAGES), size = sysconf(_SC_PAGE_SIZE);
     return pages > 0 && size > 0 ? (unsigned long long)pages * (unsigned long long)size : 0;
+#endif
 }
 
 // /sys/class/power_supply: a laptop's charger is a "Mains" supply ("USB" for USB-C), with online 1 while plugged in;

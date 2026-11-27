@@ -26,6 +26,9 @@
 #if defined(__linux__)
 #include <elf.h>
 #include <link.h>
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
+#include <mach-o/loader.h>
 #endif
 #endif
 
@@ -269,6 +272,29 @@ std::string program_identity() {
     std::error_code ec;
     const std::filesystem::path exe = std::filesystem::read_symlink("/proc/self/exe", ec);
     return ec ? std::string() : identity_of(exe);
+#elif defined(__APPLE__)
+    // The program's UUID (its LC_UUID, which the linker writes new for each build), as loaded: image 0 is the
+    // program. Without one, its file's size and time.
+    if (const auto* h = reinterpret_cast<const mach_header_64*>(_dyld_get_image_header(0));
+        h && h->magic == MH_MAGIC_64) {
+        const uint8_t* p = reinterpret_cast<const uint8_t*>(h + 1);
+        for (uint32_t i = 0; i < h->ncmds; i++) {
+            const auto* lc = reinterpret_cast<const load_command*>(p);
+            if (lc->cmd == LC_UUID) {
+                std::string id = "uuid ";
+                char b[3];
+                for (uint8_t v : reinterpret_cast<const uuid_command*>(p)->uuid) {
+                    std::snprintf(b, sizeof b, "%02x", v);
+                    id += b;
+                }
+                return id;
+            }
+            p += lc->cmdsize;
+        }
+    }
+    char path[4096];
+    uint32_t size = sizeof path;
+    return _NSGetExecutablePath(path, &size) == 0 ? identity_of(std::filesystem::path(path)) : std::string();
 #else
     return {};
 #endif

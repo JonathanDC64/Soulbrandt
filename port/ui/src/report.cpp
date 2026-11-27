@@ -50,6 +50,10 @@
 #include <sys/stat.h>
 #include <sys/utsname.h>
 #include <unistd.h>
+#if defined(__APPLE__)
+#include <crt_externs.h>  // (_NSGetArgv: a Mac has no /proc)
+#include <mach-o/dyld.h>  // (_NSGetExecutablePath)
+#endif
 
 #include <cerrno>
 
@@ -240,7 +244,15 @@ std::string machine_id() {
 std::filesystem::path exe_path() {
     static const std::filesystem::path exe = [] {
         std::error_code ec;
+#if defined(__APPLE__)
+        // (a Mac: the path the program was started by, which the loader keeps; without its links and dots)
+        char path[4096];
+        uint32_t size = sizeof path;
+        if (_NSGetExecutablePath(path, &size) != 0) return std::filesystem::path{};
+        const auto p = std::filesystem::canonical(path, ec);
+#else
         const auto p = std::filesystem::read_symlink("/proc/self/exe", ec);
+#endif
         return ec ? std::filesystem::path{} : p;
     }();
     return exe;
@@ -264,9 +276,14 @@ setup::UserFolders test_user_folders(const std::string& given) {
 // The command line's arguments (the program first), and the command line as the process got it (quoted where an
 // argument holds a space).
 std::vector<std::string> command_line_args() {
-    std::ifstream f("/proc/self/cmdline", std::ios::binary);
     std::vector<std::string> args;
+#if defined(__APPLE__)
+    char** const argv = *_NSGetArgv();
+    for (int i = 0, n = *_NSGetArgc(); argv && i < n; i++) args.emplace_back(argv[i] ? argv[i] : "");
+#else
+    std::ifstream f("/proc/self/cmdline", std::ios::binary);
     for (std::string a; std::getline(f, a, '\0');) args.push_back(a);
+#endif
     return args;
 }
 
@@ -765,11 +782,21 @@ void tee_thread(int read_fd, int out) {
 // descriptor of its own, or -1) and the log.
 bool tee(std::initializer_list<int> fds, int original) {
     int p[2];
-    if (pipe2(p, O_CLOEXEC) != 0) {  // (its ends are this process's only: see start_again)
+#if defined(__APPLE__)
+    // (a Mac has no pipe2, and its pipes grow by themselves, to 64 KB)
+    const bool made = pipe(p) == 0;
+    if (made)
+        for (int end : p) fcntl(end, F_SETFD, FD_CLOEXEC);
+#else
+    const bool made = pipe2(p, O_CLOEXEC) == 0;
+#endif
+    if (!made) {  // (its ends are this process's only: see start_again)
         if (original >= 0) close(original);
         return false;
     }
+#if !defined(__APPLE__)
     fcntl(p[1], F_SETPIPE_SZ, 1 << 20);  // (a burst of messages fits without waiting)
+#endif
     for (int target : fds) {
         FILE* stream = target == 1 ? stdout : stderr;
         std::fflush(stream);
