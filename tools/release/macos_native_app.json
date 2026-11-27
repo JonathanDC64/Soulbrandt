@@ -1,0 +1,22 @@
+{
+  "comment": "What the native Mac app carries beside the program (tools/release/macos_native_app.py, docs/178 step M9). MoltenVK is pinned by its SHA-256 and size; the Vulkan loader is built in mac-native.yml from these commits, the SDK tag of the Vulkan-Headers ps3recomp builds with (cmake/gpu_deps.cmake).",
+  "moltenvk": {
+    "name": "MoltenVK-macos.tar",
+    "url": "https://github.com/KhronosGroup/MoltenVK/releases/download/v1.4.2/MoltenVK-macos.tar",
+    "sha256": "f95765a6229cb7b915990a2890ce12ebe36a730b021545d3d52ae69ce4c4024e",
+    "size": 59563008,
+    "version": "MoltenVK 1.4.2",
+    "dylib": "MoltenVK/MoltenVK/dynamic/dylib/macOS/libMoltenVK.dylib",
+    "icd": "MoltenVK/MoltenVK/dynamic/dylib/macOS/MoltenVK_icd.json",
+    "licence": "MoltenVK/LICENSE",
+    "source": "https://github.com/KhronosGroup/MoltenVK/tree/v1.4.2",
+    "checked": "size and SHA-256 from the release's asset list (its digest field), matched by a download; its dylib is for arm64 and x86-64, macOS 12.0 and later; 2026-11-27"
+  },
+  "vulkan_loader": {
+    "repo": "https://github.com/KhronosGroup/Vulkan-Loader.git",
+    "commit": "fa218055ff4948b159f31d43f800c808a13d51df",
+    "tag": "vulkan-sdk-1.4.363.0",
+    "headers_repo": "https://github.com/KhronosGroup/Vulkan-Headers.git",
+    "headers_commit": "6802bb4733b63ed5efd3adb308a6c885ef180ea1"
+  }
+}

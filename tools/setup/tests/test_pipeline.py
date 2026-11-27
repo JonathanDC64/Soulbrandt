@@ -795,10 +795,14 @@ class ChosenFolderTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
-        self.usual = self.root / "shared" / "DemonsSoulsRecomp"
-        self.var = "LOCALAPPDATA" if os.name == "nt" else "XDG_DATA_HOME"
+        # The system's folder (des_setup's system_base) in the test's: a Mac's is under $HOME.
+        self.var = "LOCALAPPDATA" if os.name == "nt" else "HOME" if sys.platform == "darwin" else "XDG_DATA_HOME"
+        self.base = self.root / "shared"
         self.old = os.environ.get(self.var)
-        os.environ[self.var] = str(self.root / "shared")
+        os.environ[self.var] = str(self.base)
+        if sys.platform == "darwin":
+            self.base = self.base / "Library" / "Application Support"
+        self.usual = self.base / "DemonsSoulsRecomp"
 
     def tearDown(self):
         if self.old is None:
@@ -820,7 +824,7 @@ class ChosenFolderTest(unittest.TestCase):
         self.choose(f"# a note\n{self.root / 'D' / 'build'}\n")
         self.assertEqual(pipeline.chosen_folder(self.usual), self.root / "D" / "build")
         self.choose("../../build\n")                                  # (a portable install's: from the usual folder)
-        self.assertEqual(pipeline.chosen_folder(self.usual), self.root / "build")
+        self.assertEqual(pipeline.chosen_folder(self.usual), self.usual.parent.parent / "build")   # (a Mac's is deeper)
         (self.usual / pipeline.CHOICE).write_bytes(b"\xef\xbb\xbf# saved by Notepad\r\n\r\n  " +
                                                    str(self.root / "x").encode("utf-8") + b"  \r\n")
         self.assertEqual(pipeline.chosen_folder(self.usual), self.root / "x")
@@ -828,7 +832,7 @@ class ChosenFolderTest(unittest.TestCase):
     def test_default_data_follows_the_choice(self):
         # (self.usual is the earlier versions' folder: a choice kept there is still the choice)
         from des_setup import __main__ as cli
-        self.assertEqual(cli.default_data(), self.root / "shared" / cli.ONE_NAME / "setup-data")
+        self.assertEqual(cli.default_data(), self.base / cli.ONE_NAME / "setup-data")
         self.choose(f"{self.root / 'D' / 'build'}\n")
         self.assertEqual(cli.default_data(), self.root / "D" / "build")
 
@@ -840,7 +844,7 @@ class ChosenFolderTest(unittest.TestCase):
         (self.usual / "tools" / "python").mkdir(parents=True)
         (self.usual / "DemonsSouls").mkdir()
         (self.usual / "DemonsSouls" / "settings.ini").write_text("\n", encoding="utf-8")
-        self.assertEqual(cli.usual_data(), self.root / "shared" / cli.ONE_NAME / "setup-data")
+        self.assertEqual(cli.usual_data(), self.base / cli.ONE_NAME / "setup-data")
         for f in ("setup/" + pipeline.READY, "setup/journal.json"):
             shutil.rmtree(self.usual / "setup", ignore_errors=True)
             (self.usual / f).parent.mkdir(parents=True, exist_ok=True)

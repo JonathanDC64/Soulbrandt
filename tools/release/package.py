@@ -4,7 +4,8 @@
   package.py check-tag TAG
       TAG is v<VERSION> (VERSION as committed at the tag), on origin/master, and the ps3recomp.pin committed with it
       names one of the fork's release tags.
-  package.py build --rev REV [--ps3recomp DIR] [--host EXE] [--linux-host DIR] [--out DIR] [--dry-run]
+  package.py build --rev REV [--ps3recomp DIR] [--host EXE] [--linux-host DIR] [--macos-host DIR] [--out DIR]
+                   [--dry-run]
   package.py check-keys [--rev REV] [--ps3recomp DIR] [--range BASE..HEAD] [--file FILE ...]
       Writes <out>/DemonsSoulsRecomp-<version>-source.zip and <out>/SHA256SUMS, and leaves the zipped files in
       <out>/stage for the game-file check. REV is the release tag, or any commit for a dry run. --host: also
@@ -30,6 +31,10 @@ and release-files.txt, the list of the download's files, which tells the update 
 with DIR's files at the top (host.yml's host-linux folder: des_host, renamed, the vkd3d and FFmpeg libraries it
 finds beside it, and their licences in licenses/). A tar, which keeps the execute bits that a zip unpacked by Python
 loses, with the same fixed dates, owner and modes.
+
+--macos-host DIR writes <out>/DemonsSoulsRecomp-<version>-macos.tar.xz the same way from a folder with the native Mac
+des_host (mac-native.yml's): the program folder tools/release/macos_native_app.py makes the Mac app from (docs/178,
+step M9). Not a player's download yet.
 
 The same REV gives the same zip: entries sorted, dated with REV's commit time, fixed permissions, LF line endings as
 committed. (Deflate output can differ between zlib versions; the release workflow pins Python.) --ps3recomp takes the
@@ -325,19 +330,19 @@ def player_tree(files, top, fork):
     return entries
 
 
-def linux_host_files(folder, top, program):
+def linux_host_files(folder, top, program, flag="--linux-host"):
     """The Linux tarball's extra entries: every file in host.yml's host-linux folder but the map (in the symbols zip),
     under the same relative path at the top of the tree; des_host, as `program`, executable, the rest (libraries,
-    licences) read-only data."""
+    licences) read-only data. The Mac's (--macos-host) the same way."""
     if not os.path.isfile(os.path.join(folder, "des_host")):
-        raise Error(f"--linux-host {folder}: no des_host in it")
+        raise Error(f"{flag} {folder}: no des_host in it")
     entries = []
     for base, dirs, names in os.walk(folder):
         dirs.sort()
         for n in sorted(names):
             path = os.path.join(base, n)
             if os.path.islink(path) or not os.path.isfile(path):
-                raise Error(f"--linux-host: {path} is not a regular file")
+                raise Error(f"{flag}: {path} is not a regular file")
             rel = os.path.relpath(path, folder).replace(os.sep, "/")
             if rel.endswith(".map"):
                 continue
@@ -407,11 +412,12 @@ def host_files(exe, top, program):
 MANIFEST = f"{SETUP}/release-files.txt"
 
 
-def host_maps(exe, linux_folder):
+def host_maps(exe, linux_folder, macos_folder=None):
     """The hosts' linker maps, for the symbols zip: (path in it, data)."""
     maps = []
     for rel, path in (("windows/des_host.map", os.path.splitext(exe)[0] + ".map" if exe else None),
-                      ("linux/des_host.map", os.path.join(linux_folder, "des_host.map") if linux_folder else None)):
+                      ("linux/des_host.map", os.path.join(linux_folder, "des_host.map") if linux_folder else None),
+                      ("macos/des_host.map", os.path.join(macos_folder, "des_host.map") if macos_folder else None)):
         if path and os.path.isfile(path):
             with open(path, "rb") as f:
                 maps.append((rel, f.read()))
@@ -471,7 +477,7 @@ def cmd_build(args):
             f.write(data)
     zips = [(f"{NAME}-{version}-source.zip", files)]
     program = program_name(sha)
-    tree = player_tree(files, top, pin is not None) if args.host or args.linux_host else []
+    tree = player_tree(files, top, pin is not None) if args.host or args.linux_host or args.macos_host else []
 
     def release_info(exe):
         """setup/release-info.txt in a player's download: the source's, and the program's file name (update.py)."""
@@ -483,7 +489,7 @@ def cmd_build(args):
         if len(names) != len(set(names)):
             raise Error("--host: a file beside the exe has the path of a packaged file")
         zips.append((f"{NAME}-{version}-windows.zip", player + [manifest(player, top)]))
-    maps = host_maps(args.host, args.linux_host)
+    maps = host_maps(args.host, args.linux_host, args.macos_host)
     if maps:
         zips.append((f"{NAME}-{version}-symbols.zip",
                      [(f"{NAME}-{version}-symbols/{rel}", 0o644, data) for rel, data in maps]))
@@ -497,12 +503,15 @@ def cmd_build(args):
         size = os.path.getsize(os.path.join(out, zip_name))
         print(f"package: {zip_name}: {len(zipped)} files, {size / 1e6:.1f} MB, sha256 {digest}")
 
-    if args.linux_host:
-        tar_name = f"{NAME}-{version}-linux.tar.xz"
-        tarred = tree + linux_host_files(args.linux_host, top, program) + [release_info(program)]
+    for system, folder in (("linux", args.linux_host), ("macos", args.macos_host)):
+        if not folder:
+            continue
+        flag = f"--{system}-host"
+        tar_name = f"{NAME}-{version}-{system}.tar.xz"
+        tarred = tree + linux_host_files(folder, top, program, flag) + [release_info(program)]
         names = [f[0] for f in tarred]
         if len(names) != len(set(names)):
-            raise Error("--linux-host: a file of the host folder has the path of a packaged file")
+            raise Error(f"{flag}: a file of the host folder has the path of a packaged file")
         tarred.append(manifest(tarred, top))   # the update's list of program files, as in the Windows zip
         check_no_keys(tar_name, tarred, keys)
         write_tar_xz(os.path.join(out, tar_name), tarred, when)
@@ -528,6 +537,7 @@ def main(argv=None):
     b.add_argument("--ps3recomp", help="a checkout of the fork that has the pinned commit (default: fetch it)")
     b.add_argument("--host", help="des_host.exe (host.yml's): also write the Windows zip with it")
     b.add_argument("--linux-host", help="host.yml's host-linux folder: also write the Linux tar.xz with it")
+    b.add_argument("--macos-host", help="a folder with the native Mac des_host: also write the Mac tar.xz with it")
     b.add_argument("--out", default=os.path.join(ROOT, "dist"), help="output folder (default dist/)")
     b.add_argument("--dry-run", action="store_true", help="allow a revision without ps3recomp.pin")
     k = sub.add_parser("check-keys", help="check that the repository and the downloads hold no key")

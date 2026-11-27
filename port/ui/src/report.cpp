@@ -261,12 +261,19 @@ std::filesystem::path exe_path() {
 }
 [[maybe_unused]] const std::filesystem::path g_exe_at_start = exe_path();  // (read before main, before any update)
 
-// $XDG_DATA_HOME, else ~/.local/share, for both (user_folders).
+// $XDG_DATA_HOME, else ~/.local/share, for both (user_folders); on a Mac ~/Library/Application Support, where its
+// programs keep theirs.
 setup::UserFolders system_user_folders() {
+#if defined(__APPLE__)
+    const std::string home = env("HOME");
+    const std::filesystem::path base =
+        home.empty() ? std::filesystem::path{} : std::filesystem::path(home) / "Library" / "Application Support";
+#else
     const std::string xdg = env("XDG_DATA_HOME"), home = env("HOME");
     const std::filesystem::path base = !xdg.empty()    ? std::filesystem::path(xdg)
                                        : !home.empty() ? std::filesystem::path(home) / ".local" / "share"
                                                        : std::filesystem::path{};
+#endif
     return {base, base};
 }
 

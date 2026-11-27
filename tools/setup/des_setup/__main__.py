@@ -19,7 +19,7 @@ docs/88). GAME is the folder of the disc dump that holds PS3_GAME. `run` does
 every phase in order with the setup screens' line protocol (pipeline.py,
 protocol.py); without GAME it takes the folders the last run used. The data
 folder defaults to the one data folder's setup-data in %LOCALAPPDATA% (Linux:
-$XDG_DATA_HOME), or the earlier versions' %LOCALAPPDATA%\\DemonsSoulsRecomp
+$XDG_DATA_HOME; a Mac: ~/Library/Application Support), or the earlier versions' %LOCALAPPDATA%\\DemonsSoulsRecomp
 when it holds a build or a choice (docs/164), or to the build folder the
 player chose on setup's screens, which the usual folder's setup-folder.txt
 names (docs/88 section 3; the host always passes --data). A developer's compiler (--cc and --ld, or
@@ -91,13 +91,21 @@ def absolute_paths(a):
     return a
 
 
+def system_base() -> Path:
+    """The system's folder for a program's files, as the host's system_user_folders (report.cpp) has it: %LOCALAPPDATA%
+    on Windows; ~/Library/Application Support on a Mac, where its programs keep theirs; elsewhere $XDG_DATA_HOME, else
+    ~/.local/share."""
+    if os.name == "nt":
+        return Path(os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local"))
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support"
+    return Path(os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share"))
+
+
 def usual_data() -> Path:
     """The usual folder, as the host's setup_shared_folder (setup_folder.cpp) finds it: the earlier versions' shared
     folder when setup's work or a choice of folder is in it, else the one data folder's setup-data."""
-    if os.name == "nt":
-        base = Path(os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local"))
-    else:
-        base = Path(os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share"))
+    base = system_base()
     old = base / NAME
     if any((old / f).is_file() for f in ("setup/" + pipeline.READY, "setup/journal.json", pipeline.CHOICE)):
         return old
