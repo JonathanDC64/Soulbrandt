@@ -141,6 +141,8 @@ else()
   # On Linux D3D12 is vkd3d's. A Mac has none: there the menus draw through the GPU layer alone (DES_UI_NO_D3D12).
   if(APPLE)
     target_compile_definitions(des_ui PRIVATE DES_UI_NO_D3D12=1)
+    # (the battery, power_mac.cpp)
+    target_link_libraries(des_ui PRIVATE "-framework IOKit" "-framework CoreFoundation")
   elseif(NOT TARGET PkgConfig::DES_VKD3D_LIBS)
     message(FATAL_ERROR "The wrapper UI off Windows draws through vkd3d: configure with DES_VKD3D=ON (or DES_UI=OFF)")
   endif()
