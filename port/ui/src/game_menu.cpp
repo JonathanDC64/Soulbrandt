@@ -34,6 +34,7 @@ void des_menu_mouse_release(void);
 void des_menu_mouse_back(void);
 void des_menu_mouse_drag(float x, float y);
 void des_menu_mouse_wheel(int notches, float x, float y);
+int des_menu_mouse_movie_click(void);
 }
 
 namespace {
@@ -163,6 +164,10 @@ void on_wheel(int delta) {
 
 void on_key() {
     sShown.store(false);
+}
+
+void movie_click() {
+    if (!open()) des_menu_mouse_movie_click();  // (a menu of the game takes the click itself)
 }
 
 void on_leave() {

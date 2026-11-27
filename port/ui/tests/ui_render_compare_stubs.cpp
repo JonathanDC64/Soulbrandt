@@ -71,6 +71,7 @@ void des_menu_mouse_wheel(int notches, float x, float y) {
     (void)x;
     (void)y;
 }
+int des_menu_mouse_movie_click(void) { return 0; }
 
 int des_prework_status(float* fraction, char* text, int cap) {
     (void)fraction;

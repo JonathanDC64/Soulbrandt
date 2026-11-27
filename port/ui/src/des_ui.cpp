@@ -390,6 +390,8 @@ int wndproc(void*, void* hwnd_, unsigned msg, unsigned long long wp, long long l
     case WM_RBUTTONUP:
     case WM_MBUTTONDOWN:
     case WM_MBUTTONUP: {
+        if (!capturing && !ui::settings::no_user_input() && (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN))
+            ui::game_menu::movie_click();  // a movie: START (#745)
         if (!capturing && ui::game_menu::active()) {  // a menu of the game: the pointer and its clicks (docs/114)
             int x, y;
             map_mouse(hwnd, lp, x, y);
@@ -1028,6 +1030,7 @@ void watch_thread() {
                     if (a == "wheelup" || a == "wheeldown") ui::game_menu::on_wheel(a == "wheelup" ? 120 : -120);
                     continue;
                 }
+                if (!sCapturing.load() && (a == "down" || a == "rdown")) ui::game_menu::movie_click();
                 push_event({InputEvent::MouseMove, x, y});
                 if (a == "down") push_event({InputEvent::MouseDown, 0});
                 if (a == "up") push_event({InputEvent::MouseUp, 0});

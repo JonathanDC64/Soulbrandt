@@ -29,4 +29,9 @@ void on_wheel(int delta);
 void on_key();    // a key went down: the pointer hides
 void on_leave();  // the pointer left the window
 
+// The window's thread: a left or right button went down over the game with no document of the UI up (the user's, or
+// DES_UI_MOUSE's). While a movie plays and no menu of the game is up, it presses START, as the game's own skip
+// (with the mouse in the game's menus on); else nothing. The click still goes where it went.
+void movie_click();
+
 }  // namespace ui::game_menu

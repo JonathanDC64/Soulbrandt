@@ -1844,6 +1844,20 @@ extern "C" int des_menu_mouse_hit(float x, float y, float box[4])
 }
 
 extern "C" void des_menu_mouse_click(float x, float y) { post({kEvClick, x, y, 0}); }
+
+/* A left or right click with no menu of the game up: while a movie plays (cellSail.h), START, the button the game
+ * skips its movies with (the opening one, the advert the title screen plays when left alone; issue #745). With
+ * DES_MENU_MOUSE on, as the rest of the mouse in the game's menus. 1 when it pressed. */
+extern "C" int cellSail_host_movie_playing(void);
+extern "C" int des_menu_mouse_movie_click(void)
+{
+    static int on = 0;   /* (this thread's own reading: the window's) */
+    PS3_KNOB(on, ps3_env_int("DES_MENU_MOUSE", 0));
+    if (!on || !cellSail_host_movie_playing()) return 0;
+    press(kPadStart);
+    if (s_log) fprintf(stderr, "[menu-mouse] a click in a movie: START\n");
+    return 1;
+}
 extern "C" void des_menu_mouse_release(void) { post({kEvRelease, 0.0f, 0.0f, 0}); }
 extern "C" void des_menu_mouse_back(void) { post({kEvBack, 0.0f, 0.0f, 0}); }
 
