@@ -17,6 +17,8 @@
  * table together. v0.1.2's limits came from two records of one new character, and they refused 18 of 20 real ones
  * (+0xAC, +0xAE..+0xCF, +0xD8, the colours, the lists' kinds, list B's last words and count): those rows now take
  * what the game writes for the characters of a few saves (new ones, and one past Latria).
+ * The flags word at +0xD0 took only 0xC0 after that, and refused every record a live server saw: real characters
+ * have 0x010000C0 there, so its top byte is free now.
  *
  * The param tables are read from guest memory: the hook has no guest context to call the game's getters with. */
 
@@ -74,7 +76,9 @@ const Field kFields[] = {
     {"value 0xAC", 0x0AC, 1, kU16, 0, 100},           /* 100 on a new character, 0 later */
     {"value 0xAE", 0x0AE, 1, kU16, 0, 9999},          /* 0 to 9 seen */
     {"counters 0xB0", 0x0B0, 8, kI32, 0, 999999999},  /* counts: up to 119 seen */
-    {"flags", 0x0D0, 1, kU32, 0xC0, 0xC0},
+    {"flags top byte", 0x0D0, 1, kU8, 0, 255},        /* 0x01 on real characters (0x010000C0): any */
+    {"flags", 0x0D1, 2, kU8, 0, 0},
+    {"flags low byte", 0x0D3, 1, kU8, 0xC0, 0xC0},
     {"words 0xD4", 0x0D4, 3, kI32, -65536, 2147483647},   /* 0xFFFF0000 when unset; +0xD8 also 0x139Cxxxx */
     {"values 0xE0", 0x0E0, 3, kU16, 0, 1000},
     {"value 0xE6", 0x0E6, 2, kZero, 0, 0},
