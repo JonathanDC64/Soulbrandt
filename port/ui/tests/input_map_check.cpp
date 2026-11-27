@@ -150,6 +150,34 @@ void check_through_map() {
     check(pad_keys(pad, 0, st)[kPadCancel], "added: paddle 1 goes back as Circle does");
 }
 
+// With Same buttons as the game, the menus need Cross, Circle, a tab button each side and the chord (menu_pad.hpp's
+// follow_works); otherwise they keep the pad's own buttons (#747).
+void check_follow_works() {
+    g_where = "follow_works";
+    std::array<signed char, 16> from{};
+    for (int g = 0; g < 16; g++) from[g] = static_cast<signed char>(g);
+    std::array<unsigned, 16> added{};
+    check(follow_works(from, added, 0) && follow_works(from, added, 1), "the game's own buttons: it works");
+    constexpr int kCrossG = 14, kL1G = 10, kL2G = 8, kL3G = 1, kSelectG = 0;
+    from[kCrossG] = -1;
+    check(!follow_works(from, added, 0), "Cross has none: the pad's own");
+    added[kCrossG] = 1u << 16;
+    check(!follow_works(from, added, 0), "Cross has only a paddle: the pad's own (not every pad has one)");
+    added[kCrossG] = kSquare;
+    check(follow_works(from, added, 0), "Cross has Square as its 2nd: it works");
+    from[kL1G] = -1;
+    check(follow_works(from, added, 0), "L1 has none, L2 has its own: it works");
+    from[kL2G] = -1;
+    check(!follow_works(from, added, 0), "neither L1 nor L2 has one: the pad's own");
+    for (int g = 0; g < 16; g++) from[g] = static_cast<signed char>(g);
+    added.fill(0);
+    from[kL3G] = -1;
+    check(!chord_has_buttons(from, added, 0) && !follow_works(from, added, 0), "L3 has none: L3 + R3 can't be made");
+    check(chord_has_buttons(from, added, 1) && follow_works(from, added, 1), "L3 has none: Select + Start still works");
+    from[kSelectG] = -1;
+    check(!chord_has_buttons(from, added, 1), "Select has none: Select + Start can't be made");
+}
+
 // Change Buttons' Gamepad rows and PAD_MAP's text (pad_rows.cpp).
 void check_pad_rows() {
     using namespace ui::controls;
@@ -175,23 +203,49 @@ void check_pad_rows() {
     g = give_pad_button(r, kCircleB, 1, kPaddle1);
     check(g.changed && r.also[kCircleB] == 0 && pad_rows_text(r).empty(), "paddle 1 again on Circle's 2nd: off");
 
-    // A 2nd replaces the row's 2nd; Delete (clear_pad_second) takes it off.
+    // A 2nd replaces the row's 2nd; Clear (clear_pad_box) takes it off.
     give_pad_button(r, kCircleB, 1, kPaddle1);
     give_pad_button(r, kCircleB, 1, kPaddle2);
     check(r.also[kCircleB] == 1u << kPaddle2, "paddle 2 as Circle's 2nd: it replaces paddle 1");
-    clear_pad_second(r, kCircleB);
-    check(r.also[kCircleB] == 0, "Delete on Circle's 2nd: none");
+    check(clear_pad_box(r, kCircleB, 1) && r.also[kCircleB] == 0, "Clear on Circle's 2nd: none");
+    check(!clear_pad_box(r, kCircleB, 1), "Clear on an empty 2nd: nothing to clear");
 
-    // A button is in one place only (#747): a row's own button is refused as a 2nd, and nothing changes.
+    // A button is in one place only (#747): another row's own, given as a 2nd, waits for a yes, and nothing changes
+    // until then. With the yes (move), it moves and that row has none.
     r = parse_pad_rows("");
     g = give_pad_button(r, kCircleB, 1, kSquareB);
-    check(!g.changed && g.owner == kSquareB && r.also[kCircleB] == 0 && r.button[kSquareB] == kSquareB,
-          "Square as Circle's 2nd: refused, it's Square's");
+    check(!g.changed && g.ask && g.owner == kSquareB && r.also[kCircleB] == 0 && r.button[kSquareB] == kSquareB,
+          "Square as Circle's 2nd: asked first, it's Square's");
+    g = give_pad_button(r, kCircleB, 1, kSquareB, true);
+    check(g.changed && !g.ask && r.also[kCircleB] == 1u << kSquareB && r.button[kSquareB] == -1,
+          "Square as Circle's 2nd, moved: Square has none");
+    check(pad_rows_text(r) == "circle=circle|square,square=none", "moved: written as cellPad reads it");
     g = give_pad_button(r, kCircleB, 1, kCircleB);
-    check(!g.changed && g.owner == kCircleB && r.also[kCircleB] == 0, "Circle as its own 2nd: refused");
+    check(!g.changed && !g.ask && g.owner == kCircleB, "Circle as its own 2nd: it's Circle's already");
     r = parse_pad_rows("cross=circle,circle=cross");
     g = give_pad_button(r, kSquareB, 1, kCircleB);
-    check(!g.changed && g.owner == kCrossB, "Circle as Square's 2nd with Cross on Circle: refused, it's Cross's");
+    check(!g.changed && g.ask && g.owner == kCrossB, "Circle as Square's 2nd with Cross on Circle: asked, Cross's");
+    // A row whose only button is a 2nd, left with none: asked too.
+    r = parse_pad_rows("cross=paddle1");
+    g = give_pad_button(r, kCircleB, 1, kPaddle1);
+    check(!g.changed && g.ask && g.owner == kCrossB, "paddle 1 from Cross, its only button: asked");
+    // A row's 2nd that isn't its only button moves without a question.
+    r = parse_pad_rows("cross=cross|paddle1");
+    g = give_pad_button(r, kCircleB, 1, kPaddle1);
+    check(g.changed && r.also[kCrossB] == 0 && r.also[kCircleB] == 1u << kPaddle1, "paddle 1 from Cross's 2nd: moved");
+
+    // Clear on a row's own button: nothing presses it, and a swap with it would leave the other row with none, so
+    // that waits for a yes.
+    r = parse_pad_rows("");
+    check(clear_pad_box(r, kCrossB, 0) && r.button[kCrossB] == -1, "Clear on Cross: no button");
+    check(pad_rows_text(r) == "cross=none", "Cross cleared: written as none");
+    g = give_pad_button(r, kCrossB, 0, kSquareB);
+    check(!g.changed && g.ask && g.owner == kSquareB && r.button[kSquareB] == kSquareB,
+          "Square to a Cross with none: asked, Square would have none");
+    g = give_pad_button(r, kCrossB, 0, kSquareB, true);
+    check(g.changed && r.button[kCrossB] == kSquareB && r.button[kSquareB] == -1, "moved: Square has none");
+    give_pad_button(r, kKickTarget, 0, kPaddle2);
+    check(clear_pad_box(r, kKickTarget, 0) && r.kick == -1, "Clear on the Kick: none");
 
     // A row's own button changed: its 2nd stays. The two swap as before.
     r = parse_pad_rows("");
@@ -388,6 +442,7 @@ void check_prompts() {
 int main() {
     check_pad();
     check_through_map();
+    check_follow_works();
     check_pad_rows();
     check_commands();
     check_holds();

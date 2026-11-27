@@ -148,8 +148,18 @@ int take_captured_wheel() noexcept {
     return n;
 }
 
+bool menus_follow() {
+    if (settings::get_int("menu_follow_buttons") == 0) return false;
+    return follow_works(controls::game_button_sources(), controls::pad_also(), settings::get_int("pad_menu_chord"));
+}
+
+bool chord_on_own_buttons() {
+    return !chord_has_buttons(controls::game_button_sources(), controls::pad_also(),
+                              settings::get_int("pad_menu_chord"));
+}
+
 unsigned menu_buttons(unsigned buttons, unsigned extra) {
-    if (settings::get_int("menu_follow_buttons") == 0) return buttons;
+    if (!menus_follow()) return buttons;
     return through_map(buttons, controls::game_button_sources()) |
            through_added(buttons | extra << 16, controls::pad_also());
 }
@@ -167,6 +177,7 @@ prompts::Glyph menu_glyph(prompts::Device device, prompts::Key key) {
         const bool tabs = key == prompts::Key::PrevTab || key == prompts::Key::NextTab;
         return tabs && (menu_key('Q') != 'Q' || menu_key('E') != 'E') ? prompts::page_glyph(key) : g;
     }
+    if (!menus_follow()) return g;  // (the pad's own buttons: menu_buttons)
     if (g.art[0].is != prompts::Art::Is::Button || g.art[1].is != prompts::Art::Is::None) return g;
     int game = -1;
     for (int i = 0; i < controls::kPadCount; i++)

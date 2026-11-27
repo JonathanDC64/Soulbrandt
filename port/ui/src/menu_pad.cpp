@@ -31,6 +31,36 @@ unsigned through_added(unsigned host, const std::array<unsigned, 16>& added) noe
     return out;
 }
 
+namespace {
+
+// Game button g (a CELL_PAD_CTRL_* bit's index) has one of the 16 pad buttons, its own or a 2nd. (A back button or
+// paddle alone doesn't count: not every pad has one.)
+bool has_button(const std::array<signed char, 16>& from, const std::array<unsigned, 16>& added, int g) noexcept {
+    return from[g] >= 0 || (added[g] & 0xFFFFu) != 0;
+}
+
+int bit_index(unsigned bit) noexcept {
+    int i = 0;
+    while (i < 16 && !(bit & (1u << i))) i++;
+    return i;
+}
+
+}  // namespace
+
+bool chord_has_buttons(const std::array<signed char, 16>& from, const std::array<unsigned, 16>& added,
+                       int chord) noexcept {
+    const unsigned mask = chord_mask(chord);
+    for (int g = 0; g < 16; g++)
+        if ((mask & (1u << g)) && !has_button(from, added, g)) return false;
+    return true;
+}
+
+bool follow_works(const std::array<signed char, 16>& from, const std::array<unsigned, 16>& added, int chord) noexcept {
+    const auto has = [&](unsigned bit) { return has_button(from, added, bit_index(bit)); };
+    return has(kCross) && has(kCircle) && (has(kL1) || has(kL2)) && (has(kR1) || has(kR2)) &&
+           chord_has_buttons(from, added, chord);
+}
+
 unsigned chord_mask(int chord) noexcept {
     return chord == 1 ? (kSelect | kStart) : (kL3 | kR3);
 }

@@ -86,17 +86,19 @@ std::string pad_rows_text(const PadRows& r) {
     return out;
 }
 
-PadGive give_pad_button(PadRows& r, int target, int slot, int host) {
+PadGive give_pad_button(PadRows& r, int target, int slot, int host, bool move) {
     PadGive out;
     if (host < 0 || host >= kPadHostCount) return out;
     const unsigned bit = 1u << host;
+    PadRows after = r;
     const auto let_go = [&](int keep) {  // (a pad button is in one place only)
         for (int i = 0; i < kPadCount; i++)
-            if (i != keep) r.also[i] &= ~bit;
+            if (i != keep) after.also[i] &= ~bit;
     };
     if (target == kKickTarget) {
-        r.kick = host;  // (one of the 16 stays its game button's: none presses that while the Kick is on, kick_takes)
+        after.kick = host;  // (one of the 16 stays its game button's: none presses that while the Kick is on, kick_takes)
         let_go(-1);
+        r = after;
         out.changed = true;
         return out;
     }
@@ -104,31 +106,58 @@ PadGive give_pad_button(PadRows& r, int target, int slot, int host) {
     if (slot == 0) {
         if (host >= kPadCount) return out;  // (a row's own button is one of the 16)
         for (int i = 0; i < kPadCount; i++) {
-            if (i != target && r.button[i] == host) r.button[i] = r.button[target];
+            if (i != target && r.button[i] == host) after.button[i] = r.button[target];  // (the two swap)
         }
-        r.button[target] = host;
+        after.button[target] = host;
         let_go(-1);
     } else if (r.also[target] & bit) {
-        r.also[target] &= ~bit;  // pressed again on its 2nd row: taken off
+        after.also[target] &= ~bit;  // pressed again on its 2nd box: taken off
+        r = after;
         out.changed = true;
+        return out;
+    } else if (r.button[target] == host) {
+        out.owner = target;  // its own already: nothing to do
         return out;
     } else {
         for (int i = 0; i < kPadCount; i++) {
-            if (r.button[i] == host) {
-                out.owner = i;  // a row's own button: it stays there
-                return out;
-            }
+            if (r.button[i] == host) after.button[i] = -1;  // another row's own: it moves
         }
         let_go(target);
-        r.also[target] = bit;  // (the row's 2nd: it replaces the one it had)
+        after.also[target] = bit;  // (the row's 2nd: it replaces the one it had)
     }
-    if (r.kick == host) r.kick = -1;
+    if (after.kick == host) after.kick = -1;
+    // Another row that loses its own button and gets none back (taken for a 2nd, or a swap with a row that had none),
+    // or is left with no button at all: asked first.
+    for (int i = 0; i < kPadCount && !move; i++) {
+        if (i == target) continue;
+        const bool lostOwn = r.button[i] >= 0 && after.button[i] < 0;
+        const bool emptied = (r.button[i] >= 0 || r.also[i] != 0) && after.button[i] < 0 && after.also[i] == 0;
+        if (lostOwn || emptied) {
+            out.owner = i;
+            out.ask = true;
+            return out;
+        }
+    }
+    r = after;
     out.changed = true;
     return out;
 }
 
-void clear_pad_second(PadRows& r, int target) {
-    if (target >= 0 && target < kPadCount) r.also[target] = 0;
+bool clear_pad_box(PadRows& r, int target, int slot) {
+    if (target == kKickTarget) {
+        const bool had = r.kick >= 0;
+        r.kick = -1;
+        return had;
+    }
+    if (target < 0 || target >= kPadCount) return false;
+    if (slot == 0) {
+        const bool had = r.button[target] >= 0;
+        r.button[target] = -1;
+        return had;
+    }
+    const bool had = r.also[target] != 0;
+    r.also[target] = 0;
+    return had;
 }
 
 }  // namespace ui::controls

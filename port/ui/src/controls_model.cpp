@@ -5,6 +5,7 @@
 
 #include "input.hpp"
 #include "keys.hpp"
+#include "menu_pad.hpp"
 #include "platform.hpp"
 #include "portable.hpp"
 #include "settings.hpp"
@@ -68,7 +69,7 @@ static_assert(sizeof kTargets / sizeof kTargets[0] == kTargetCount);
 namespace {
 
 constexpr unsigned long long kCaptureTimeoutMs = 8000;
-constexpr unsigned long long kRefusedShownMs = 2500;  // (a 2nd's refused button: "Square is Square's")
+constexpr unsigned long long kRefusedShownMs = 2500;  // (a 2nd's refused button: "R1 is R1's already")
 
 // "game=value" pairs separated by commas (or spaces or semicolons), as cellPad reads them.
 template <typename F>
@@ -288,14 +289,22 @@ bool kick_takes(int button) {
     return kick >= 0 && button >= 0 && button < kPadCount && pad_map()[button] == kick && kick_on();
 }
 
-std::string pad_second_label(int button, prompts::Device device) {
+namespace {
+
+// A row's 2nd buttons by name ("Right back button", two joined by " + "), "None" for none.
+std::string seconds_label(unsigned also, prompts::Device device) {
     std::string out;
-    if (button < 0 || button >= kPadCount) return "None";
-    const unsigned also = pad_also()[button];
     for (int h = 0; h < kPadHostCount; h++) {
         if (also & (1u << h)) out += (out.empty() ? "" : " + ") + pad_host_label(h, device);
     }
     return out.empty() ? "None" : out;
+}
+
+}  // namespace
+
+std::string pad_second_label(int button, prompts::Device device) {
+    if (button < 0 || button >= kPadCount) return "None";
+    return seconds_label(pad_also()[button], device);
 }
 
 std::string pad_value_label(int button, prompts::Device device) {
@@ -491,6 +500,53 @@ void restore_defaults() {
     settings::set("PAD_KEYS", "");
 }
 
+std::string pad_move_title(const PadMove& m, prompts::Device device) {
+    if (m.owner < 0 || m.owner >= kPadCount || m.target < 0 || m.target >= kPadCount) return "";
+    const bool own = pad_map()[m.owner] == m.host;
+    return pad_host_label(m.host, device) + " is " + kPadLabels[m.owner] + (own ? "'s" : "'s 2nd") + ". Move it to " +
+           kPadLabels[m.target] + (m.slot == 1 ? "'s 2nd?" : "?");
+}
+
+std::string pad_move_body(const PadMove& m, prompts::Device device) {
+    if (m.owner < 0 || m.owner >= kPadCount) return "";
+    PadRows after = pad_rows();
+    give_pad_button(after, m.target, m.slot, m.host, true);
+    const std::string owner = kPadLabels[m.owner];
+    std::string out = after.also[m.owner] != 0
+                          ? owner + " will keep only its 2nd, " + seconds_label(after.also[m.owner], device) + "."
+                          : owner + " will have no button.";
+    std::array<signed char, kPadCount> from{};
+    for (int g = 0; g < kPadCount; g++) from[g] = static_cast<signed char>(after.button[g]);
+    const int chord = settings::get_int("pad_menu_chord");
+    if (settings::get_int("menu_follow_buttons") != 0 && !input::follow_works(from, after.also, chord))
+        out += " Until it has a button again, these menus use your pad's own buttons.";
+    else if (!input::chord_has_buttons(from, after.also, chord))
+        out += std::string(" Until it has a button again, your pad's own ") + input::chord_label(chord) +
+               " opens this menu.";
+    return out;
+}
+
+void apply_pad_move(const PadMove& m) {
+    PadRows r = pad_rows();
+    if (!give_pad_button(r, m.target, m.slot, m.host, true).changed) return;
+    settings::set("PAD_MAP", pad_rows_text(r));
+    play_sound(kSoundBindingChanged);
+}
+
+bool clear_box(int target, bool pad, int slot) {
+    if (!pad) {
+        if (target < 0 || target >= kTargetCount || slot < 0 || slot >= int(key_map()[target].size())) return false;
+        KeyMap m = key_map();
+        assign_key(m, target, slot, 0, 0);
+        save_key_map(m);
+        return true;
+    }
+    PadRows r = pad_rows();
+    if (!clear_pad_box(r, target, slot)) return false;
+    settings::set("PAD_MAP", pad_rows_text(r));
+    return true;
+}
+
 // ---- Capture ----
 
 void Capture::start(int target, bool pad, int slot) {
@@ -500,6 +556,7 @@ void Capture::start(int target, bool pad, int slot) {
     mArmed = false;
     mModDown = 0;
     mRefused.clear();
+    mMoveWaiting = false;
     mStartedAt = now_ms();
     input::set_binding_capture(true);
 }
@@ -517,6 +574,13 @@ std::string Capture::pending_label() const {
     return mPad ? "Press a button" : "Press a key or button";
 }
 
+bool Capture::take_move(PadMove& out) {
+    if (!mMoveWaiting) return false;
+    mMoveWaiting = false;
+    out = mMove;
+    return true;
+}
+
 void Capture::update() {
     if (!active()) return;
     if (mPad) update_pad();
@@ -529,10 +593,8 @@ void Capture::update_pad() {
     if (vk == VK_ESCAPE) {
         play_sound(kSoundWindowClose);
         cancel();
-    } else if ((vk == VK_DELETE || vk == VK_BACK) && mSlot == 1 && mTarget < kPadCount) {
-        PadRows r = pad_rows();  // (Delete on a 2nd row: taken off)
-        clear_pad_second(r, mTarget);
-        settings::set("PAD_MAP", pad_rows_text(r));
+    } else if (vk == VK_DELETE || vk == VK_BACK) {
+        clear_box(mTarget, true, mSlot);  // (Delete while it waits: the box cleared)
         play_sound(kSoundBindingChanged);
         cancel();
     } else if (!mArmed) {
@@ -542,11 +604,19 @@ void Capture::update_pad() {
         while (!(b & (1u << host))) host++;
         PadRows r = pad_rows();
         const PadGive got = give_pad_button(r, mTarget, mSlot, host);
+        if (got.ask) {
+            // It would leave another row without a button: the page asks first (take_move), and the capture ends.
+            mMove = PadMove{.target = mTarget, .slot = mSlot, .host = host, .owner = got.owner};
+            mMoveWaiting = true;
+            play_sound(kSoundClick);
+            cancel();
+            return;
+        }
         if (got.owner >= 0) {
-            // A row's own button, pressed for a 2nd: it stays there. The row says whose it is, and the capture waits
-            // for another (once this one is let go).
+            // The row's own button, pressed for its 2nd: nothing to do. The row says so, and the capture waits for
+            // another (once this one is let go).
             const prompts::Device device = input::menu_device();
-            mRefused = pad_host_label(host, device) + " is " + kPadLabels[got.owner] + "'s";
+            mRefused = pad_host_label(host, device) + " is " + kPadLabels[got.owner] + "'s already";
             mRefusedAt = now_ms();
             mStartedAt = mRefusedAt;
             mArmed = false;

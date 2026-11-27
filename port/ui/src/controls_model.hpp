@@ -70,18 +70,31 @@ std::string pad_rows_text(const PadRows& r);
 // Kick (kKickTarget). A pad button is in one place only (#747):
 // - Own button (one of the 16): a row that had it takes the old one (the two swap), and a 2nd or the Kick that had it
 //   lets go of it.
-// - 2nd: a button that's a row's own (one of the 16, as they all are) is refused: `owner` says whose, and nothing
-//   changes. Pressed again on its row, the 2nd is taken off; otherwise it replaces the row's 2nd, and another row's 2nd
-//   or the Kick that had it lets go of it.
+// - 2nd: pressed again on its row, the 2nd is taken off; the row's own button already, nothing changes (`owner` is the
+//   row). Otherwise it replaces the row's 2nd, and the row, 2nd or Kick that had it lets go of it.
 // - Kick: any of the 22. A 2nd that had it lets go; one of the 16 stays its row's, and nothing presses that row while
 //   the Kick is on (kick_takes).
+// A choice that would leave another row without its own button (taken for a 2nd, or a swap with a row that had none)
+// or with no button at all waits for a yes: `ask`, `owner` that row, and nothing changes. With `move`, it's made.
 struct PadGive {
     bool changed = false;
-    int owner = -1;  // refused: the game button whose own button it is
+    int owner = -1;    // not given: the row it would leave without a button (ask), or the target, whose own it is
+    bool ask = false;  // it waits for a yes: give_pad_button again with move = true makes it
 };
-PadGive give_pad_button(PadRows& r, int target, int slot, int host);
-// Takes game button `target`'s 2nd off (Delete on its 2nd row).
-void clear_pad_second(PadRows& r, int target);
+PadGive give_pad_button(PadRows& r, int target, int slot, int host, bool move = false);
+// Clears a box (Clear on it, or Delete while it waits): game button `target`'s own button (slot 0: nothing presses it
+// then), its 2nd (slot 1), or the Kick's. False: it had none.
+bool clear_pad_box(PadRows& r, int target, int slot);
+// A choice that waits for a yes (give_pad_button's ask): what the question says, and the move once it's yes.
+struct PadMove {
+    int target = -1, slot = 0, host = -1, owner = -1;
+};
+std::string pad_move_title(const PadMove& m, prompts::Device device);  // "L3 is L3's. Move it to R1's 2nd?"
+std::string pad_move_body(const PadMove& m, prompts::Device device);   // "L3 will have no button."
+void apply_pad_move(const PadMove& m);
+// Clears box `slot` of row `target` (pad: a game button, or kKickTarget; keys: an action) and keeps it. False: it was
+// empty already.
+bool clear_box(int target, bool pad, int slot);
 // Forward attack is Own key: the Kick row's button kicks.
 bool kick_on();
 // Game button `button`'s pad button is the Kick's, with the Kick on: nothing presses that game button.
@@ -162,10 +175,13 @@ public:
     void start(int target, bool pad, int slot);
     void cancel();
     // Once a frame: takes the input once nothing is held any more (the press that started it would be taken
-    // otherwise), and gives up after a few seconds. Esc cancels; Delete or Backspace clears a key row or a pad's 2nd.
-    // A pad button that's another row's own, pressed for a 2nd, is refused: the row says whose it is for a moment, and
-    // the capture waits for another.
+    // otherwise), and gives up after a few seconds. Esc cancels; Delete or Backspace clears the box. A pad button
+    // that's the row's own, pressed for its 2nd, is refused: the row says so for a moment, and the capture waits for
+    // another. One that would leave another row without a button ends the capture with a move to ask about
+    // (take_move).
     void update();
+    // A choice that waits for a yes: the page asks (apply_pad_move makes it). Once: true and the move, then false.
+    bool take_move(PadMove& out);
 
     bool active() const { return mTarget >= 0; }
     bool pad() const { return mPad; }
@@ -188,8 +204,10 @@ private:
     unsigned long long mStartedAt = 0;
     std::array<bool, 256> mDown{};  // the keys and mouse buttons held at the last look (keys)
     int mModDown = 0;               // the Shift, Ctrl or Alt pressed first during the capture (its left or right key)
-    std::string mRefused;           // a pad button refused for a 2nd: "Square is Square's", shown for a moment
+    std::string mRefused;           // a pad button refused for a 2nd: "R1 is R1's already", shown for a moment
     unsigned long long mRefusedAt = 0;
+    PadMove mMove;
+    bool mMoveWaiting = false;
 };
 
 }  // namespace ui::controls

@@ -187,6 +187,7 @@ void ControlsPage::set_tab(bool keys) {
 
 void ControlsPage::update() {
     mCapture.update();
+    ask_move();
     if (mKeys != mBuiltKeys) build();
     update_tabs();
     update_rows();
@@ -276,15 +277,19 @@ void ControlsPage::update_help() {
         rml += "<menu-notes><status-badge class=\"warning\">Set to " + escape(settings::pinned_value(key_of(mKeys))) +
                " when the game started (" + key_of(mKeys) + "), so these can't change it.</status-badge></menu-notes>";
     rml += mKeys ? "<menu-helptext>Choose a row and one of its two boxes, then press a key, mouse button or wheel. "
-                   "Hold Shift, Ctrl or Alt for a combination. Delete clears the box; Esc cancels.<br/><br/>"
+                   "Hold Shift, Ctrl or Alt for a combination. Esc cancels. Clear, or Delete while it waits, empties the "
+                   "box.<br/><br/>"
                    "The layout starts as the Souls layout this port ships with. A key works one action only: given "
                    "to another, it leaves the one it had.</menu-helptext>"
                  : "<menu-helptext>Choose a row and one of its two boxes, then press the button for it. Esc "
-                   "cancels.<br/><br/>A row is the game's button; its first box shows the button on your pad that "
-                   "presses it. Give a row a button another row had, and the two swap.<br/><br/>The second box is a "
-                   "2nd button that presses it too, such as a back button or paddle. A button works in one place "
-                   "only, so the 2nd takes one no other row has. Press its 2nd again, or Delete, to clear it."
-                   "<br/><br/>Kick: " +
+                   "cancels. Clear empties the chosen box.<br/><br/>A row is the game's button; its first box shows "
+                   "the button on your pad that presses it. Give a row a button another row has, and the two swap."
+                   "<br/><br/>The second box is a 2nd button that presses it too, such as a back button or paddle. A "
+                   "button works in one place only: one that's another row's moves, and if that leaves the row with "
+                   "no button, you're asked first. Press its 2nd again to take it off.<br/><br/>With Same buttons as "
+                   "the game on, these menus use the game's buttons, wherever you put them. If Cross, Circle, a tab "
+                   "button or the menu chord is left with none, they use your pad's own buttons until it has one "
+                   "again.<br/><br/>Kick: " +
                        std::string(kKickAbout) + "</menu-helptext>";
     rml += "<menu-facts><menu-fact><menu-fact-name>Variable</menu-fact-name><menu-fact-value class=\"key\">" +
            std::string(key_of(mKeys)) + "</menu-fact-value></menu-fact></menu-facts></menu-helpbox>";
@@ -352,6 +357,30 @@ void ControlsPage::press() {
     mCapture.start(target(mFocus), !mKeys, slots(mFocus) > 1 ? mSlot : 0);
 }
 
+// Clear: the chosen box empties, any of them (a row's own button too: then nothing presses it).
+void ControlsPage::clear() {
+    if (mFocus >= row_count()) return;
+    if (locked()) {
+        play_sound(kSoundWarning);
+        return;
+    }
+    const bool cleared = clear_box(target(mFocus), !mKeys, slots(mFocus) > 1 ? mSlot : 0);
+    play_sound(cleared ? kSoundBindingChanged : kSoundWarning);
+}
+
+// A button that would leave another row with none (the capture's take_move): asked first.
+void ControlsPage::ask_move() {
+    PadMove m;
+    if (!mCapture.take_move(m)) return;
+    const prompts::Device device = input::menu_device();
+    ask(Question{
+        .title = pad_move_title(m, device),
+        .body = pad_move_body(m, device),
+        .answers = {{"Move", [m] { apply_pad_move(m); }}, {"Cancel", {}}},
+        .safe = 1,
+    });
+}
+
 bool ControlsPage::command(menu::Command c, bool down) {
     using menu::Command;
     if (!down) return false;
@@ -379,6 +408,7 @@ bool ControlsPage::command(menu::Command c, bool down) {
     case Command::PrevTab: set_tab(false); return true;
     case Command::NextTab: set_tab(true); return true;
     case Command::Confirm: press(); return true;
+    case Command::Preview: clear(); return true;
     case Command::Help:
         mHelping = true;
         play_sound(kSoundWindowOpen);
@@ -418,6 +448,7 @@ std::vector<prompts::Prompt> ControlsPage::prompts(const std::string& backLabel)
     std::vector<prompts::Prompt> out = {{Key::Move, "Select"}};
     if (slots(mFocus) > 1) out.push_back({Key::Change, "First or second"});
     if (!locked()) out.push_back({Key::Confirm, mFocus == row_count() ? "Restore" : "Change"});
+    if (!locked() && mFocus < row_count()) out.push_back({Key::Preview, "Clear"});
     out.push_back({Key::Help, "Help"});
     out.push_back({Key::Back, backLabel});
     return out;
@@ -429,12 +460,15 @@ std::string ControlsPage::strip() const {
     if (mCapture.active()) {
         const int t = mCapture.target();
         const std::string what = mKeys ? kTargets[t].label : t == kKickTarget ? kKickLabel : kPadLabels[t];
-        if (mKeys) return "Press a key, mouse button or wheel for " + what + ". Esc cancels.";
+        if (mKeys) return "Press a key, mouse button or wheel for " + what + ". Delete clears it; Esc cancels.";
         if (t != kKickTarget && mCapture.slot() == 1)
-            return "Press a 2nd button for " + what + ", one no other row has, such as a back button or paddle. Its "
-                   "2nd again, or Delete, clears it. Esc cancels.";
-        return "Press the button for " + what + ". Esc cancels.";
+            return "Press a 2nd button for " + what + ", such as a back button or paddle. Its 2nd again takes it "
+                   "off; Delete clears it; Esc cancels.";
+        return "Press the button for " + what + ". Delete clears it; Esc cancels.";
     }
+    if (!mKeys && settings::get_int("menu_follow_buttons") != 0 && !input::menus_follow())
+        return "Cross, Circle, a tab button or the menu chord has no button, so these menus use your pad's own "
+               "buttons until it has one again.";
     if (mFocus == row_count()) return "Puts all buttons and keys back to the defaults.";
     if (mKeys && kTargets[mFocus].about) return kTargets[mFocus].about;
     if (!mKeys && target(mFocus) == kKickTarget) return kKickAbout;

@@ -170,9 +170,10 @@ void ControlsWindow::render_pad_page(Pane& pane) {
             play_sound(kSoundClick);
             mCapture.start(kKickTarget, true, 0);
         });
-    pane.add_rml("<br/>Choose a row, then press the button for it. Esc cancels.<br/><br/>A 2nd row gives the button a "
-                 "second one that presses it too, such as a back button or paddle. A button works in one place only, "
-                 "so the 2nd takes one no other row has. Press its button again, or Delete, to clear it.<br/><br/>"
+    pane.add_rml("<br/>Choose a row, then press the button for it. Delete clears it; Esc cancels.<br/><br/>A 2nd row "
+                 "gives the button a second one that presses it too, such as a back button or paddle. A button works "
+                 "in one place only: one that's another row's moves, and if that leaves the row with no button, "
+                 "you're asked first. Press a 2nd's button again to take it off.<br/><br/>"
                  "Kick: " +
                  std::string(kKickAbout) + "<br/><br/>(PAD_MAP)");
 }
@@ -209,6 +210,35 @@ void ControlsWindow::render_key_page(Pane& pane) {
 
 void ControlsWindow::update() {
     mCapture.update();
+    if (PadMove m; mCapture.take_move(m)) {  // (a button that would leave another row with none: asked first)
+        const prompts::Device device = input::menu_device();
+        const auto dismiss = [](Modal& modal) { modal.pop(); };
+        push(std::make_unique<Modal>(Modal::Props{
+            .title = pad_move_title(m, device),
+            .bodyText = pad_move_body(m, device),
+            .actions =
+                {
+                    ModalAction{
+                        .label = "Cancel",
+                        .onPressed =
+                            [dismiss](Modal& modal) {
+                                play_sound(kSoundWindowClose);
+                                dismiss(modal);
+                            },
+                    },
+                    ModalAction{
+                        .label = "Move",
+                        .onPressed =
+                            [dismiss, m](Modal& modal) {
+                                apply_pad_move(m);
+                                dismiss(modal);
+                            },
+                    },
+                },
+            .onDismiss = dismiss,
+            .icon = "question-mark",
+        }));
+    }
     Window::update();
 }
 

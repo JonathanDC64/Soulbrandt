@@ -24,8 +24,16 @@ void update_pad(const PadState& pad, int chord) noexcept;
 // The buttons the menus act on: a pad's own, or with Same buttons as the game on (settings.cpp's menu_follow_buttons)
 // the game's, through Change Buttons (controls_model.hpp's game_button_sources, and each row's 2nd, a back button or
 // paddle among them in `extra`: pad_also), so Cross is the game's Cross wherever the player put it. A binding being
-// chosen still reads the pad's own (pad_buttons).
+// chosen still reads the pad's own (pad_buttons). Only while menus_follow: a layout that leaves the menus without a
+// button they need keeps the pad's own.
 unsigned menu_buttons(unsigned buttons, unsigned extra);
+// Whether the menus take the game's buttons now: Same buttons as the game on, and Change Buttons leaving Cross, Circle,
+// the tabs and the menu chord a button each (menu_pad.hpp's follow_works). Otherwise they keep the pad's own, so
+// clearing Cross's box can't leave the menus with no way to confirm (#747).
+bool menus_follow();
+// Whether the menu chord's game buttons are left with no pad button (Change Buttons cleared one: menu_pad.hpp's
+// chord_has_buttons): then the pad's own chord buttons open the menu over the game (des_ui.cpp).
+bool chord_on_own_buttons();
 // The key a keyboard key stands for in the menus: with Same buttons as the game on, Enter for the game's Cross key and
 // Esc for its Circle key (controls_model.hpp's menu_key_for); else, and for every other key, the key itself.
 int menu_key(int vk);
