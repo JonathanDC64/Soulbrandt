@@ -121,6 +121,10 @@ constexpr uint32_t kChrBars[3]    = {0x3C4u, 0x3CCu, 0x3D4u};
 /* The menus' object (*(*(*(TOC - 0x72F0) - 0x8000))): its slots at +0x14 + 4n (0x00720F50 sets them). */
 constexpr uint32_t kSlotTalk = 9, kSlotDialog = 0x11, kSlotLevelUp = 0x17;
 constexpr uint32_t kMenuRow = 0xABCu, kDialogAnswer = 0x82Cu;
+/* The action prompt ("Read Message", "Talk", ...): the action search (0x004EF840) puts the nearest target's up with
+ * 0x00723360(text id, flag, 1): +0x80C the text id, +0x818 1. With no target it takes it down: 0x007233E0(-1) and
+ * 0x00723360(-1, 1, -1), both fields -1. Read before this frame's search, so last frame's. */
+constexpr uint32_t kPromptText = 0x80Cu, kPromptShown = 0x818u;
 constexpr int32_t  kTalkAnswered = 4, kDialogYesNo = 2, kDialogOk = 1;
 
 /* The texts in the talk menu's FMG (category 0x1E). */
@@ -485,6 +489,13 @@ bool menus_clear(ppu_context* ctx, uint32_t m)
 {
     if (slot(m, kSlotTalk) || slot(m, kSlotDialog) || slot(m, kSlotLevelUp)) return false;
     return (call_game(ctx, func_00720F80, {}) & 0xDEFFFF7Fu) == 0;
+}
+
+/* The game shows an action prompt of its own (a message, a bloodstain, an item, a character): Cross is the game's
+ * then, and the statue (which has no prompt) waits until the player steps out of that target's reach. */
+bool game_prompt_up(uint32_t m)
+{
+    return (int32_t)vm_read32(m + kPromptText) > 0 && (int32_t)vm_read32(m + kPromptShown) != -1;
 }
 
 /* The player stands in front of the statue, in the Nexus, facing it, alive, with no menu or dialog open. */
@@ -1249,8 +1260,14 @@ extern "C" void des_respec_tick(ppu_context* ctx)
         if (here != s_here && logging()) fprintf(stderr, "[des] respec: %s the statue\n", here ? "at" : "away from");
         s_here = here;
         if (here && pressed) {
-            open_menu(ctx);
-            if (logging()) fprintf(stderr, "[des] respec: menu\n");
+            if (game_prompt_up(m)) {
+                if (logging())
+                    fprintf(stderr, "[des] respec: Cross is the game's (its prompt %d is up)\n",
+                            (int)(int32_t)vm_read32(m + kPromptText));
+            } else {
+                open_menu(ctx);
+                if (logging()) fprintf(stderr, "[des] respec: menu\n");
+            }
         }
         break;
     }
