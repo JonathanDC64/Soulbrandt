@@ -11,10 +11,13 @@ Date: 2026-10-27. Status: experimental, off by default (Settings > Controls > Mo
 - The part under the pointer gets a **soft glow**: a thin pale outline with a glow about it, fading in quickly. The
   game's own selection does not follow the pointer; it moves on a click.
 - **Left click** picks the part under it and confirms it, in one click. A click on a tab only switches to it. A click
-  on empty space does nothing. On PRESS START BUTTON a click anywhere is Start.
+  on empty space does nothing. On PRESS START BUTTON a click anywhere is Start. In Status's Stat Guide (Select) a
+  click on a stat only selects it, so its line shows; Cross would close the guide.
 - **Right click** is Circle (back), anywhere.
+- **Middle click** on an equipment slot is Square (Unequip Item) on that slot.
 - **The wheel**: one notch is one row of a list (the list scrolls as with the D-pad), one tab along a bar of tabs,
-  and on a row with arrows (◀ Male ▶) it turns the value, up to the right.
+  and on a row with arrows (◀ Male ▶) it turns the value, up to the right. On the equipment's slots it goes through
+  every slot, a row at a time: the weapons, then the armour, then the items, then the arrows and rings.
 - **The arrows** (◀ ▶): a click steps once, and holding the button down repeats, at the game's own rate. A value
   with arrows (the options, Gender and Class) is two halves: a click on its left half is ◀, on its right half ▶,
   on any row, so the options' values change in one click though the game draws their arrows on the selected row only.
@@ -33,7 +36,8 @@ Date: 2026-10-27. Status: experimental, off by default (Settings > Controls > Mo
 | `DES_MENU_MOUSE_LOG` | `0` | `1`: the menus found, each time they change and once their spots come to rest after a slide, and each walk. It also lists the menus left out, with why (`under` a higher menu's spots, `beneath` a menu over it) and the menu they went for, and the pass's draws, and the dialogs left out as faded out (section 2). When the mouse stops in a menu, that tells a menu over it from one not found. `2`: also the arrow pieces on screen. `3`: also every visible dialog with its pieces, each time the set changes (the census used to learn a screen). |
 
 Tests click with the UI's `DES_UI_MOUSE` (des_ui.cpp): over a menu of the game, `x,y` moves the pointer there (back
-buffer pixels), `down`/`up` are the left button, `rdown`/`rup` the right one, `wheelup`/`wheeldown` a notch. They go
+buffer pixels), `down`/`up` are the left button, `rdown`/`rup` the right one, `mdown`/`mup` the middle one,
+`wheelup`/`wheeldown` a notch. They go
 through the same code as the window's messages (`game_menu.cpp`), which `PS3_NO_USER_INPUT=1` otherwise keeps from
 the user's mouse.
 
@@ -358,7 +362,8 @@ On the pinned regression save, by `DES_UI_MOUSE` (the steps and the shots are in
 | Pause menu bar | glow on a tab, click opens its page, ◀ ▶ click and hold, wheel; no glow in the gaps between tabs |
 | Pause menu pages | with a page open, a click on another tab goes to its page at once, any distance (from World Tendency to the inventory with no statues left, from the equipment to System); from Options and with Status's Stat Guide open it walks (L2), and with the command menu open nothing turns, as with the pad; two clicks in one step: the second waits for the first page, then walks one page; right click closes the page; the same after Use Item, when the game has made the pause menu anew (in a level, from a copy of a player's save) |
 | Inventory | glow on a row (its whole width), wheel, click opens the command menu, right click closes it, click on a category; closed on the armor category and opened again (it opens there), glow and clicks on its rows and tabs |
-| Equipment | a click on a slot selects it at once and opens its item list (from the first slot: a bolt slot, then an item slot; the same lists as in a walk-only run); glow on a row, wheel, right click back |
+| Equipment | a click on a slot selects it at once and opens its item list (from the first slot: a bolt slot, then an item slot; the same lists as in a walk-only run); glow on a row, wheel, right click back. 11-27 (#746): four notches down from the first weapon reach the helmet (the left half's second row), one up goes back to the last weapon; a middle click on the helmet unequips it (No Equipment) |
+| Status | 11-27 (#746): a click on a stat with the Stat Guide open selects it and the guide stays, with that stat's line (Strength, then Faith); the wheel steps down (Luck); a click with no guide changes nothing |
 | System | a click on the pause bar's last tab selects it at once and opens System; a click on Options opens it; a click on Quit Game selects it at once |
 | Yes/no prompts in play | Auto Sort's "Automatically resort all items?": glow on OK, OK (from CANCEL) is selected at once and sorts; Quit Game's: CANCEL, and OK (selected at once) goes to the title; Load Profile's "Load profile and exit current game?": CANCEL |
 | Options | glow on a value; a click on Camera Speed's right half goes there at once and steps it 5 to 6, its left half back to 5; 2 wheel notches over Music walk there and step it 10 to 8; a click on a label selects its row at once, and only that; right click brings the game's "Cancel option changes and return?" |
