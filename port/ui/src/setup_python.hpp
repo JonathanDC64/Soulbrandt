@@ -39,9 +39,9 @@ inline constexpr const char* kDownloadsFolder = "downloads";
 inline constexpr const char* kToolsFolder = "tools";
 inline constexpr const char* kStampName = ".des-setup-sha256";
 
-// <data>/downloads/python-embed-3.13.9.zip (Linux: python-linux-3.13.17.tar.gz)
+// <data>/downloads/python-embed-3.13.9.zip (Linux: python-linux-3.13.17.tar.gz, Mac: python-macos-3.13.17.tar.gz)
 std::filesystem::path python_archive();
-// <data>/tools/python-embed-3.13.9 (Linux: python-linux-3.13.17)
+// <data>/tools/python-embed-3.13.9 (Linux: python-linux-3.13.17, Mac: python-macos-3.13.17)
 std::filesystem::path python_folder();
 // Its stamp names the pinned SHA-256 (fetch.unpacked's test).
 bool python_unpacked();

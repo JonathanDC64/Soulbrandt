@@ -25,11 +25,18 @@ It is what the release has to ship for setup's compile.
 --check compares with the file instead of writing it: exit 1 when they differ.
 --commands-only leaves the headers out of the check, for a build that has only
 been configured (CI, with placeholder lift files: ninja has recorded no headers).
+--keep-headers writes the commands of such a build and keeps the headers list
+of the file it replaces (the Mac's, whose list comes from a build of the lift
+elsewhere: no Mac here has the lift).
 
 A Linux build (clang, des_game.so, docs/87) gives game_build_linux.json, with
 "system": "linux": clang's commands, the link by the clang driver (no import
 libraries), and a check that no object read a header from outside the source
 tree, the lift and the compiler's own (no libc headers: the player has none).
+A Mac build (clang and ld64.lld, des_game.dylib, docs/178 2.6) gives
+game_build_macos.json, "system": "macos", the same way. CMake's -isysroot is
+left out of its commands: the player's Mac has no SDK, and the freestanding
+module reads nothing from one.
 """
 import argparse
 import difflib
@@ -43,13 +50,15 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUTS = {"windows": os.path.join(ROOT, "tools", "setup", "des_setup", "game_build.json"),
-        "linux": os.path.join(ROOT, "tools", "setup", "des_setup", "game_build_linux.json")}
+        "linux": os.path.join(ROOT, "tools", "setup", "des_setup", "game_build_linux.json"),
+        "macos": os.path.join(ROOT, "tools", "setup", "des_setup", "game_build_macos.json")}
 DROP = re.compile(r"^(?:/Fo|/Fd|-clang:-MT|-clang:-MF)|^(?:-clang:-MD|-c|--)$")
 ABS = re.compile(r"(?:^|[=:,])(?:[A-Za-z]:[\\/]|\\\\)|^/[a-z]+/")
 # Linux: a path from the root, alone or after an option's letters (-I/usr/include) or an = : ,.
 ABS_ELF = re.compile(r"(?:^|^-[A-Za-z][A-Za-z-]*|[=:,])/")
 LINUX_CC = re.compile(r"^clang(?:\+\+)?(?:-\d+)?$")
-ELF_DROP = {"-MD": 0, "-MT": 1, "-MF": 1, "-o": 1, "-c": 0}   # option -> how many words after it go too
+# option -> how many words after it go too. -isysroot: a Mac's SDK, which the player has none of (the docstring).
+ELF_DROP = {"-MD": 0, "-MT": 1, "-MF": 1, "-o": 1, "-c": 0, "-isysroot": 1}
 
 
 def split_cmdline(s):
@@ -148,8 +157,11 @@ def kind_of(src):
 
 
 def system_of(v):
-    """windows (clang-cl) or linux (clang), from the build's compiler."""
-    return "windows" if os.path.basename(v.get("CMAKE_C_COMPILER", "")).lower().startswith("clang-cl") else "linux"
+    """windows (clang-cl), or linux or macos (clang), from the build's compiler and CMake's cache (CMake caches its
+    CMAKE_OSX_ settings on a Mac only)."""
+    if os.path.basename(v.get("CMAKE_C_COMPILER", "")).lower().startswith("clang-cl"):
+        return "windows"
+    return "macos" if "CMAKE_OSX_SYSROOT" in v else "linux"
 
 
 def template(cmd, roots):
@@ -194,8 +206,14 @@ def link_elf(cmd, build, roots):
     if k is None:
         raise SystemExit(f"no clang in the link command: {cmd[:200]}")
     end = next((i for i in range(k, len(toks)) if toks[i] == "&&"), len(toks))
-    largs, have_objs, out, after_o = [], False, None, False
+    largs, have_objs, out, after_o, skip = [], False, None, False, 0
     for t in toks[k + 1:end]:
+        if skip:
+            skip -= 1
+            continue
+        if t == "-isysroot":   # a Mac's SDK (the docstring)
+            skip = 1
+            continue
         if after_o:   # the module, named relative to the folder the link runs in
             out, after_o = t, False
             largs.append(t)
@@ -269,7 +287,7 @@ def describe(build, ninja, headers_too=True):
     if v.get("DES_SPLIT_FREESTANDING", "").upper() not in ("ON", "TRUE", "1"):
         raise SystemExit(f"{build} is not a DES_SPLIT_FREESTANDING=ON build: setup builds the DLL with no "
                          "Visual C++ headers or Windows SDK (docs/84)")
-    elf = system_of(v) == "linux"
+    elf = system_of(v) in ("linux", "macos")
     absolute = ABS_ELF if elf else ABS
     roots = roots_for(build, v)
     db = json.loads(run(ninja, build, "-t", "compdb"))
@@ -407,11 +425,14 @@ def _describe_elf(build, ninja, v, roots, db, objects, problems, link, headers_t
     if problems:
         raise SystemExit("game_build_desc:\n  " + "\n  ".join(problems))
     srcs = {o.get("src") for o in objects}
+    system = system_of(v)
+    about = ("des_game.dylib's build, as CMake does it on a Mac with DES_SPLIT=ON DES_SPLIT_FREESTANDING=ON "
+             "(docs/178 2.6)" if system == "macos" else
+             "des_game.so's build, as CMake does it on Linux with DES_SPLIT=ON DES_SPLIT_FREESTANDING=ON (docs/87)")
     return {
-        "about": "des_game.so's build, as CMake does it on Linux with DES_SPLIT=ON DES_SPLIT_FREESTANDING=ON "
-                 "(docs/87). Written by scripts/game_build_desc.py; read by tools/setup/des_setup/compile.py.",
+        "about": about + ". Written by scripts/game_build_desc.py; read by tools/setup/des_setup/compile.py.",
         "version": 1,
-        "system": "linux",
+        "system": system,
         "abi": _abi(v),
         "objects": objects,
         "libs": [],
@@ -433,14 +454,22 @@ def main(argv=None):
     ap.add_argument("build", help="a CMake build directory configured with DES_SPLIT=ON, des_game built once")
     ap.add_argument("--ninja", help="ninja.exe (default: the one on PATH)")
     ap.add_argument("--out", help="default: tools/setup/des_setup/game_build.json, or game_build_linux.json for a "
-                    "Linux build")
+                    "Linux build, game_build_macos.json for a Mac's")
     ap.add_argument("--check", action="store_true", help="compare with --out instead of writing it")
     ap.add_argument("--commands-only", action="store_true", help="with --check: leave the headers out")
+    ap.add_argument("--keep-headers", action="store_true",
+                    help="write the commands, with the headers list of the file it replaces")
     a = ap.parse_args(argv)
     if a.commands_only and not a.check:
         ap.error("--commands-only goes with --check")
-    d = describe(a.build, find_ninja(a.ninja), headers_too=not a.commands_only)
+    if a.keep_headers and a.check:
+        ap.error("--keep-headers writes; --check --commands-only compares the same way")
+    d = describe(a.build, find_ninja(a.ninja), headers_too=not (a.commands_only or a.keep_headers))
     a.out = a.out or OUTS[d.get("system", "windows")]
+    if a.keep_headers:
+        if not os.path.isfile(a.out):
+            raise SystemExit(f"--keep-headers: {a.out} does not exist")
+        d["headers"] = json.load(open(a.out, encoding="utf-8")).get("headers", [])
     text = json.dumps(d, indent=1) + "\n"
     if a.check:
         old = open(a.out, encoding="utf-8").read() if os.path.isfile(a.out) else ""

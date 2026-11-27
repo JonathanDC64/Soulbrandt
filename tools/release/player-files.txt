@@ -54,6 +54,8 @@ ps3recomp/libs/*/sys*.c
 ps3recomp/include/**
 ps3recomp/runtime/ppu/game_libc.c
 ps3recomp/runtime/ppu/game_libc_kernel32.def
+ps3recomp/runtime/ppu/game_libc_system.tbd
+ps3recomp/third_party/sse2neon/sse2neon.h
 ps3recomp/runtime/ppu/game_module.c
 ps3recomp/runtime/ppu/*.h
 ps3recomp/runtime/prx/*.h

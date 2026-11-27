@@ -534,7 +534,7 @@ class TestCompile(unittest.TestCase):
 
     def test_real_descriptions_name_libsre(self):
         """The objects and the flag a build without libsre leaves out are the ones both real descriptions have."""
-        for name in ("game_build.json", "game_build_linux.json"):
+        for name in ("game_build.json", "game_build_linux.json", "game_build_macos.json"):
             d = json.loads(cc.DESC.with_name(name).read_text(encoding="utf-8"))
             names = [o["name"] for o in d["objects"]]
             for n in cc.LIBSRE_OBJECTS:
@@ -573,6 +573,33 @@ class TestCompile(unittest.TestCase):
         self.assertFalse([a for a in d["link"] if a.startswith("-l")], "a system library by name")
         self.assertEqual(d["dll"], "des_game.so")
         self.assertEqual(d["libs"], [])
+        self.assertTrue(all(h.startswith("{src}/") for h in d["headers"]))
+
+    def test_real_macos_description(self):
+        """The checked-in Mac description (docs/178 2.6): as Linux's, with a Mach-O dylib for arm64 and macOS 13.3 or
+        later, linked with ld64.lld and the libSystem stub (game_libc_system.tbd) in place of any SDK library."""
+        d = json.loads(cc.DESC.with_name("game_build_macos.json").read_text(encoding="utf-8"))
+        self.assertEqual(d["system"], "macos")
+        names = [o["name"] for o in d["objects"]]
+        for n in ("ppu", "spu", "libsre", "libsre_glue", "spu_workloads", "game_module", "des_game_module",
+                  "game_libc"):
+            self.assertIn(n, names)
+        absolute = re.compile(r"(?:^|^-[A-Za-z][A-Za-z-]*|[=:,])/")
+        for o in d["objects"]:
+            for a in o["args"] + [o.get("src", ""), o.get("glob", "")]:
+                self.assertNotRegex(a, absolute, a)
+            for a in ("-nostdlibinc", "-fvisibility=hidden", "-fno-stack-protector", "-fPIC",
+                      "-DPS3_GAME_FREESTANDING", "-mmacosx-version-min=13.3"):
+                self.assertIn(a, o["args"], o["name"])
+            self.assertEqual(o["args"][o["args"].index("-arch") + 1], "arm64", o["name"])
+            self.assertFalse([a for a in o["args"] if a.startswith(("-isysroot", "-ftls-model"))], o["name"])
+        for a in ("-nostdlib", "-fuse-ld=lld", "-dynamiclib", "{src}/ps3recomp/runtime/ppu/game_libc_system.tbd",
+                  "{objects}"):
+            self.assertIn(a, d["link"])
+        self.assertFalse([a for a in d["link"] if a.startswith(("-l", "-framework", "-isysroot"))], "a system library")
+        self.assertEqual(d["dll"], "des_game.dylib")
+        self.assertEqual(d["libs"], [])
+        self.assertTrue(d["headers"])
         self.assertTrue(all(h.startswith("{src}/") for h in d["headers"]))
 
     def test_real_description(self):

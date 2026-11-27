@@ -697,12 +697,15 @@ class HostAgreesTest(unittest.TestCase):
         for platform, pins in _python_pins().items():
             with self.subTest(platform):
                 e = tools[pins["kPythonName"]]
-                self.assertEqual(pins["kPythonName"], {"windows": "python-embed", "linux": "python-linux"}[platform])
+                self.assertEqual(pins["kPythonName"],
+                                 {"windows": "python-embed", "macos": "python-macos", "linux": "python-linux"}[platform])
                 self.assertEqual(pins["kPythonVersion"], e["version"])
                 self.assertEqual(pins["kPythonUrl"], e["url"])
                 self.assertEqual(int(pins["kPythonSize"]), e["size"])
                 self.assertEqual(pins["kPythonSha256"], e["sha256"])
-                self.assertEqual(pins["kPythonProgram"], {"windows": "python.exe", "linux": "python/bin/python3"}[platform])
+                self.assertEqual(pins["kPythonProgram"],
+                                 {"windows": "python.exe", "macos": "python/bin/python3",
+                                  "linux": "python/bin/python3"}[platform])
 
     def test_first_python_lands_where_fetch_looks(self):
         """The host's own first download (setup_python.hpp): fetch.py's archive name and folders, the stamp that
@@ -864,13 +867,15 @@ class ChosenFolderTest(unittest.TestCase):
 
 
 def _python_pins() -> dict:
-    """setup_engine.hpp's kPython* constants, per platform: the #ifdef _WIN32 block they are in, and its #else."""
+    """setup_engine.hpp's kPython* constants, per platform: the #ifdef _WIN32 block they are in, its
+    #elif defined(__APPLE__) and its #else."""
     hpp = (UI / "setup_engine.hpp").read_text(encoding="utf-8")
     start = hpp.rindex("#ifdef _WIN32", 0, hpp.index("kPythonName"))
-    middle = hpp.index("#else", start)
+    mac = hpp.index("#elif defined(__APPLE__)", start)
+    middle = hpp.index("#else", mac)
     end = hpp.index("#endif", middle)
     out = {}
-    for platform, block in (("windows", hpp[start:middle]), ("linux", hpp[middle:end])):
+    for platform, block in (("windows", hpp[start:mac]), ("macos", hpp[mac:middle]), ("linux", hpp[middle:end])):
         out[platform] = {m.group(1): m.group(2).removesuffix("ull")
                          for m in re.finditer(r'(kPython\w+)\s*=\s*"?([^";]+)"?;', block)}
     return out
