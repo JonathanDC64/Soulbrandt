@@ -29,6 +29,15 @@
    "checked": "size and SHA-256 from the release's asset list (its digest field), matched by a download, 2026-10-24"
   },
   {
+   "name": "python-macos",
+   "version": "3.13.17",
+   "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261021/cpython-3.13.17%2B20261021-aarch64-apple-darwin-install_only_stripped.tar.gz",
+   "size": 25286365,
+   "sha256": "8dc60610a82f1e73be7faf964383e02520f95f6e39592a5c37c3809f5a7b798e",
+   "why": "Runs the lifters and this setup on a Mac (Apple silicon), as python-linux does on Linux (docs/178).",
+   "checked": "size and SHA-256 from the release's asset list (its digest field), 2026-11-26"
+  },
+  {
    "name": "llvm-linux-x64",
    "version": "22.1.8-2",
    "url": "https://github.com/JonathanDC64/Soulbrandt/releases/download/llvm-linux-22.1.8-2/llvm-linux-x64-22.1.8-2.tar.xz",
@@ -36,6 +45,15 @@
    "sha256": "ab7f31065867f984573064315266664fca6bd2521c9209b071803829fd713996",
    "why": "Compiles and links the game part on Linux: clang, ld.lld and clang's headers from LLVM 22.1.8 (docs/86).",
    "checked": "made by LLVM archive run https://github.com/JonathanDC64/Soulbrandt/actions/runs/40160368044 from LLVM-22.1.8-Linux-X64.tar.xz (size, SHA-256, attestation and GPG signature checked), 2026-10-25"
+  },
+  {
+   "name": "llvm-macos-arm64",
+   "version": "22.1.8-1",
+   "url": "https://github.com/JonathanDC64/Soulbrandt/releases/download/llvm-macos-22.1.8-1/llvm-macos-arm64-22.1.8-1.tar.xz",
+   "size": 63197064,
+   "sha256": "b78f8837a04f610a9d91baac7d002b5c0a7792c61d9e514bcbaadb03c17e3513",
+   "why": "Compiles and links the game part on a Mac: clang, ld64.lld and clang's headers from LLVM 22.1.8 (docs/86).",
+   "checked": "made by LLVM archive run https://github.com/JonathanDC64/Soulbrandt/actions/runs/45933129411 from LLVM-22.1.8-macOS-ARM64.tar.xz (size, SHA-256, attestation and GPG signature checked), 2026-11-27"
   }
  ]
 }

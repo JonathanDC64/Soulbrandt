@@ -61,6 +61,8 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>  /* _NSGetExecutablePath: a Mac has no /proc */
 #endif
 
 #include <algorithm>
@@ -173,11 +175,32 @@ std::filesystem::path exe_dir()
     return n && n < std::size(buf) ? std::filesystem::path(buf).parent_path() : std::filesystem::path();
 }
 #else
+/* This program's file, for the stamp's size and time: Linux's /proc/self/exe; on a Mac, which has no /proc, the path
+ * the loader keeps, without its links and dots. Empty if it cannot be told (the stamp then says "none"). */
+std::string self_exe()
+{
+#if defined(__APPLE__)
+    char buf[4096];
+    uint32_t size = sizeof buf;
+    if (_NSGetExecutablePath(buf, &size) != 0) return std::string();
+    std::error_code ec;
+    const std::filesystem::path p = std::filesystem::canonical(buf, ec);
+    return ec ? std::string() : p.string();
+#else
+    return "/proc/self/exe";
+#endif
+}
+
 std::filesystem::path exe_dir()
 {
+#if defined(__APPLE__)
+    const std::string p = self_exe();
+    return p.empty() ? std::filesystem::path() : std::filesystem::path(p).parent_path();
+#else
     std::error_code ec;
     const std::filesystem::path p = std::filesystem::read_symlink("/proc/self/exe", ec);
     return ec ? std::filesystem::path() : p.parent_path();
+#endif
 }
 #endif
 
@@ -294,7 +317,7 @@ std::vector<std::string> list_archives(const std::string& dir, std::string& stam
         if (e.path().extension() == ".shaderbnd") names.emplace_back(e.path().filename().string());
     std::sort(names.begin(), names.end());
     stamp = "des_prework 2\n";   /* 2: the 2D forms and the executable's programs */
-    stamp_file(stamp, "exe", "/proc/self/exe");   /* (a new build is another size or time) */
+    stamp_file(stamp, "exe", self_exe());   /* (a new build is another size or time) */
     stamp += std::string("kinds ") + kUnits + " " + kAlts + "\n";
     for (const std::string& n : names) stamp_file(stamp, n.c_str(), dir + "/" + n);
     return names;

@@ -29,6 +29,7 @@ rest), and nothing is written there.
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from dataclasses import dataclass
@@ -210,7 +211,10 @@ def running(exe) -> bool:
 
 def _images() -> list:
     """The image path of every process this user may ask about: Windows'
-    QueryFullProcessImageNameW, Linux's /proc/<pid>/exe."""
+    QueryFullProcessImageNameW, Linux's /proc/<pid>/exe, a Mac's
+    proc_pidpath (libproc: it has no /proc)."""
+    if sys.platform == "darwin":
+        return _mac_images()
     if os.name == "nt":
         import ctypes
         from ctypes import wintypes
@@ -245,6 +249,35 @@ def _images() -> list:
             out.append(os.readlink(f"/proc/{pid}/exe"))
         except OSError:
             pass
+    return out
+
+
+def _mac_images() -> list:
+    """A Mac's processes (proc_listallpids) and each one's program
+    (proc_pidpath); one this user may not ask about is left out."""
+    import ctypes
+    try:
+        lib = ctypes.CDLL("/usr/lib/libproc.dylib")
+    except OSError:
+        return []
+    lib.proc_listallpids.argtypes = [ctypes.c_void_p, ctypes.c_int]
+    lib.proc_listallpids.restype = ctypes.c_int
+    lib.proc_pidpath.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32]
+    lib.proc_pidpath.restype = ctypes.c_int
+    n = 4096
+    while True:
+        pids = (ctypes.c_int * n)()
+        got = lib.proc_listallpids(pids, ctypes.sizeof(pids))   # (the number of ids it wrote)
+        if got <= 0:
+            return []
+        if got < n:
+            break
+        n *= 2
+    out, buf = [], ctypes.create_string_buffer(4096)              # PROC_PIDPATHINFO_MAXSIZE
+    for pid in pids[:got]:
+        k = lib.proc_pidpath(pid, buf, ctypes.sizeof(buf))
+        if k > 0:
+            out.append(os.fsdecode(buf.raw[:k]))
     return out
 
 

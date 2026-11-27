@@ -322,9 +322,9 @@ def player_tree(files, top, fork):
     if unused:
         raise Error(f"player-files.txt: no file for {', '.join(unused)}")
     have = {name[len(top):] for name, _mode, _data in entries}
-    for desc in ("game_build.json", "game_build_linux.json"):
+    for desc in ("game_build.json", "game_build_linux.json", "game_build_macos.json"):
         text = next((data for name, _mode, data in entries if name.endswith(f"/des_setup/{desc}")), b"").decode("utf-8")
-        for ref in re.findall(r"\{src\}/([^\"\s]+\.(?:c|cpp|def|h))\b", text):
+        for ref in re.findall(r"\{src\}/([^\"\s]+\.(?:c|cpp|def|h|tbd))\b", text):
             if f"{SETUP}/{ref}" not in have and (fork or not ref.startswith("ps3recomp/")):
                 raise Error(f"{desc} uses {ref}, which player-files.txt leaves out")
     return entries

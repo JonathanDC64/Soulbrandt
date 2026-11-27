@@ -170,7 +170,8 @@ class UnlockTest(unittest.TestCase):
         c = calls[0]
         # (named from RPCS3's working folder, the work folder: never a data folder's own letters, docs/126)
         self.assertEqual(c["inputs"], [str(Path("in") / p) for p, _, _ in FILES])
-        self.assertEqual(os.path.normcase(c["cwd"]), os.path.normcase(str(self.t.work)))
+        # (as real paths: a Mac's temporary folder is /var/..., a link, and a process's working folder /private/var/...)
+        self.assertEqual(os.path.normcase(os.path.realpath(c["cwd"])), os.path.normcase(os.path.realpath(self.t.work)))
         self.assertEqual(c["stdin"], "")                 # the null device: a KLIC prompt would end at once
         self.assertFalse(c["outside"])
         self.assertEqual(c["env"]["QT_COMMAND_LINE_PARSER_NO_GUI_MESSAGE_BOXES"], "1")
@@ -373,9 +374,12 @@ class UnlockTest(unittest.TestCase):
         self.assertIsNone(rpcs3.find(self.t.base / "nothing here"))
         self.assertEqual(rpcs3.where(self.t.rpcs3 / PROGRAM), str(self.t.rpcs3))
         self.assertFalse(rpcs3.running(self.t.rpcs3 / PROGRAM))
-        p = subprocess.Popen([sys.executable, "-I", "-c", "import time; time.sleep(10)"], stdin=subprocess.DEVNULL)
+        # A program that runs as itself. On a Mac, sys.executable may be a launcher: a framework build's bin/python3
+        # starts Python.app's own program, which is then the process's image.
+        prog = ["/bin/sleep", "10"] if sys.platform == "darwin" else [sys.executable, "-I", "-c", "import time; time.sleep(10)"]
+        p = subprocess.Popen(prog, stdin=subprocess.DEVNULL)
         try:
-            self.assertTrue(rpcs3.running(sys.executable))
+            self.assertTrue(rpcs3.running(prog[0]))
         finally:
             p.kill()
             p.wait()

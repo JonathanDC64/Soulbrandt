@@ -52,7 +52,9 @@
 #include <unistd.h>
 #if defined(__APPLE__)
 #include <crt_externs.h>  // (_NSGetArgv: a Mac has no /proc)
-#include <mach-o/dyld.h>  // (_NSGetExecutablePath)
+#include <mach-o/dyld.h>  // (_NSGetExecutablePath, and the libraries loaded: other_modules)
+#include <mach/mach.h>    // (the memory: system_info)
+#include <sys/sysctl.h>   // (the CPU, the macOS version, the swap: system_info)
 #endif
 
 #include <cerrno>
@@ -830,7 +832,11 @@ void drop_inherited(const std::filesystem::path& logs, std::string& note) {
     std::error_code ec;
     const std::string folder = std::filesystem::weakly_canonical(logs, ec).string() + "/";
     bool out_orphaned = false, err_orphaned = false;
+#if defined(__APPLE__)
+    DIR* d = opendir("/dev/fd");  // (a Mac's list of this process's descriptors: it has no /proc)
+#else
     DIR* d = opendir("/proc/self/fd");
+#endif
     if (!d) return;
     std::vector<int> drop;
     while (const dirent* e = readdir(d)) {
@@ -849,7 +855,12 @@ void drop_inherited(const std::filesystem::path& logs, std::string& note) {
             continue;
         }
         char target[4096];
+#if defined(__APPLE__)
+        // (the file's path from the descriptor itself; F_GETPATH writes at most MAXPATHLEN bytes)
+        const ssize_t k = fcntl(fd, F_GETPATH, target) != -1 ? ssize_t(strnlen(target, sizeof target)) : -1;
+#else
         const ssize_t k = readlink(("/proc/self/fd/" + std::string(e->d_name)).c_str(), target, sizeof target - 1);
+#endif
         if (S_ISREG(st.st_mode) && k > 0 && std::string(target, size_t(k)).rfind(folder, 0) == 0) drop.push_back(fd);
     }
     closedir(d);
@@ -1537,11 +1548,13 @@ void platform_facts(std::ostringstream& o, bool game_process) {
     if (game_process) o << other_modules();
 }
 #else
+#if !defined(__APPLE__)
 // A file's text, or its first line ("" if it cannot be read): /proc and /sys.
 std::string file_text(const std::string& path) {
     std::ifstream f(path);
     return std::string(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
 }
+#endif
 std::string first_line(const std::string& path) {
     std::ifstream f(path);
     std::string s;
@@ -1549,6 +1562,36 @@ std::string first_line(const std::string& path) {
     return s;
 }
 
+#if defined(__APPLE__)
+// A sysctl's text, or "" (the CPU's name, the macOS version).
+std::string sysctl_text(const char* name) {
+    char buf[256];
+    size_t n = sizeof buf;
+    if (sysctlbyname(name, buf, &n, nullptr, 0) != 0 || n == 0) return {};
+    return std::string(buf, strnlen(buf, n));
+}
+
+// A sysctl's number, 4 or 8 bytes as the kernel gives it; 0 if there is none.
+uint64_t sysctl_number(const char* name) {
+    unsigned char buf[8] = {};
+    size_t n = sizeof buf;
+    if (sysctlbyname(name, buf, &n, nullptr, 0) != 0) return 0;
+    if (n == sizeof(uint32_t)) {
+        uint32_t v;
+        std::memcpy(&v, buf, sizeof v);
+        return v;
+    }
+    uint64_t v = 0;
+    if (n == sizeof v) std::memcpy(&v, buf, sizeof v);
+    return v;
+}
+
+// "macOS 15.1" (the system's own version, as About This Mac says it).
+std::string os_name() {
+    const std::string v = sysctl_text("kern.osproductversion");
+    return v.empty() ? "macOS" : "macOS " + v;
+}
+#else
 // /proc/meminfo's and /proc/self/status's "Key:   1234 kB" lines: the number, in MB. 0 if missing.
 uint64_t kb_line_mb(const std::string& text, const char* key) {
     const std::string k = std::string(key) + ":";
@@ -1587,6 +1630,7 @@ std::string os_name() {
     }
     return "Linux";
 }
+#endif
 
 // The PCI Express link of a graphics card in sysfs, as pci_link says it on Windows: ", PCIe 4.0 x16", or ", PCIe 1.1
 // x16 now (the card: 4.0 x16)" when the link runs below what the card can do (a card at rest slows its link).
@@ -1610,6 +1654,9 @@ std::string pcie_link(const std::string& dev) {
 // this user may not read the kernel's lines (journalctl then gives none).
 std::string driver_resets() {
     std::string out = "Graphics driver resets (the kernel's log), the last 7 days: ";
+#if defined(__APPLE__)
+    return out + "can't be read on a Mac\n";  // (macOS keeps them in its unified log, which takes seconds to ask)
+#else
     FILE* p = popen("journalctl -k -q -o short-iso --no-pager --since=-7d 2>/dev/null", "r");
     if (!p) return out + "can't be read here\n";
     int lines = 0, count = 0;
@@ -1634,12 +1681,50 @@ std::string driver_resets() {
     out += std::to_string(count);
     if (newest.size() >= 16) out += " (the last on " + newest.substr(0, 10) + " at " + newest.substr(11, 5) + ")";
     return out + "\n";
+#endif
 }
 
 // The libraries loaded into the game that are neither the system's nor the game's own: overlays, recorders, injectors,
 // as other_modules on Windows. A library outside the system's folders, any LD_PRELOAD one, and a known overlay or
 // Vulkan layer wherever it is (a distribution installs MangoHud or vkBasalt beside the system's libraries). "beside
 // the game" for one in the program's folder (the libraries the download brings, such as vkd3d's).
+#if defined(__APPLE__)
+// On a Mac, from dyld's list of the loaded images: one outside the system's folders, any DYLD_INSERT_LIBRARIES one
+// (a Mac's LD_PRELOAD), and a known overlay wherever it is. "beside the game" for one in the program's folder or, in
+// an app, its bundle (Contents/Frameworks holds MoltenVK and the Vulkan loader).
+std::string other_modules() {
+    std::filesystem::path game = exe_dir();
+    if (game.filename() == "MacOS" && game.parent_path().filename() == "Contents") game = game.parent_path();
+    const std::string game_dir = game.string(), module_dir = setup::data_dir().string();
+    const auto under = [](const std::string& path, const std::string& dir) {
+        return !dir.empty() && path.size() > dir.size() && path.compare(0, dir.size(), dir) == 0 && path[dir.size()] == '/';
+    };
+    const std::string inserted = env("DYLD_INSERT_LIBRARIES");
+    std::vector<std::string> names;
+    for (uint32_t i = 1, n = _dyld_image_count(); i < n; i++) {  // (image 0 is the program)
+        const char* image = _dyld_get_image_name(i);
+        if (!image || !*image) continue;
+        const std::string path = image, name = std::filesystem::path(path).filename().string();
+        std::string low = name;
+        for (char& c : low) c = char(std::tolower(static_cast<unsigned char>(c)));
+        bool known = false;
+        for (const char* k : {"gameoverlayrenderer", "reshade", "obs", "overlay", "fps", "inject", "vklayer", "vk_layer"})
+            known = known || low.find(k) != std::string::npos;
+        const bool system = path.rfind("/usr/lib/", 0) == 0 || path.rfind("/System/", 0) == 0 ||
+                            path.rfind("/Library/Apple/", 0) == 0;
+        const bool preloaded = !inserted.empty() && inserted.find(name) != std::string::npos;
+        if (under(path, module_dir) || (system && !known && !preloaded)) continue;
+        const std::string entry =
+            name + (under(path, game_dir) ? " (beside the game)" : preloaded ? " (DYLD_INSERT_LIBRARIES)" : "");
+        if (std::find(names.begin(), names.end(), entry) == names.end()) names.push_back(entry);
+    }
+    std::sort(names.begin(), names.end());
+    std::string out = "Other software in the game (" + std::to_string(names.size()) + "):";
+    for (const auto& name : names) out += " " + name + ";";
+    if (!names.empty()) out.pop_back();
+    return out + "\n";
+}
+#else
 std::string other_modules() {
     const std::string game = exe_dir().string(), module_dir = setup::data_dir().string();
     std::error_code ec;
@@ -1676,6 +1761,7 @@ std::string other_modules() {
     if (!names.empty()) out.pop_back();
     return out + "\n";
 }
+#endif
 
 void platform_facts(std::ostringstream& o, bool game_process) {
     {
@@ -1684,6 +1770,51 @@ void platform_facts(std::ostringstream& o, bool game_process) {
         if (uname(&u) == 0) o << ", " << u.sysname << " " << u.release << " " << u.machine;
         o << "\n";
     }
+#if defined(__APPLE__)
+    {
+        // The chip's name and cores: Apple's chips have performance and efficiency cores, in that order of levels.
+        const std::string cpu = sysctl_text("machdep.cpu.brand_string");
+        const uint64_t cores = sysctl_number("hw.physicalcpu"), threads = sysctl_number("hw.logicalcpu");
+        const uint64_t fast = sysctl_number("hw.nperflevels") >= 2 ? sysctl_number("hw.perflevel0.physicalcpu") : 0;
+        o << "CPU: " << (cpu.empty() ? "?" : cpu) << " (" << cores << " cores";
+        if (fast && fast < cores) o << ": " << fast << " performance, " << (cores - fast) << " efficiency";
+        o << ", " << threads << " threads" << (sysctl_number("sysctl.proc_translated") ? "; under Rosetta" : "") << ")\n";
+        // Free now: the free and inactive pages, which macOS gives up first (as setup_pc.cpp counts them), and the
+        // speculative ones (read ahead from files). The swap grows as macOS needs it: its size now.
+        vm_statistics64_data_t vm{};
+        mach_msg_type_number_t count = HOST_VM_INFO64_COUNT;
+        vm_size_t page = 0;
+        const mach_port_t host = mach_host_self();
+        const bool known = host_page_size(host, &page) == KERN_SUCCESS &&
+                           host_statistics64(host, HOST_VM_INFO64, reinterpret_cast<host_info64_t>(&vm), &count) ==
+                               KERN_SUCCESS;
+        mach_port_deallocate(mach_task_self(), host);
+        const uint64_t free_now =
+            known ? (uint64_t(vm.free_count) + vm.inactive_count + vm.speculative_count) * uint64_t(page) : 0;
+        xsw_usage swap{};
+        size_t swap_size = sizeof swap;
+        const bool swap_known = sysctlbyname("vm.swapusage", &swap, &swap_size, nullptr, 0) == 0;
+        o << "Memory: " << (sysctl_number("hw.memsize") >> 20) << " MB, " << (free_now >> 20) << " MB free now; swap "
+          << (swap_known ? std::to_string(swap.xsu_total >> 20) + " MB, " + std::to_string(swap.xsu_avail >> 20) +
+                               " MB free"
+                         : std::string("?"))
+          << "\n";
+        if (game_process) {
+            // In memory: what Activity Monitor's Memory column shows (the footprint), and the resident pages' peak.
+            task_vm_info_data_t vi{};
+            mach_msg_type_number_t vi_count = TASK_VM_INFO_COUNT;
+            mach_task_basic_info_data_t basic{};
+            mach_msg_type_number_t basic_count = MACH_TASK_BASIC_INFO_COUNT;
+            const bool have_vi = task_info(mach_task_self(), TASK_VM_INFO, reinterpret_cast<task_info_t>(&vi),
+                                           &vi_count) == KERN_SUCCESS;
+            const bool have_basic = task_info(mach_task_self(), MACH_TASK_BASIC_INFO,
+                                              reinterpret_cast<task_info_t>(&basic), &basic_count) == KERN_SUCCESS;
+            if (have_vi || have_basic)
+                o << "This process: " << ((have_vi ? vi.phys_footprint : basic.resident_size) >> 20)
+                  << " MB in memory (peak resident " << (have_basic ? basic.resident_size_max >> 20 : 0) << " MB)\n";
+        }
+    }
+#else
     {
         // Cores (a processor's "physical id" and "core id" pairs), and on a hybrid Intel processor how many of each
         // kind: the kernel lists the fast cores' CPUs in /sys/devices/cpu_core and the efficient ones' in cpu_atom.
@@ -1722,6 +1853,7 @@ void platform_facts(std::ostringstream& o, bool game_process) {
               << " MB), " << kb_line_mb(self, "VmSwap") << " MB swapped out\n";
         }
     }
+#endif
     {
         // The graphics cards (the kernel's DRM devices), the one the game draws with named by the renderer.
         struct {
@@ -1773,8 +1905,12 @@ void platform_facts(std::ostringstream& o, bool game_process) {
             o << "GPU: not known here (the log's renderer lines name it)\n";
         o << driver_resets();
     }
+#if defined(__APPLE__)
+    o << "Session: desktop\n";  // (a Mac has the one)
+#else
     o << "Session: " << (no_desktop() ? "gamescope, no desktop" : "desktop") << ", XDG_SESSION_TYPE=" << env("XDG_SESSION_TYPE")
       << ", XDG_CURRENT_DESKTOP=" << env("XDG_CURRENT_DESKTOP") << ", SteamDeck=" << env("SteamDeck") << "\n";
+#endif
     if (const char* driver = SDL_GetCurrentVideoDriver()) o << "SDL video driver: " << driver << "\n";
     {
         int n = 0;
@@ -1784,6 +1920,16 @@ void platform_facts(std::ostringstream& o, bool game_process) {
                 o << "Display " << i + 1 << ": " << m->w << "x" << m->h << " at " << m->refresh_rate << " Hz\n";
         SDL_free(ids);
     }
+#if defined(__APPLE__)
+    {
+        // The Mac's own battery (IOKit's power sources: setup_pc's power()); a desktop Mac has none.
+        const setup::Power p = setup::power();
+        if (!p.battery) o << "Power: no battery\n";
+        else
+            o << "Power: " << (p.onBattery ? "on battery" : "plugged in") << ", battery "
+              << (p.percent >= 0 ? std::to_string(p.percent) + "%" : std::string("?")) << "\n";
+    }
+#else
     {
         // The batteries and the mains in sysfs (a Steam Deck, a laptop); a mouse's or a pad's battery is not one.
         int battery = -1;
@@ -1801,6 +1947,7 @@ void platform_facts(std::ostringstream& o, bool game_process) {
         if (battery < 0) o << "Power: no battery\n";
         else o << "Power: " << (plugged || !discharging ? "plugged in" : "on battery") << ", battery " << battery << "%\n";
     }
+#endif
     {
         const auto free_on = [](const std::filesystem::path& p) -> std::string {
             if (p.empty()) return "?";
