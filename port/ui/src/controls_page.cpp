@@ -13,6 +13,7 @@
 #include <RmlUi/Core.h>
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 
 namespace ui {
@@ -96,6 +97,11 @@ int ControlsPage::target(int row) const {
     return row < kPadCount ? kPadRows[row] : kKickTarget;
 }
 
+int ControlsPage::slots(int row) const {
+    if (row < 0 || row >= row_count()) return 1;
+    return mKeys ? kSlots : row < kPadCount ? kPadSlots : 1;
+}
+
 bool ControlsPage::locked() const {
     return settings::pinned(key_of(mKeys));
 }
@@ -122,12 +128,12 @@ void ControlsPage::build() {
         append(label, "menu-mark");
         append_text_element(label, "menu-name",
                             mKeys ? kTargets[r].label : r < kPadCount ? kPadLabels[kPadRows[r]] : kKickLabel);
-        for (int s = 0; s < (mKeys ? kSlots : 1); s++) {
+        for (int s = 0; s < slots(r); s++) {
             v.values[s] = append(v.row, "menu-value");
-            set_class(v.values[s], "slot", mKeys);
+            set_class(v.values[s], "slot", slots(r) > 1);
             append(v.values[s], "controls-fill");  // (the chosen box's red, inside its cut corners)
             append(v.values[s], "icon")->SetClass("lock", true);
-            if (!mKeys) v.art = append(v.values[s], "controls-art");
+            if (!mKeys) v.art[s] = append(v.values[s], "controls-art");
             v.texts[s] = append(v.values[s], "menu-text");
         }
         if (!sBrackets.empty()) sBrackets.back().last = v.row;
@@ -139,9 +145,9 @@ void ControlsPage::build() {
             for (int s = 0; s < kSlots; s++)
                 for (Rml::Element* t = e.GetTargetElement(); t && t != mViews[index].row; t = t->GetParentNode())
                     if (t == mViews[index].values[s]) slot = s;
-            if (index == mFocus && (!mKeys || slot == mSlot)) return;
+            if (index == mFocus && (slots(index) == 1 || slot == mSlot)) return;
             mFocus = index;
-            mSlot = mKeys ? slot : 0;
+            if (slots(index) > 1) mSlot = slot;
             play_sound(kSoundItemFocus);
         };
         const auto click = [this, take_focus](Rml::Event& e) {
@@ -217,30 +223,36 @@ void ControlsPage::update_rows() {
         bool modified = false;
         set_class(v.row, "focused", focused);
         set_class(v.row, "locked", pinned);
-        for (int s = 0; s < (mKeys ? kSlots : 1); s++) {
-            const bool wait = waiting && (!mKeys || mCapture.slot() == s);
+        for (int s = 0; s < slots(r); s++) {
+            const bool wait = waiting && (slots(r) == 1 || mCapture.slot() == s);
             const bool changed = mKeys                ? key_modified(t, s)
                                  : t == kKickTarget ? pad_kick() >= 0
-                                                    : pad_modified(t) || kick_takes(t);
+                                                    : pad_modified(t, s) || (s == 0 && kick_takes(t));
             modified = modified || changed;
-            set_class(v.values[s], "on", focused && mKeys && s == mSlot && !pinned);
+            set_class(v.values[s], "on", focused && slots(r) > 1 && s == mSlot && !pinned);
             set_class(v.values[s], "wait", wait);
             set_class(v.values[s], "modified", changed);
             std::string text;
             if (wait) text = mCapture.pending_label();
             else if (mKeys) text = slot_label(t, s);
             else if (t == kKickTarget) text = kick_label(device);
+            else if (s == 1) text = pad_second_label(t, device);
             else text = pad_value_label(t, device);
             set_text_content(v.texts[s], text);
             set_class(v.texts[s], "none", text == "None" || text == "None (Kick)");
-            if (v.art) {
-                // A picture of one of the PS3's buttons; the others (the Kick's extra ones, none) by name.
-                const int host = t == kKickTarget ? pad_kick() : kick_takes(t) ? -1 : pad_map()[t];
+            if (v.art[s]) {
+                // A picture of one of the PS3's buttons; the others (the extra ones: back buttons and paddles, none)
+                // by name. A 2nd is one of those, or more than one from a PAD_MAP written by hand: by name.
+                int host = t == kKickTarget ? pad_kick() : kick_takes(t) ? -1 : pad_map()[t];
+                if (s == 1) {
+                    const unsigned also = pad_also()[t];
+                    host = also && !(also & (also - 1)) ? std::countr_zero(also) : -1;
+                }
                 const std::string art = wait || host < 0 || host >= kPadCount ? std::string() : pad_art(host);
                 set_class(v.values[s], "named", art.empty() && !wait);
-                if (art != v.artShown) {
-                    v.artShown = art;
-                    v.art->SetInnerRML(art);
+                if (art != v.artShown[s]) {
+                    v.artShown[s] = art;
+                    v.art[s]->SetInnerRML(art);
                 }
             }
         }
@@ -267,9 +279,12 @@ void ControlsPage::update_help() {
                    "Hold Shift, Ctrl or Alt for a combination. Delete clears the box; Esc cancels.<br/><br/>"
                    "The layout starts as the Souls layout this port ships with. A key works one action only: given "
                    "to another, it leaves the one it had.</menu-helptext>"
-                 : "<menu-helptext>Choose a row, then press the button for it. Esc cancels.<br/><br/>A row is the "
-                   "game's button; its box shows the button on your pad that presses it. Give a row a button another "
-                   "row had, and the two swap.<br/><br/>Kick: " +
+                 : "<menu-helptext>Choose a row and one of its two boxes, then press the button for it. Esc "
+                   "cancels.<br/><br/>A row is the game's button; its first box shows the button on your pad that "
+                   "presses it. Give a row a button another row had, and the two swap.<br/><br/>The second box is a "
+                   "2nd button that presses it too, such as a back button or paddle. A button works in one place "
+                   "only, so the 2nd takes one no other row has. Press its 2nd again, or Delete, to clear it."
+                   "<br/><br/>Kick: " +
                        std::string(kKickAbout) + "</menu-helptext>";
     rml += "<menu-facts><menu-fact><menu-fact-name>Variable</menu-fact-name><menu-fact-value class=\"key\">" +
            std::string(key_of(mKeys)) + "</menu-fact-value></menu-fact></menu-facts></menu-helpbox>";
@@ -334,7 +349,7 @@ void ControlsPage::press() {
         return;
     }
     play_sound(kSoundClick);
-    mCapture.start(target(mFocus), !mKeys, mKeys ? mSlot : 0);
+    mCapture.start(target(mFocus), !mKeys, slots(mFocus) > 1 ? mSlot : 0);
 }
 
 bool ControlsPage::command(menu::Command c, bool down) {
@@ -353,7 +368,7 @@ bool ControlsPage::command(menu::Command c, bool down) {
     case Command::Down: move(1); return true;
     case Command::Left:
     case Command::Right:
-        if (mKeys && mFocus < row_count()) {
+        if (slots(mFocus) > 1) {
             const int to = c == Command::Left ? 0 : 1;
             if (to != mSlot) {
                 mSlot = to;
@@ -401,7 +416,7 @@ std::vector<prompts::Prompt> ControlsPage::prompts(const std::string& backLabel)
     if (mCapture.active()) return {{Key::Back, "Cancel"}};
     if (mHelping) return {{Key::Back, "Close"}};
     std::vector<prompts::Prompt> out = {{Key::Move, "Select"}};
-    if (mKeys && mFocus < row_count()) out.push_back({Key::Change, "First or second"});
+    if (slots(mFocus) > 1) out.push_back({Key::Change, "First or second"});
     if (!locked()) out.push_back({Key::Confirm, mFocus == row_count() ? "Restore" : "Change"});
     out.push_back({Key::Help, "Help"});
     out.push_back({Key::Back, backLabel});
@@ -414,16 +429,21 @@ std::string ControlsPage::strip() const {
     if (mCapture.active()) {
         const int t = mCapture.target();
         const std::string what = mKeys ? kTargets[t].label : t == kKickTarget ? kKickLabel : kPadLabels[t];
-        return mKeys ? "Press a key, mouse button or wheel for " + what + ". Esc cancels."
-                     : "Press the button for " + what + ". Esc cancels.";
+        if (mKeys) return "Press a key, mouse button or wheel for " + what + ". Esc cancels.";
+        if (t != kKickTarget && mCapture.slot() == 1)
+            return "Press a 2nd button for " + what + ", one no other row has, such as a back button or paddle. Its "
+                   "2nd again, or Delete, clears it. Esc cancels.";
+        return "Press the button for " + what + ". Esc cancels.";
     }
     if (mFocus == row_count()) return "Puts all buttons and keys back to the defaults.";
     if (mKeys && kTargets[mFocus].about) return kTargets[mFocus].about;
     if (!mKeys && target(mFocus) == kKickTarget) return kKickAbout;
     if (!mKeys && kick_takes(target(mFocus)))
         return "The Kick has its button, so nothing presses it. Choose the row, then press another button for it.";
-    return mKeys ? "Choose a row, then press a key, mouse button or wheel."
-                 : "Choose a row, then press the button for it.";
+    if (mKeys) return "Choose a row, then press a key, mouse button or wheel.";
+    if (mSlot == 1 && slots(mFocus) > 1)
+        return "Its 2nd box: a second button that presses it too, such as a back button or paddle.";
+    return "Choose a row, then press the button for it.";
 }
 
 std::string ControlsPage::classes() const {
@@ -440,7 +460,7 @@ void ControlsPage::show_keys(bool keys) {
 
 void ControlsPage::focus(int row, int slot) {
     mFocus = std::clamp(row, 0, row_count());
-    mSlot = mKeys ? std::clamp(slot, 0, kSlots - 1) : 0;
+    mSlot = slots(mFocus) > 1 ? std::clamp(slot, 0, kSlots - 1) : 0;
 }
 
 void ControlsPage::wait() {

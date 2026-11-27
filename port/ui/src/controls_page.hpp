@@ -67,8 +67,8 @@ private:
         Rml::Element* row = nullptr;
         Rml::Element* values[controls::kSlots] = {};
         Rml::Element* texts[controls::kSlots] = {};
-        Rml::Element* art = nullptr;  // the gamepad's: the pad button's picture
-        std::string artShown;
+        Rml::Element* art[controls::kSlots] = {};  // the gamepad's: the pad button's picture
+        std::string artShown[controls::kSlots];
     };
 
     void build();
@@ -82,6 +82,7 @@ private:
     bool locked() const;      // set when the game started (PAD_MAP, PAD_KEYS), so the rows can't change it
     int row_count() const;    // the rows, without Restore
     int target(int row) const;  // the row's game button (kPadNames; kKickTarget the Kick row) or action (kTargets)
+    int slots(int row) const;   // the row's boxes: an action's two inputs, a game button's own and 2nd, the Kick's one
     void listen(Rml::Element* element, std::function<void(Rml::Event&)> callback);
 
     Rml::Element* mHost;

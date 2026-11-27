@@ -2475,17 +2475,16 @@ body.page.motion coop-page {
 }
 
 /* ---- Change Buttons (controls_page.hpp): Settings' rows, the game's button or action in the stone bar and its input in
-   the box beside it; the keys' two inputs in two boxes, the chosen one on blood. A pad button shows as its picture. ---- */
-menu-rows.keys {
+   the box beside it; the keys' two inputs in two boxes, and a game button's own pad button and its 2nd, the chosen one
+   on blood (the Kick's one box lines up with the first). A pad button shows as its picture. ---- */
+menu-rows.keys,
+menu-rows.pad {
     flex: 0 0 1152dp;
 }
 
-menu-rows.keys menu-value {
-    flex: 0 0 275dp;
-    justify-content: center;
-}
-
+menu-rows.keys menu-value,
 menu-rows.pad menu-value {
+    flex: 0 0 275dp;
     justify-content: center;
 }
 
@@ -2549,7 +2548,7 @@ menu-rows.pad menu-value.wait controls-art {
     display: none;
 }
 
-/* A pad button with no picture (the Kick's back buttons and paddles, or none): its name. */
+/* A pad button with no picture (the extra ones: back buttons and paddles, or none): its name. */
 menu-rows.pad menu-value.named menu-text {
     display: block;
 }

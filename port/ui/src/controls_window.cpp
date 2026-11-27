@@ -134,20 +134,26 @@ void ControlsWindow::render_pad_page(Pane& pane) {
     for (int r = 0; r < kPadCount; r++) {
         const int i = kPadRows[r];
         if (kPadSections[r]) pane.add_section(kPadSections[r]);
-        pane.add_select_button({
-                                   .key = kPadLabels[i],
-                                   .getValue =
-                                       [this, i]() -> Rml::String {
-                                           if (mCapture.active() && mCapture.pad() && mCapture.target() == i)
-                                               return mCapture.pending_label();
-                                           return pad_value_label(i, input::menu_device());
-                                       },
-                                   .isModified = [i] { return pad_modified(i) || kick_takes(i); },
-                               })
-            .on_pressed([this, i] {
-                play_sound(kSoundClick);
-                mCapture.start(i, true, 0);
-            });
+        for (int slot = 0; slot < kPadSlots; slot++) {
+            pane.add_select_button({
+                                       .key = slot == 0 ? Rml::String(kPadLabels[i])
+                                                        : Rml::String(kPadLabels[i]) + ", 2nd",
+                                       .getValue =
+                                           [this, i, slot]() -> Rml::String {
+                                               if (mCapture.active() && mCapture.pad() && mCapture.target() == i &&
+                                                   mCapture.slot() == slot)
+                                                   return mCapture.pending_label();
+                                               return slot == 0 ? pad_value_label(i, input::menu_device())
+                                                                : pad_second_label(i, input::menu_device());
+                                           },
+                                       .isModified =
+                                           [i, slot] { return pad_modified(i, slot) || (slot == 0 && kick_takes(i)); },
+                                   })
+                .on_pressed([this, i, slot] {
+                    play_sound(kSoundClick);
+                    mCapture.start(i, true, slot);
+                });
+        }
     }
     pane.add_section("Forward attack");
     pane.add_select_button({
@@ -164,7 +170,10 @@ void ControlsWindow::render_pad_page(Pane& pane) {
             play_sound(kSoundClick);
             mCapture.start(kKickTarget, true, 0);
         });
-    pane.add_rml("<br/>Choose a row, then press the button for it. Esc cancels.<br/><br/>Kick: " +
+    pane.add_rml("<br/>Choose a row, then press the button for it. Esc cancels.<br/><br/>A 2nd row gives the button a "
+                 "second one that presses it too, such as a back button or paddle. A button works in one place only, "
+                 "so the 2nd takes one no other row has. Press its button again, or Delete, to clear it.<br/><br/>"
+                 "Kick: " +
                  std::string(kKickAbout) + "<br/><br/>(PAD_MAP)");
 }
 

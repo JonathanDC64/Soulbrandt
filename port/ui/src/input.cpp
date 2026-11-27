@@ -148,9 +148,10 @@ int take_captured_wheel() noexcept {
     return n;
 }
 
-unsigned menu_buttons(unsigned buttons) {
+unsigned menu_buttons(unsigned buttons, unsigned extra) {
     if (settings::get_int("menu_follow_buttons") == 0) return buttons;
-    return through_map(buttons, controls::game_button_sources());
+    return through_map(buttons, controls::game_button_sources()) |
+           through_added(buttons | extra << 16, controls::pad_also());
 }
 
 int menu_key(int vk) {
@@ -189,7 +190,7 @@ void update_pad(const PadState& pad, int chord) noexcept {
     sGameDevice = pad.glyph;
     if (sDevice >= 2 && pad.glyph >= 2) sDevice = pad.glyph;  // (cellPad knows the pad's kind a poll after its press)
     PadState menu = pad;
-    menu.buttons = menu_buttons(pad.buttons);  // (Same buttons as the game: the game's buttons, else the pad's own)
+    menu.buttons = menu_buttons(pad.buttons, pad.extra);  // (Same buttons as the game: the game's, else the pad's own)
     const PadKeys down = pad_keys(menu, chord, sPadKeys);
     const double now = now_seconds();
     for (int k = 0; k < kPadKeyCount; k++) {

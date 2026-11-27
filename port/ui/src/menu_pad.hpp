@@ -61,6 +61,9 @@ PadKeys pad_keys(const PadState& pad, int chord, PadKeysState& state) noexcept;
 // A pad's buttons as the game reads them: game button g (a CELL_PAD_CTRL_* bit) is down when pad button from[g] is;
 // -1, nothing presses it (the Kick's button, with the Kick on). from[g] = g for every g gives the buttons back.
 unsigned through_map(unsigned buttons, const std::array<signed char, 16>& from) noexcept;
+// The game's buttons their 2nd pad buttons press (Change Buttons' 2nd rows, a back button or paddle, #747): game button
+// g is down when any of added[g] is held in `host`, the pad's buttons then its extra ones from bit 16.
+unsigned through_added(unsigned host, const std::array<unsigned, 16>& added) noexcept;
 
 // Whether a held key repeats (the arrows and the tabs).
 bool pad_key_repeats(int key) noexcept;
