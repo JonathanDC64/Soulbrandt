@@ -63,7 +63,7 @@ Settings preset_settings(Preset preset, int displayHeight, bool hdr) {
         {"DES_ASPECT", ""},
         {"RSX_TEXFILTER", "0"},
         {"DES_HUD", ""},
-        {"DES_CUTFPS", "0"},
+        {"DES_CUTFPS", "1"},
         {"DES_VSYNC", "1"},
     };
 }

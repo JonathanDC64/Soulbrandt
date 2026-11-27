@@ -64,13 +64,14 @@
  *   144 of them a second. Movies keep their speed (cellSail
  *   hands out the frame that is due by the clock), and the game advances by
  *   real time: the regress walk ends in the same place at ~66 fps as at 30.
- *   The in-engine cutscenes (RemoMan) stay at 30: their camera takes the
- *   nearest of keys 1/30 s apart while the characters follow the frame
- *   time, so unlocked they judder (a 2-frame back-and-forth at 60, a
- *   4-frame sawtooth at 120). While a RemoMan slot holds a cutscene the
- *   game is put back in 30 mode with the 1/30 step and the PS3's vblank,
- *   and unlocked again when it ends. DES_CUTFPS=1 leaves cutscenes
- *   unlocked and blends the camera's keys instead (des_cut_cam).
+ *   The in-engine cutscenes (RemoMan): their camera takes the nearest of
+ *   keys 1/30 s apart while the characters follow the frame time, so
+ *   unlocked they would judder (a 2-frame back-and-forth at 60, a 4-frame
+ *   sawtooth at 120). By default (DES_CUTFPS on) they stay unlocked and
+ *   des_cut_cam blends the camera's keys. DES_CUTFPS=0 is the original's
+ *   30: while a RemoMan slot holds a cutscene the game is put back in 30
+ *   mode with the 1/30 step and the PS3's vblank, and unlocked again when
+ *   it ends.
  *   One movement test counts in 30 Hz steps too. After physics, 0x002EC2B8
  *   asks whether a character that wants to move fast (its animation asks
  *   for more than 5 m/s) moved less than 1/30 m this step, i.e. under 1 m/s
@@ -350,12 +351,13 @@ bool cutscene_playing()
     return false;
 }
 
-/* DES_CUTFPS=1: cutscenes at the DES_FPS rate, without the 30 fps lock
- * below; des_cut_cam blends the camera's keys. Read live. */
+/* DES_CUTFPS (on by default; 0 = the original's 30 fps lock below):
+ * cutscenes at the DES_FPS rate; des_cut_cam blends the camera's keys.
+ * Read live. */
 bool cutfps_on()
 {
-    static int on = 0;
-    PS3_KNOB(on, env_on("DES_CUTFPS"));
+    static int on = 1;
+    PS3_KNOB(on, ps3_env_int("DES_CUTFPS", 1) != 0);
     return on != 0;
 }
 

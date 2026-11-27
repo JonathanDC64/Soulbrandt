@@ -224,9 +224,9 @@ std::vector<TabDesc> make_tabs() {
                 .kind = NumberRow{.min = s::kFpsMin, .max = s::kFpsMax, .suffix = " fps", .get = s::fps_custom,
                     .set = s::set_fps_custom, .modified = s::fps_is_custom},
                 .help = "Your own frame rate, 30 to 500. Setting it picks Custom in Frame rate."},
-            choice("Cutscene frame rate", "DES_CUTFPS", {{"0", "30 fps", true}, {"1", "Same as Frame rate"}},
-                "By default cutscenes play at 30 fps, as in the original. Same as Frame rate plays them at your "
-                "frame rate, with their camera smoothed between its 30 fps steps, so they don't judder."),
+            choice("Cutscene frame rate", "DES_CUTFPS", {{"0", "30 fps"}, {"1", "Same as Frame rate", true}},
+                "By default cutscenes play at your frame rate, with their camera smoothed between its 30 fps steps, "
+                "so they don't judder. 30 fps plays them as in the original."),
             choice("V-sync", "DES_VSYNC",
                 {{"1", "On"}, {"even", "Even frames"}, {"vrr", "G-Sync / FreeSync"}, {"0", "Off"}},
                 "On waits for the display's refresh. Even frames keeps every frame on screen equally long, for smooth "

@@ -57,7 +57,7 @@ constexpr Def kDefs[] = {
 #endif
     {"DES_FPS", "", Apply::Live},              // "" = the game's own 30 fps mode; read at each flip
     {"fps_custom", "90", Apply::UiOnly},       // Frame rate's Custom number, kept while a fixed rate is chosen
-    {"DES_CUTFPS", "0", Apply::Live},          // des_options.cpp's cutfps_on, read at each flip
+    {"DES_CUTFPS", "1", Apply::Live},          // des_options.cpp's cutfps_on, read at each flip; 0 = 30 fps
     {"DES_MOTION_BLUR", "1", Apply::Live},     // des_motion_blur, read each frame
     {"DES_VSYNC", "1", Apply::Live},           // 1, 0, even, vrr; des_options.cpp sets RSX_VSYNC from it at each flip
     {"fps_counter", "0", Apply::UiOnly},       // perf_overlay.cpp: 1 = the frame rate in a corner, 2 = with frame times
