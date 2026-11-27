@@ -26,9 +26,9 @@ The app:
   Contents/Resources/vulkan/icd.d/MoltenVK_icd.json   where the loader looks for a driver inside an app
   Contents/Resources/THIRD-PARTY.txt                  what else the app carries, its licences and sources
 
-The player's files are not in the app: the program keeps them in ~/Library/Application Support/Soulbrandt. Nothing is
-signed or zipped here: mac-native.yml signs the app ad hoc and zips it with ditto, on a Mac. `check` checks
-macos_native_app.json. Standard library only. A tester build: no update reads it yet.
+The player's files are not in the app: the program keeps them in its one data folder in ~/Library/Application Support
+(docs/164). Nothing is signed or zipped here: mac-native.yml signs the app ad hoc and zips it with ditto, on a Mac.
+`check` checks macos_native_app.json. Standard library only. A tester build: no update reads it yet.
 """
 import argparse
 import json

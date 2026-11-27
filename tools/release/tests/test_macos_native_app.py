@@ -39,7 +39,7 @@ def make_tar(path, files, mode="w:xz"):
         for name, data in files.items():
             info = tarfile.TarInfo(name)
             info.size = len(data)
-            info.mode = 0o755 if name.endswith("/Soulbrandt") else 0o644
+            info.mode = 0o755 if name.endswith("/TestGame") else 0o644
             tar.addfile(info, io.BytesIO(data))
 
 
@@ -50,10 +50,10 @@ class NativeAppTest(unittest.TestCase):
         self.d = Path(self.tmp.name)
         self.program = self.d / "program.tar.xz"
         make_tar(self.program, {
-            f"{TOP}/Soulbrandt": ARM64,
+            f"{TOP}/TestGame": ARM64,
             f"{TOP}/README.md": b"readme\n",
             f"{TOP}/LICENSE": b"licence\n",
-            f"{TOP}/setup/release-info.txt": b"# x\nversion=0.2.1-dev+gabc\ncommit=abc\nexe=Soulbrandt\n",
+            f"{TOP}/setup/release-info.txt": b"# x\nversion=0.2.1-dev+gabc\ncommit=abc\nexe=TestGame\n",
             f"{TOP}/setup/tools/setup/run_setup.py": b"print('setup')\n",
             f"{TOP}/libavutil.60.dylib": ARM64,
             f"{TOP}/libavcodec.62.dylib": ARM64,
@@ -74,7 +74,7 @@ class NativeAppTest(unittest.TestCase):
 
     def build(self, **kw):
         args = dict(program_tar=self.program, loader_path=self.loader, moltenvk_tar=self.mvk, icns=None,
-                    out=self.d / "out", pins=self.pins, product="Soulbrandt")
+                    out=self.d / "out", pins=self.pins, product="TestGame")
         args.update(kw)
         return Path(n.build(**args))
 
@@ -91,11 +91,11 @@ class NativeAppTest(unittest.TestCase):
     def test_the_app(self):
         app = self.build()
         c = app / "Contents"
-        self.assertEqual((c / "MacOS" / "Soulbrandt").read_bytes(), ARM64)
+        self.assertEqual((c / "MacOS" / "TestGame").read_bytes(), ARM64)
         self.assertEqual(os.readlink(c / "MacOS" / "setup"), "../Resources/setup")
         self.assertTrue((c / "Resources" / "setup" / "tools" / "setup" / "run_setup.py").is_file())
         self.assertTrue((c / "Resources" / "README.md").is_file())
-        self.assertFalse((c / "Resources" / "Soulbrandt").exists())
+        self.assertFalse((c / "Resources" / "TestGame").exists())
         self.assertEqual((c / "Frameworks" / "libvulkan.1.dylib").read_bytes(), ARM64)
         self.assertEqual((c / "Frameworks" / "libMoltenVK.dylib").read_bytes(), FAT)
         icd = json.loads((c / "Resources" / "vulkan" / "icd.d" / "MoltenVK_icd.json").read_text(encoding="utf-8"))
@@ -112,14 +112,14 @@ class NativeAppTest(unittest.TestCase):
         self.assertTrue((c / "Resources" / "licenses" / "ffmpeg" / "README.txt").is_file())
         with open(c / "Info.plist", "rb") as f:
             p = plistlib.load(f)
-        self.assertEqual((p["CFBundleExecutable"], p["CFBundleShortVersionString"]), ("Soulbrandt", "0.2.1"))
+        self.assertEqual((p["CFBundleExecutable"], p["CFBundleShortVersionString"]), ("TestGame", "0.2.1"))
         self.assertEqual(p["LSMinimumSystemVersion"], "13.3")
         self.assertEqual(p["LSArchitecturePriority"], ["arm64"])
         third = (c / "Resources" / "THIRD-PARTY.txt").read_text(encoding="utf-8")
         self.assertIn("MoltenVK 1.4.2", third)
         self.assertIn("FFmpeg", third)
         if os.name != "nt":
-            self.assertTrue(os.access(c / "MacOS" / "Soulbrandt", os.X_OK))
+            self.assertTrue(os.access(c / "MacOS" / "TestGame", os.X_OK))
         with self.assertRaises(n.Error):
             self.build()        # (never over an app that is there)
 
@@ -132,8 +132,8 @@ class NativeAppTest(unittest.TestCase):
         with self.assertRaises(n.Error):
             self.build(out=self.d / "o2", pins=dict(self.pins, moltenvk=bad))
         x86_program = self.d / "x86.tar.xz"
-        make_tar(x86_program, {f"{TOP}/Soulbrandt": X86,
-                               f"{TOP}/setup/release-info.txt": b"version=0.2.1\nexe=Soulbrandt\n"})
+        make_tar(x86_program, {f"{TOP}/TestGame": X86,
+                               f"{TOP}/setup/release-info.txt": b"version=0.2.1\nexe=TestGame\n"})
         with self.assertRaises(n.Error):
             self.build(out=self.d / "o3", program_tar=x86_program)
 

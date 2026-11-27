@@ -448,7 +448,7 @@ jobs:
           kill $pid 2>/dev/null || true
           sleep 2
           kill -9 $pid 2>/dev/null || true
-          cp -R "$DES_USER_FOLDERS/Soulbrandt/crashes" app-crashes 2>/dev/null || true
+          cp -R "$DES_USER_FOLDERS/Soulbrandt/crashes" app-crashes 2>/dev/null || true   # (the fixed folder name)
           tail -n 200 app.log
           [ "$alive" = 1 ] || { echo "::error::the app's program ended before the screenshot"; exit 1; }
           grep -q "the app's own Vulkan loader" app.log || { echo "::error::it did not take the app's loader"; exit 1; }

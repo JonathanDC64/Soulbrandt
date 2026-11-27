@@ -45,7 +45,7 @@ def tearDownModule():
 def release(tag, assets=(PLAYER, "sums", "sig"), draft=False, pre=False, body="", base="http://127.0.0.1:1"):
     v = tag.lstrip("v")
     names = {"windows": f"DemonsSoulsRecomp-{v}-windows.zip", "sums": "SHA256SUMS", "sig": "SHA256SUMS.sig",
-             "linux": f"DemonsSoulsRecomp-{v}-linux.tar.xz"}
+             "linux": f"DemonsSoulsRecomp-{v}-linux.tar.xz", "macos": f"DemonsSoulsRecomp-{v}-macos.tar.xz"}
     return {"tag_name": tag, "draft": draft, "prerelease": pre, "body": body,
             "html_url": f"https://github.com/{update.REPO}/releases/tag/{tag}", "published_at": "2026-10-25T10:00:00Z",
             "assets": [{"name": names[a], "size": 0, "browser_download_url": f"{base}/{names[a]}"} for a in assets]}
@@ -99,13 +99,13 @@ class FeedTest(unittest.TestCase):
         self.assertEqual(update.system(), PLAYER)
 
     def test_a_mac_app_is_not_swapped(self):
-        self.assertTrue(update.in_mac_app("/Applications/Soulbrandt.app/Contents/MacOS"))
-        self.assertTrue(update.in_mac_app("/Users/a/Soulbrandt.app/Contents"))
-        for folder in ("/Users/a/Games/Soulbrandt", "/Users/a/Soulbrandt.app", "/Users/a/x.app.d/Contents/MacOS",
+        self.assertTrue(update.in_mac_app("/Applications/Game.app/Contents/MacOS"))
+        self.assertTrue(update.in_mac_app("/Users/a/Game.app/Contents"))
+        for folder in ("/Users/a/Games/Game", "/Users/a/Game.app", "/Users/a/x.app.d/Contents/MacOS",
                        "C:/Games/DemonsSoulsRecomp-0.2.1"):
             self.assertFalse(update.in_mac_app(folder), folder)
         with self.assertRaises(update.UpdateFailed) as e:
-            update._apply(Path("/Applications/Soulbrandt.app/Contents/MacOS"), Path("/nowhere"), "0.2.0", "0.2.1",
+            update._apply(Path("/Applications/Game.app/Contents/MacOS"), Path("/nowhere"), "0.2.0", "0.2.1",
                           None, 1)
         self.assertIn("not updated in place", e.exception.message)
 
