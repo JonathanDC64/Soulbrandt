@@ -1,0 +1,31 @@
+{
+ "about": "des_game.dylib's build, as CMake does it on a Mac with DES_SPLIT=ON DES_SPLIT_FREESTANDING=ON (docs/178 2.6). Written by scripts/game_build_desc.py; read by tools/setup/des_setup/compile.py.",
+ "version": 1,
+ "system": "macos",
+ "abi": 5,
+ "objects": [],
+ "libs": [],
+ "link": [],
+ "dll": "des_game.dylib",
+ "headers": [
+  "{src}/ps3recomp/include/ps3emu/game_freestanding.h",
+  "{src}/ps3recomp/include/ps3emu/game_libc/TargetConditionals.h",
+  "{src}/ps3recomp/include/ps3emu/game_libc/fenv.h",
+  "{src}/ps3recomp/include/ps3emu/game_libc/libkern/OSCacheControl.h",
+  "{src}/ps3recomp/include/ps3emu/game_libc/math.h",
+  "{src}/ps3recomp/include/ps3emu/game_libc/stdio.h",
+  "{src}/ps3recomp/include/ps3emu/game_libc/stdlib.h",
+  "{src}/ps3recomp/include/ps3emu/game_libc/string.h",
+  "{src}/ps3recomp/include/ps3emu/game_module.h",
+  "{src}/ps3recomp/include/ps3emu/ppu_lift.h",
+  "{src}/ps3recomp/include/ps3emu/ps3_knob.h",
+  "{src}/ps3recomp/include/ps3emu/ps3_sse.h",
+  "{src}/ps3recomp/include/ps3emu/ps3types.h",
+  "{src}/ps3recomp/runtime/prx/prx_loader.h",
+  "{src}/ps3recomp/runtime/spu/spu_bi_switch.h",
+  "{src}/ps3recomp/runtime/spu/spu_context.h",
+  "{src}/ps3recomp/runtime/spu/spu_helpers.h",
+  "{src}/ps3recomp/runtime/spu/spu_workload.h",
+  "{src}/ps3recomp/third_party/sse2neon/sse2neon.h"
+ ]
+}
