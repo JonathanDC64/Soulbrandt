@@ -1,4 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
+# The oldest macOS the Mac build runs on (docs/178): 13, Ventura, which every Apple silicon Mac can update to. Read
+# before project(); ignored off a Mac. The pinned ps3recomp's runtime is configured with the same.
+set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "The oldest macOS the Mac build runs on")
 project(des_boot LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 17)
