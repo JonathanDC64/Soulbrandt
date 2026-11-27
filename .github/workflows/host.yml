@@ -357,6 +357,14 @@ jobs:
           cmake --build build/host --target setup_folder_check
           build/host/ui/setup_folder_check.exe
 
+      # setup_rpcs3.cpp on its own (port/ui/tests/setup_rpcs3_check.cpp): the player's RPCS3 in a folder the player
+      # picks, its game list and a portable install, in made-up folders. Linux and a Mac (mac-native.yml) run it too.
+      - name: RPCS3 in a picked folder
+        shell: bash
+        run: |
+          cmake --build build/host --target setup_rpcs3_check
+          build/host/ui/setup_rpcs3_check.exe
+
       # Settings' rows on their own (port/ui/tests/settings_catalog_check.cpp): every row's setting exists, its choices
       # and numbers are sound, its help is written as the settings window expects. Linux runs it below.
       - name: Settings' rows
@@ -936,6 +944,12 @@ jobs:
           grep -qx "ok    SETUP_CHECK_FAT_FOLDER" "$RUNNER_TEMP/folder_check.txt"
           grep -qx "ok    SETUP_CHECK_NOEXEC_FOLDER" "$RUNNER_TEMP/folder_check.txt"
           sudo umount "$RUNNER_TEMP/fat" "$RUNNER_TEMP/noexec"
+
+      # setup_rpcs3.cpp on its own, as on Windows above: rpcs3 in a folder, its settings in ~/.config/rpcs3.
+      - name: RPCS3 in a picked folder
+        run: |
+          cmake --build build/host --target setup_rpcs3_check
+          build/host/ui/setup_rpcs3_check
 
       # Settings' rows, as on Windows above: Linux's choices (Display mode has no exclusive fullscreen).
       - name: Settings' rows

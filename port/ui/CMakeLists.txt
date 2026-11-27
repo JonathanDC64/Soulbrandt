@@ -248,6 +248,20 @@ if(MSVC)
   target_compile_options(setup_folder_check PRIVATE /EHsc /W3 /wd4100)
 endif()
 
+# setup_rpcs3.cpp on its own (tests/setup_rpcs3_check.cpp): the player's RPCS3 as the card finds it in a folder the
+# player picks, in each platform's layout (RPCS3.app on a Mac), with its game list and a portable install, in made-up
+# folders under the system's temporary folder. CI runs it on all three (host.yml, mac-native.yml). Built on demand:
+#   cmake --build <build> --target setup_rpcs3_check, then setup_rpcs3_check
+add_executable(setup_rpcs3_check EXCLUDE_FROM_ALL tests/setup_rpcs3_check.cpp src/setup_rpcs3.cpp)
+target_include_directories(setup_rpcs3_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_definitions(setup_rpcs3_check PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
+if(MSVC)
+  target_compile_options(setup_rpcs3_check PRIVATE /EHsc /W3 /wd4100)
+endif()
+if(WIN32)
+  target_link_libraries(setup_rpcs3_check PRIVATE shell32 ole32 uuid advapi32)
+endif()
+
 # The menus' keys on their own (tests/input_map_check.cpp): a pad's buttons as keys with the menu chord's rule, each
 # key's command in the F1 menu, what is held, the prompts' buttons for each device, and Change Buttons' Gamepad rows as
 # PAD_MAP's text. RmlUi's key names only (a header). The same on every platform; CI runs it on both (host.yml). Built

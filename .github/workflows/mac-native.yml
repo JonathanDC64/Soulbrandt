@@ -243,6 +243,13 @@ jobs:
       - name: The program starts
         run: PS3_NO_USER_INPUT=1 build/host/des_host --program-check
 
+      # setup_rpcs3.cpp on its own (port/ui/tests/setup_rpcs3_check.cpp): RPCS3.app in a folder the player picks (or
+      # the app itself), its settings in ~/Library/Application Support/rpcs3, portable/ beside the app, its game list.
+      - name: RPCS3's app in a picked folder
+        run: |
+          cmake --build build/host --target setup_rpcs3_check
+          build/host/ui/setup_rpcs3_check
+
       # The program folder: des_host, the FFmpeg libraries beside it and their licence files (package.py takes the
       # folder as host.yml's host-linux one).
       - name: The program folder
