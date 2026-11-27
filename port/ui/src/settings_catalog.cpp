@@ -458,6 +458,11 @@ std::vector<TabDesc> make_tabs() {
             toggle("Lock on with no target turns the camera", "DES_CAM_RESET",
                 "On, as in the original: lock on (R3) with nothing to lock on to turns the camera behind you. Off: "
                 "the camera stays where it is."),
+            toggle("Free camera (offline)", "DES_FREECAM",
+                "The developers' camera. Hold Cross and press L3: the camera flies with time stopped (hold Square to "
+                "step time), then with time running, then stays where it is while you play, then is off. Left stick "
+                "moves, right stick turns, R2 goes up. Online play and co-op are off while this is on. Restart to "
+                "apply."),
         }},
         {"Mouse", {
             toggle("Mouse look", "DES_MOUSE_LOOK",

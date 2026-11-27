@@ -64,11 +64,13 @@ DES_REGION_ADDR(0x00123164, 0x0012412C)  /* hook des_cam_rate */
 DES_REGION_ADDR(0x00124188, 0x00125150)  /* hook des_cam_rate */
 DES_REGION_ADDR(0x0012554C, 0x00126514)  /* hook des_cam_rate */
 DES_REGION_ADDR(0x001256D4, 0x0012669C)  /* hook des_cam_rate */
+DES_REGION_ADDR(0x0012B2F8, 0x0012C2C0)  /* call: the debug camera's moves (DbgCamControls) */
 DES_REGION_ADDR(0x0012EE08, 0x0012FDD0)  /* call, wrapped (des_aspect) */
 DES_REGION_ADDR(0x0012F074, 0x0013003C)  /* hook des_cam_ctor */
 DES_REGION_ADDR(0x0012F0DC, 0x001300A4)  /* hook des_cam_ctor */
 DES_REGION_ADDR(0x0012F19C, 0x00130164)  /* hook des_frustum_tall */
 DES_REGION_ADDR(0x001381E8, 0x001391B0)  /* call */
+DES_REGION_ADDR(0x0014422C, 0x001451F4)  /* hook des_dbgmenu_hook: the frame step has the pad device (free camera) */
 DES_REGION_ADDR(0x0015AE10, 0x0015BDD8)  /* call kLoadSouls */
 DES_REGION_ADDR(0x0015C878, 0x0015D840)  /* call: the debug title step's constructor */
 DES_REGION_ADDR(0x00162D0C, 0x00163BDC)  /* data kGameParamCases */
