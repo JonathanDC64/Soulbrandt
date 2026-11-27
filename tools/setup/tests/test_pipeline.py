@@ -824,7 +824,7 @@ class ChosenFolderTest(unittest.TestCase):
         self.choose(f"# a note\n{self.root / 'D' / 'build'}\n")
         self.assertEqual(pipeline.chosen_folder(self.usual), self.root / "D" / "build")
         self.choose("../../build\n")                                  # (a portable install's: from the usual folder)
-        self.assertEqual(pipeline.chosen_folder(self.usual), self.root / "build")
+        self.assertEqual(pipeline.chosen_folder(self.usual), self.usual.parent.parent / "build")   # (a Mac's is deeper)
         (self.usual / pipeline.CHOICE).write_bytes(b"\xef\xbb\xbf# saved by Notepad\r\n\r\n  " +
                                                    str(self.root / "x").encode("utf-8") + b"  \r\n")
         self.assertEqual(pipeline.chosen_folder(self.usual), self.root / "x")
