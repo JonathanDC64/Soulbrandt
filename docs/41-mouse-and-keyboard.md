@@ -233,6 +233,44 @@ Prior art (docs/31, item 9): the AC4 and ACFA ports turn raw mouse counts into c
 
 Knobs (proposed; default off, per the original-behaviour rule): `DES_MOUSE_LOOK=0|1`, `DES_MOUSE_SENS` (degrees per count, for example 0.09), `DES_MOUSE_INVERT_Y=0|1`. Expose them in the Controls tab.
 
+### 2.5 Built: three camera options (2026-11-27, issue #736)
+
+Settings > Controls > Camera, all on by default, as in the original game. The first two use mouse look's three hooks (section 2.1 and the corrections at the top). The third has a hook of its own on the same handler (`des_mouse_look`), so the game is lifted again once.
+
+- **Camera follows your movement** (`DES_CAM_FOLLOW`). The update rebuilds yaw from where the eye is every frame, and the eye chases the character with a lag, so running sideways swings the view round behind the character. Off:
+  - the entry (0x00119670) keeps the yaw the last update ended with;
+  - the stick test (0x0011C910) sees a move, as for a mouse turn, so the update takes the stick path;
+  - the turn hook (0x0011C758) puts the kept yaw back before the stick and the mouse add their turns.
+
+  Only in the free camera: not locked on (+0x240), not in a set-angle (+0x12C), and not in the R3 reset (+0x242, +0x243). Those turns stay the game's. Pitch is left to the game.
+- **Walls turn the camera** (`DES_CAM_WALL`). Moving with the camera against a wall or past a corner, the update's collision block (after its casts, 0x0011B5B4) adds 2 degrees a frame to a turn kept at +0x25C. The same update reads it back at 0x0011C2FC and turns the camera by it, then eases it out over the next frames. Off: the hook at 0x0011C2FC (`lfs f12, 0x25C(r31)`) reads it as 0, which skips the turn, and keeps 0. Only the turn goes: the camera still moves in when a wall is behind it, so it never sees through one. With the first option off, the kept yaw already leaves this turn out.
+  - Found by measurement: a dump of the camera each update showed +0x25C non-zero only next to walls, with the yaw jumping when it was. Clearing it at the entry, or at the last hook of the update (0x0011B830), was not enough, because the update sets it and uses it between two existing hooks.
+  - Other discs: 0x0011C2FC is 0x0011D2C4 on the European disc, 0x0011A35C on the Japanese and 0x0011A3D4 on the Asian (1.04 updates), each a 100% instruction match (tools/region/region_table.py find).
+- **Lock on with no target turns the camera** (`DES_CAM_RESET`). R3 with nothing to lock on to reaches the camera as +0x242 = 1, set by the camera manager just before the update, which turns it into an auto-turn (docs/42 2.1). Off: the entry clears it.
+- `DES_CAM_LOG=1` prints the yaw every 15 updates, marked "(kept)" when the first option holds it, and each reset or wall turn dropped.
+
+Test (2026-11-27), from the pinned regression save (the Tutorial's first tunnel). The left stick was held full left for 3 s, then R3 pressed with nothing near:
+
+| | Both on (the original) | Both off |
+|---|---|---|
+| yaw before | -1.134 | -1.134 |
+| after 3 s to the left | -1.797 (38° round, the view toward the left wall) | -1.134 (still down the tunnel) |
+| after R3 | 3.014 (behind the character) | -1.134 (the reset dropped) |
+
+With the first option off, the right stick still turns the camera at the game's own rate: 1 s at full tilt took the yaw from -1.134 to 2.711, and a strafe after that kept 2.711.
+
+Walls (2026-11-27), the same save at 30 fps: 2 s forward and left out of the tunnel along its left wall, 3 s forward along the wall, then 2 s to the left into it. The same lifted game both times, with only `DES_CAM_WALL` changed:
+
+| | Walls turn the camera (the original) | Off |
+|---|---|---|
+| largest turn in one frame | 0.153 rad (8.8°), at the tunnel's mouth | 0.009 rad (0.5°) |
+| frames turning more than 0.03 rad | 12 | 0 |
+| turning in all over the 7 s | 2.18 rad | 0.40 rad (the follow alone) |
+| along the wall | the yaw shakes by 0.02 rad every other frame | steady |
+| camera distance where a wall comes behind it | moves in | moves in (from 3.95 to 3.61) |
+
+With the option on, the yaw was the same as on a game lifted without the new hook, frame for frame.
+
 ## 3. Mouse buttons, wheel and keyboard movement
 
 ### 3.1 Proposed default layout (inferred)

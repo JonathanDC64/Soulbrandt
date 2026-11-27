@@ -61,6 +61,20 @@ PadKeys pad_keys(const PadState& pad, int chord, PadKeysState& state) noexcept;
 // A pad's buttons as the game reads them: game button g (a CELL_PAD_CTRL_* bit) is down when pad button from[g] is;
 // -1, nothing presses it (the Kick's button, with the Kick on). from[g] = g for every g gives the buttons back.
 unsigned through_map(unsigned buttons, const std::array<signed char, 16>& from) noexcept;
+// The game's buttons their 2nd pad buttons press (Change Buttons' 2nd rows, a back button or paddle, #747): game button
+// g is down when any of added[g] is held in `host`, the pad's buttons then its extra ones from bit 16.
+unsigned through_added(unsigned host, const std::array<unsigned, 16>& added) noexcept;
+
+// Whether the menu chord's game buttons (chord: 0 = L3 + R3, 1 = Select + Start) each have a pad button every pad has,
+// one of the 16: its own (from[g], -1 for none) or a 2nd (added[g], as through_added has them). Change Buttons can leave
+// one with none (a box cleared, #747); then the pad's own buttons make the chord (input.hpp's chord_on_own_buttons).
+bool chord_has_buttons(const std::array<signed char, 16>& from, const std::array<unsigned, 16>& added,
+                       int chord) noexcept;
+// Whether the menus can be worked with the game's buttons (Same buttons as the game): Cross (Confirm), Circle (Back),
+// L1 or L2 and R1 or R2 (the tabs) each have one, as in chord_has_buttons. Otherwise the menus keep the pad's own
+// buttons (input.hpp's menus_follow), so a player who took Cross's button away can still put it back. (The chord isn't
+// one of them: Start or Circle closes the menus, and a chord button with none falls back on its own.)
+bool follow_works(const std::array<signed char, 16>& from, const std::array<unsigned, 16>& added) noexcept;
 
 // Whether a held key repeats (the arrows and the tabs).
 bool pad_key_repeats(int key) noexcept;

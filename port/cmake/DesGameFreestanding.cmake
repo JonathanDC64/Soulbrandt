@@ -33,26 +33,51 @@
 #   Link     the clang driver with -nostdlib and -fuse-ld=lld (it finds ld.lld beside itself): no C library,
 #            start files or libgcc. -z defs: a name nothing defines fails the link, not the dlopen. -z now: every
 #            relocation at the load.
+#
+# On a Mac (docs/178 2.6) the module is des_game.dylib, built as on Linux and linked with ld64.lld, so the
+# player's Mac needs no Xcode or SDK either:
+#   Compile  as on Linux, less -ftls-model: Mach-O has the one model (each access calls through the variable's
+#            descriptor, as in a single exe there).
+#   Link     the clang driver with -nostdlib and -fuse-ld=lld (ld64.lld), and ps3recomp's
+#            game_libc_system.tbd: a stub of libSystem with dyld's __tlv_bootstrap, the module's one import
+#            (Mach-O thread-locals name it). A name nothing defines fails the link, as -z defs does; dyld binds
+#            everything at the load.
 
 if(NOT WIN32)
     if(NOT DES_PPU_OPT OR NOT DES_SPU_OPT)
         message(FATAL_ERROR "DES_SPLIT_FREESTANDING needs DES_PPU_OPT=ON and DES_SPU_OPT=ON (SSE4.1 rounding)")
     endif()
     set(DES_GAME_LIBC "${PS3RECOMP_DIR}/include/ps3emu/game_libc")
-    foreach(_f "${DES_GAME_LIBC}/stdio.h" "${PS3RECOMP_DIR}/include/ps3emu/game_freestanding.h"
-               "${PS3RECOMP_DIR}/runtime/ppu/game_libc.c")
+    set(_des_fs_need "${DES_GAME_LIBC}/stdio.h" "${PS3RECOMP_DIR}/include/ps3emu/game_freestanding.h"
+                     "${PS3RECOMP_DIR}/runtime/ppu/game_libc.c")
+    if(APPLE)
+        set(DES_GAME_SYSTEM_TBD "${PS3RECOMP_DIR}/runtime/ppu/game_libc_system.tbd")
+        list(APPEND _des_fs_need "${DES_GAME_SYSTEM_TBD}")
+    endif()
+    foreach(_f IN LISTS _des_fs_need)
         if(NOT EXISTS "${_f}")
-            message(FATAL_ERROR "DES_SPLIT_FREESTANDING: ${_f} is missing (ps3recomp too old for docs/84)")
+            message(FATAL_ERROR "DES_SPLIT_FREESTANDING: ${_f} is missing (ps3recomp too old for docs/84, or for "
+                                "docs/178 on a Mac)")
         endif()
     endforeach()
     target_sources(des_game PRIVATE "${PS3RECOMP_DIR}/runtime/ppu/game_libc.c")
     target_include_directories(des_game BEFORE PRIVATE "${DES_GAME_LIBC}")
     target_compile_definitions(des_game PRIVATE PS3_GAME_FREESTANDING)
-    target_compile_options(des_game PRIVATE -nostdlibinc -fvisibility=hidden -ftls-model=initial-exec
+    set(_des_fs_tls -ftls-model=initial-exec)   # (none on a Mac: see the top)
+    if(APPLE)
+        set(_des_fs_tls "")
+    endif()
+    target_compile_options(des_game PRIVATE -nostdlibinc -fvisibility=hidden ${_des_fs_tls}
         -fno-stack-protector $<$<COMPILE_LANGUAGE:CXX>:-fno-rtti> $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions>
         "-include${PS3RECOMP_DIR}/include/ps3emu/game_freestanding.h")
-    target_link_options(des_game PRIVATE -nostdlib -fuse-ld=lld -Wl,-z,defs -Wl,-z,now -Wl,--build-id=sha1)
-    message(STATUS "des_boot: des_game.so freestanding: no C library; C library calls go to the host (docs/87)")
+    if(APPLE)
+        target_link_options(des_game PRIVATE -nostdlib -fuse-ld=lld "${DES_GAME_SYSTEM_TBD}")
+        message(STATUS "des_boot: des_game.dylib freestanding: no C library or SDK; C library calls go to the host "
+                       "(docs/178 2.6)")
+    else()
+        target_link_options(des_game PRIVATE -nostdlib -fuse-ld=lld -Wl,-z,defs -Wl,-z,now -Wl,--build-id=sha1)
+        message(STATUS "des_boot: des_game.so freestanding: no C library; C library calls go to the host (docs/87)")
+    endif()
     return()
 endif()
 

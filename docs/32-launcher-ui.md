@@ -110,7 +110,7 @@ the file keeps the value chosen.
 |---|---|---|---|
 | Start maximized (Display) | `DES_MAXIMIZED` (sets `RSX_MAXIMIZED`) | 1 / 0 | next start (the window is made once); not in test runs unless given |
 | Frame rate (Display) | `DES_FPS` | "" = 30 fps original, 30, 60, 120, 144, 165, 240 | at once (read at each flip request) |
-| Cutscene frame rate (Display) | `DES_CUTFPS` | 0 = 30 fps (original), 1 = the frame rate, the camera blended between its keys | at once (read at each flip request) |
+| Cutscene frame rate (Display) | `DES_CUTFPS` | 1 (default) = the frame rate, the camera blended between its keys; 0 = 30 fps (original) | at once (read at each flip request) |
 | V-sync (Display) | `DES_VSYNC` (sets `RSX_VSYNC`) | 1 / 0 | at once (live knob) |
 | Boot logos (Game) | `DES_SKIP_INTRO` | 0 = show, 1 = skip, 2 = last logo only | at once (read at each logo update; the logos only play at start) |
 | Skip opening movie (Game) | `DES_SKIP_INTRO_MOVIE` (sets `PS3_SAIL_SKIP_FIRST`: the advert's first play only) | 0 / 1 | from the next movie |

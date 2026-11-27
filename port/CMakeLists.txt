@@ -1,4 +1,9 @@
 cmake_minimum_required(VERSION 3.20)
+# The oldest macOS the Mac build runs on (docs/178): 13, Ventura, which every Apple silicon Mac can update to. 13.3,
+# not 13.0: the menus' std::format of a float needs the system C++ library's to_chars for floats, which 13.3 brought
+# (a Mac on 13.0 to 13.2 gets 13.3 or later as an update). Read before project(); ignored off a Mac. The pinned
+# ps3recomp's runtime is configured with the same.
+set(CMAKE_OSX_DEPLOYMENT_TARGET "13.3" CACHE STRING "The oldest macOS the Mac build runs on")
 project(des_boot LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 17)
@@ -781,7 +786,10 @@ if(DES_SPLIT)
         if(DES_DEBUG_INFO AND WIN32)
             target_link_options(des_game PRIVATE /DEBUG /OPT:REF /OPT:ICF)
         endif()
-        if(NOT WIN32)   # des_game.so, as the host looks for it (CMake would name it libdes_game.so)
+        # des_game.so (des_game.dylib), as the host looks for it (CMake would name it libdes_game.so)
+        if(APPLE)
+            set_target_properties(des_game PROPERTIES PREFIX "" SUFFIX ".dylib")
+        elseif(NOT WIN32)
             set_target_properties(des_game PROPERTIES PREFIX "" SUFFIX ".so")
         endif()
         if(DES_HOST_STATIC_CRT)

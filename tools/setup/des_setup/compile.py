@@ -4,7 +4,7 @@
                the SPU workload table without its static constructor  -> build/gen
   cc:<name>    one per object, in parallel                            -> build/obj/<name>.obj (.o)
   lib:<name>   the import libraries the link reads (lld-link /lib)    -> build/gen/<name>.lib
-  link         the linker                                             -> game/des_game.dll (.so)
+  link         the linker                                             -> game/des_game.dll (.so, .dylib)
 
 The commands are CMake's own for des_game (DES_SPLIT=ON DES_SPLIT_FREESTANDING=ON:
 no Visual C++ headers, Windows SDK or C runtime, docs/84), read from
@@ -18,6 +18,10 @@ and a link by the clang driver itself (-fuse-ld=lld), so the compiler and the
 linker are the same program and there are no import libraries. The description's
 "system" says which, and so how an object is named (-o, -MF) and what it is
 called (.o).
+
+On a Mac (docs/178 2.6) the module is des_game.dylib and the description is
+game_build_macos.json, "system": "macos", written the same way from a Mac's
+build: as on Linux, with ld64.lld, and with no SDK.
 
 The lifted libsre (the objects in LIBSRE_OBJECTS, and LIBSRE_FLAG on the
 port's part of the module) goes in only when the lift made it, which it does
@@ -52,6 +56,7 @@ import os
 import re
 import signal
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -59,7 +64,9 @@ from pathlib import Path
 from . import fetch, journal
 
 SRC = Path(__file__).resolve().parents[3]          # the source tree: tools/setup/des_setup/compile.py
-DESC = Path(__file__).resolve().parent / ("game_build.json" if os.name == "nt" else "game_build_linux.json")
+DESC = Path(__file__).resolve().parent / ("game_build.json" if os.name == "nt" else
+                                         "game_build_macos.json" if sys.platform == "darwin" else
+                                         "game_build_linux.json")
 GB = 1 << 30
 KEEP = 2 * GB                                      # left free for the rest of the PC (docs/52 4.4)
 # A job's peak memory before it has been measured, by its kind: a lifted PPU chunk up to 2.4 GB of commit, an SPU
@@ -84,7 +91,7 @@ SHORT_AFTER = 5.0                                  # seconds held back by memory
 OOM = re.compile(r"out of memory|not enough memory|bad_alloc|std::bad_alloc", re.I)
 OOM_CODES = {0xC0000017, 0xC000012D}               # STATUS_NO_MEMORY, STATUS_COMMITMENT_LIMIT
 # toolchain.json's compiler (docs/86, docs/87)
-LLVM_ENTRY = "llvm-win64" if os.name == "nt" else "llvm-linux-x64"
+LLVM_ENTRY = "llvm-win64" if os.name == "nt" else "llvm-macos-arm64" if sys.platform == "darwin" else "llvm-linux-x64"
 
 
 def sha_file(p) -> str:
@@ -126,9 +133,24 @@ def parse_depfile(text: str) -> list:
     return deps
 
 
+def _vm_stat_free(text: str) -> int:
+    """A Mac's memory free now, from vm_stat's output: the free, inactive and speculative pages, which the system
+    hands out before it compresses or pages anything (the menus' setup_pc.cpp counts the first two the same way).
+    vm_stat's first line gives the page size."""
+    m = re.search(r"page size of (\d+) bytes", text)
+    if not m:
+        return 0
+    pages = 0
+    for key in ("Pages free", "Pages inactive", "Pages speculative"):
+        n = re.search(re.escape(key) + r":\s+(\d+)", text)
+        pages += int(n.group(1)) if n else 0
+    return pages * int(m.group(1))
+
+
 def free_memory() -> int:
     """The memory free now, in bytes: the physical memory available, or on Windows the commit the system can still
-    give when that is less (a small page file); 0 when unknown."""
+    give when that is less (a small page file); on a Mac what vm_stat counts free (_vm_stat_free); 0 when
+    unknown."""
     try:
         if os.name == "nt":
             class MS(ctypes.Structure):
@@ -140,12 +162,14 @@ def free_memory() -> int:
             ms.len = ctypes.sizeof(MS)
             if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(ms)):
                 return int(min(ms.avail, ms.apage))
+        elif sys.platform == "darwin":
+            return _vm_stat_free(subprocess.run(["vm_stat"], capture_output=True, text=True, timeout=10).stdout)
         else:
             with open("/proc/meminfo") as f:
                 for line in f:
                     if line.startswith("MemAvailable:"):
                         return int(line.split()[1]) * 1024
-    except (OSError, AttributeError, ValueError):
+    except (OSError, AttributeError, ValueError, subprocess.SubprocessError):
         pass
     return 0
 
@@ -161,7 +185,8 @@ if os.name == "nt":
 def proc_memory(p) -> tuple:
     """(now, peak) memory in bytes of a child process (subprocess.Popen), running or ended but not yet reaped of its
     handle: its commit on Windows, what the system has to back (it keeps the peak after the process ends); its
-    resident set elsewhere, only while it runs. (0, 0) when it cannot be told."""
+    resident set on Linux, only while it runs. (0, 0) when it cannot be told, and on a Mac (no /proc): there the
+    kinds' figures (NEED) plan the memory alone."""
     try:
         if os.name == "nt":
             c = _Counters()
@@ -265,7 +290,7 @@ class Compile:
         self.cc = [str(cc)] if isinstance(cc, (str, Path)) else [str(c) for c in cc]
         self.ld = [str(ld)] if isinstance(ld, (str, Path)) else [str(c) for c in ld]
         self.desc = json.loads(Path(desc).read_text(encoding="utf-8"))
-        self.elf = self.desc.get("system", "windows") == "linux"   # clang's spellings and .o (the docstring)
+        self.elf = self.desc.get("system", "windows") in ("linux", "macos")   # clang's spellings and .o (the docstring)
         self.objext = ".o" if self.elf else ".obj"
         self.work = self.data / "work"
         self.gen = self.data / "build" / "gen"

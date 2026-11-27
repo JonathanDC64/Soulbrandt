@@ -1,13 +1,14 @@
-# Makes setup's compiler download (docs/86, docs/87) from LLVM's own Windows or Linux archive and attaches it to a
-# draft release. Started by hand only: Actions > LLVM archive > Run workflow. It never publishes anything. The
+# Makes setup's compiler download (docs/86, docs/87, docs/178) from LLVM's own Windows, Linux or macOS archive and
+# attaches it to a draft release. Started by hand only: Actions > LLVM archive > Run workflow. It never publishes anything. The
 # release must already exist as a draft, and it stays a draft until the maintainer publishes it.
 #
-# On the runner (Windows for target windows, the ubuntu-22.04 floor for linux), the job:
+# On the runner (Windows for target windows, the ubuntu-22.04 floor for linux, Apple silicon for macos), the job:
 #   1. downloads LLVM's archive and checks it three ways: its size and SHA-256 (written below), LLVM's build
 #      attestation (gh attestation verify) and the release manager's GPG signature (pinned key fingerprint);
 #   2. keeps the compiler, the linker and clang's headers, adds the licence files, and packs them:
 #      windows: bin/clang.exe and bin/lld-link.exe in a zip (llvm-win64);
 #      linux: bin/clang and bin/ld.lld in a tar.xz, which keeps the execute bit (llvm-linux-x64);
+#      macos: bin/clang and bin/ld64.lld in a tar.xz (llvm-macos-arm64);
 #   3. unpacks the download with setup's own fetch.py, then compiles and links a tiny freestanding library with
 #      only those files (no SDK, no other compiler, no C library) and calls it;
 #   4. uploads the download and its JSON (size, SHA-256 and the toolchain.json entry) to the draft release.
@@ -20,11 +21,11 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: 'Which download: windows (llvm-win64, a zip) or linux (llvm-linux-x64, a tar.xz)'
+        description: 'Which download: windows (llvm-win64, a zip), linux (llvm-linux-x64) or macos (llvm-macos-arm64), a tar.xz each'
         required: true
         default: windows
         type: choice
-        options: [windows, linux]
+        options: [windows, linux, macos]
       release_tag:
         description: 'The draft release to attach to, by its tag name'
         required: true
@@ -56,7 +57,7 @@ concurrency:
 env:
   LLVM_VERSION: 22.1.8
   # From the GitHub API's asset list for llvmorg-22.1.8 (its "digest" field). The attestation's subject has the
-  # same SHA-256. Windows read 2026-10-22, Linux 2026-10-24.
+  # same SHA-256. Windows read 2026-10-22, Linux 2026-10-24, macOS 2026-11-26.
   WINDOWS_ARCHIVE: clang+llvm-22.1.8-x86_64-pc-windows-msvc.tar.xz
   WINDOWS_URL: https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.8/clang%2Bllvm-22.1.8-x86_64-pc-windows-msvc.tar.xz
   WINDOWS_SIZE: '862053924'
@@ -65,6 +66,10 @@ env:
   LINUX_URL: https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.8/LLVM-22.1.8-Linux-X64.tar.xz
   LINUX_SIZE: '1938859476'
   LINUX_SHA256: df0e1ecf16caf3489a272a5eea4eec9b0d82878f6477fa309504f918a0006384
+  MACOS_ARCHIVE: LLVM-22.1.8-macOS-ARM64.tar.xz
+  MACOS_URL: https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.8/LLVM-22.1.8-macOS-ARM64.tar.xz
+  MACOS_SIZE: '1479903744'
+  MACOS_SHA256: f260f4f7c0d430828a81ae8a3826a1d63fc0963ec2459489308cc23b1f7eab4f
   # The attestation bundle (Sigstore, SLSA provenance v1) and the GPG signature beside each, pinned too.
   WINDOWS_BUNDLE_SIZE: '11207'
   WINDOWS_BUNDLE_SHA256: cf5e958a316021d1c1f66b9a9ac10367aa471adee01b3d6a3f8f27af0400d4be
@@ -74,6 +79,10 @@ env:
   LINUX_BUNDLE_SHA256: 715503628897858c7740563f83930dab29494b4946e0213dce9191cad6401aed
   LINUX_SIG_SIZE: '119'
   LINUX_SIG_SHA256: 957277dbcae172168934e1398b7d8af561d6b86dfb38e9f96853c53483804826
+  MACOS_BUNDLE_SIZE: '10925'
+  MACOS_BUNDLE_SHA256: 9fe592796c37997c71930b352b9923347980dc7b7ded8128f750b5d576920300
+  MACOS_SIG_SIZE: '119'
+  MACOS_SIG_SHA256: 97037f6ff96753758f63bc35c7a53f754e488a4bab4a648bfdf842582ea02e69
   # Who must have made it: LLVM's release workflow at the release tag ...
   LLVM_SIGNER_WORKFLOW: llvm/llvm-project/.github/workflows/release-binaries.yml
   LLVM_SOURCE_REF: refs/tags/llvmorg-22.1.8
@@ -107,9 +116,9 @@ jobs:
   pack:
     name: Pack and test the compiler download (${{ inputs.target }})
     # Windows, because the smoke test runs clang.exe and lld-link.exe; Linux on ubuntu-22.04, the oldest glibc the
-    # Linux build supports (docs/87), so the smoke test shows the tools run there. Fixed images, so an image update
-    # does not change the run.
-    runs-on: ${{ inputs.target == 'linux' && 'ubuntu-22.04' || 'windows-2025' }}
+    # Linux build supports (docs/87), so the smoke test shows the tools run there; macOS on Apple silicon, so the
+    # smoke test loads an arm64 library. Fixed images, so an image update does not change the run.
+    runs-on: ${{ inputs.target == 'linux' && 'ubuntu-22.04' || inputs.target == 'macos' && 'macos-15' || 'windows-2025' }}
     timeout-minutes: 60
     permissions:
       contents: write   # to upload to the draft release
@@ -136,7 +145,8 @@ jobs:
           case "$TARGET" in
             windows) p=WINDOWS; name=llvm-win64; ext=zip ;;
             linux) p=LINUX; name=llvm-linux-x64; ext=tar.xz ;;
-            *) echo "::error::target '$TARGET' is neither windows nor linux"; exit 1 ;;
+            macos) p=MACOS; name=llvm-macos-arm64; ext=tar.xz ;;
+            *) echo "::error::target '$TARGET' is not windows, linux or macos"; exit 1 ;;
           esac
           version="$LLVM_VERSION-$REV"
           asset="$name-$version.$ext"
@@ -187,10 +197,13 @@ jobs:
           curl -fsSL --retry 5 --retry-all-errors -o "$LLVM_ARCHIVE" "$LLVM_URL"
           curl -fsSL --retry 5 --retry-all-errors -o "$LLVM_ARCHIVE.jsonl" "$LLVM_URL.jsonl"
           curl -fsSL --retry 5 --retry-all-errors -o "$LLVM_ARCHIVE.sig" "$LLVM_URL.sig"
+          # Size and SHA-256 by Python, the same on the three runners (a Mac has neither stat -c nor sha256sum).
           check() {
-            got=$(stat -c %s "$1")
+            got=$(python -I -c "import os, sys; print(os.path.getsize(sys.argv[1]))" "$1")
             [ "$got" = "$2" ] || { echo "::error::$1 is $got bytes, expected $2"; exit 1; }
-            echo "$3  $1" | sha256sum -c - || { echo "::error::$1 does not match its pinned SHA-256"; exit 1; }
+            sum=$(python -I -c "import hashlib, sys; h = hashlib.sha256(); f = open(sys.argv[1], 'rb'); [h.update(b) for b in iter(lambda: f.read(1 << 20), b'')]; print(h.hexdigest())" "$1")
+            [ "$sum" = "$3" ] || { echo "::error::$1 does not match its pinned SHA-256"; exit 1; }
+            echo "$1: OK"
           }
           check "$LLVM_ARCHIVE" "$LLVM_SIZE" "$LLVM_SHA256"
           check "$LLVM_ARCHIVE.jsonl" "$LLVM_BUNDLE_SIZE" "$LLVM_BUNDLE_SHA256"
@@ -212,6 +225,7 @@ jobs:
       # The keyring file is not pinned (it grows with each release manager); the fingerprint is.
       - name: The release manager's GPG signature
         run: |
+          command -v gpg > /dev/null || brew install gnupg   # (the Mac runner may not have it)
           mkdir -p _llvm/gnupg
           curl -fsSL --retry 5 --retry-all-errors -o _llvm/release-keys.asc "$LLVM_KEYS_URL"
           gpg --batch --homedir _llvm/gnupg --import _llvm/release-keys.asc
@@ -226,7 +240,8 @@ jobs:
           get() {
             mkdir -p "_llvm/licenses/$1"
             curl -fsSL --retry 5 --retry-all-errors -o "_llvm/licenses/$1/$2" "$3"
-            echo "$4  _llvm/licenses/$1/$2" | sha256sum -c - || { echo "::error::$1/$2 does not match its pinned SHA-256"; exit 1; }
+            sum=$(python -I -c "import hashlib, sys; print(hashlib.sha256(open(sys.argv[1], 'rb').read()).hexdigest())" "_llvm/licenses/$1/$2")
+            [ "$sum" = "$4" ] || { echo "::error::$1/$2 does not match its pinned SHA-256"; exit 1; }
           }
           get llvm LICENSE.TXT "$LICENSE_LLVM_URL" "$LICENSE_LLVM_SHA256"
           get clang LICENSE.TXT "$LICENSE_CLANG_URL" "$LICENSE_CLANG_SHA256"
@@ -305,7 +320,7 @@ jobs:
         run: |
           gh release upload "$TAG" "_llvm/dist/$ASSET" "_llvm/dist/$ASSET_JSON" --repo "$GITHUB_REPOSITORY"
           # GitHub computes each asset's SHA-256 on upload: it must be ours.
-          ours=$(sha256sum "_llvm/dist/$ASSET" | cut -d' ' -f1)
+          ours=$(python -I -c "import hashlib, sys; h = hashlib.sha256(); f = open(sys.argv[1], 'rb'); [h.update(b) for b in iter(lambda: f.read(1 << 20), b'')]; print(h.hexdigest())" "_llvm/dist/$ASSET")
           theirs=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
                      --jq ".[] | select(.tag_name == \"$TAG\") | .assets[] | select(.name == \"$ASSET\") | .digest")
           echo "ours: sha256:$ours, GitHub: $theirs"

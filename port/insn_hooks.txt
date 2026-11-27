@@ -42,6 +42,9 @@
 0x00119670=des_mouse_look   # li r0, 4080: the entry (r3 = the camera); takes the counts once a game frame
 0x0011C910=des_mouse_look   # lfs f0, 0xF0(r1): the stick's pitch input, tested against 0 next; nonzero with a turn to make
 0x0011C758=des_mouse_look   # lwz r9, -0x7F84(r30): the angles rebuilt, the stick's turn next; adds the mouse's turn
+# The same update's camera options (issue #736) ride on it too: walls' turn off
+# (DES_CAM_WALL=0) zeroes the turn a wall gives the camera where it is read.
+0x0011C2FC=des_mouse_look   # lfs f12, 0x25C(r31): the turn a wall gives the camera, 0 for none (skips the turn)
 # The bow's aim view (ChrAimCam, the camera manager's modes 1 and 2) keeps its
 # angles from frame to frame, so the mouse's turn goes onto them at its entry.
 0x00110608=des_mouse_look   # li r0, 1776: the aim camera's entry (r3 = the camera, r5 = the character); takes the counts and turns its kept angles

@@ -81,13 +81,25 @@ def version_of(text):
 
 
 def system() -> str:
-    return "windows" if os.name == "nt" else "linux"
+    if os.name == "nt":
+        return "windows"
+    return "macos" if sys.platform == "darwin" else "linux"
 
 
 def player_asset(version, name=NAME) -> str:
     """The player's download of `version` for this system (package.py's names): the zip on Windows, the tar.xz
-    (--linux-host) on Linux, which keeps the program's execute bit. fetch.unpack takes both."""
-    return f"{name}-{version}-windows.zip" if system() == "windows" else f"{name}-{version}-linux.tar.xz"
+    (--linux-host, --macos-host) on Linux and macOS, which keeps the program's execute bit. fetch.unpack takes
+    both."""
+    if system() == "windows":
+        return f"{name}-{version}-windows.zip"
+    return f"{name}-{version}-{system()}.tar.xz"
+
+
+def in_mac_app(install) -> bool:
+    """`install` is inside a Mac app (a <name>.app/Contents/... folder). An app is replaced whole by the next
+    version's app, never swapped file by file: that would break its signature and its layout."""
+    parts = Path(install).parts
+    return any(p.endswith(".app") and parts[i + 1:i + 2] == ("Contents",) for i, p in enumerate(parts))
 
 
 def player_asset_in(names, version):
@@ -625,6 +637,9 @@ def apply(install, data, app, to, emit, timeout=60) -> int:
 
 
 def _apply(install, data, app, to, emit, timeout) -> int:
+    if in_mac_app(install):
+        raise UpdateFailed("internal", "-", f"The Mac app is not updated in place. Download version {to}'s app from "
+                                            f"https://github.com/{REPO}/releases and put it in place of this one.")
     if not release_shaped(install):
         raise UpdateFailed("internal", "-", f"{install} is not a player's install of the game, so it is not updated.")
     if not _writable(install):

@@ -15,6 +15,11 @@ on:
       - 'port/**'
       - 'ps3recomp.pin'
       - '.github/workflows/mac-native.yml'
+      - 'tools/release/package.py'
+      - 'tools/release/macos_native_app.*'
+      - 'tools/release/tests/test_macos_native_app.py'
+      - 'scripts/game_build_desc.py'
+      - 'tools/setup/**'
   workflow_dispatch:
     inputs:
       runner:
@@ -30,11 +35,20 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # FFmpeg's release tarball of tag n8.1.3, the same archive and checks as host.yml's (whose third-party-sources
+  # release holds it, LGPL 2.1 like FFmpeg).
+  FFMPEG_VERSION: 8.1.3
+  FFMPEG_SIZE: '11732036'
+  FFMPEG_SHA256: 7138d28c96d9d3e3af4ee3d8cad72741f8ffb40da90c1112235dea3ecd3178a3
+
 jobs:
   host-mac:
     name: des_host (macOS arm64, build only)
     runs-on: ${{ inputs.runner || 'macos-15' }}
     timeout-minutes: 60
+    env:
+      FFMPEG_DIR: ${{ github.workspace }}/.ci-cache/ffmpeg   # (in the workspace: actions/cache refuses '..')
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -83,13 +97,103 @@ jobs:
           cmake --version
           ninja --version
 
+      # FFmpeg for the movies (docs/178, step M10): libavcodec with only the MPEG-2 video decoder and its parser,
+      # and libavutil, as host.yml builds them for the Linux host (the same options), for macOS 13.3 on arm64. The
+      # runtime opens them when a movie starts (PS3RECOMP_FFMPEG_RUNTIME): an app's Contents/Frameworks first, then
+      # beside the program. Their install names are @loader_path ones, so libavcodec finds libavutil in its own
+      # folder wherever the two are.
+      - name: Restore FFmpeg
+        id: ffmpeg-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ env.FFMPEG_DIR }}
+          key: mac-native-ffmpeg-${{ env.FFMPEG_SHA256 }}-macos-arm64-13.3-v1
+
+      - name: Build FFmpeg
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        env:
+          MACOSX_DEPLOYMENT_TARGET: '13.3'
+        run: |
+          set -o pipefail
+          cd "$RUNNER_TEMP"
+          curl -fsSL --retry 5 --retry-all-errors -o ffmpeg.tar.xz \
+            "https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.xz"
+          [ "$(stat -f %z ffmpeg.tar.xz)" = "$FFMPEG_SIZE" ] || { echo "::error::ffmpeg.tar.xz has the wrong size"; exit 1; }
+          echo "$FFMPEG_SHA256  ffmpeg.tar.xz" | shasum -a 256 -c -
+          tar xf ffmpeg.tar.xz
+          cd "ffmpeg-$FFMPEG_VERSION"
+          opts=(--enable-shared --disable-static --disable-programs --disable-doc --disable-autodetect
+                --disable-network --disable-everything --disable-avdevice --disable-avformat --disable-avfilter
+                --disable-swscale --disable-swresample --enable-decoder=mpeg2video --enable-parser=mpegvideo)
+          mac=(--install-name-dir=@loader_path --extra-cflags=-mmacosx-version-min=13.3
+               --extra-ldflags=-mmacosx-version-min=13.3)
+          ./configure --prefix="$FFMPEG_DIR" "${opts[@]}" "${mac[@]}" | tee configure.txt
+          grep -qx 'License: LGPL version 2.1 or later' configure.txt \
+            || { echo "::error::FFmpeg is not configured as LGPL 2.1 or later"; exit 1; }
+          make -s -j"$(sysctl -n hw.ncpu)"
+          make -s install
+          mkdir -p "$FFMPEG_DIR/share/licenses/ffmpeg"
+          cp COPYING.LGPLv2.1 LICENSE.md CREDITS "$FFMPEG_DIR/share/licenses/ffmpeg/"
+          {
+            echo "FFmpeg $FFMPEG_VERSION, unchanged: libavcodec and libavutil, LGPL 2.1 or later."
+            echo "Source: ffmpeg-$FFMPEG_VERSION.tar.xz at https://github.com/JonathanDC64/Soulbrandt/releases/tag/third-party-sources,"
+            echo "the same archive as https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.xz (SHA-256 $FFMPEG_SHA256)."
+            echo "Configured with: ./configure ${opts[*]} ${mac[*]}"
+            echo "You may replace these libraries with your own build of the same major versions."
+          } > "$FFMPEG_DIR/share/licenses/ffmpeg/README.txt"
+
+      - name: Save FFmpeg
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ env.FFMPEG_DIR }}
+          key: ${{ steps.ffmpeg-cache.outputs.cache-primary-key }}
+
+      # The two libraries by their major names (the files the runtime opens), arm64, for macOS 13.3, loading only
+      # macOS's own libraries and each other (a player's Mac has nothing else).
+      - name: The FFmpeg libraries
+        run: |
+          mkdir -p ffmpeg-mac
+          for f in "$FFMPEG_DIR"/lib/libav*.dylib; do
+            n=$(basename "$f")
+            [[ "$n" =~ ^libav(util|codec)\.[0-9]+\.dylib$ ]] && cp -L "$f" ffmpeg-mac/
+          done
+          ls -l ffmpeg-mac
+          [ "$(ls ffmpeg-mac | wc -l | tr -d ' ')" = 2 ] || { echo "::error::expected libavutil and libavcodec"; exit 1; }
+          bad=0
+          for f in ffmpeg-mac/*.dylib; do
+            lipo -info "$f" | grep -q arm64 || { echo "::error::$f is not arm64"; bad=1; }
+            otool -l "$f" | grep -A4 LC_BUILD_VERSION | grep -q "minos 13.3" || { echo "::error::$f is not for macOS 13.3"; bad=1; }
+            otool -L "$f" | tee -a ffmpeg_libs.txt
+            if otool -L "$f" | tail -n +2 | grep -Ev '^[[:space:]]+(/usr/lib/|/System/Library/|@loader_path/libav)'; then
+              echo "::error::$f loads a library from outside macOS (above)"; bad=1
+            fi
+          done
+          exit $bad
+
       - name: Configure the runtime library
         run: |
           set -o pipefail
           cmake -S ps3recomp -B ps3recomp/build_split -G Ninja -DCMAKE_BUILD_TYPE=Release -DPS3RECOMP_BUILD_TESTS=OFF \
-            -DPS3RECOMP_RSX_HAL=ON -DPS3RECOMP_GAME_SPLIT=ON -DPS3RECOMP_NO_DECRYPT=ON | tee rt_cfg.log
+            -DPS3RECOMP_RSX_HAL=ON -DPS3RECOMP_GAME_SPLIT=ON -DPS3RECOMP_NO_DECRYPT=ON \
+            -DPS3RECOMP_FFMPEG_RUNTIME=ON "-DPS3RECOMP_FFMPEG_INCLUDE_DIR=$FFMPEG_DIR/include" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.3 | tee rt_cfg.log
           grep -q "Renderer: *the GPU layer's Vulkan backend" rt_cfg.log
           grep -q "Renderer: *the compile service's spv target" rt_cfg.log
+          grep -q "FFmpeg: *run-time loaded" rt_cfg.log
+
+      # The runtime's own FFmpeg loader (ffmpeg_runtime.c) with ps3recomp's smoke test, in an app's layout
+      # (Contents/MacOS, Contents/Frameworks) and started from /, as the Finder starts an app: it must load the two
+      # libraries and open the MPEG-2 decoder and parser the movies use.
+      - name: The movies' decoder opens from an app's Frameworks
+        run: |
+          s="$RUNNER_TEMP/smoke.app/Contents"
+          mkdir -p "$s/MacOS" "$s/Frameworks"
+          clang -std=c99 -O2 -mmacosx-version-min=13.3 -DPS3RECOMP_FFMPEG_RUNTIME -Ips3recomp/libs/codec \
+            "-I$FFMPEG_DIR/include" ps3recomp/.github/scripts/ffmpeg_smoke.c ps3recomp/libs/codec/ffmpeg_runtime.c \
+            -o "$s/MacOS/ffmpeg_smoke"
+          cp ffmpeg-mac/*.dylib "$s/Frameworks/"
+          (cd / && "$s/MacOS/ffmpeg_smoke")
 
       - name: Build the runtime library
         run: cmake --build ps3recomp/build_split --target ps3recomp_runtime -- -k 0
@@ -139,6 +243,22 @@ jobs:
       - name: The program starts
         run: PS3_NO_USER_INPUT=1 build/host/des_host --program-check
 
+      # The program folder: des_host, the FFmpeg libraries beside it and their licence files (package.py takes the
+      # folder as host.yml's host-linux one).
+      - name: The program folder
+        run: |
+          mkdir -p dist/host-mac/licenses
+          cp build/host/des_host ffmpeg-mac/*.dylib dist/host-mac/
+          cp -R "$FFMPEG_DIR/share/licenses/ffmpeg" dist/host-mac/licenses/
+          ls -lR dist/host-mac
+
+      - name: Keep des_host for the window check
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: des_host-macos-${{ github.sha }}
+          path: dist/host-mac/
+          retention-days: 7
+
       - name: ccache's numbers
         if: ${{ !cancelled() }}
         run: ccache -s
@@ -149,3 +269,296 @@ jobs:
         with:
           path: ${{ github.workspace }}/.ci-cache/ccache
           key: ccache-mac-native-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+
+  # The setup window on a Mac (docs/178, step M3): a first start with no setup opens it, on the new path's Vulkan
+  # through MoltenVK and the Vulkan loader (the runner's Homebrew ones here; the app will carry its own). GitHub's Macs
+  # have a paravirtual GPU, so this shows that the window opens and draws, not how fast. The log and a screenshot are
+  # kept.
+  window-mac:
+    name: des_host's setup window (macOS arm64, MoltenVK)
+    needs: host-mac
+    runs-on: ${{ inputs.runner || 'macos-15' }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: des_host-macos-${{ github.sha }}
+
+      - name: MoltenVK and the Vulkan loader
+        run: brew install molten-vk vulkan-loader
+
+      # Up to 90 s for the device, then 15 s of the window before the screenshot. It must still be running then, and
+      # have said that setup opens; a window that did not open fails it.
+      - name: The setup window opens
+        env:
+          DYLD_FALLBACK_LIBRARY_PATH: /opt/homebrew/lib
+          DES_USER_FOLDERS: ${{ runner.temp }}/des_user
+          RSX_BACKEND: vulkan
+          PS3_NO_USER_INPUT: '1'
+        run: |
+          chmod +x des_host
+          mkdir -p "$DES_USER_FOLDERS"
+          ./des_host > window.log 2>&1 &
+          pid=$!
+          for i in $(seq 1 90); do
+            kill -0 $pid 2>/dev/null || break
+            grep -q "^\[VK\] device:" window.log && break
+            sleep 1
+          done
+          sleep 15
+          screencapture -x window.png || echo "no screenshot"
+          alive=0
+          if kill -0 $pid 2>/dev/null; then alive=1; fi
+          kill $pid 2>/dev/null || true
+          sleep 2
+          kill -9 $pid 2>/dev/null || true
+          tail -n 200 window.log
+          [ "$alive" = 1 ] || { echo "::error::des_host ended before the screenshot"; exit 1; }
+          grep -q "setup opens" window.log || { echo "::error::des_host did not start setup"; exit 1; }
+          if grep -qE "SDL video init failed|SDL_CreateWindow failed|nothing serves the first thread" window.log; then
+            echo "::error::the window did not open"; exit 1
+          fi
+          grep -q "^\[VK\] device:" window.log || { echo "::error::no Vulkan device"; exit 1; }
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: ${{ !cancelled() }}
+        with:
+          name: window-macos-${{ github.sha }}
+          path: |
+            window.log
+            window.png
+          if-no-files-found: warn
+
+  # The native Mac app (docs/178, step M9), a tester build kept as this run's artifact: the program folder package.py
+  # makes from des_host (--macos-host), with the Vulkan loader built here and MoltenVK in the app
+  # (tools/release/macos_native_app.py; macos_native_app.json pins both). No Apple account: signed ad hoc, so macOS
+  # asks the player to allow it once. Then the app's program runs as a player's would, with nothing from Homebrew:
+  # it must load the app's own loader and MoltenVK, and open setup's window.
+  app-mac:
+    name: The native Mac app (macOS arm64)
+    needs: host-mac
+    runs-on: ${{ inputs.runner || 'macos-15' }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0   # package.py packages a commit of the history
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
+
+      - name: The pins and the tests
+        run: |
+          python tools/release/macos_native_app.py check
+          python -m unittest discover -s tools/release/tests -p 'test_macos_native_app.py'
+
+      - name: Read the ps3recomp pin
+        id: pin
+        run: python .github/scripts/read_pin.py >> "$GITHUB_OUTPUT"
+
+      - name: Check out the pinned ps3recomp
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: ${{ steps.pin.outputs.repo }}
+          ref: ${{ steps.pin.outputs.commit }}
+          path: ps3recomp
+          persist-credentials: false
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: des_host-macos-${{ github.sha }}
+          path: host-mac
+
+      - name: The program folder (package.py --macos-host)
+        run: python tools/release/package.py build --rev HEAD --ps3recomp ps3recomp --macos-host host-mac --out pkg
+
+      # Built here, at the commit the pins name (the SDK tag of the Vulkan-Headers ps3recomp builds with), for the
+      # app's oldest macOS: Khronos publishes no Mac build of the loader.
+      - name: The Vulkan loader
+        run: |
+          brew install ninja
+          read -r lc hc lr hr < <(python -c "import json; v = json.load(open('tools/release/macos_native_app.json'))['vulkan_loader']; print(v['commit'], v['headers_commit'], v['repo'], v['headers_repo'])")
+          git init -q vh && git -C vh fetch -q --depth 1 "$hr" "$hc" && git -C vh checkout -q FETCH_HEAD
+          git init -q vl && git -C vl fetch -q --depth 1 "$lr" "$lc" && git -C vl checkout -q FETCH_HEAD
+          cmake -S vh -B vh/build -G Ninja "-DCMAKE_INSTALL_PREFIX=$PWD/vh-install"
+          cmake --install vh/build
+          cmake -S vl -B vl/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_DEPLOYMENT_TARGET=13.3 \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 "-DVULKAN_HEADERS_INSTALL_DIR=$PWD/vh-install"             "-DCMAKE_PREFIX_PATH=$PWD/vh-install" -DBUILD_TESTS=OFF
+          cmake --build vl/build
+          cp -L vl/build/loader/libvulkan.1.dylib libvulkan.1.dylib
+          file libvulkan.1.dylib
+          otool -l libvulkan.1.dylib | grep -A4 LC_BUILD_VERSION | grep minos
+
+      - name: MoltenVK
+        run: |
+          url=$(python -c "import json; print(json.load(open('tools/release/macos_native_app.json'))['moltenvk']['url'])")
+          curl -fsSL --retry 5 --retry-all-errors -o MoltenVK-macos.tar "$url"
+
+      # The logo on black, made square, at the sizes an icon set has (as mac-app.yml makes it).
+      - name: The icon
+        run: |
+          mkdir -p build
+          sips -p 4628 4628 --padColor 000000 assets/brand/soulbrandt-logo-on-black.png --out build/square.png >/dev/null
+          set_dir=build/AppIcon.iconset
+          mkdir -p "$set_dir"
+          for s in 16 32 128 256 512; do
+            sips -z "$s" "$s" build/square.png --out "$set_dir/icon_${s}x${s}.png" >/dev/null
+            sips -z "$((s * 2))" "$((s * 2))" build/square.png --out "$set_dir/icon_${s}x${s}@2x.png" >/dev/null
+          done
+          iconutil -c icns "$set_dir" -o build/AppIcon.icns
+
+      - name: The app
+        run: |
+          python tools/release/macos_native_app.py build --program pkg/*-macos.tar.xz --loader libvulkan.1.dylib \
+            --moltenvk MoltenVK-macos.tar --icns build/AppIcon.icns --out dist
+
+      # The libraries first, then the app: an ad-hoc signature (no Apple account).
+      - name: Signed ad hoc
+        run: |
+          app=$(ls -d dist/*.app)
+          for f in "$app"/Contents/Frameworks/*.dylib; do codesign --force --sign - "$f"; done
+          codesign --force --sign - "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+
+      # As a player's Mac runs it: no Homebrew library path, nothing installed, started from / as the Finder does
+      # (the job's folder holds a loader of its own). The app's program must take the app's own loader, find
+      # MoltenVK through the app's ICD file, and open setup's window (as window-mac does).
+      - name: The app's program starts on the app's own Vulkan
+        env:
+          DES_USER_FOLDERS: ${{ runner.temp }}/des_user
+          RSX_BACKEND: vulkan
+          PS3_NO_USER_INPUT: '1'
+        run: |
+          app=$(cd dist && ls -d "$PWD"/*.app)
+          exe="$app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
+          mkdir -p "$DES_USER_FOLDERS"
+          unset DYLD_FALLBACK_LIBRARY_PATH DYLD_LIBRARY_PATH VK_ICD_FILENAMES VK_DRIVER_FILES
+          (cd / && exec "$exe") > app.log 2>&1 &
+          pid=$!
+          for i in $(seq 1 90); do
+            kill -0 $pid 2>/dev/null || break
+            grep -q "^\[VK\] device:" app.log && break
+            sleep 1
+          done
+          sleep 10
+          screencapture -x app.png || echo "no screenshot"
+          alive=0
+          if kill -0 $pid 2>/dev/null; then alive=1; fi
+          kill $pid 2>/dev/null || true
+          sleep 2
+          kill -9 $pid 2>/dev/null || true
+          cp -R "$DES_USER_FOLDERS/Soulbrandt/crashes" app-crashes 2>/dev/null || true   # (the fixed folder name)
+          tail -n 200 app.log
+          [ "$alive" = 1 ] || { echo "::error::the app's program ended before the screenshot"; exit 1; }
+          grep -q "the app's own Vulkan loader" app.log || { echo "::error::it did not take the app's loader"; exit 1; }
+          ls "$app"/Contents/Frameworks/libavutil.*.dylib "$app"/Contents/Frameworks/libavcodec.*.dylib \
+            || { echo "::error::no FFmpeg in the app's Frameworks"; exit 1; }
+          grep -q "^\[VK\] device:" app.log || { echo "::error::no Vulkan device"; exit 1; }
+          grep -q "setup opens" app.log || { echo "::error::it did not start setup"; exit 1; }
+
+      - name: The zip
+        run: |
+          app=$(ls -d dist/*.app)
+          version=$(grep '^version=' "$app/Contents/Resources/setup/release-info.txt" | cut -d= -f2 | tr -d '\r')
+          ditto -c -k --sequesterRsrc --keepParent "$app" "dist/DemonsSoulsRecomp-$version-macos-native.zip"
+          ls -l dist
+          shasum -a 256 dist/*.zip
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mac-native-app-${{ github.sha }}
+          path: dist/*.zip
+          retention-days: 14
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: ${{ !cancelled() }}
+        with:
+          name: mac-native-app-log-${{ github.sha }}
+          path: |
+            app.log
+            app.png
+            app-crashes/
+          if-no-files-found: warn
+
+  # Setup's engine (tools/setup) on a Mac, with Python 3.13, setup's own line there (python-macos, a 3.13 standalone
+  # build), as ci.yml runs it on Windows and host.yml on Linux.
+  setup-mac:
+    name: Setup engine tests (macOS arm64)
+    runs-on: ${{ inputs.runner || 'macos-15' }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.13.9'
+
+      - name: Setup engine tests
+        working-directory: tools/setup
+        run: python -m unittest discover -s tests
+
+  # Setup builds the game part on a Mac from game_build_macos.json, as on Linux from game_build_linux.json (ci.yml's
+  # description jobs say how): CMake's commands for des_game.dylib (DES_SPLIT=ON DES_SPLIT_FREESTANDING=ON), with
+  # empty files where the lift goes and the paths as placeholders (scripts/game_build_desc.py). The compiler is
+  # Homebrew's clang with its ld64.lld, as setup's own toolchain is, not Xcode's. The headers list needs a build of
+  # the lift, which no Mac here has, so it comes from a cross-compile of the lift (docs/178 2.6) and is left out of
+  # the check. When the check fails, the job writes the build's description (with the committed headers) and keeps
+  # it, to commit after a change to the game part's flags.
+  desc-mac:
+    name: Game build description (macOS arm64)
+    runs-on: ${{ inputs.runner || 'macos-15' }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
+
+      - name: Read the ps3recomp pin
+        id: pin
+        run: python .github/scripts/read_pin.py >> "$GITHUB_OUTPUT"
+
+      - name: Check out the pinned ps3recomp
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: ${{ steps.pin.outputs.repo }}
+          ref: ${{ steps.pin.outputs.commit }}
+          path: ps3recomp
+          persist-credentials: false
+
+      - name: Ninja, and LLVM's clang and lld
+        run: |
+          brew install ninja llvm lld
+          {
+            echo "DES_CC=$(brew --prefix llvm)/bin/clang"
+            echo "DES_CXX=$(brew --prefix llvm)/bin/clang++"
+          } >> "$GITHUB_ENV"
+          echo "$(brew --prefix lld)/bin" >> "$GITHUB_PATH"
+
+      - name: Empty files where the lift goes
+        run: python .github/scripts/placeholder_lift.py "$RUNNER_TEMP/lift" >> "$GITHUB_ENV"
+
+      # As des_host is configured above (no build type, no developer code, no vkd3d); the menus are des_host's alone.
+      - name: Configure
+        run: |
+          cmake -S port -B build/desc -G Ninja "-DCMAKE_C_COMPILER=$DES_CC" "-DCMAKE_CXX_COMPILER=$DES_CXX" \
+            -DCMAKE_BUILD_TYPE= -DCMAKE_CXX_FLAGS_DEBUG= -DCMAKE_C_FLAGS_DEBUG= "-DRECOMP_DIR=$DES_LIFT" \
+            -DDES_SPLIT=ON -DDES_SPLIT_FREESTANDING=ON -DDES_VKD3D=OFF -DDES_UI=OFF -DDES_DEV=OFF
+
+      - name: game_build_macos.json matches CMake's commands
+        run: python scripts/game_build_desc.py build/desc --check --commands-only
+
+      - name: The description this build writes
+        if: ${{ failure() }}
+        run: |
+          cp tools/setup/des_setup/game_build_macos.json "$RUNNER_TEMP/game_build_macos.json"
+          python scripts/game_build_desc.py build/desc --keep-headers --out "$RUNNER_TEMP/game_build_macos.json"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: ${{ failure() }}
+        with:
+          name: game_build_macos-${{ github.sha }}
+          path: ${{ runner.temp }}/game_build_macos.json
+          if-no-files-found: ignore

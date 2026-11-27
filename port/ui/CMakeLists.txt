@@ -141,6 +141,8 @@ else()
   # On Linux D3D12 is vkd3d's. A Mac has none: there the menus draw through the GPU layer alone (DES_UI_NO_D3D12).
   if(APPLE)
     target_compile_definitions(des_ui PRIVATE DES_UI_NO_D3D12=1)
+    # (the battery, power_mac.cpp)
+    target_link_libraries(des_ui PRIVATE "-framework IOKit" "-framework CoreFoundation")
   elseif(NOT TARGET PkgConfig::DES_VKD3D_LIBS)
     message(FATAL_ERROR "The wrapper UI off Windows draws through vkd3d: configure with DES_VKD3D=ON (or DES_UI=OFF)")
   endif()
@@ -247,11 +249,12 @@ if(MSVC)
 endif()
 
 # The menus' keys on their own (tests/input_map_check.cpp): a pad's buttons as keys with the menu chord's rule, each
-# key's command in the F1 menu, what is held, and the prompts' buttons for each device. RmlUi's key names only (a
-# header). The same on every platform; CI runs it on both (host.yml). Built on demand:
+# key's command in the F1 menu, what is held, the prompts' buttons for each device, and Change Buttons' Gamepad rows as
+# PAD_MAP's text. RmlUi's key names only (a header). The same on every platform; CI runs it on both (host.yml). Built
+# on demand:
 #   cmake --build <build> --target input_map_check, then input_map_check
 add_executable(input_map_check EXCLUDE_FROM_ALL tests/input_map_check.cpp src/menu_pad.cpp src/menu_input.cpp
-  src/prompts.cpp src/button_pages.cpp)
+  src/prompts.cpp src/button_pages.cpp src/pad_rows.cpp)
 target_include_directories(input_map_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${rmlui_SOURCE_DIR}/Include
   ${stb_SOURCE_DIR})
 target_compile_definitions(input_map_check PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)

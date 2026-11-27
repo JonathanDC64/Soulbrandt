@@ -697,12 +697,15 @@ class HostAgreesTest(unittest.TestCase):
         for platform, pins in _python_pins().items():
             with self.subTest(platform):
                 e = tools[pins["kPythonName"]]
-                self.assertEqual(pins["kPythonName"], {"windows": "python-embed", "linux": "python-linux"}[platform])
+                self.assertEqual(pins["kPythonName"],
+                                 {"windows": "python-embed", "macos": "python-macos", "linux": "python-linux"}[platform])
                 self.assertEqual(pins["kPythonVersion"], e["version"])
                 self.assertEqual(pins["kPythonUrl"], e["url"])
                 self.assertEqual(int(pins["kPythonSize"]), e["size"])
                 self.assertEqual(pins["kPythonSha256"], e["sha256"])
-                self.assertEqual(pins["kPythonProgram"], {"windows": "python.exe", "linux": "python/bin/python3"}[platform])
+                self.assertEqual(pins["kPythonProgram"],
+                                 {"windows": "python.exe", "macos": "python/bin/python3",
+                                  "linux": "python/bin/python3"}[platform])
 
     def test_first_python_lands_where_fetch_looks(self):
         """The host's own first download (setup_python.hpp): fetch.py's archive name and folders, the stamp that
@@ -792,10 +795,14 @@ class ChosenFolderTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
-        self.usual = self.root / "shared" / "DemonsSoulsRecomp"
-        self.var = "LOCALAPPDATA" if os.name == "nt" else "XDG_DATA_HOME"
+        # The system's folder (des_setup's system_base) in the test's: a Mac's is under $HOME.
+        self.var = "LOCALAPPDATA" if os.name == "nt" else "HOME" if sys.platform == "darwin" else "XDG_DATA_HOME"
+        self.base = self.root / "shared"
         self.old = os.environ.get(self.var)
-        os.environ[self.var] = str(self.root / "shared")
+        os.environ[self.var] = str(self.base)
+        if sys.platform == "darwin":
+            self.base = self.base / "Library" / "Application Support"
+        self.usual = self.base / "DemonsSoulsRecomp"
 
     def tearDown(self):
         if self.old is None:
@@ -817,7 +824,7 @@ class ChosenFolderTest(unittest.TestCase):
         self.choose(f"# a note\n{self.root / 'D' / 'build'}\n")
         self.assertEqual(pipeline.chosen_folder(self.usual), self.root / "D" / "build")
         self.choose("../../build\n")                                  # (a portable install's: from the usual folder)
-        self.assertEqual(pipeline.chosen_folder(self.usual), self.root / "build")
+        self.assertEqual(pipeline.chosen_folder(self.usual), self.usual.parent.parent / "build")   # (a Mac's is deeper)
         (self.usual / pipeline.CHOICE).write_bytes(b"\xef\xbb\xbf# saved by Notepad\r\n\r\n  " +
                                                    str(self.root / "x").encode("utf-8") + b"  \r\n")
         self.assertEqual(pipeline.chosen_folder(self.usual), self.root / "x")
@@ -825,7 +832,7 @@ class ChosenFolderTest(unittest.TestCase):
     def test_default_data_follows_the_choice(self):
         # (self.usual is the earlier versions' folder: a choice kept there is still the choice)
         from des_setup import __main__ as cli
-        self.assertEqual(cli.default_data(), self.root / "shared" / cli.ONE_NAME / "setup-data")
+        self.assertEqual(cli.default_data(), self.base / cli.ONE_NAME / "setup-data")
         self.choose(f"{self.root / 'D' / 'build'}\n")
         self.assertEqual(cli.default_data(), self.root / "D" / "build")
 
@@ -837,7 +844,7 @@ class ChosenFolderTest(unittest.TestCase):
         (self.usual / "tools" / "python").mkdir(parents=True)
         (self.usual / "DemonsSouls").mkdir()
         (self.usual / "DemonsSouls" / "settings.ini").write_text("\n", encoding="utf-8")
-        self.assertEqual(cli.usual_data(), self.root / "shared" / cli.ONE_NAME / "setup-data")
+        self.assertEqual(cli.usual_data(), self.base / cli.ONE_NAME / "setup-data")
         for f in ("setup/" + pipeline.READY, "setup/journal.json"):
             shutil.rmtree(self.usual / "setup", ignore_errors=True)
             (self.usual / f).parent.mkdir(parents=True, exist_ok=True)
@@ -864,13 +871,15 @@ class ChosenFolderTest(unittest.TestCase):
 
 
 def _python_pins() -> dict:
-    """setup_engine.hpp's kPython* constants, per platform: the #ifdef _WIN32 block they are in, and its #else."""
+    """setup_engine.hpp's kPython* constants, per platform: the #ifdef _WIN32 block they are in, its
+    #elif defined(__APPLE__) and its #else."""
     hpp = (UI / "setup_engine.hpp").read_text(encoding="utf-8")
     start = hpp.rindex("#ifdef _WIN32", 0, hpp.index("kPythonName"))
-    middle = hpp.index("#else", start)
+    mac = hpp.index("#elif defined(__APPLE__)", start)
+    middle = hpp.index("#else", mac)
     end = hpp.index("#endif", middle)
     out = {}
-    for platform, block in (("windows", hpp[start:middle]), ("linux", hpp[middle:end])):
+    for platform, block in (("windows", hpp[start:mac]), ("macos", hpp[mac:middle]), ("linux", hpp[middle:end])):
         out[platform] = {m.group(1): m.group(2).removesuffix("ull")
                          for m in re.finditer(r'(kPython\w+)\s*=\s*"?([^";]+)"?;', block)}
     return out

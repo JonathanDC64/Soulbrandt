@@ -57,7 +57,7 @@ constexpr Def kDefs[] = {
 #endif
     {"DES_FPS", "", Apply::Live},              // "" = the game's own 30 fps mode; read at each flip
     {"fps_custom", "90", Apply::UiOnly},       // Frame rate's Custom number, kept while a fixed rate is chosen
-    {"DES_CUTFPS", "0", Apply::Live},          // des_options.cpp's cutfps_on, read at each flip
+    {"DES_CUTFPS", "1", Apply::Live},          // des_options.cpp's cutfps_on, read at each flip; 0 = 30 fps
     {"DES_MOTION_BLUR", "1", Apply::Live},     // des_motion_blur, read each frame
     {"DES_VSYNC", "1", Apply::Live},           // 1, 0, even, vrr; des_options.cpp sets RSX_VSYNC from it at each flip
     {"fps_counter", "0", Apply::UiOnly},       // perf_overlay.cpp: 1 = the frame rate in a corner, 2 = with frame times
@@ -72,6 +72,7 @@ constexpr Def kDefs[] = {
     {"DES_IDENTITY", "1", Apply::Live},        // des_respec.cpp, each frame: 1 = with DES_APPEARANCE, also Change Name and Change Body
     {"DES_RESPEC", "0", Apply::Live},          // des_respec.cpp, each frame: 1 = the Nexus statue and the Maiden in Black offer a stat respec
     {"DES_TENDENCY", "0", Apply::Live},        // des_respec.cpp, each frame: 1 = the Nexus statue offers Change Tendency
+    {"DES_SLOT_HOLD", "0", Apply::Live},       // des_item_hotkeys.cpp, each frame: ms Up or Down is held to go back to the first spell or item; 0 = off
     {"DES_LIZARD_RETURN", "0", Apply::Live},   // des_seamless_scripts.cpp, at each area's load: 1 = a crystal lizard that gets away comes back
     {"DES_DOF", "1", Apply::Live},             // des_dof, read each frame
     {"RSX_AA", "0", Apply::Live},              // 0 = none, as on the PS3; 1 = FXAA, 2 = SMAA, before the HUD; per batch
@@ -173,6 +174,9 @@ constexpr Def kDefs[] = {
     {"PAD_AXIAL_LEFT", "0", Apply::Live},      // cellPad, live: the left stick's axial deadzone, percent; 0 = off
     {"PAD_SMOOTH_LEFT", "0", Apply::Live},     // cellPad, each poll: the left stick's smoothing, 1-3; 0 = off
     {"DES_ROLLDIR", "1", Apply::Live},         // des_roll_dir, read at each roll; 0 = locked-on rolls go 4 ways only
+    {"DES_CAM_FOLLOW", "1", Apply::Live},      // des_options.cpp, each camera update: 0 = the camera keeps its direction as you move
+    {"DES_CAM_WALL", "1", Apply::Live},        // des_options.cpp, each camera update: 0 = walls don't turn the camera
+    {"DES_CAM_RESET", "1", Apply::Live},       // des_options.cpp, each camera update: 0 = lock on with no target leaves the camera
     {"DES_KICK", "0", Apply::Live},            // des_kick, at each attack: 1 = attacking never kicks, the Kick key does
     {"keys_layout", "souls", Apply::UiOnly},   // the layout PAD_KEYS changes; a file without this line is older
     {"DES_MOUSE_LOOK", "0", Apply::Live},      // mouse look (des_mouse_look; port/ui/src/mouse.cpp), read each frame

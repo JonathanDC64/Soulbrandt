@@ -27,6 +27,14 @@ inline constexpr unsigned long long kPythonSize = 10926675ull;
 inline constexpr const char* kPythonSha256 = "91d828c2da3a029b41699e918674a0cb379c02cf20dab9c501306885f837402a";
 inline constexpr const char* kPythonSuffix = ".zip";
 inline constexpr const char* kPythonProgram = "python.exe";
+#elif defined(__APPLE__)
+inline constexpr const char* kPythonName = "python-macos";
+inline constexpr const char* kPythonVersion = "3.13.17";
+inline constexpr const char* kPythonUrl = "https://github.com/astral-sh/python-build-standalone/releases/download/20261021/cpython-3.13.17%2B20261021-aarch64-apple-darwin-install_only_stripped.tar.gz";
+inline constexpr unsigned long long kPythonSize = 25286365ull;
+inline constexpr const char* kPythonSha256 = "8dc60610a82f1e73be7faf964383e02520f95f6e39592a5c37c3809f5a7b798e";
+inline constexpr const char* kPythonSuffix = ".tar.gz";
+inline constexpr const char* kPythonProgram = "python/bin/python3";
 #else
 inline constexpr const char* kPythonName = "python-linux";
 inline constexpr const char* kPythonVersion = "3.13.17";

@@ -54,7 +54,7 @@ Press **F1** (or **L3 + R3** on a controller, or Select + Start: Settings > Inte
 
 **Picture**
 - Frame rates of 30 (the original), 60, 120, 144, 165 or 240 fps, a number of your own, or unlocked. The game's timing is fixed so it still plays the way it should. Above 60 fps is less tested.
-- Cutscenes play at 30 fps by default, as they judder above it. You can play them at your frame rate instead.
+- Cutscenes play at your frame rate by default, with their camera smoothed so they don't judder. You can lock them to 30 fps as in the original (Settings > Display > Cutscene frame rate).
 - V-sync on or off, "Even frames" for smooth motion, and G-Sync / FreeSync.
 - A frame rate counter, with a graph of frame times if you like, to see how a mod or a setting runs (Settings > Display > Frame rate counter). Off by default.
 - Render resolution from 50% (for handhelds) up to 300% (4K), ultrawide aspect ratios (21:9 and 32:9), and 16:10 for the Steam Deck's screen.
@@ -67,7 +67,7 @@ Press **F1** (or **L3 + R3** on a controller, or Select + Start: Settings > Inte
 **Controls**
 - Xbox controllers, DualSense, DualShock 4, Switch Pro, Switch 2 Pro (over USB), 8BitDo, the Steam Controller and most other gamepads, over USB or Bluetooth, with vibration. With several connected, **Automatic** plays the one you used last and shows its buttons, or you can pick one (Settings > Controls > Controller). Nintendo controllers show their own letters: B (bottom) confirms, A (right) goes back.
 - Keyboard and mouse, laid out like the Souls games on PC. To turn the camera with the mouse, turn on **Mouse look** in Settings > Controls.
-- Change which buttons and keys do what.
+- Change which buttons and keys do what. Each action can have a 2nd button that presses it too, such as a back button or paddle, for example Circle and a back button (Change Buttons > Gamepad). A button works in one place only. Back buttons and paddles work when the controller reports them to the game; not every controller does.
 - **Same buttons as the game**: the port's own menus (the start screen, F1 and Settings) take the buttons and keys you set in Change Buttons, as the game's menus do, and their prompts show the button you press. On by default; turned off (Settings > Controls), Cross confirms and Circle goes back whatever you set. Enter and Esc always work.
 - The game's button prompts show the buttons of the controller you're using, a Steam Deck's among them, or your keys (Settings > Game > Button icons).
 - Keys 1 to 5 switch straight to the item in each of the five item slots, without using it (Settings > Controls > Change Buttons, Keyboard and mouse).

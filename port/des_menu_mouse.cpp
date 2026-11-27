@@ -96,7 +96,7 @@ constexpr float kCanvasW = 1280.0f, kCanvasH = 720.0f;
 /* The pad's buttons as cellPad's title hook takes them: (DIGITAL2 << 8) | DIGITAL1. */
 constexpr unsigned kPadUp = 0x0010u, kPadRight = 0x0020u, kPadDown = 0x0040u, kPadLeft = 0x0080u;
 constexpr unsigned kPadL2 = 0x0100u, kPadR2 = 0x0200u, kPadL1 = 0x0400u, kPadR1 = 0x0800u;
-constexpr unsigned kPadCircle = 0x2000u, kPadCross = 0x4000u, kPadStart = 0x0008u;
+constexpr unsigned kPadCircle = 0x2000u, kPadCross = 0x4000u, kPadSquare = 0x8000u, kPadStart = 0x0008u;
 constexpr uint32_t kTitleVt = 0x0186A968u;     /* DsMenuDlgTitle: "PRESS START BUTTON", no cursor */
 /* Menus a click selects at once (select_now), as their own input code does it. */
 constexpr uint32_t kStartTabVt = 0x018692C0u;  /* DsMenuDlgStartTab: the pause menu's bar */
@@ -135,6 +135,8 @@ constexpr uint32_t kInvCloseFn = 0x0081FA40u, kEquipCloseFn = 0x00736BB0u, kStat
 constexpr uint32_t kWorldCloseFn = 0x00841A90u, kSystemCloseFn = 0x008ABD18u, kOptionCloseFn = 0x007C8260u;
 /* The pages' own dialogs (the inventory's list and its categories, the equipment's slots); System's is kSystemVt. */
 constexpr uint32_t kInventoryVt = 0x0186C318u, kInvTabsVt = 0x01866570u, kEquipSlotsVt = 0x01866068u;
+/* Status's stats (their cursor is the Stat Guide's, Select's): Cross closes the guide. */
+constexpr uint32_t kStatusVt = 0x0186C688u;
 /* The category tabs (DsMenuDlgEquipListTab) of the inventory, the storage and the shops: the menu variable +0x108
  * holds the category shown, of tabs +0xF4 to +0xF4 + +0xF8; +0x104 points to a word for each, not 0 where a step
  * passes it over; a step sets +0xFC and refuses while it is set, and the tabs' update clears it (one step a frame).
@@ -913,7 +915,7 @@ bool spot_at(float x, float y, int& mi, int& si)
 
 /* ---- The UI's requests (any thread, under s_ev_mu). ---- */
 
-enum EvKind { kEvClick, kEvRelease, kEvBack, kEvWheel, kEvDrag };
+enum EvKind { kEvClick, kEvRelease, kEvBack, kEvWheel, kEvDrag, kEvMiddle };
 struct Ev {
     EvKind kind;
     float x, y;
@@ -1589,6 +1591,58 @@ bool select_now(ppu_context* ctx, const Menu& m, const Spot& s)
     return true;
 }
 
+/* The equipment's slots (weapons and armour, then items, arrows and rings): their spots in the order the wheel steps
+ * through them (#746), where up and down alone go between two rows. Columns spaced wider than the rest start a block
+ * (the two halves); a block's rows go in turn, each from the left. Empty for any other menu, which keeps up and down
+ * (Status's columns, for one, are the game's to step). */
+std::vector<int> wheel_order(const Menu& m)
+{
+    if (vm_read32(m.owner) != DES_AT(kEquipSlotsVt)) return {};
+    struct Cell { int si; float x, y, w, h; };
+    std::vector<Cell> cells;
+    for (size_t k = 0; k < m.spots.size(); k++) {
+        const Spot& s = m.spots[k];
+        if (!grid_spot(s)) continue;
+        const float w = s.box[2] - s.box[0], h = s.box[3] - s.box[1];
+        cells.push_back({(int)k, (s.box[0] + s.box[2]) * 0.5f, (s.box[1] + s.box[3]) * 0.5f, w, h});
+    }
+    if (cells.size() < 4) return {};
+    /* The columns' and rows' places: centres closer than a quarter of a spot are one. */
+    auto places = [&](bool across) {
+        std::vector<float> v;
+        for (const Cell& c : cells) v.push_back(across ? c.x : c.y);
+        std::sort(v.begin(), v.end());
+        std::vector<float> out;
+        for (float p : v) {
+            const float tol = 0.25f * (across ? cells[0].w : cells[0].h);
+            if (out.empty() || p - out.back() > tol) out.push_back(p);
+        }
+        return out;
+    };
+    const std::vector<float> cols = places(true), rows = places(false);
+    if (cols.size() < 2 || rows.size() < 2) return {};
+    auto nearest = [](const std::vector<float>& v, float p) {
+        size_t best = 0;
+        for (size_t k = 1; k < v.size(); k++)
+            if (std::fabs(v[k] - p) < std::fabs(v[best] - p)) best = k;
+        return (int)best;
+    };
+    /* The blocks: a gap between two columns wider than 1.4 times the narrowest starts one. */
+    float narrow = 1e9f;
+    for (size_t k = 1; k < cols.size(); k++) narrow = std::min(narrow, cols[k] - cols[k - 1]);
+    std::vector<int> block(cols.size(), 0);
+    for (size_t k = 1; k < cols.size(); k++) block[k] = block[k - 1] + (cols[k] - cols[k - 1] > 1.4f * narrow ? 1 : 0);
+    std::sort(cells.begin(), cells.end(), [&](const Cell& a, const Cell& b) {
+        const int ca = nearest(cols, a.x), cb = nearest(cols, b.x), ra = nearest(rows, a.y), rb = nearest(rows, b.y);
+        if (block[ca] != block[cb]) return block[ca] < block[cb];
+        if (ra != rb) return ra < rb;
+        return ca < cb;
+    });
+    std::vector<int> order;
+    for (const Cell& c : cells) order.push_back(c.si);
+    return order;
+}
+
 void handle_events(ppu_context* ctx)
 {
     PS3_KNOB(s_walk_only, ps3_env_int("DES_MENU_MOUSE_WALK", 0));
@@ -1655,6 +1709,11 @@ void handle_events(ppu_context* ctx)
              * select did not show). */
             const bool now = !s_walk_only && m.cur != si && select_now(ctx, m, m.spots[si]);
             start_walk(m, m.spots[si]);
+            if (vm_read32(m.owner) == DES_AT(kStatusVt) && menu_var(ctx, kPages[2].open_var) != 0) {
+                s_walk.confirm = false;   /* Status, the Stat Guide's cursor: a click only moves it (#746) */
+                if (s_log)
+                    fprintf(stderr, "[mm] Status (its variable %d): no Cross\n", menu_var(ctx, kPages[2].open_var));
+            }
             if (now) s_walk.direct = kDirectWait;
             break;
         }
@@ -1672,6 +1731,20 @@ void handle_events(ppu_context* ctx)
             drop_presses();
             press(kPadCircle);
             break;
+        case kEvMiddle: {   /* the equipment's slots: Unequip (Square) on the slot under the pointer (#746) */
+            int mi, si;
+            if (!spot_at(e.x, e.y, mi, si) || mi >= (int)s_menus.size()) break;
+            const Menu& m = s_menus[mi];
+            if (si >= (int)m.spots.size() || !grid_spot(m.spots[si]) ||
+                vm_read32(m.owner) != DES_AT(kEquipSlotsVt))
+                break;
+            stop_slide();
+            drop_presses();
+            if (s_log) fprintf(stderr, "[mm] middle click on %d_%d of 0x%08X: unequip\n", m.spots[si].r,
+                               m.spots[si].c, m.owner);
+            walk_then(ctx, m, si, kPadSquare, 1);
+            break;
+        }
         case kEvWheel: {
             stop_slide();
             int si;
@@ -1686,6 +1759,18 @@ void handle_events(ppu_context* ctx)
                 if (grid_spot(s)) one_row &= s.r == m->spots[0].r, grid++;
             unsigned b = e.n > 0 ? kPadUp : kPadDown;
             const int times = std::min(std::abs(e.n), 8);
+            if (const std::vector<int> order = wheel_order(*m); !order.empty()) {   /* a grid: in its order */
+                int at = -1;
+                for (size_t k = 0; k < order.size(); k++)
+                    if (order[k] == m->cur) at = (int)k;
+                const int to = at < 0 ? 0 : std::clamp(at - e.n, 0, (int)order.size() - 1);   /* (n > 0: back) */
+                if (to != at) {
+                    if (s_log) fprintf(stderr, "[mm] wheel %+d in 0x%08X: spot %d of %d\n", e.n, m->owner, to + 1,
+                                       (int)order.size());
+                    walk_then(ctx, *m, order[to], 0, 0);
+                }
+                break;
+            }
             if (one_row && grid > 1 && !s_learnt[m->key].across) {
                 b = e.n > 0 ? col_pair(*m)[1] : col_pair(*m)[0];
             } else if (si >= 0 && row_has_arrows(*m, si)) {
@@ -1846,6 +1931,7 @@ extern "C" int des_menu_mouse_hit(float x, float y, float box[4])
 extern "C" void des_menu_mouse_click(float x, float y) { post({kEvClick, x, y, 0}); }
 extern "C" void des_menu_mouse_release(void) { post({kEvRelease, 0.0f, 0.0f, 0}); }
 extern "C" void des_menu_mouse_back(void) { post({kEvBack, 0.0f, 0.0f, 0}); }
+extern "C" void des_menu_mouse_middle(float x, float y) { post({kEvMiddle, x, y, 0}); }
 
 /* The pointer is at (x, y) with the left button down: a slider's thumb follows it. */
 extern "C" void des_menu_mouse_drag(float x, float y) { post({kEvDrag, x, y, 0}); }
