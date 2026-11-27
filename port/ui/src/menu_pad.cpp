@@ -55,10 +55,9 @@ bool chord_has_buttons(const std::array<signed char, 16>& from, const std::array
     return true;
 }
 
-bool follow_works(const std::array<signed char, 16>& from, const std::array<unsigned, 16>& added, int chord) noexcept {
+bool follow_works(const std::array<signed char, 16>& from, const std::array<unsigned, 16>& added) noexcept {
     const auto has = [&](unsigned bit) { return has_button(from, added, bit_index(bit)); };
-    return has(kCross) && has(kCircle) && (has(kL1) || has(kL2)) && (has(kR1) || has(kR2)) &&
-           chord_has_buttons(from, added, chord);
+    return has(kCross) && has(kCircle) && (has(kL1) || has(kL2)) && (has(kR1) || has(kR2));
 }
 
 unsigned chord_mask(int chord) noexcept {

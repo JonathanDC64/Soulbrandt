@@ -287,9 +287,8 @@ void ControlsPage::update_help() {
                    "<br/><br/>The second box is a 2nd button that presses it too, such as a back button or paddle. A "
                    "button works in one place only: one that's another row's moves, and if that leaves the row with "
                    "no button, you're asked first. Press its 2nd again to take it off.<br/><br/>With Same buttons as "
-                   "the game on, these menus use the game's buttons, wherever you put them. If Cross, Circle, a tab "
-                   "button or the menu chord is left with none, they use your pad's own buttons until it has one "
-                   "again.<br/><br/>Kick: " +
+                   "the game on, these menus use the game's buttons, wherever you put them. If Cross, Circle or a tab "
+                   "button is left with none, they use your pad's own buttons until it has one again.<br/><br/>Kick: " +
                        std::string(kKickAbout) + "</menu-helptext>";
     rml += "<menu-facts><menu-fact><menu-fact-name>Variable</menu-fact-name><menu-fact-value class=\"key\">" +
            std::string(key_of(mKeys)) + "</menu-fact-value></menu-fact></menu-facts></menu-helpbox>";
@@ -467,8 +466,8 @@ std::string ControlsPage::strip() const {
         return "Press the button for " + what + ". Delete clears it; Esc cancels.";
     }
     if (!mKeys && settings::get_int("menu_follow_buttons") != 0 && !input::menus_follow())
-        return "Cross, Circle, a tab button or the menu chord has no button, so these menus use your pad's own "
-               "buttons until it has one again.";
+        return "Cross, Circle or a tab button has no button, so these menus use your pad's own buttons until it "
+               "has one again.";
     if (mFocus == row_count()) return "Puts all buttons and keys back to the defaults.";
     if (mKeys && kTargets[mFocus].about) return kTargets[mFocus].about;
     if (!mKeys && target(mFocus) == kKickTarget) return kKickAbout;

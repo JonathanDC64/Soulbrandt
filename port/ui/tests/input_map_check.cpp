@@ -157,23 +157,27 @@ void check_follow_works() {
     std::array<signed char, 16> from{};
     for (int g = 0; g < 16; g++) from[g] = static_cast<signed char>(g);
     std::array<unsigned, 16> added{};
-    check(follow_works(from, added, 0) && follow_works(from, added, 1), "the game's own buttons: it works");
+    check(follow_works(from, added) && chord_has_buttons(from, added, 0) && chord_has_buttons(from, added, 1),
+          "the game's own buttons: it works");
     constexpr int kCrossG = 14, kL1G = 10, kL2G = 8, kL3G = 1, kSelectG = 0;
     from[kCrossG] = -1;
-    check(!follow_works(from, added, 0), "Cross has none: the pad's own");
+    check(!follow_works(from, added), "Cross has none: the pad's own");
     added[kCrossG] = 1u << 16;
-    check(!follow_works(from, added, 0), "Cross has only a paddle: the pad's own (not every pad has one)");
+    check(!follow_works(from, added), "Cross has only a paddle: the pad's own (not every pad has one)");
     added[kCrossG] = kSquare;
-    check(follow_works(from, added, 0), "Cross has Square as its 2nd: it works");
+    check(follow_works(from, added), "Cross has Square as its 2nd: it works");
     from[kL1G] = -1;
-    check(follow_works(from, added, 0), "L1 has none, L2 has its own: it works");
+    check(follow_works(from, added), "L1 has none, L2 has its own: it works");
     from[kL2G] = -1;
-    check(!follow_works(from, added, 0), "neither L1 nor L2 has one: the pad's own");
+    check(!follow_works(from, added), "neither L1 nor L2 has one: the pad's own");
     for (int g = 0; g < 16; g++) from[g] = static_cast<signed char>(g);
     added.fill(0);
     from[kL3G] = -1;
-    check(!chord_has_buttons(from, added, 0) && !follow_works(from, added, 0), "L3 has none: L3 + R3 can't be made");
-    check(chord_has_buttons(from, added, 1) && follow_works(from, added, 1), "L3 has none: Select + Start still works");
+    // L3 moved to R1's 2nd (the maintainer's test): the chord falls back alone, and the menus keep following.
+    added[11] = 1u << kL3G;
+    check(!chord_has_buttons(from, added, 0), "L3 has none: L3 + R3 can't be made");
+    check(follow_works(from, added), "L3 has none: the menus still follow the game's buttons");
+    check(chord_has_buttons(from, added, 1), "L3 has none: Select + Start still works");
     from[kSelectG] = -1;
     check(!chord_has_buttons(from, added, 1), "Select has none: Select + Start can't be made");
 }

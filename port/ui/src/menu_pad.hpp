@@ -71,9 +71,10 @@ unsigned through_added(unsigned host, const std::array<unsigned, 16>& added) noe
 bool chord_has_buttons(const std::array<signed char, 16>& from, const std::array<unsigned, 16>& added,
                        int chord) noexcept;
 // Whether the menus can be worked with the game's buttons (Same buttons as the game): Cross (Confirm), Circle (Back),
-// L1 or L2 and R1 or R2 (the tabs) and the chord each have one, as in chord_has_buttons. Otherwise the menus keep the
-// pad's own buttons (input.hpp's menus_follow), so a player who took Cross's button away can still put it back.
-bool follow_works(const std::array<signed char, 16>& from, const std::array<unsigned, 16>& added, int chord) noexcept;
+// L1 or L2 and R1 or R2 (the tabs) each have one, as in chord_has_buttons. Otherwise the menus keep the pad's own
+// buttons (input.hpp's menus_follow), so a player who took Cross's button away can still put it back. (The chord isn't
+// one of them: Start or Circle closes the menus, and a chord button with none falls back on its own.)
+bool follow_works(const std::array<signed char, 16>& from, const std::array<unsigned, 16>& added) noexcept;
 
 // Whether a held key repeats (the arrows and the tabs).
 bool pad_key_repeats(int key) noexcept;

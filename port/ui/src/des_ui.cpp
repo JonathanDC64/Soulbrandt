@@ -204,7 +204,7 @@ std::atomic<unsigned> sChordPadMask{kL3 | kR3};
 std::atomic<bool> sChordOwn{false};
 
 unsigned chord_pad_mask(unsigned mask) {
-    if (!ui::input::menus_follow()) return mask;  // (also when the chord's buttons have none: chord_on_own_buttons)
+    if (!ui::input::menus_follow() || ui::input::chord_on_own_buttons()) return mask;
     const auto from = ui::controls::game_button_sources();
     unsigned out = 0;
     for (int g = 0; g < 16; g++)

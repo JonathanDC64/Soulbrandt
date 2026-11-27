@@ -518,11 +518,12 @@ std::string pad_move_body(const PadMove& m, prompts::Device device) {
     std::array<signed char, kPadCount> from{};
     for (int g = 0; g < kPadCount; g++) from[g] = static_cast<signed char>(after.button[g]);
     const int chord = settings::get_int("pad_menu_chord");
-    if (settings::get_int("menu_follow_buttons") != 0 && !input::follow_works(from, after.also, chord))
+    if (settings::get_int("menu_follow_buttons") != 0 && !input::follow_works(from, after.also))
         out += " Until it has a button again, these menus use your pad's own buttons.";
-    else if (!input::chord_has_buttons(from, after.also, chord))
-        out += std::string(" Until it has a button again, your pad's own ") + input::chord_label(chord) +
-               " opens this menu.";
+    if (!input::chord_has_buttons(from, after.also, chord))
+        out += std::string(" The menu then opens with your pad's own ") + input::chord_label(chord) +
+               ", which also does what they're given here, or choose " + input::chord_label(1 - chord) +
+               " in Settings > Interface > Gamepad menu buttons.";
     return out;
 }
 

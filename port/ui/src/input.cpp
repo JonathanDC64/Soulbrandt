@@ -150,7 +150,7 @@ int take_captured_wheel() noexcept {
 
 bool menus_follow() {
     if (settings::get_int("menu_follow_buttons") == 0) return false;
-    return follow_works(controls::game_button_sources(), controls::pad_also(), settings::get_int("pad_menu_chord"));
+    return follow_works(controls::game_button_sources(), controls::pad_also());
 }
 
 bool chord_on_own_buttons() {
@@ -202,6 +202,9 @@ void update_pad(const PadState& pad, int chord) noexcept {
     if (sDevice >= 2 && pad.glyph >= 2) sDevice = pad.glyph;  // (cellPad knows the pad's kind a poll after its press)
     PadState menu = pad;
     menu.buttons = menu_buttons(pad.buttons, pad.extra);  // (Same buttons as the game: the game's, else the pad's own)
+    // A chord button with no pad button: the pad's own chord buttons make it, as over the game.
+    if (const unsigned mask = chord_mask(chord); (pad.buttons & mask) == mask && chord_on_own_buttons())
+        menu.buttons |= mask;
     const PadKeys down = pad_keys(menu, chord, sPadKeys);
     const double now = now_seconds();
     for (int k = 0; k < kPadKeyCount; k++) {
