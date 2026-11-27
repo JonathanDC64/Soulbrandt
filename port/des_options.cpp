@@ -3870,6 +3870,7 @@ extern "C" void ps3_title_window_only_init(void)
 }
 
 extern "C" void des_region_check_title(void);   /* des_region.cpp */
+extern "C" void des_dbgmenu_boot(void);         /* des_dbgmenu.cpp */
 extern "C" void des_region_language(void);
 
 extern "C" void ps3_title_options_init(void)
@@ -3878,6 +3879,8 @@ extern "C" void ps3_title_options_init(void)
     /* First: settings.ini fills in the options not set in the environment. */
     des_ui_early_init();
     des_region_language();   /* the European disc's language (DES_LANGUAGE), before the game asks */
+    des_dbgmenu_boot();      /* DES_DBGMENU, DES_DBGMENU_TITLE: offline and a copy of the saves, before anything
+                              * goes online and before the game's first save (docs/180) */
 #if DES_DEV
     des_dev_boot();        /* developer build: the marker (log, window title) and the cheats' offline rule (docs/55) */
 #endif

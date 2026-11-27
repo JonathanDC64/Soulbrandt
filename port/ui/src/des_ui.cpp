@@ -1396,6 +1396,14 @@ extern "C" int des_ui_keyboard(const unsigned short* prompt, const unsigned shor
     return 1;
 }
 
+// des_ui.h. The debug menu's offline rule (des_dbgmenu.cpp): the knobs cleared and the Network tab's reason first, then
+// the runtime's lock, which holds whatever sets the knobs later (the environment's or the debug console's).
+extern "C" void des_ui_net_off(const char* why) {
+    ui::settings::net_off(why ? why : "Off");
+    ps3_net_lock_offline();
+    std::fprintf(stderr, "[ui] network: %s\n", why ? why : "Off");
+}
+
 // des_ui.h. The game's main thread, before the game's code: the frame hook shows the note while this waits (and wakes
 // the overlay until it does: with no document up it sleeps). With RSX_PRESENT=0 nothing is drawn, so nothing can ask.
 extern "C" void des_ui_privacy_wait(void) {

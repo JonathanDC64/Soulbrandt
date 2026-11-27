@@ -3,6 +3,12 @@
 // mouse look has no mouse. Everything the game itself does is unchanged.
 #include "des_ui.h"
 
+#include <cstdio>
+#include <initializer_list>
+
+extern "C" void ps3_setenv(const char* name, const char* value);  // boot_main.cpp: through the runtime's getenv cache
+extern "C" void ps3_net_lock_offline(void);  // ps3_net.h: the network stays off for the rest of the session
+
 extern "C" {
 
 void (*g_des_ui_sound)(int id) = nullptr;
@@ -18,6 +24,14 @@ int des_ui_launch(int*, char***) {
 void des_ui_setup_only_init(void) {}
 
 void des_ui_privacy_wait(void) {}  // (no settings.ini: nothing goes online through the Network rows)
+
+void des_ui_net_off(const char* why) {
+    // (no Network tab: the knobs and the runtime's lock only, as settings.cpp's net_off and des_ui.cpp's do)
+    for (const char* k : {"PS3_NET_ONLINE", "PSNR_SERVER", "PS3_NET_HOSTS", "PS3_NET_SIGNIN"})
+        ps3_setenv(k, "");  // (an empty value reads as unset)
+    ps3_net_lock_offline();
+    std::fprintf(stderr, "[ui] network: %s\n", why ? why : "Off");
+}
 
 void des_mouse_take(int* dx, int* dy) {
     *dx = 0;
