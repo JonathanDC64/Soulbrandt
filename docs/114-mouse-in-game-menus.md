@@ -11,7 +11,8 @@ Date: 2026-10-27. Status: experimental, off by default (Settings > Controls > Mo
 - The part under the pointer gets a **soft glow**: a thin pale outline with a glow about it, fading in quickly. The
   game's own selection does not follow the pointer; it moves on a click.
 - **Left click** picks the part under it and confirms it, in one click. A click on a tab only switches to it. A click
-  on empty space does nothing. On PRESS START BUTTON a click anywhere is Start.
+  on empty space does nothing. On PRESS START BUTTON a click anywhere is Start. While a movie plays with no menu of
+  the game up (the opening one, the title screen's advert), a left or right click is START, which skips it.
 - **Right click** is Circle (back), anywhere.
 - **The wheel**: one notch is one row of a list (the list scrolls as with the D-pad), one tab along a bar of tabs,
   and on a row with arrows (◀ Male ▶) it turns the value, up to the right.
