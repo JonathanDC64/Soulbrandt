@@ -32,7 +32,7 @@
  *   set KNOB=value         set a knob live (an empty value unsets it)
  *   press <s> <b>[+<b>..]  hold buttons on port 0 for s game seconds: start,
  *                          select, cross, circle, triangle, square, up, down,
- *                          left, right, l1, l2, r1, r2 (press 0.15 r2+cross)
+ *                          left, right, l1, l2, r1, r2, l3, r3 (press 0.15 r2+cross)
  *   continue               after a Quit Game: once the level is gone, press
  *                          through the title into the last save
  *                          (DES_AUTO_CONTINUE's presses), wait for the next
@@ -125,7 +125,7 @@ struct Step {
 unsigned button_bit(const std::string& b)
 {
     static const struct { const char* name; unsigned bit; } kButtons[] = {
-        {"select", 0x0001}, {"start", 0x0008}, {"up", 0x0010}, {"right", 0x0020}, {"down", 0x0040},
+        {"select", 0x0001}, {"l3", 0x0002}, {"r3", 0x0004}, {"start", 0x0008}, {"up", 0x0010}, {"right", 0x0020}, {"down", 0x0040},
         {"left", 0x0080}, {"l2", 0x0100}, {"r2", 0x0200}, {"l1", 0x0400}, {"r1", 0x0800},
         {"triangle", 0x1000}, {"circle", 0x2000}, {"cross", 0x4000}, {"square", 0x8000},
     };

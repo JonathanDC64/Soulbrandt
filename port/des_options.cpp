@@ -3405,19 +3405,47 @@ extern "C" void des_cut_cam(ppu_context* ctx, uint32_t addr)
  * degrees per count (0.09: a full turn per 4000), the same at any frame rate.
  * All live. The camera turns once a game frame, so at 30 fps it moves in 30 Hz
  * steps. DES_MOUSELOG=1 prints what happened to the counts every 60 updates
- * (and mouse.cpp when it takes and lets go of the mouse). */
+ * (and mouse.cpp when it takes and lets go of the mouse).
+ *
+ * The same hooks carry three camera options (issue #736, Settings > Controls >
+ * Camera, all on by default, as in the original game):
+ * - DES_CAM_FOLLOW=0: the camera does not follow the character round. The
+ *   update rebuilds yaw every frame from where the eye is, and the eye chases
+ *   the character with a lag, so running sideways swings the view round
+ *   behind the character. Off, the entry keeps the yaw the last update ended
+ *   with, the stick test sees a move (as for a mouse turn) and the turn hook
+ *   puts the kept yaw back before the stick and the mouse add theirs. Only in
+ *   the free camera: not locked on (+0x240), not in a set-angle (+0x12C) or
+ *   the reset below (+0x242, +0x243), whose turns stay the game's.
+ * - DES_CAM_RESET=0: lock on with nothing to lock on to (R3) does not turn the
+ *   camera behind the character. The camera manager passes that reset to the
+ *   camera as +0x242 = 1 just before the update, which makes it an auto-turn
+ *   (docs/42 2.1); the entry clears it.
+ * - DES_CAM_WALL=0: walls don't turn the camera. Moving with the camera
+ *   against a wall or past a corner, the update's collision block (after its
+ *   casts, 0x0011B5B4) adds 2 degrees a frame to a turn, +0x25C, which it
+ *   reads back at 0x0011C2FC (a hook of its own) to turn the camera by it,
+ *   and eases it out over the next frames. Off, the hook
+ *   reads it as 0, which skips the turn, and keeps 0. Only the turn: the
+ *   camera still moves in when a wall is behind it, so it never sees through
+ *   one. With DES_CAM_FOLLOW=0 the kept yaw already leaves this turn out.
+ * DES_CAM_LOG=1 prints the yaw every 15 updates and each reset or wall turn
+ * dropped. */
 namespace {
 constexpr uint32_t kMouseAtEntry     = 0x00119670u;   /* li r0, 4080 */
 constexpr uint32_t kMouseAtStickTest = 0x0011C910u;   /* lfs f0, 0xF0(r1) */
 constexpr uint32_t kMouseAtTurn      = 0x0011C758u;   /* lwz r9, -0x7F84(r30) */
 constexpr uint32_t kMouseAtAimEntry  = 0x00110608u;   /* li r0, 1776 */
+constexpr uint32_t kCamAtWallTurn    = 0x0011C2FCu;   /* lfs f12, 0x25C(r31) */
 constexpr uint32_t kCamPitch     = 0x130u;   /* float, radians */
 constexpr uint32_t kCamYaw       = 0x134u;   /* float, radians, kept in [-pi, pi] by the update */
 constexpr uint32_t kCamPitchMax  = 0x1D0u;
 constexpr uint32_t kCamPitchMin  = 0x1D4u;
 constexpr uint32_t kCamSetAngle  = 0x12Cu;   /* bytes */
 constexpr uint32_t kCamLookAt    = 0x240u;
+constexpr uint32_t kCamResetAsk  = 0x242u;   /* the manager's R3 reset, made an auto-turn by the update */
 constexpr uint32_t kCamAutoTurn  = 0x243u;
+constexpr uint32_t kCamWallTurn  = 0x25Cu;   /* float, radians: the turn a wall gives the camera */
 constexpr uint32_t kCamActive    = 0x298u;
 constexpr uint32_t kAimFov       = 0x50u;    /* float: this frame's field of view (the aim camera) */
 constexpr uint32_t kAimPitchMax  = 0xF0u;    /* float, degrees */
@@ -3437,6 +3465,9 @@ constexpr unsigned kFlickIdle        = 4;       /* updates without a count to th
 /* The turn the entry kept for this update of camera s_turn_cam (0: none), in
  * radians, and its counts (|dx| + |dy|) for the log. */
 uint32_t s_turn_cam = 0;
+/* DES_CAM_FOLLOW=0: the camera whose yaw this update keeps (0: none), and that yaw. */
+uint32_t s_keep_cam = 0;
+float s_keep_yaw = 0.0f;
 float s_turn_yaw = 0.0f, s_turn_pitch = 0.0f;
 int s_turn_counts = 0;
 
@@ -3497,6 +3528,46 @@ void mouse_flick(int dx, float sens, float deg)
     s_flick_rest = kFlickRest;
 }
 
+/* 0x0011C2FC, DES_CAM_WALL=0: the turn a wall gives the camera (f12, just
+ * loaded from +0x25C) read as none, so the update skips it, and none kept. */
+void camera_wall_turn(ppu_context* ctx)
+{
+    static int wall = 1, log = 0;
+    PS3_KNOB(wall, ps3_env_int("DES_CAM_WALL", 1));
+    PS3_KNOB(log, env_on("DES_CAM_LOG"));
+    const uint32_t cam = (uint32_t)ctx->gpr[31];
+    if (wall || ctx->fpr[12] == 0.0 || !guest_ptr_ok(cam)) return;
+    if (log) fprintf(stderr, "[cam] a wall's turn of %.3f: dropped (DES_CAM_WALL=0)\n", ctx->fpr[12]);
+    ctx->fpr[12] = 0.0;
+    vm_writef(cam + kCamWallTurn, 0.0f);
+}
+
+/* The follow camera's entry: two of the camera options (DES_CAM_FOLLOW, DES_CAM_RESET; DES_CAM_WALL is
+ * camera_wall_turn's). */
+void camera_options(uint32_t cam)
+{
+    static int follow = 1, reset = 1, log = 0;
+    PS3_KNOB(follow, ps3_env_int("DES_CAM_FOLLOW", 1));
+    PS3_KNOB(reset, ps3_env_int("DES_CAM_RESET", 1));
+    PS3_KNOB(log, env_on("DES_CAM_LOG"));
+    s_keep_cam = 0;
+    if (!guest_ptr_ok(cam) || !vm_read8(cam + kCamActive)) return;
+    if (!reset && vm_read8(cam + kCamResetAsk)) {
+        vm_write8(cam + kCamResetAsk, 0);
+        if (log) fprintf(stderr, "[cam] the reset behind the character: dropped (DES_CAM_RESET=0)\n");
+    }
+    const bool free = !vm_read8(cam + kCamSetAngle) && !vm_read8(cam + kCamLookAt) &&
+                      !vm_read8(cam + kCamResetAsk) && !vm_read8(cam + kCamAutoTurn);
+    if (!follow && free) {
+        s_keep_cam = cam;
+        s_keep_yaw = vm_readf(cam + kCamYaw);
+    }
+    static unsigned n = 0;
+    if (log && ++n % 15 == 0)
+        fprintf(stderr, "[cam] yaw %.3f pitch %.3f%s\n", vm_readf(cam + kCamYaw), vm_readf(cam + kCamPitch),
+                s_keep_cam ? " (kept)" : free ? "" : " (the game's turn)");
+}
+
 /* 0x0011C758: the kept turn onto the angles the update just rebuilt. */
 void mouse_turn(uint32_t cam)
 {
@@ -3536,12 +3607,23 @@ extern "C" unsigned des_flip_count(void) { return s_flips.load(std::memory_order
 
 extern "C" void des_mouse_look(ppu_context* ctx, uint32_t addr)
 {
+    if (addr == kCamAtWallTurn) {
+        camera_wall_turn(ctx);
+        return;
+    }
     if (addr == kMouseAtStickTest) {
-        if (s_turn_cam && (uint32_t)ctx->gpr[31] == s_turn_cam && ctx->fpr[0] == 0.0) ctx->fpr[0] = 1.0;
+        const uint32_t c = (uint32_t)ctx->gpr[31];
+        if (((s_turn_cam && c == s_turn_cam) || (s_keep_cam && c == s_keep_cam)) && ctx->fpr[0] == 0.0)
+            ctx->fpr[0] = 1.0;
         return;
     }
     if (addr == kMouseAtTurn) {
-        if (s_turn_cam && (uint32_t)ctx->gpr[31] == s_turn_cam) mouse_turn(s_turn_cam);
+        const uint32_t c = (uint32_t)ctx->gpr[31];
+        if (s_keep_cam && c == s_keep_cam) {   /* DES_CAM_FOLLOW=0: last update's yaw, before any turn */
+            vm_writef(c + kCamYaw, s_keep_yaw);
+            s_keep_cam = 0;
+        }
+        if (s_turn_cam && c == s_turn_cam) mouse_turn(s_turn_cam);
         return;
     }
     const bool aim = addr == kMouseAtAimEntry;
@@ -3564,6 +3646,7 @@ extern "C" void des_mouse_look(ppu_context* ctx, uint32_t addr)
         s_mouse_counts[kLost] += s_turn_counts;
     }
     const uint32_t cam = (uint32_t)ctx->gpr[3];
+    if (!aim) camera_options(cam);
     if (!guest_ptr_ok(cam) || !vm_read8(cam + (aim ? kAimInput : kCamActive))) return;
     int dx = 0, dy = 0;
     des_mouse_take(&dx, &dy);   /* (with mouse look off too: the game has the mouse's buttons while the camera runs) */

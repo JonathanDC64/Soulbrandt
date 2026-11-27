@@ -171,6 +171,9 @@ constexpr Def kDefs[] = {
     {"PAD_DEADZONE_LEFT", "", Apply::Live},    // cellPad, live: tilt where the stick starts counting; "" = the default
     {"PAD_DEADZONE_RIGHT", "", Apply::Live},   // (and PAD_DEADZONE_ANTI: des_options.cpp's run_defaults)
     {"DES_ROLLDIR", "1", Apply::Live},         // des_roll_dir, read at each roll; 0 = locked-on rolls go 4 ways only
+    {"DES_CAM_FOLLOW", "1", Apply::Live},      // des_options.cpp, each camera update: 0 = the camera keeps its direction as you move
+    {"DES_CAM_WALL", "1", Apply::Live},        // des_options.cpp, each camera update: 0 = walls don't turn the camera
+    {"DES_CAM_RESET", "1", Apply::Live},       // des_options.cpp, each camera update: 0 = lock on with no target leaves the camera
     {"DES_KICK", "0", Apply::Live},            // des_kick, at each attack: 1 = attacking never kicks, the Kick key does
     {"keys_layout", "souls", Apply::UiOnly},   // the layout PAD_KEYS changes; a file without this line is older
     {"DES_MOUSE_LOOK", "0", Apply::Live},      // mouse look (des_mouse_look; port/ui/src/mouse.cpp), read each frame

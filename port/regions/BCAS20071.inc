@@ -49,6 +49,7 @@ DES_REGION_ADDR(0x0011B830, 0x00119908)  /* hook des_cam_rate */
 DES_REGION_ADDR(0x0011C0E8, 0x0011A1C0)  /* hook des_cam_rate */
 DES_REGION_ADDR(0x0011C15C, 0x0011A234)  /* hook des_cam_keep */
 DES_REGION_ADDR(0x0011C2BC, 0x0011A394)  /* hook des_cam_rate */
+DES_REGION_ADDR(0x0011C2FC, 0x0011A3D4)  /* hook des_mouse_look */
 DES_REGION_ADDR(0x0011C758, 0x0011A830)  /* hook des_mouse_look */
 DES_REGION_ADDR(0x0011C910, 0x0011A9E8)  /* hook des_mouse_look */
 DES_REGION_ADDR(0x0011CF84, 0x0011B05C)  /* hook des_cam_rate */
