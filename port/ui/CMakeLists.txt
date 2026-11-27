@@ -100,6 +100,9 @@ add_custom_command(
 file(GLOB DES_UI_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp)
 if(WIN32)
   set(DES_UI_OTHER mouse_sdl crash_report_posix)
+elseif(APPLE)
+  # A Mac has no D3D12: the menus draw through the GPU layer only (render_gpu.cpp, on the new path's device).
+  set(DES_UI_OTHER render_d3d11 render_d3d12 mouse crash_report crash_dialog)
 else()
   set(DES_UI_OTHER render_d3d11 mouse crash_report crash_dialog)
 endif()
@@ -135,7 +138,10 @@ else()
   # vkd3d as port/CMakeLists.txt found it (D3D12 and D3DCompile). SDL3's headers: the window, the keys and the mouse
   # are the runtime's SDL3, which the runtime's build names (ps3recomp_runtime_deps.cmake) and des_boot links with it.
   # A UI built alone (CI's, no runtime beside it) takes the headers of the same pinned release, nothing built.
-  if(NOT TARGET PkgConfig::DES_VKD3D_LIBS)
+  # On Linux D3D12 is vkd3d's. A Mac has none: there the menus draw through the GPU layer alone (DES_UI_NO_D3D12).
+  if(APPLE)
+    target_compile_definitions(des_ui PRIVATE DES_UI_NO_D3D12=1)
+  elseif(NOT TARGET PkgConfig::DES_VKD3D_LIBS)
     message(FATAL_ERROR "The wrapper UI off Windows draws through vkd3d: configure with DES_VKD3D=ON (or DES_UI=OFF)")
   endif()
   if(PS3RECOMP_SDL3_INCLUDE_DIRS)
@@ -153,7 +159,10 @@ else()
     target_link_libraries(des_ui PRIVATE $<BUILD_INTERFACE:SDL3::Headers>)
   endif()
   # (CMAKE_DL_LIBS: dlopen, for the folder dialog's libdbus, loaded only when the dialog opens; folder_picker.cpp)
-  target_link_libraries(des_ui PRIVATE RmlUi::RmlUi PkgConfig::DES_VKD3D_LIBS ${CMAKE_DL_LIBS})
+  target_link_libraries(des_ui PRIVATE RmlUi::RmlUi ${CMAKE_DL_LIBS})
+  if(TARGET PkgConfig::DES_VKD3D_LIBS)
+    target_link_libraries(des_ui PRIVATE PkgConfig::DES_VKD3D_LIBS)
+  endif()
 endif()
 
 # The version shown on the start screen, in About, in reports and in the log: des_version.h, written on every build

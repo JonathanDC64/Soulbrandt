@@ -167,7 +167,12 @@ unsigned dpi_of_window() {
     return unsigned(dpi + 0.5f);
 }
 
+#if defined(DES_UI_NO_D3D12)
+// (A Mac: no D3D12 device ever comes here. The menus start on the new path's device instead, init with a maker.)
+std::unique_ptr<Renderer> make_renderer(void*, void*) { return nullptr; }
+#else
 std::unique_ptr<Renderer> make_renderer(void* device, void* queue) { return d3d12::create(device, queue, find_png); }
+#endif
 
 #endif
 
