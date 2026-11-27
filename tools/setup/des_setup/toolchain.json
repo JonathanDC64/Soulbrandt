@@ -29,6 +29,15 @@
    "checked": "size and SHA-256 from the release's asset list (its digest field), matched by a download, 2026-10-24"
   },
   {
+   "name": "python-macos",
+   "version": "3.13.17",
+   "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261021/cpython-3.13.17%2B20261021-aarch64-apple-darwin-install_only_stripped.tar.gz",
+   "size": 25286365,
+   "sha256": "8dc60610a82f1e73be7faf964383e02520f95f6e39592a5c37c3809f5a7b798e",
+   "why": "Runs the lifters and this setup on a Mac (Apple silicon), as python-linux does on Linux (docs/178).",
+   "checked": "size and SHA-256 from the release's asset list (its digest field), 2026-11-26"
+  },
+  {
    "name": "llvm-linux-x64",
    "version": "22.1.8-2",
    "url": "https://github.com/JonathanDC64/Soulbrandt/releases/download/llvm-linux-22.1.8-2/llvm-linux-x64-22.1.8-2.tar.xz",
