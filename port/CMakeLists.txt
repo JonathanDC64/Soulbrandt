@@ -814,6 +814,17 @@ if(DES_SPLIT)
     target_compile_options(des_host PRIVATE ${_des_boot_COMPILE_OPTIONS}
         "${DES_FORCE_INCLUDE}${PS3RECOMP_DIR}/include/ps3emu/game_split.h")
     target_link_libraries(des_host PRIVATE ps3recomp_runtime_split ${_des_boot_LINK_LIBRARIES})
+    if(APPLE)
+        # What the runtime's static libraries take from macOS, which an imported library does not carry (ps3recomp's
+        # ps3recomp_runtime_deps.cmake leaves those to the host): SDL3's (its CMakeLists.txt's list for macOS; the
+        # weak ones are newer than the oldest macOS SDL runs on) and the runtime's own Metal path's.
+        target_link_libraries(des_host PRIVATE
+            "-framework AppKit" "-framework AudioToolbox" "-framework AVFoundation" "-framework Carbon"
+            "-framework Cocoa" "-framework CoreAudio" "-framework CoreMedia" "-framework CoreVideo"
+            "-framework ForceFeedback" "-framework Foundation" "-framework GameController" "-framework IOKit"
+            "-framework Metal" "-framework QuartzCore" "-weak_framework CoreHaptics"
+            "-weak_framework UniformTypeIdentifiers" iconv)
+    endif()
     target_link_options(des_host PRIVATE "${_des_map}des_host.map")
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         # A build id, which lld writes only when asked: the menus' shader cache knows the build by it (ui/src/shader_cache.cpp).
