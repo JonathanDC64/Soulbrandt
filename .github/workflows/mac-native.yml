@@ -179,12 +179,12 @@ jobs:
       - name: The setup window opens
         env:
           DYLD_FALLBACK_LIBRARY_PATH: /opt/homebrew/lib
-          XDG_DATA_HOME: ${{ runner.temp }}/xdg
+          DES_USER_FOLDERS: ${{ runner.temp }}/des_user
           RSX_BACKEND: vulkan
           PS3_NO_USER_INPUT: '1'
         run: |
           chmod +x des_host
-          mkdir -p "$XDG_DATA_HOME"
+          mkdir -p "$DES_USER_FOLDERS"
           ./des_host > window.log 2>&1 &
           pid=$!
           for i in $(seq 1 90); do
