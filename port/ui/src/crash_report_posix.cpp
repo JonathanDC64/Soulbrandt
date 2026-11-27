@@ -30,11 +30,17 @@
 #include <SDL3/SDL.h>
 #include <execinfo.h>
 #include <fcntl.h>
-#include <sched.h>
 #include <spawn.h>
-#include <sys/syscall.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#if defined(__APPLE__)
+#include <crt_externs.h>  // (_NSGetArgv: a Mac has no /proc)
+#include <pthread.h>
+#include <sys/sysctl.h>
+#else
+#include <sched.h>
+#include <sys/syscall.h>
+#endif
 
 #include <atomic>
 #include <chrono>
@@ -100,8 +106,9 @@ std::vector<std::string>& started_arguments() {
     static std::vector<std::string> args;
     return args;
 }
+#if !defined(__APPLE__)
 // And the CPUs it could run on (the player's own limit, if any): a new process gets those of the thread that starts
-// it, not the program's (start_again).
+// it, not the program's (start_again). (A Mac has no CPU sets: a thread there gets a kind of CPU, not CPUs.)
 struct StartedCpus {
     cpu_set_t set;
     bool known = false;
@@ -110,11 +117,46 @@ StartedCpus& started_cpus() {
     static StartedCpus cpus;
     return cpus;
 }
+#endif
 __attribute__((constructor)) void save_start() {
     for (char** e = environ; e && *e; ++e) started_environment().emplace_back(*e);
+#if defined(__APPLE__)
+    char** const argv = *_NSGetArgv();  // (main's own, which the loader holds before main)
+    for (int i = 0, n = *_NSGetArgc(); argv && i < n; i++) started_arguments().emplace_back(argv[i] ? argv[i] : "");
+#else
     started_cpus().known = sched_getaffinity(0, sizeof(cpu_set_t), &started_cpus().set) == 0;
     std::ifstream cmdline("/proc/self/cmdline", std::ios::binary);  // the arguments, each ended by a 0
     for (std::string arg; std::getline(cmdline, arg, '\0');) started_arguments().push_back(arg);
+#endif
+}
+
+// A started process keeps 0, 1 and 2 (as `files` sets them up) and none of this one's other files. Linux closes the
+// others in the new process; a Mac has no such action, and with POSIX_SPAWN_CLOEXEC_DEFAULT (kSpawnFlags) closes
+// every one that `files` does not name, so the ones it keeps as they are (`as_is`, a bit for each of 0-2) are named.
+void keep_std_only(posix_spawn_file_actions_t* files, unsigned as_is) {
+#if defined(__APPLE__)
+    for (int fd = 0; fd < 3; fd++)
+        if ((as_is >> fd & 1u) && fcntl(fd, F_GETFD) != -1) posix_spawn_file_actions_addinherit_np(files, fd);
+#else
+    (void)as_is;
+    posix_spawn_file_actions_addclosefrom_np(files, 3);
+#endif
+}
+#if defined(__APPLE__)
+constexpr short kSpawnFlags = POSIX_SPAWN_CLOEXEC_DEFAULT;
+#else
+constexpr short kSpawnFlags = 0;
+#endif
+
+// This thread's id, as the system's tools show it.
+long thread_id() {
+#if defined(__APPLE__)
+    uint64_t id = 0;
+    pthread_threadid_np(nullptr, &id);
+    return long(id);
+#else
+    return long(syscall(SYS_gettid));
+#endif
 }
 
 // A start by setup's Play (start_again): the setup process is still closing. Wait for it to end (at most 10 s), so
@@ -188,13 +230,13 @@ void prepare_dialog() {
     const std::string log = (report::data_dir() / "logs" / "crash-dialog.log").string();
     posix_spawn_file_actions_addopen(&s.files, 1, log.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
     posix_spawn_file_actions_adddup2(&s.files, 1, 2);
-    posix_spawn_file_actions_addclosefrom_np(&s.files, 3);
+    keep_std_only(&s.files, 1u);  // (0 as it is)
     // A fault's handler runs with its signal blocked, and a new process keeps the mask it was started with.
     posix_spawnattr_init(&s.attr);
     sigset_t none;
     sigemptyset(&none);
     posix_spawnattr_setsigmask(&s.attr, &none);
-    posix_spawnattr_setflags(&s.attr, POSIX_SPAWN_SETSIGMASK);
+    posix_spawnattr_setflags(&s.attr, POSIX_SPAWN_SETSIGMASK | kSpawnFlags);
     s.ready = true;
 }
 
@@ -237,7 +279,7 @@ void write_report(const char* what, const char* notes = nullptr) {
     if (FILE* f = std::fopen((base + ".txt").c_str(), "w")) {
         std::fprintf(f, "\n%s%s ===\n", kCrashMark, what);
         std::fprintf(f, "version %s, last HLE call 0x%08X (%s), thread %ld\n", kVersion, g_last_hle_nid,
-                     g_last_hle_name ? g_last_hle_name : "", long(syscall(SYS_gettid)));
+                     g_last_hle_name ? g_last_hle_name : "", thread_id());
         std::fprintf(f, "ps3recomp %s, game dump %s\n", kPs3recompVersion, *kDumpSha256 ? kDumpSha256 : "unknown");
         if (notes && *notes) std::fprintf(f, "%s\n", notes);
         {
@@ -286,11 +328,18 @@ std::atomic<bool> g_window_up{false};  // push_dialog ran: the window-only start
 // (a zombie), or when the id is another user's now.
 bool running(unsigned long pid) {
     if (pid == 0 || kill(pid_t(pid), 0) != 0) return false;
+#if defined(__APPLE__)
+    kinfo_proc info{};  // (no /proc on a Mac: the system's process table)
+    size_t size = sizeof info;
+    int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PID, int(pid)};
+    return sysctl(mib, 4, &info, &size, nullptr, 0) != 0 || size < sizeof info || info.kp_proc.p_stat != SZOMB;
+#else
     std::ifstream stat("/proc/" + std::to_string(pid) + "/stat");
     std::string line;
     std::getline(stat, line);
     const size_t name_end = line.rfind(')');  // (the process's name is in brackets, and may hold anything)
     return !(name_end != std::string::npos && name_end + 2 < line.size() && line[name_end + 2] == 'Z');
+#endif
 }
 
 void wait_gone(unsigned long pid, int ms) {
@@ -479,12 +528,22 @@ bool start_again(const std::vector<std::string>& set, bool play) {
     // either: no lock on des.log, no end of that pipe.
     posix_spawn_file_actions_t files;
     posix_spawn_file_actions_init(&files);
+    unsigned as_is = 1u;  // (0 as it is)
     for (int fd : {1, 2}) {
         const int original = report::original_output(fd);
         if (original < 0) posix_spawn_file_actions_addopen(&files, fd, "/dev/null", O_WRONLY, 0);
         else if (original != fd) posix_spawn_file_actions_adddup2(&files, original, fd);
+        else as_is |= 1u << fd;
     }
-    posix_spawn_file_actions_addclosefrom_np(&files, 3);
+    keep_std_only(&files, as_is);
+#if defined(__APPLE__)
+    posix_spawnattr_t attr;
+    posix_spawnattr_init(&attr);
+    posix_spawnattr_setflags(&attr, kSpawnFlags);
+    posix_spawnattr_t* const spawn_attr = &attr;
+#else
+    posix_spawnattr_t* const spawn_attr = nullptr;
+#endif
     // The program's file where it was started (report::program_now, read at the start): after an update that path
     // holds the new version, while /proc/self/exe follows this one's file into .previous/. /proc/self/exe only if
     // the path cannot be started.
@@ -493,21 +552,27 @@ bool start_again(const std::vector<std::string>& set, bool play) {
     // menus' presses, which RSX_CORE (on by default) puts alone on one CPU (ps3recomp's plat_core_reserve). Every
     // game the Co-op window's Host, Join or Leave started ran on that one CPU: a tester's i5-12400F (12 CPUs) got
     // about 35 fps in co-op where it gets 240 alone, the game 1.00 core busy with its threads waiting for a CPU, and
-    // RSX_CORE "not used here" (11-23).
+    // RSX_CORE "not used here" (11-23). (Not on a Mac: it has no CPU sets.)
+#if !defined(__APPLE__)
     cpu_set_t was;
     const bool moved = started_cpus().known && sched_getaffinity(0, sizeof was, &was) == 0 &&
                        !CPU_EQUAL(&was, &started_cpus().set) &&
                        sched_setaffinity(0, sizeof(cpu_set_t), &started_cpus().set) == 0;
+#endif
     pid_t child = 0;
     const std::string exe = report::program_now().string();
     const bool started =
-        (!exe.empty() && posix_spawn(&child, exe.c_str(), &files, nullptr, argv.data(), envp.data()) == 0) ||
-        posix_spawn(&child, "/proc/self/exe", &files, nullptr, argv.data(), envp.data()) == 0;
+        (!exe.empty() && posix_spawn(&child, exe.c_str(), &files, spawn_attr, argv.data(), envp.data()) == 0) ||
+        posix_spawn(&child, "/proc/self/exe", &files, spawn_attr, argv.data(), envp.data()) == 0;
     posix_spawn_file_actions_destroy(&files);
+#if defined(__APPLE__)
+    posix_spawnattr_destroy(&attr);
+#else
     if (moved) sched_setaffinity(0, sizeof was, &was);
     if (started && moved)
         std::fprintf(stderr, "[ui] the game starts again on the %d CPU(s) it started with, not this thread's %d\n",
                      CPU_COUNT(&started_cpus().set), CPU_COUNT(&was));
+#endif
     if (!started) return false;
     // A test run's PS3_PIDFILE (each process appends itself, late in its boot): the new one goes in now, so the script
     // that started this one sees the game at once, to wait for it or stop it.

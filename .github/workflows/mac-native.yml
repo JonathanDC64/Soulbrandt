@@ -1,0 +1,151 @@
+# The native Mac build (docs/178 route B, step M1): des_host for Apple silicon, built only, as the Linux job in
+# host.yml builds it: the pinned ps3recomp's runtime with the portable renderer (its Vulkan backend and the spv
+# target), the game split and no decryptor; then des_host alone (DES_HOST_ONLY), with the menus on the new path's
+# GPU layer. A Mac has no D3D12 renderer, so there is no vkd3d. The compiler is the runner's Xcode clang.
+#
+# Ninja keeps going past a failed file (-k 0), so one run lists every error. Not a required check: GitHub's macOS
+# machines sometimes take long to come, or none comes (ps3recomp's macos.yml says more).
+name: Mac native
+
+on:
+  push:
+    branches: [ master, 'feat/mac-native-*' ]
+  pull_request:
+    paths:
+      - 'port/**'
+      - 'ps3recomp.pin'
+      - '.github/workflows/mac-native.yml'
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: Apple Silicon runner image
+        type: choice
+        options: [ macos-15, macos-26 ]
+        default: macos-15
+
+concurrency:
+  group: mac-native-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  host-mac:
+    name: des_host (macOS arm64, build only)
+    runs-on: ${{ inputs.runner || 'macos-15' }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0   # the version counts the commits since the last v tag (port/cmake/DesVersion.cmake)
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
+
+      - name: Read the ps3recomp pin
+        id: pin
+        run: python .github/scripts/read_pin.py >> "$GITHUB_OUTPUT"
+
+      - name: Check out the pinned ps3recomp
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: ${{ steps.pin.outputs.repo }}
+          ref: ${{ steps.pin.outputs.commit }}
+          path: ps3recomp
+          persist-credentials: false
+
+      - name: Install Ninja and ccache
+        run: |
+          brew install ninja ccache
+          {
+            echo "CCACHE_DIR=$GITHUB_WORKSPACE/.ci-cache/ccache"
+            echo "CCACHE_MAXSIZE=1G"
+            echo "CMAKE_C_COMPILER_LAUNCHER=ccache"
+            echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache"
+          } >> "$GITHUB_ENV"
+
+      # ccache: the runtime's and des_host's compiles that did not change come from the newest entry of this branch
+      # (or of master). It is saved after every push, one key per commit, failed builds too: a run that stops on a
+      # compile error has compiled everything else.
+      - name: Restore ccache's cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ github.workspace }}/.ci-cache/ccache
+          key: ccache-mac-native-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          restore-keys: ccache-mac-native-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Show toolchain
+        run: |
+          clang --version
+          xcrun --show-sdk-path
+          cmake --version
+          ninja --version
+
+      - name: Configure the runtime library
+        run: |
+          set -o pipefail
+          cmake -S ps3recomp -B ps3recomp/build_split -G Ninja -DCMAKE_BUILD_TYPE=Release -DPS3RECOMP_BUILD_TESTS=OFF \
+            -DPS3RECOMP_RSX_HAL=ON -DPS3RECOMP_GAME_SPLIT=ON -DPS3RECOMP_NO_DECRYPT=ON | tee rt_cfg.log
+          grep -q "Renderer: *the GPU layer's Vulkan backend" rt_cfg.log
+          grep -q "Renderer: *the compile service's spv target" rt_cfg.log
+
+      - name: Build the runtime library
+        run: cmake --build ps3recomp/build_split --target ps3recomp_runtime -- -k 0
+
+      # des_host takes one file from the lift folder, and it is ps3recomp's own (as in host.yml).
+      - name: The HLE NID table, from ps3recomp alone
+        run: |
+          lift="$RUNNER_TEMP/host_lift"
+          mkdir -p "$lift"
+          python ps3recomp/tools/gen_hle_nids.py --all --out "$lift/hle_nid_table.cpp"
+          echo "HOST_LIFT=$lift" >> "$GITHUB_ENV"
+
+      - name: Configure des_host
+        run: |
+          set -o pipefail
+          cmake -S port -B build/host -G Ninja -DCMAKE_BUILD_TYPE= "-DRECOMP_DIR=$HOST_LIFT" \
+            -DDES_SPLIT=ON -DDES_SPLIT_FREESTANDING=ON -DDES_HOST_ONLY=ON -DDES_VKD3D=OFF -DDES_UI=ON \
+            -DDES_REQUIRE_PIN=ON -DDES_DEV=OFF | tee host_cfg.log
+          grep -q "renderer calls through the route switch (DES_RSX_HAL=AUTO): ON" host_cfg.log
+
+      - name: Build des_host
+        run: cmake --build build/host --target des_host -- -k 0
+
+      # Arm64, and nothing loaded from Homebrew (the runner has it; a player's Mac does not): only the system's own
+      # libraries and frameworks.
+      - name: Verify architecture and libraries
+        run: |
+          file build/host/des_host
+          lipo -info build/host/des_host | grep -q arm64
+          otool -L build/host/des_host | tee libs.txt
+          if tail -n +2 libs.txt | grep -Ev '^[[:space:]]+(/usr/lib/|/System/Library/)'; then
+            echo "::error::des_host loads a library from outside macOS (above)"; exit 1
+          fi
+
+      # The player's program has no decryptor and no keys (as host.yml checks the Windows and Linux ones).
+      - name: No decryptor in des_host
+        run: |
+          grep -q "^PS3RECOMP_NO_DECRYPT:BOOL=ON" ps3recomp/build_split/CMakeCache.txt \
+            || { echo "::error::the runtime was built with its decryptor"; exit 1; }
+          if grep -qE "[ _]edat_decrypt_file( |$)" build/host/des_host.map; then
+            echo "::error::des_host has edat_decrypt_file"; exit 1
+          fi
+          python tools/release/package.py check-keys --rev HEAD --ps3recomp ps3recomp --file build/host/des_host
+
+      # Its first run: macOS loads it and its frameworks, its constructors run (the command line, the processor
+      # check), and it says it is a program that starts. It opens no window yet (docs/178, step M3).
+      - name: The program starts
+        run: PS3_NO_USER_INPUT=1 build/host/des_host --program-check
+
+      - name: ccache's numbers
+        if: ${{ !cancelled() }}
+        run: ccache -s
+
+      - name: Save ccache's cache
+        if: ${{ !cancelled() && github.event_name == 'push' }}
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ github.workspace }}/.ci-cache/ccache
+          key: ccache-mac-native-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}

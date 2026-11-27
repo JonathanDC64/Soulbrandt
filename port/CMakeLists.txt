@@ -275,11 +275,10 @@ else()
     endif()
 endif()
 
-# The check for a processor without SSE4.1 has to run on one: the only source here built without it.
+# The check for a processor without SSE4.1 has to run on one: the only source here built without it. (Clang or GCC:
+# below, where the compiler has SSE4.1 at all.)
 if(MSVC)
     set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/des_cpu_check.cpp" APPEND PROPERTY COMPILE_OPTIONS /clang:-mno-sse4.1)
-else()
-    set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/des_cpu_check.cpp" APPEND PROPERTY COMPILE_OPTIONS -mno-sse4.1)
 endif()
 
 # Developer builds (docs/55): the dev cheats and the settings window's Developer tab.
@@ -412,9 +411,17 @@ else()
     # Clang or GCC (Linux, docs/76): the same code generation as clang-cl above. clang-cl turns strict
     # aliasing off by default; here it has to be asked for, and the lifted code depends on it (guest
     # memory is read through casts of every width). No fused multiply-add, as the runtime builds
-    # (its CMakeLists.txt says why).
+    # (its CMakeLists.txt says why). SSE4.1 where the compiler has it: an arm64 compiler (a Mac) rejects the flag,
+    # and the runtime's SIMD goes through sse2neon there.
+    include(CheckCCompilerFlag)
+    check_c_compiler_flag(-msse4.1 DES_HAS_MSSE41)
+    set(DES_SSE41 "")
+    if(DES_HAS_MSSE41)
+        set(DES_SSE41 -msse4.1)
+        set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/des_cpu_check.cpp" APPEND PROPERTY COMPILE_OPTIONS -mno-sse4.1)
+    endif()
     if(DES_PPU_OPT)
-        set(DES_OPT_FLAGS -O2 -fwrapv -msse4.1)
+        set(DES_OPT_FLAGS -O2 -fwrapv ${DES_SSE41})
     else()
         set(DES_OPT_FLAGS -O0)
         if(DES_HOT_CHUNK)
@@ -431,7 +438,7 @@ else()
     target_compile_definitions(des_boot PRIVATE _GNU_SOURCE)
     option(DES_SPU_OPT "Build the lifted SPU images -O2 with SSE4.1" ON)
     if(DES_SPU_OPT)
-        set_source_files_properties(${SPU_CHUNKS} PROPERTIES COMPILE_OPTIONS "-O2;-msse4.1")
+        set_source_files_properties(${SPU_CHUNKS} PROPERTIES COMPILE_OPTIONS "-O2;${DES_SSE41}")
     endif()
 endif()
 
@@ -456,7 +463,11 @@ else()
     # time.
     find_package(Threads REQUIRED)
     target_link_libraries(des_boot PRIVATE Threads::Threads ${CMAKE_DL_LIBS} m)
-    target_link_options(des_boot PRIVATE "-Wl,-Map=des_boot.map")
+    if(APPLE)
+        target_link_options(des_boot PRIVATE "-Wl,-map,des_boot.map")   # (Apple's linker spells it so)
+    else()
+        target_link_options(des_boot PRIVATE "-Wl,-Map=des_boot.map")
+    endif()
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         # A build id, which lld writes only when asked: the menus' shader cache knows the build by it (ui/src/shader_cache.cpp).
         target_link_options(des_boot PRIVATE "-Wl,--build-id=sha1")
@@ -464,7 +475,12 @@ else()
     # The window and the rendering: ps3recomp's D3D12 backend on vkd3d (Wine's D3D12 on Vulkan), which the
     # runtime must be built with (-DPS3RECOMP_RSX_D3D12_VKD3D=ON; docs/76). Off, the game runs headless on
     # the null backend.
-    option(DES_VKD3D "Render through the D3D12 backend on vkd3d" ON)
+    # A Mac has no D3D12: there the new path's Vulkan (on MoltenVK or KosmicKrisp) is the renderer.
+    if(APPLE)
+        option(DES_VKD3D "Render through the D3D12 backend on vkd3d" OFF)
+    else()
+        option(DES_VKD3D "Render through the D3D12 backend on vkd3d" ON)
+    endif()
     if(DES_VKD3D)
         find_package(PkgConfig REQUIRED)
         pkg_check_modules(DES_VKD3D_LIBS REQUIRED IMPORTED_TARGET libvkd3d libvkd3d-utils)
@@ -539,8 +555,9 @@ endif()
 # Start screen, in-game menu (F1 / Esc, or L3+R3 on a pad) and settings,
 # drawn over the game frame. Its own static library, linked only: des_boot's
 # compile flags do not change. DES_UI=0 at run time leaves it uninstalled. -DDES_UI=OFF builds
-# without it (des_ui_stub.cpp). Off Windows it draws through D3D12 on vkd3d, so it needs DES_VKD3D (docs/76).
-if(WIN32 OR DES_VKD3D)
+# without it (des_ui_stub.cpp). On Linux it draws through D3D12 on vkd3d, so it needs DES_VKD3D (docs/76); on a Mac
+# through the new path's GPU layer.
+if(WIN32 OR APPLE OR DES_VKD3D)
     option(DES_UI "Build the wrapper UI (start screen, menu, settings)" ON)
 else()
     option(DES_UI "Build the wrapper UI (start screen, menu, settings)" OFF)
@@ -596,9 +613,10 @@ if(DES_SPLIT)
     if(WIN32 AND NOT MSVC)
         message(FATAL_ERROR "DES_SPLIT needs clang-cl")
     endif()
-    if(NOT WIN32 AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_C_COMPILER_ID STREQUAL "Clang"
-                          AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_SIZEOF_VOID_P EQUAL 8))
-        message(FATAL_ERROR "DES_SPLIT off Windows needs x86-64 Linux and clang for C and C++")
+    # (Apple's clang says AppleClang.)
+    if(NOT WIN32 AND NOT ((CMAKE_SYSTEM_NAME STREQUAL "Linux" OR APPLE) AND CMAKE_C_COMPILER_ID MATCHES "Clang"
+                          AND CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_SIZEOF_VOID_P EQUAL 8))
+        message(FATAL_ERROR "DES_SPLIT off Windows needs x86-64 Linux or a Mac, and clang for C and C++")
     endif()
     if(NOT WIN32 AND NOT DES_SPLIT_FREESTANDING)
         message(FATAL_ERROR "DES_SPLIT on Linux builds des_game.so freestanding only: add -DDES_SPLIT_FREESTANDING=ON")
@@ -613,6 +631,11 @@ if(DES_SPLIT)
         set(_des_split_lib "ps3recomp_runtime.lib")
         set(DES_FORCE_INCLUDE "/FI")
         set(_des_map "/MAP:")
+    elseif(APPLE)
+        set(DES_GAME_MODULE "des_game.dylib")
+        set(_des_split_lib "libps3recomp_runtime.a")
+        set(DES_FORCE_INCLUDE "-include")
+        set(_des_map "-Wl,-map,")
     else()
         set(DES_GAME_MODULE "des_game.so")
         set(_des_split_lib "libps3recomp_runtime.a")
@@ -791,6 +814,17 @@ if(DES_SPLIT)
     target_compile_options(des_host PRIVATE ${_des_boot_COMPILE_OPTIONS}
         "${DES_FORCE_INCLUDE}${PS3RECOMP_DIR}/include/ps3emu/game_split.h")
     target_link_libraries(des_host PRIVATE ps3recomp_runtime_split ${_des_boot_LINK_LIBRARIES})
+    if(APPLE)
+        # What the runtime's static libraries take from macOS, which an imported library does not carry (ps3recomp's
+        # ps3recomp_runtime_deps.cmake leaves those to the host): SDL3's (its CMakeLists.txt's list for macOS; the
+        # weak ones are newer than the oldest macOS SDL runs on) and the runtime's own Metal path's.
+        target_link_libraries(des_host PRIVATE
+            "-framework AppKit" "-framework AudioToolbox" "-framework AVFoundation" "-framework Carbon"
+            "-framework Cocoa" "-framework CoreAudio" "-framework CoreMedia" "-framework CoreVideo"
+            "-framework ForceFeedback" "-framework Foundation" "-framework GameController" "-framework IOKit"
+            "-framework Metal" "-framework QuartzCore" "-weak_framework CoreHaptics"
+            "-weak_framework UniformTypeIdentifiers" iconv)
+    endif()
     target_link_options(des_host PRIVATE "${_des_map}des_host.map")
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         # A build id, which lld writes only when asked: the menus' shader cache knows the build by it (ui/src/shader_cache.cpp).
@@ -875,8 +909,9 @@ elseif(_des_hal)
 else()
     set(_des_hal OFF)
 endif()
-# Off Windows the switch is built only with the D3D12 backend on vkd3d (rsx_out.c).
-if(_des_hal AND NOT WIN32 AND NOT DES_VKD3D)
+# On Linux the switch is built only with the D3D12 backend on vkd3d; a Mac has it with the Vulkan backend alone
+# (rsx_out.c).
+if(_des_hal AND NOT WIN32 AND NOT APPLE AND NOT DES_VKD3D)
     message(STATUS "des_boot: the runtime's route switch needs vkd3d (DES_VKD3D); the renderer calls stay direct")
     set(_des_hal OFF)
 endif()

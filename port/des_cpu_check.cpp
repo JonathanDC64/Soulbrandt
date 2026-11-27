@@ -5,7 +5,8 @@
 //
 // It has to come before the C++ static initializers, as those can be compiled with SSE4.1 too. So it runs from the
 // initializer list's early part on Windows (.CRT$XCB, the usual ones are .CRT$XCU), and as the first constructor on
-// Linux. It uses only the system's own calls, and nothing of the C++ library.
+// Linux. It uses only the system's own calls, and nothing of the C++ library. An arm64 build (a Mac) has no such check:
+// every arm64 processor has the NEON that its build uses in SSE4.1's place.
 //
 // DES_TEST_OLD_CPU=1 acts as if the processor had no SSE4.1. PS3_NO_USER_INPUT=1 leaves out the dialog.
 #include <cstdio>
@@ -15,8 +16,10 @@
 #include <windows.h>
 #else
 #include <SDL3/SDL.h>
-#include <cpuid.h>
 #include <unistd.h>
+#if defined(__x86_64__) || defined(__i386__)
+#include <cpuid.h>
+#endif
 #endif
 
 namespace {
@@ -56,8 +59,12 @@ void say(bool dialog) {
 #else
 
 bool has_sse41() {
+#if defined(__x86_64__) || defined(__i386__)
     unsigned a = 0, b = 0, c = 0, d = 0;
     return __get_cpuid(1, &a, &b, &c, &d) && (c & bit_SSE4_1) != 0;
+#else
+    return true;  // (arm64: see the top)
+#endif
 }
 
 bool env_set(const char* name) {
