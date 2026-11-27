@@ -1,6 +1,7 @@
-"""Make setup's compiler download from LLVM's own Windows or Linux archive, and test it (docs/86, docs/87).
+"""Make setup's compiler download from LLVM's own Windows, Linux or macOS archive, and test it (docs/86, docs/87,
+docs/178).
 
-Goes in the port as .github/scripts/llvm_pack.py. llvm-archive.yml runs it on a Windows or a Linux runner:
+Goes in the port as .github/scripts/llvm_pack.py. llvm-archive.yml runs it on a Windows, a Linux or a Mac runner:
 
   python -I llvm_pack.py pack --system windows --archive clang+llvm-22.1.8-x86_64-pc-windows-msvc.tar.xz \
       --source-sha256 <sum> --llvm-version 22.1.8 --name llvm-win64 --version 22.1.8-1 \
@@ -16,7 +17,9 @@ pack keeps only what compiling and linking the game part needs, plus the licence
     paths (lib/libxml2.so.2, which LLVM's lld needs). It writes <name>-<version>.tar.xz (sorted entries, one
     date, owner 0, fixed modes, xz in one thread: the same files give the same tar.xz). A tar, because a zip
     unpacked by Python loses the execute bit.
-Both also write <name>-<version>.json, which holds the toolchain.json entry.
+  - macOS (--system macos, from LLVM-<version>-macOS-ARM64.tar.xz): bin/clang, bin/ld64.lld and the same headers,
+    packed as Linux's.
+All three also write <name>-<version>.json, which holds the toolchain.json entry.
 
 smoke builds a tiny freestanding library with only the unpacked files, checks it, loads it and calls it:
   - Windows: a DLL (no Windows SDK, no MSVC, no C runtime) with no imports. It also lists the DLLs clang.exe
@@ -25,6 +28,9 @@ smoke builds a tiny freestanding library with only the unpacked files, checks it
     exports and an initial-exec thread-local. It also lists the libraries clang, ld.lld and the download's
     own libraries need, and fails on one a desktop Linux may not have that the download does not carry, or on
     a glibc symbol newer than GLIBC_FLOOR.
+  - macOS: a .dylib built with the game part's Mac flags and no SDK, which loads libSystem alone and imports
+    dyld's __tlv_bootstrap alone (its thread-local), with only its own exports. It also lists what clang and
+    ld64.lld load (otool -L, from the runner's Xcode tools) and fails on anything but the system's own.
 
 Standard library only.
 """
@@ -63,6 +69,12 @@ GLIBC_LIBS = {"libc.so.6", "libm.so.6", "libdl.so.2", "libpthread.so.0", "librt.
               "libutil.so.1", "ld-linux-x86-64.so.2"}
 # What every desktop Linux has besides glibc: GCC's runtime, zlib and zstd. The tools may need nothing else.
 SYSTEM_LIBS = GLIBC_LIBS | {"libstdc++.so.6", "libgcc_s.so.1", "libz.so.1", "libzstd.so.1"}
+# A Mac: the names setup runs (compile.py: the clang driver finds ld64.lld beside itself), the bin/ files they can
+# lead to, the arm64 headers the game part needs besides MIN_HEADERS, and the folders every Mac has.
+MACOS_TOOLS = {"bin/clang": 0o755, "bin/ld64.lld": 0o755}
+MACOS_BIN = re.compile(r"clang|clang-\d+|lld|ld64\.lld")
+MACOS_HEADERS = ("arm_neon.h", "arm_acle.h")
+MACOS_SYSTEM = ("/usr/lib/", "/System/Library/")
 
 
 class Error(RuntimeError):
@@ -142,7 +154,7 @@ def write_zip(path, files, method, when):
 
 
 def cmd_pack(a):
-    if a.system == "linux":
+    if a.system in ("linux", "macos"):
         return cmd_pack_linux(a)
     archive = Path(a.archive)
     got = sha256_file(archive)
@@ -226,7 +238,7 @@ def cmd_pack(a):
         "", "toolchain.json entry:", "", "```json", json.dumps(record["entry"], indent=1), "```", ""]))
 
 
-def select_linux(archive, header_dir, stage):
+def select_linux(archive, header_dir, stage, bin_re=LINUX_BIN):
     """Stream LLVM's Linux tar.xz once. Saves under stage/ the headers, LLVMConfig.cmake and the bin/ files that
     bin/clang and bin/ld.lld can lead to, and records bin/'s links on the way (clang is a link to clang-<major>).
     Returns what it saw and {path in the archive: saved file}."""
@@ -257,7 +269,7 @@ def select_linux(archive, header_dir, stage):
                           else "/".join(PurePosixPath(m.linkname.replace("\\", "/")).parts[1:]))
                 seen["links"][rel] = posixpath.normpath(target)
                 continue
-            if not ((in_bin and LINUX_BIN.fullmatch(base)) or rel.startswith(header_dir) or rel == LLVM_CONFIG):
+            if not ((in_bin and bin_re.fullmatch(base)) or rel.startswith(header_dir) or rel == LLVM_CONFIG):
                 continue
             if not m.isreg():
                 raise Error(f"{m.name!r} is not a regular file (tar type {m.type!r}); refusing it")
@@ -311,17 +323,20 @@ def cmd_pack_linux(a):
         shutil.rmtree(stage)
     stage.mkdir(parents=True)
 
-    seen, files = select_linux(archive, header_dir, stage / "archive")
+    mac = a.system == "macos"
+    tools, linker = (MACOS_TOOLS, "ld64.lld") if mac else (LINUX_TOOLS, "ld.lld")
+    where, doc = ("a Mac", "docs/178") if mac else ("Linux", "docs/87")
+    seen, files = select_linux(archive, header_dir, stage / "archive", MACOS_BIN if mac else LINUX_BIN)
     if len(seen["tops"]) != 1:
         raise Error(f"expected one top folder in the archive, found {sorted(seen['tops'])}")
     chosen = {}                                     # name in the tar -> (mode, file, path in LLVM's archive)
-    for name, mode in LINUX_TOOLS.items():
+    for name, mode in tools.items():
         real = resolve_link(name, seen["links"], files)
         chosen[name] = (mode, files[real], real)
     for rel, p in files.items():
         if rel.startswith(header_dir):
             chosen[rel] = (0o644, p, rel)
-    missing = [header_dir + h for h in MIN_HEADERS if header_dir + h not in chosen]
+    missing = [header_dir + h for h in MIN_HEADERS + (MACOS_HEADERS if mac else ()) if header_dir + h not in chosen]
     if missing:
         raise Error(f"not in the archive: {', '.join(missing)}")
 
@@ -353,16 +368,17 @@ def cmd_pack_linux(a):
     # LLVMConfig.cmake does not repeat), so a build with zstd ships zstd's licence.
     zstd = any(re.fullmatch(r"set\(LLVM_ENABLE_ZSTD\s+(ON|TRUE|YES|1|FORCE_ON)\)", c, re.I) for c in config)
     if zstd and not any(r.startswith("licenses/zstd/") for r in chosen):
-        raise Error("LLVM was built with zstd, which its Linux build links into clang and lld: zstd's licence must "
+        raise Error("LLVM was built with zstd, which its build links into clang and lld: zstd's licence must "
                     "ship, under licenses/zstd/")
     readme = stage / "README.txt"
     readme.write_text(
-        f"clang, ld.lld and clang's headers from LLVM {a.llvm_version}, for Demon's Souls setup (docs/86, docs/87).\n"
+        f"clang, {linker} and clang's headers from LLVM {a.llvm_version}, for Demon's Souls setup (docs/86, {doc}).\n"
         f"\nTaken unchanged from LLVM's own archive:\n  {a.source_url}\n  SHA-256 {a.source_sha256}\n"
-        f"\nOnly these files were kept: bin/clang (LLVM's {chosen['bin/clang'][2]}), bin/ld.lld (LLVM's "
-        f"{chosen['bin/ld.lld'][2]}) and lib/clang/{major}/include.\nLLVM is under the Apache License v2.0 with "
+        f"\nOnly these files were kept: bin/clang (LLVM's {chosen['bin/clang'][2]}), bin/{linker} (LLVM's "
+        f"{chosen['bin/' + linker][2]}) and lib/clang/{major}/include.\nLLVM is under the Apache License v2.0 with "
         "LLVM Exceptions: licenses/llvm/LICENSE.TXT.\n"
-        + ("LLVM's Linux build links zstd into clang and ld.lld (BSD licence): licenses/zstd/.\n" if zstd else "")
+        + (f"LLVM's {'macOS' if mac else 'Linux'} build links zstd into clang and {linker} (BSD licence): "
+           "licenses/zstd/.\n" if zstd else "")
         + (f"\nAdded by the workflow: {', '.join(extra)}. {a.extra_note}\n" if extra else ""),
         encoding="utf-8", newline="\n")
     chosen["README.txt"] = (0o644, readme, None)
@@ -377,14 +393,14 @@ def cmd_pack_linux(a):
     record = {
         "entry": {
             "name": a.name, "version": a.version, "url": a.url, "size": size, "sha256": digest,
-            "why": f"Compiles and links the game part on Linux: clang, ld.lld and clang's headers from LLVM "
+            "why": f"Compiles and links the game part on {where}: clang, {linker} and clang's headers from LLVM "
                    f"{a.llvm_version} (docs/86).",
             "checked": a.checked,
         },
         "source": {"url": a.source_url, "size": archive.stat().st_size, "sha256": a.source_sha256,
                    "top_folder": sorted(seen["tops"])[0], "members": seen["members"],
                    "licence_files_inside": sorted(seen["licences"]),
-                   "tools_from": {n: chosen[n][2] for n in LINUX_TOOLS},
+                   "tools_from": {n: chosen[n][2] for n in tools},
                    "links_in_bin": dict(sorted(seen["links"].items())), "llvm_config": config},
         "added": {"files": extra, "note": a.extra_note if extra else None},
         "compression": "xz", "date": a.date, "unpacked_bytes": raw,
@@ -401,7 +417,7 @@ def cmd_pack_linux(a):
         f"| SHA-256 | `{digest}` |",
         f"| Unpacked | {raw:,} bytes, {len(tar)} files ({hdrs} headers) |",
         f"| From | `{archive.name}`, {archive.stat().st_size:,} bytes, {seen['members']:,} entries |",
-        f"| Tools | bin/clang from {chosen['bin/clang'][2]}, bin/ld.lld from {chosen['bin/ld.lld'][2]} |",
+        f"| Tools | bin/clang from {chosen['bin/clang'][2]}, bin/{linker} from {chosen['bin/' + linker][2]} |",
         f"| Added by the workflow | {', '.join(extra) or 'nothing'} |",
         f"| Licence files inside LLVM's archive | {', '.join(sorted(seen['licences'])) or 'none'} |",
         f"| LLVMConfig.cmake | {'; '.join(config) or 'not in the archive'} |",
@@ -501,6 +517,8 @@ def run(cmd, env, cwd):
 
 
 def cmd_smoke(a):
+    if sys.platform == "darwin":
+        return smoke_macos(a)
     if os.name != "nt":
         return smoke_linux(a)
     tools = Path(a.tools).resolve()
@@ -865,12 +883,177 @@ def smoke_linux(a):
                                   "```", *ldd, "```", ""]))
 
 
+# A Mac (docs/178 2.6): the same checks with the game part's Mac flags, arm64's own vector code for the SSE4.1 line,
+# and a Mach-O thread-local, which is what makes the game part import dyld's __tlv_bootstrap.
+SMOKE_MACOS_C = r"""
+#include <stddef.h>
+#include <stdint.h>
+#include <stdatomic.h>
+#include <arm_neon.h>
+
+#define EXPORT __attribute__((visibility("default")))
+static _Atomic int counter;
+static __thread int per_thread;          /* a Mach-O thread-local, as the game part's trampolines */
+struct pair { char c; int64_t x; };
+
+EXPORT int smoke_add(int a, int b) { return a + b; }
+EXPORT double smoke_mul(double a, double b) { return a * b; }
+EXPORT int smoke_neon(int a, int b)
+{
+    int32x4_t v = vmulq_s32(vdupq_n_s32(a), vdupq_n_s32(b));
+    return vgetq_lane_s32(v, 2);
+}
+EXPORT int smoke_ctz(uint64_t v) { return v ? __builtin_ctzll(v) : -1; }
+EXPORT int smoke_atomic(void) { return atomic_fetch_add(&counter, 1) + 1; }
+EXPORT int smoke_offset(void) { return (int)offsetof(struct pair, x); }
+EXPORT int smoke_tls(void) { return ++per_thread; }
+int smoke_hidden(void) { return 7; }     /* hidden by -fvisibility=hidden: must not be exported */
+"""
+
+# ps3recomp's runtime/ppu/game_libc_system.tbd, as the game part's link reads it: a stub of libSystem with the one
+# name a freestanding Mach-O library with thread-locals imports. Its first line has to be the header.
+SMOKE_SYSTEM_TBD = """--- !tapi-tbd
+tbd-version:     4
+targets:         [ arm64-macos ]
+install-name:    '/usr/lib/libSystem.B.dylib'
+current-version: 1351
+exports:
+  - targets:         [ arm64-macos ]
+    symbols:         [ __tlv_bootstrap ]
+...
+"""
+
+# The game part's flags on a Mac (game_build_macos.json), without its -D, -I and -include.
+MACOS_CFLAGS = ["-arch", "arm64", "-mmacosx-version-min=13.0", "-fPIC", "-O2", "-fwrapv", "-fno-strict-aliasing",
+                "-ffp-contract=off", "-nostdlibinc", "-fvisibility=hidden", "-fno-stack-protector", "-Wall"]
+MACOS_LDFLAGS = ["-arch", "arm64", "-mmacosx-version-min=13.0", "-dynamiclib", "-nostdlib", "-fuse-ld=lld"]
+SMOKE_MACOS_EXPORTS = {"smoke_add", "smoke_mul", "smoke_neon", "smoke_ctz", "smoke_atomic", "smoke_offset",
+                       "smoke_tls", "smoke_cpp"}
+
+
+def macho_deps(path, env, cwd):
+    """The libraries a Mach-O file loads (otool -L, from the runner's Xcode tools), its own install name left out."""
+    out = run(["otool", "-L", str(path)], env, cwd).splitlines()[1:]
+    deps = [ln.strip().split(" (")[0] for ln in out if ln.strip()]
+    return [d for d in deps if not d.endswith("/" + path.name)]
+
+
+def smoke_macos(a):
+    tools = Path(a.tools).resolve()
+    clang, lld = tools / "bin" / "clang", tools / "bin" / "ld64.lld"
+    work = Path(a.work).resolve()
+    if work.exists():
+        shutil.rmtree(work)
+    work.mkdir(parents=True)
+    # Only the system's own folders on PATH, and no compiler, include, library or SDK variables.
+    env = {"PATH": "/usr/bin:/bin", "HOME": str(work), "TMPDIR": str(work), "LC_ALL": "C"}
+    lines, problems = [], []
+
+    # A tool may load the system's libraries and frameworks, and a library the download carries in lib/, and
+    # nothing else: a player's Mac has no Homebrew and no Xcode.
+    for exe in (clang, lld):
+        deps = macho_deps(exe, env, work)
+        for d in deps:
+            if d.startswith(MACOS_SYSTEM):
+                continue
+            m = re.fullmatch(r"@(?:rpath|loader_path/\.\.|executable_path/\.\.)/(?:lib/)?([^/]+)", d)
+            if not (m and (tools / "lib" / m.group(1)).is_file()):
+                problems.append(f"bin/{exe.name} loads {d}, which a Mac may not have and the download does not carry")
+        sig = subprocess.run(["codesign", "-dv", str(exe)], capture_output=True, text=True, errors="replace")
+        who = [ln.split("=", 1)[1] for ln in sig.stderr.splitlines() if ln.startswith(("Authority=", "Signature="))]
+        lines.append(f"| bin/{exe.name} loads | {', '.join(deps) or 'nothing'}; signed: {', '.join(who) or 'no'} |")
+    if problems:
+        summary(a.summary, "\n".join(["### Smoke test", "", "| | |", "|---|---|", *lines, ""]))
+        raise Error("; ".join(problems))
+
+    v = run([str(clang), "--version"], env, work).splitlines()[0]
+    if f"clang version {a.llvm_version}" not in v:
+        raise Error(f"clang says {v!r}, expected version {a.llvm_version}")
+    lv = run([str(lld), "--version"], env, work).strip()
+    if f"LLD {a.llvm_version}" not in lv:
+        raise Error(f"ld64.lld says {lv!r}, expected LLD {a.llvm_version}")
+    lines += [f"| clang --version | {v} |", f"| ld64.lld --version | {lv} |"]
+
+    major = a.llvm_version.split(".")[0]
+    rdir = Path(run([str(clang), "-print-resource-dir"], env, work).strip()).resolve()
+    if rdir != (tools / "lib" / "clang" / major):
+        raise Error(f"clang's resource folder is {rdir}, not the one in the download")
+
+    inc = work / "inc"
+    inc.mkdir()
+    (inc / "stdlib.h").write_text(SMOKE_LINUX_STDLIB, encoding="utf-8")
+    objs = []
+    for src_name, text, lang in (("smoke.c", SMOKE_MACOS_C, ["-std=gnu17"]),
+                                 ("smoke.cpp", SMOKE_LINUX_CPP, ["-std=gnu++20", "-fno-rtti", "-fno-exceptions"])):
+        src = work / src_name
+        src.write_text(text, encoding="utf-8")
+        flags = [str(clang), *lang, *MACOS_CFLAGS, f"-I{inc}"]
+        # Every header must come from the download or the smoke test's own folder: read clang's search list.
+        out = run(flags + ["-v", "-E", str(src), "-o", str(work / (src_name + ".i"))], env, work).splitlines()
+        try:
+            search = out[out.index("#include <...> search starts here:") + 1:out.index("End of search list.")]
+        except ValueError:
+            raise Error("clang -v printed no include search list:\n" + "\n".join(out))
+        search = [Path(s.strip().removesuffix(" (framework directory)")).resolve() for s in search]
+        outside = [str(s) for s in search if s != inc and not s.is_relative_to(tools)]
+        if outside or tools / "lib" / "clang" / major / "include" not in search:
+            raise Error(f"clang searches headers outside the download for {src_name}: {outside or 'not its own'}")
+        objs.append(str(work / (src_name + ".o")))
+        run(flags + ["-c", str(src), "-o", objs[-1]], env, work)
+
+    tbd = work / "game_libc_system.tbd"
+    tbd.write_text(SMOKE_SYSTEM_TBD, encoding="utf-8", newline="\n")
+    lib = work / "smoke.dylib"
+    link = [str(clang), *MACOS_LDFLAGS, "-install_name", "@rpath/smoke.dylib", "-o", str(lib), *objs, str(tbd)]
+    # The link must run the download's ld64.lld, not one on PATH or Xcode's: clang -### prints what it would run.
+    jobs = [ln for ln in run(link + ["-###"], env, work).splitlines() if ln.startswith(' "')]
+    linker = Path(jobs[-1].split('"')[1]).resolve() if jobs else None
+    if linker != lld.resolve():
+        raise Error(f"clang links with {linker}, not the download's ld64.lld")
+    run(link, env, work)
+
+    deps = macho_deps(lib, env, work)
+    if deps != ["/usr/lib/libSystem.B.dylib"]:
+        raise Error(f"smoke.dylib loads {deps}; it must load libSystem alone")
+    exports = {n[1:] for n in run(["nm", "-gU", str(lib)], env, work).split() if n.startswith("_smoke")}
+    if exports != SMOKE_MACOS_EXPORTS:
+        raise Error(f"smoke.dylib exports {sorted(exports)}, expected {sorted(SMOKE_MACOS_EXPORTS)}")
+    undefined = run(["nm", "-u", str(lib)], env, work).split()
+    if undefined != ["__tlv_bootstrap"]:
+        raise Error(f"smoke.dylib imports {undefined}, expected __tlv_bootstrap alone")
+    dl = ctypes.CDLL(str(lib))
+    dl.smoke_mul.restype = ctypes.c_double
+    dl.smoke_mul.argtypes = (ctypes.c_double, ctypes.c_double)
+    dl.smoke_ctz.argtypes = (ctypes.c_uint64,)
+    other_thread = []
+    t = threading.Thread(target=lambda: other_thread.append(dl.smoke_tls()))
+    checks = {"smoke_add(2, 3)": (dl.smoke_add(2, 3), 5),
+              "smoke_mul(1.5, 4.0)": (dl.smoke_mul(1.5, 4.0), 6.0),
+              "smoke_neon(7, 6)": (dl.smoke_neon(7, 6), 42),
+              "smoke_ctz(0x100)": (dl.smoke_ctz(0x100), 8),
+              "smoke_atomic() twice": ((dl.smoke_atomic(), dl.smoke_atomic()), (1, 2)),
+              "smoke_offset()": (dl.smoke_offset(), 8),
+              "smoke_tls() twice": ((dl.smoke_tls(), dl.smoke_tls()), (1, 2)),
+              "smoke_cpp(5)": (dl.smoke_cpp(5), 13)}
+    t.start()
+    t.join()
+    checks["smoke_tls() on another thread"] = (other_thread, [1])
+    wrong = {k: v for k, v in checks.items() if v[0] != v[1]}
+    if wrong:
+        raise Error(f"smoke.dylib gave wrong answers: {wrong}")
+    lines.append(f"| smoke.dylib | {lib.stat().st_size:,} bytes, C and C++ with the game part's flags, no SDK, loads "
+                 f"libSystem alone and imports __tlv_bootstrap alone, {len(SMOKE_MACOS_EXPORTS)} exports only, "
+                 f"{len(checks)} calls right; headers only from the download, linked by its ld64.lld |")
+    summary(a.summary, "\n".join(["### Smoke test", "", "| | |", "|---|---|", *lines, ""]))
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = p.add_subparsers(dest="cmd", required=True)
     k = sub.add_parser("pack")
-    k.add_argument("--system", choices=("windows", "linux"), default="windows",
-                   help="which LLVM archive: windows makes a zip, linux a tar.xz (--compression is for the zip)")
+    k.add_argument("--system", choices=("windows", "linux", "macos"), default="windows",
+                   help="which LLVM archive: windows makes a zip, linux and macos a tar.xz (--compression is for "
+                        "the zip)")
     k.add_argument("--archive", required=True)
     k.add_argument("--source-url", required=True)
     k.add_argument("--source-sha256", required=True)
