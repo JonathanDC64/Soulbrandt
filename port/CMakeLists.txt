@@ -275,11 +275,10 @@ else()
     endif()
 endif()
 
-# The check for a processor without SSE4.1 has to run on one: the only source here built without it.
+# The check for a processor without SSE4.1 has to run on one: the only source here built without it. (Clang or GCC:
+# below, where the compiler has SSE4.1 at all.)
 if(MSVC)
     set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/des_cpu_check.cpp" APPEND PROPERTY COMPILE_OPTIONS /clang:-mno-sse4.1)
-else()
-    set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/des_cpu_check.cpp" APPEND PROPERTY COMPILE_OPTIONS -mno-sse4.1)
 endif()
 
 # Developer builds (docs/55): the dev cheats and the settings window's Developer tab.
@@ -419,6 +418,7 @@ else()
     set(DES_SSE41 "")
     if(DES_HAS_MSSE41)
         set(DES_SSE41 -msse4.1)
+        set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/des_cpu_check.cpp" APPEND PROPERTY COMPILE_OPTIONS -mno-sse4.1)
     endif()
     if(DES_PPU_OPT)
         set(DES_OPT_FLAGS -O2 -fwrapv ${DES_SSE41})
