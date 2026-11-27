@@ -6,9 +6,13 @@
  *   item, Circle goes back.
  * DES_DBGMENU_TITLE=1 — the title's debug menu (the developers' step list: model viewer, Walk Through, SFX test,
  *   FaceGen test and others) in place of the title menu.
- * Both are read once, at start (des_dbgmenu_boot); setting them later does nothing.
+ * DES_FREECAM=1 — the developers' debug camera (docs/181; also Settings > Controls > Camera > Free camera, off by
+ *   default). Hold Cross and press L3 to cycle its modes: free camera with
+ *   time stopped (Square held lets frames through) -> free camera while time runs -> the view stays where the camera
+ *   is while you play -> off. Left stick moves, right stick turns, R2 and L2 go up and down.
+ * All are read once, at start (des_dbgmenu_boot); setting them later does nothing.
  *
- * Neither can be used to cheat. With either set:
+ * None can be used to cheat. With any set, the session is offline (below). With the menus, also:
  *   - the session is offline: the network knobs are cleared and the runtime is locked offline before anything
  *     connects (des_ui_net_off), so no online play, no co-op and no Pantheon records. The Network tab says why;
  *   - the game saves to a copy of the saves made at start, <save root>-debug, replaced at each start. The saves the
@@ -25,7 +29,8 @@
  *   0x0001BB38  after the frame function's call of 0x00015A50, the retail game's emptied menu frame (a blr): the
  *               pad's keys, Select's toggle, the root's input (vtable +8) while the menu has the pad, the window's
  *               update and timer, and while shown the window and the tree (vtable +0xC). The window's timer steps by
- *               the frame's time, which the frame function passes in f1. */
+ *               the frame's time, which the frame function passes in f1.
+ *   0x0014422C  the frame step 0x00144160 (r31) has asked for pad device 0 (r3): the free camera (free_camera). */
 #include "ps3emu/ppu_lift.h"
 #include "des_region.h"         /* DES_AT: the running disc's addresses */
 #include "ps3emu/ps3_knob.h"    /* ps3_setenv */
@@ -61,9 +66,13 @@ constexpr uint32_t kDrawBox     = 0x00401C60u;   /* (DbgMenuHgDraw): the window 
 constexpr uint32_t kNewLabel    = 0x00406F08u;   /* (UTF-16 text) -> a label node, the root's kind */
 constexpr uint32_t kRootText    = 0x01705B38u;   /* L"ROOT", the game's own */
 constexpr const char* kSaveRoot = "gamedata/dev_hdd0/home/00000001/savedata";   /* cellSaveData.c's default */
+constexpr uint32_t kDbgCamControls = 0x0012B2F8u;   /* (camera, pad device, 0, 0): the debug camera's moves */
 
-std::atomic<bool> s_menu{false}, s_title{false};
+std::atomic<bool> s_menu{false}, s_title{false}, s_cam{false};
 std::atomic<uint32_t> s_obj{0};   /* the menu object, once its root is made */
+/* The free camera's (the game's main thread only): the cameras object, and whether we stopped time. */
+uint32_t s_cam_cams = 0;
+bool s_cam_stopped = false;
 
 bool knob_on(const char* name)
 {
@@ -169,15 +178,82 @@ void frame(ppu_context* ctx)
     call_virtual(ctx, root, 0xC, {root, draw, 1});
 }
 
+/* A camera's 4x4 matrix (64 bytes at +0x10) onto another camera. */
+void copy_matrix(uint32_t from, uint32_t to)
+{
+    if (!guest_ok(from) || !guest_ok(to)) return;
+    for (uint32_t k = 0; k < 0x40; k += 4) vm_write32(to + 0x10 + k, vm_read32(from + 0x10 + k));
+}
+
+/* The free camera (the 0x0014422C hook): the frame step r31 has just asked for pad device 0 (r3). The step's +0x34 is
+ * its cameras (made by 0x0021D280 at each area's load): +0x8 the game's camera, +0xC the one drawn from in mode 3,
+ * +0x204 the developers' debug camera, and +0x1FC the debug camera's mode. The retail game still makes the debug
+ * camera and still draws from it while the mode isn't 0 (the frame step at 0x001446FC, the cameras' update at
+ * 0x00219CD8); only the code that set the mode and moved the camera was cut. This puts that back:
+ *   - the keys are the game's own pad state (pad +4): +0x120 bit 9 Cross held, +0x11E 0x0A L3 pressed now with no
+ *     shoulder button, +0x122 bit 4 Square;
+ *   - mode 1 and 2 move the debug camera with the game's DbgCamControls; +0x44 = 1 keeps the frame step on its
+ *     debug-camera path, where the character takes no input;
+ *   - mode 1 stops time with the frame step's pause flags (+0x58, +0x59), except while Square is held;
+ *   - mode 3 draws from where the debug camera is, through +0xC, while the game plays on;
+ *   - mode 0 keeps the debug camera on the game's, so it starts from the view. */
+void free_camera(ppu_context* ctx)
+{
+    const uint32_t step = (uint32_t)ctx->gpr[31], pad = (uint32_t)ctx->gpr[3];
+    const uint32_t keys = rd(pad + 4), cams = rd(step + 0x34);
+    if (!guest_ok(keys) || !guest_ok(cams)) return;
+    const uint32_t cam = rd(cams + 0x204);
+    if (!guest_ok(cam)) return;
+    if (cams != s_cam_cams) {   /* a new area's cameras: their constructor set the mode to 0 */
+        s_cam_cams = cams;
+        s_cam_stopped = false;
+    }
+    uint32_t mode = vm_read32(cams + 0x1FC) & 3u;
+    if ((vm_read16(keys + 0x120) >> 9 & 1u) && vm_read16(keys + 0x11E) == 0x0A) {   /* Cross held, L3 pressed */
+        mode = (mode + 1) % 4;
+        vm_write32(cams + 0x1FC, mode);
+        static const char* const kModes[] = {"off", "free, time stopped", "free, time runs", "the view stays"};
+        std::fprintf(stderr, "[des] free camera: %s\n", kModes[mode]);
+    }
+    bool stop = false;
+    switch (mode) {
+    case 0:
+        copy_matrix(rd(cams + 8), cam);
+        break;
+    case 1:
+        stop = !(vm_read16(keys + 0x122) >> 4 & 1u);   /* Square held lets the frames through */
+        [[fallthrough]];
+    case 2:
+        vm_write32(step + 0x44, 1);
+        call_game(ctx, DES_AT(kDbgCamControls), {cam, pad, 0, 0});
+        break;
+    default:
+        copy_matrix(cam, rd(cams + 0xC));
+        break;
+    }
+    if (stop || s_cam_stopped) {   /* (the flags are left alone unless we stopped time) */
+        vm_write8(step + 0x58, stop ? 1 : 0);
+        vm_write8(step + 0x59, stop ? 1 : 0);
+        s_cam_stopped = stop;
+    }
+}
+
 } // namespace
 
 /* Called once from ps3_title_options_init, after settings.ini and before the network modules start: the knobs, the
  * offline rule and the save copy (the top). */
 extern "C" void des_dbgmenu_boot(void)
 {
-    const bool menu = knob_on("DES_DBGMENU"), title = knob_on("DES_DBGMENU_TITLE");
+    const bool menu = knob_on("DES_DBGMENU"), title = knob_on("DES_DBGMENU_TITLE"), cam = knob_on("DES_FREECAM");
+    if (!menu && !title && !cam) return;
+    des_ui_net_off(menu ? "Off: the debug menu is on (DES_DBGMENU)"
+                   : title ? "Off: the debug menu is on (DES_DBGMENU_TITLE)"
+                           : "Off: the free camera is on");
+    if (cam) {
+        s_cam = true;
+        std::fprintf(stderr, "[des] free camera on (DES_FREECAM): this session is offline\n");
+    }
     if (!menu && !title) return;
-    des_ui_net_off(menu ? "Off: the debug menu is on (DES_DBGMENU)" : "Off: the debug menu is on (DES_DBGMENU_TITLE)");
     std::string where;
     if (!use_save_copy(&where)) {
         std::fprintf(stderr, "[des] debug menu: stays off: %s. This session is offline all the same\n", where.c_str());
@@ -218,6 +294,9 @@ extern "C" void des_dbgmenu_hook(ppu_context* ctx, uint32_t addr)
     }
     case 0x0001BB38u:
         if (s_obj.load(std::memory_order_relaxed)) frame(ctx);
+        break;
+    case 0x0014422Cu:   /* the frame step's bl GetPadDeviceForIdx(0) has returned the pad device (r3) */
+        if (s_cam.load(std::memory_order_relaxed)) free_camera(ctx);
         break;
     default:
         break;

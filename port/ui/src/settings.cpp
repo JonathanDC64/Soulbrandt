@@ -177,6 +177,7 @@ constexpr Def kDefs[] = {
     {"DES_CAM_FOLLOW", "1", Apply::Live},      // des_options.cpp, each camera update: 0 = the camera keeps its direction as you move
     {"DES_CAM_WALL", "1", Apply::Live},        // des_options.cpp, each camera update: 0 = walls don't turn the camera
     {"DES_CAM_RESET", "1", Apply::Live},       // des_options.cpp, each camera update: 0 = lock on with no target leaves the camera
+    {"DES_FREECAM", "0", Apply::Restart},      // des_dbgmenu.cpp, at start: 1 = the debug camera (Cross held + L3), offline
     {"DES_KICK", "0", Apply::Live},            // des_kick, at each attack: 1 = attacking never kicks, the Kick key does
     {"keys_layout", "souls", Apply::UiOnly},   // the layout PAD_KEYS changes; a file without this line is older
     {"DES_MOUSE_LOOK", "0", Apply::Live},      // mouse look (des_mouse_look; port/ui/src/mouse.cpp), read each frame
