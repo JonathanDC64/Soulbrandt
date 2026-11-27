@@ -410,6 +410,17 @@ std::vector<TabDesc> make_tabs() {
             stick_row("Right stick deadzone", "PAD_DEADZONE_RIGHT", 1,
                 "How far you tilt the right stick before it counts, the same on every controller. Default is how the "
                 "game has always played with this controller. Very low values can let a worn stick drift."),
+            choice("Left stick axial deadzone", "PAD_AXIAL_LEFT",
+                {{"0", "Off", true}, {"3", "3%"}, {"5", "5%"}, {"8", "8%"}, {"12", "12%"}},
+                "For a stick that wavers a little sideways when you push it straight, so your character trembles "
+                "while running. A push that's nearly straight ahead, back, left or right counts as straight: a "
+                "sideways waver smaller than this is ignored. Try 3% or 5%. Higher values also turn slight diagonals "
+                "straight. Off is how the game has always played."),
+            choice("Left stick smoothing", "PAD_SMOOTH_LEFT",
+                {{"0", "Off", true}, {"1", "Light"}, {"2", "Medium"}, {"3", "Strong"}},
+                "Smooths out a noisy stick's small jitter. Quick pushes stay quick. Slow, small movements follow the "
+                "stick a little later: about 35 ms with Light, 55 ms with Medium and 105 ms with Strong. Off is how "
+                "the game has always played."),
             toggle("Roll toward the stick", "DES_ROLLDIR",
                 "Locked on, a roll goes where the stick points. Off, it goes only forward, back, left or right, as in "
                 "the original."),

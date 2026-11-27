@@ -73,6 +73,7 @@ Press **F1** (or **L3 + R3** on a controller, or Select + Start: Settings > Inte
 - Keys 1 to 5 switch straight to the item in each of the five item slots, without using it (Settings > Controls > Change Buttons, Keyboard and mouse).
 - The forward attack (the kick) can go on a key or a controller button of its own, so attacking never kicks by accident (Settings > Controls > Forward attack, off by default; the button is the Kick row in Change Buttons > Gamepad). A controller's back buttons, paddles or Share button can kick, when the controller reports them to the game; not every controller does.
 - A deadzone for each stick, set as how far you tilt it, with a live picture of the stick (Settings > Controls).
+- For a stick that trembles while you run straight: an axial deadzone and smoothing for the left stick, both off by default (Settings > Controls).
 - Mouse sensitivity, inverted axes, and switching lock-on targets with a flick of the mouse.
 - **Roll in any direction while locked on**: the roll goes where the stick points. It's on by default; turn off **Roll toward the stick** in Settings > Controls for the original's four directions.
 - The mouse in the game's own menus: point and click. Experimental, and off by default.
