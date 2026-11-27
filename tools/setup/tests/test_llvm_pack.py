@@ -283,6 +283,92 @@ class PackLinuxTest(unittest.TestCase):
         self.assertFalse((self.work / "out" / "llvm-linux-x64-22.1.8-1.tar.xz").exists())
 
 
+MTOP = "LLVM-22.1.8-macOS-ARM64"
+MURL = "https://github.com/o/r/releases/download/t/llvm-macos-arm64-22.1.8-1.tar.xz"
+
+
+class PackMacTest(unittest.TestCase):
+    """--system macos: LLVM's macOS install tree, as Linux's with ld64.lld for the linker, and the arm64 headers
+    (arm_neon.h, arm_acle.h) the game part's sse2neon needs."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.lp = load_packer()
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.work = Path(self.tmp.name)
+        self.lic = self.work / "licenses"
+        for comp in ("llvm", "clang", "lld"):
+            (self.lic / comp).mkdir(parents=True)
+            (self.lic / comp / "LICENSE.TXT").write_text(f"the {comp} licence\n", encoding="utf-8")
+
+    def archive(self, name="m.tar.xz", links=None, drop=()):
+        files = {
+            "bin/clang-22": b"\xcf\xfa\xed\xfe fake clang",
+            "bin/lld": b"\xcf\xfa\xed\xfe fake lld",
+            "lib/libclang-cpp.dylib": b"\xcf\xfa\xed\xfe fake lib",
+            "lib/cmake/llvm/LLVMConfig.cmake": b"set(LLVM_ENABLE_ZLIB ON)\nset(LLVM_ENABLE_ZSTD OFF)\n",
+        }
+        for h in self.lp.MIN_HEADERS + self.lp.MACOS_HEADERS:
+            files[f"lib/clang/22/include/{h}"] = f"/* {h} */\n".encode()
+        for rel in drop:
+            files.pop(rel)
+        if links is None:
+            links = {"bin/clang": "clang-22", "bin/clang++": "clang", "bin/ld64.lld": "lld", "bin/ld.lld": "lld"}
+        path = self.work / name
+        with tarfile.open(path, "w:xz") as tf:
+            for rel, target in sorted(links.items()):
+                ti = tarfile.TarInfo(f"{MTOP}/{rel}")
+                ti.type, ti.linkname = tarfile.SYMTYPE, target
+                tf.addfile(ti)
+            for rel, data in sorted(files.items()):
+                ti = tarfile.TarInfo(f"{MTOP}/{rel}")
+                ti.size = len(data)
+                tf.addfile(ti, io.BytesIO(data))
+        return path, hashlib.sha256(path.read_bytes()).hexdigest()
+
+    def pack(self, arc, digest, out):
+        with contextlib.redirect_stdout(io.StringIO()):
+            return self.lp.main(["pack", "--system", "macos", "--archive", str(arc),
+                                 "--source-url", "https://example.invalid/m.tar.xz", "--source-sha256", digest,
+                                 "--llvm-version", "22.1.8", "--name", "llvm-macos-arm64", "--version", "22.1.8-1",
+                                 "--licenses", str(self.lic), "--date", "2026-06-16", "--url", MURL,
+                                 "--checked", "test", "--out", str(out)])
+
+    def test_pack_and_unpack(self):
+        arc, digest = self.archive()
+        out = self.work / "out"
+        self.assertEqual(self.pack(arc, digest, out), 0)
+        t = out / "llvm-macos-arm64-22.1.8-1.tar.xz"
+        with tarfile.open(t) as tf:
+            members = tf.getmembers()
+            readme = tf.extractfile("README.txt").read().decode()
+        self.assertTrue(all(m.isfile() for m in members), "the download must hold regular files only")
+        modes = {m.name: m.mode for m in members}
+        self.assertEqual((modes["bin/clang"], modes["bin/ld64.lld"]), (0o755, 0o755))
+        self.assertEqual(modes["lib/clang/22/include/arm_neon.h"], 0o644)
+        self.assertNotIn("bin/ld.lld", modes)
+        self.assertIn("ld64.lld", readme)
+        self.assertIn("docs/178", readme)
+        self.assertNotIn("zstd", readme)
+        dest = fetch.unpack(t, self.work / "unpacked")
+        self.assertEqual((dest / "bin" / "ld64.lld").read_bytes(), b"\xcf\xfa\xed\xfe fake lld")
+        rec = json.loads((out / "llvm-macos-arm64-22.1.8-1.json").read_text(encoding="utf-8"))
+        self.assertEqual(rec["entry"]["name"], "llvm-macos-arm64")
+        self.assertEqual(rec["entry"]["url"], MURL)
+        self.assertEqual(rec["entry"]["sha256"], hashlib.sha256(t.read_bytes()).hexdigest())
+        self.assertIn("on a Mac", rec["entry"]["why"])
+        self.assertEqual(rec["source"]["tools_from"], {"bin/clang": "bin/clang-22", "bin/ld64.lld": "bin/lld"})
+
+    def test_needs_ld64_lld_and_the_arm_headers(self):
+        arc, digest = self.archive("nold.tar.xz", links={"bin/clang": "clang-22", "bin/ld.lld": "lld"})
+        self.assertEqual(self.pack(arc, digest, self.work / "out1"), 1)
+        arc, digest = self.archive("noneon.tar.xz", drop=("lib/clang/22/include/arm_neon.h",))
+        self.assertEqual(self.pack(arc, digest, self.work / "out2"), 1)
+
+
 class ElfInfoTest(unittest.TestCase):
     """elf_info on a real ELF file where there is one (the smoke step reads clang, ld.lld and its .so with it)."""
 

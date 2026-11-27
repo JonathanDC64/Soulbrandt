@@ -924,9 +924,9 @@ exports:
 """
 
 # The game part's flags on a Mac (game_build_macos.json), without its -D, -I and -include.
-MACOS_CFLAGS = ["-arch", "arm64", "-mmacosx-version-min=13.0", "-fPIC", "-O2", "-fwrapv", "-fno-strict-aliasing",
+MACOS_CFLAGS = ["-arch", "arm64", "-mmacosx-version-min=13.3", "-fPIC", "-O2", "-fwrapv", "-fno-strict-aliasing",
                 "-ffp-contract=off", "-nostdlibinc", "-fvisibility=hidden", "-fno-stack-protector", "-Wall"]
-MACOS_LDFLAGS = ["-arch", "arm64", "-mmacosx-version-min=13.0", "-dynamiclib", "-nostdlib", "-fuse-ld=lld"]
+MACOS_LDFLAGS = ["-arch", "arm64", "-mmacosx-version-min=13.3", "-dynamiclib", "-nostdlib", "-fuse-ld=lld"]
 SMOKE_MACOS_EXPORTS = {"smoke_add", "smoke_mul", "smoke_neon", "smoke_ctz", "smoke_atomic", "smoke_offset",
                        "smoke_tls", "smoke_cpp"}
 
