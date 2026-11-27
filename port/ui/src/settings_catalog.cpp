@@ -436,6 +436,9 @@ std::vector<TabDesc> make_tabs() {
                 "On, as in the original: running sideways swings the camera round behind you. Off: the camera keeps "
                 "its direction until you turn it with the right stick or the mouse. Locked on, it follows the "
                 "target either way."),
+            toggle("Walls turn the camera", "DES_CAM_WALL",
+                "On, as in the original: running along a wall or round a corner turns the camera away from it. "
+                "Off: walls don't turn it. It still moves in close, so you never see through a wall."),
             toggle("Lock on with no target turns the camera", "DES_CAM_RESET",
                 "On, as in the original: lock on (R3) with nothing to lock on to turns the camera behind you. Off: "
                 "the camera stays where it is."),
