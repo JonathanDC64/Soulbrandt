@@ -847,7 +847,7 @@ One copy of the game, offline, from the pinned regression save (a new character)
 
 ## 8. Hold Up or Down for the first spell or item
 
-Asked for in issue #739 (2026-11-26): holding Up or Down on the D-pad for about half a second goes back to the first spell or item slot, as in the later Souls games, with the time a setting. Built as `DES_SLOT_HOLD` (Settings > Game > Items, "Hold Up or Down for the first spell or item": Off, 0.3, 0.5, 0.8 or 1 second). Off by default; the original game has no hold.
+Asked for in issue #739 (2026-11-26): holding Up or Down on the D-pad for about half a second goes back to the first spell or item slot, as in the later Souls games, with the time a setting. Built as `DES_SLOT_HOLD` (Settings > Game > Items, "Hold for the first spell or item": Off, 0.3, 0.5, 0.8 or 1 second). Off by default; the original game has no hold.
 
 ### 8.1 How the game steps the slots (read)
 
