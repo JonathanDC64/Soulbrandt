@@ -194,6 +194,7 @@ add_executable(des_boot
     "${CMAKE_CURRENT_SOURCE_DIR}/des_guest_exit.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/des_souls_use.cpp"         # DES_SOULS_AT_ONCE: Use several soul items at once
     "${CMAKE_CURRENT_SOURCE_DIR}/des_respec.cpp"            # DES_RESPEC: stat respec at the Nexus statue and the Maiden
+    "${CMAKE_CURRENT_SOURCE_DIR}/des_dbgmenu.cpp"           # DES_DBGMENU: the game's own debug menus, offline (docs/180)
     "${CMAKE_CURRENT_SOURCE_DIR}/des_keybinds.cpp"          # the port's own keys (Kick, the item slots)
     "${CMAKE_CURRENT_SOURCE_DIR}/des_item_hotkeys.cpp"      # the Keyboard page's Item slot keys
     "${CMAKE_CURRENT_SOURCE_DIR}/des_luagc.cpp"
@@ -268,6 +269,7 @@ else()
             "${CMAKE_CURRENT_SOURCE_DIR}/des_guest_exit.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/des_souls_use.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/des_respec.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/des_dbgmenu.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/des_item_hotkeys.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/des_luagc.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/des_luaheap.cpp"

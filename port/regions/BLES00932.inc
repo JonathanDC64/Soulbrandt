@@ -6,6 +6,8 @@ DES_REGION_ADDR(0x000112E8, 0x000112E8)  /* hook des_body_sample */
 DES_REGION_ADDR(0x00011720, 0x00011720)  /* call des_seamless_game (by address) */
 DES_REGION_ADDR(0x00011768, 0x00011768)  /* hook des_kf_target */
 DES_REGION_ADDR(0x00013874, 0x0001473C)  /* data kOnlineTagCases */
+DES_REGION_ADDR(0x0001BB38, 0x0001C708)  /* hook des_dbgmenu_hook: the frame function's emptied debug menu call (0x00015A50 is a blr) */
+DES_REGION_ADDR(0x00020F44, 0x00021B2C)  /* hook des_dbgmenu_hook: create_debug_menu (0x00015A58) has returned the menu */
 DES_REGION_ADDR(0x00023750, 0x00024338)  /* call */
 DES_REGION_ADDR(0x00039210, 0x00039DF8)  /* hook + call des_luaheap: Lua's heap, alloc */
 DES_REGION_ADDR(0x00039540, 0x0003A128)  /* hook + call des_luaheap: Lua's heap, block size */
@@ -68,13 +70,17 @@ DES_REGION_ADDR(0x0012F0DC, 0x001300A4)  /* hook des_cam_ctor */
 DES_REGION_ADDR(0x0012F19C, 0x00130164)  /* hook des_frustum_tall */
 DES_REGION_ADDR(0x001381E8, 0x001391B0)  /* call */
 DES_REGION_ADDR(0x0015AE10, 0x0015BDD8)  /* call kLoadSouls */
+DES_REGION_ADDR(0x0015C878, 0x0015D840)  /* call: the debug title step's constructor */
 DES_REGION_ADDR(0x00162D0C, 0x00163BDC)  /* data kGameParamCases */
+DES_REGION_ADDR(0x0016F42C, 0x00170314)  /* hook des_dbgmenu_hook: cmpwi before the title step's constructor (0x0018B7D0) */
 DES_REGION_ADDR(0x0017A4A8, 0x0017B390)  /* hook des_coop_hook: the summoned reload's load step */
 DES_REGION_ADDR(0x0017B258, 0x0017C468)  /* call */
 DES_REGION_ADDR(0x00185204, 0x0018608C)  /* code: des_qwc_local, the new-game step's calls of 0x00920FC8 (returns) */
 DES_REGION_ADDR(0x001856BC, 0x00186544)  /* code: des_qwc_local, the new-game step's calls of 0x00920FC8 (returns) */
 DES_REGION_ADDR(0x0018574C, 0x001865D4)  /* code: des_qwc_local, the new-game step's calls of 0x00920FC8 (returns) */
 DES_REGION_ADDR(0x00196158, 0x00196FE0)  /* call */
+DES_REGION_ADDR(0x001C6760, 0x001C75E8)  /* call: a pad source on again (debug menu) */
+DES_REGION_ADDR(0x001C67A8, 0x001C7630)  /* call: a pad source off (debug menu) */
 DES_REGION_ADDR(0x001D17A0, 0x001D2628)  /* call */
 DES_REGION_ADDR(0x001D1E64, 0x001D2CEC)  /* hook des_phys_rate */
 DES_REGION_ADDR(0x001D35D8, 0x001D4460)  /* call */
@@ -206,6 +212,11 @@ DES_REGION_ADDR(0x003DBBB0, 0x003DC990)  /* call */
 DES_REGION_ADDR(0x003E2DF0, 0x003E3BD0)  /* hook des_sun_gate */
 DES_REGION_ADDR(0x003E6330, 0x003E7110)  /* hook des_sun_gate */
 DES_REGION_ADDR(0x003E6518, 0x003E72F8)  /* hook des_sun_gate */
+DES_REGION_ADDR(0x00400190, 0x00400F70)  /* call: DbgMenuPad, this frame's keys */
+DES_REGION_ADDR(0x004008A0, 0x00401680)  /* call: DbgMenuHgDraw, the timer */
+DES_REGION_ADDR(0x00400F30, 0x00401D10)  /* call: DbgMenuHgDraw, the update */
+DES_REGION_ADDR(0x00401C60, 0x00402A40)  /* call: DbgMenuHgDraw, the window */
+DES_REGION_ADDR(0x00406F08, 0x00407CF8)  /* call: a debug menu label node */
 DES_REGION_ADDR(0x004117E4, 0x004125D4)  /* hook des_coop_hook: after RecvGlobalQwc's online blend (a friend plays in the host's world tendency) */
 DES_REGION_ADDR(0x00411958, 0x00412748)  /* hook des_coop_hook: the scripts' SaveRequest, past its first check (a friend's script asked for a save) */
 DES_REGION_ADDR(0x004119E0, 0x004127D0)  /* hook des_coop_hook: the same in SaveRequest_Profile */
@@ -398,6 +409,7 @@ DES_REGION_ADDR(0x01610188, 0x01611C00)  /* hook + call des_luaheap: a new Lua s
 DES_REGION_ADDR(0x0167AC58, 0x0167C6D0)  /* hook ds_free */
 DES_REGION_ADDR(0x0167AC88, 0x0167C700)  /* hook ds_malloc */
 DES_REGION_ADDR(0x016EBB98, 0x016EDC68)  /* data kNoName */
+DES_REGION_ADDR(0x01705B38, 0x01707C38)  /* data: the debug menu's root text */
 DES_REGION_ADDR(0x0185A8B8, 0x0185A8B8)  /* data kEquipVt */
 DES_REGION_ADDR(0x0185AF98, 0x0185AF98)  /* vtable */
 DES_REGION_ADDR(0x01866068, 0x018660B0)  /* data kEquipSlotsVt */

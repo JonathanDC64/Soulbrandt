@@ -29,6 +29,12 @@ int des_ui_launch(int* argc, char*** argv);
  * Decline at once. Otherwise returns at once. */
 void des_ui_privacy_wait(void);
 
+/* This session is offline, whatever is set: the network knobs are cleared, the
+ * runtime is locked offline (ps3_net_lock_offline) and the Network tab says
+ * why. For the debug menu (des_dbgmenu.cpp), from ps3_title_options_init after
+ * des_ui_early_init. A build without the UI does the first two. */
+void des_ui_net_off(const char* why);
+
 /* Setup's screens alone (ps3_title_window_only_init), in place of
  * des_ui_early_init: settings.ini, the overlay and setup's start screen, whose
  * Play starts the game in a new process of this program and closes this one. */
