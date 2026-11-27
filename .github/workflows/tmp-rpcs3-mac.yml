@@ -1,0 +1,36 @@
+# TEMPORARY (branch tmp/rpcs3-mac-check only, never merged): setup's unlock start with RPCS3's own macOS build on an
+# Apple silicon runner (tools/tmp_rpcs3_mac_check.py says what passes).
+name: RPCS3 unlock on a Mac (check)
+
+on:
+  push:
+    branches: [ tmp/rpcs3-mac-check ]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      RPCS3_URL: https://github.com/RPCS3/rpcs3-binaries-mac-arm64/releases/download/build-0ca5eb0efe50ec4e8aa07892ab86d57842246eb4/rpcs3-v0.0.43-20663-0ca5eb0e_macos_aarch64.7z
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.13.9'
+
+      - name: RPCS3 for macOS
+        run: |
+          curl -fsSL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/rpcs3.7z" "$RPCS3_URL"
+          shasum -a 256 "$RUNNER_TEMP/rpcs3.7z"
+          command -v 7zz || brew install sevenzip
+          mkdir -p "$RUNNER_TEMP/Applications"
+          7zz x -y -o"$RUNNER_TEMP/Applications" "$RUNNER_TEMP/rpcs3.7z" > /dev/null
+          ls -la "$RUNNER_TEMP/Applications"
+          ls -la "$RUNNER_TEMP/Applications"/*.app/Contents/MacOS
+
+      - name: Setup's unlock start with it
+        run: python tools/tmp_rpcs3_mac_check.py "$RUNNER_TEMP/Applications" "$RUNNER_TEMP/work"
