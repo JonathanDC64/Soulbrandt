@@ -139,6 +139,13 @@ jobs:
       - name: The program starts
         run: PS3_NO_USER_INPUT=1 build/host/des_host --program-check
 
+      - name: Keep des_host for the window check
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: des_host-macos-${{ github.sha }}
+          path: build/host/des_host
+          retention-days: 7
+
       - name: ccache's numbers
         if: ${{ !cancelled() }}
         run: ccache -s
@@ -149,3 +156,62 @@ jobs:
         with:
           path: ${{ github.workspace }}/.ci-cache/ccache
           key: ccache-mac-native-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+
+  # The setup window on a Mac (docs/178, step M3): a first start with no setup opens it, on the new path's Vulkan
+  # through MoltenVK and the Vulkan loader (the runner's Homebrew ones here; the app will carry its own). GitHub's Macs
+  # have a paravirtual GPU, so this shows that the window opens and draws, not how fast. The log and a screenshot are
+  # kept.
+  window-mac:
+    name: des_host's setup window (macOS arm64, MoltenVK)
+    needs: host-mac
+    runs-on: ${{ inputs.runner || 'macos-15' }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: des_host-macos-${{ github.sha }}
+
+      - name: MoltenVK and the Vulkan loader
+        run: brew install molten-vk vulkan-loader
+
+      # Up to 90 s for the device, then 15 s of the window before the screenshot. It must still be running then, and
+      # have said that setup opens; a window that did not open fails it.
+      - name: The setup window opens
+        env:
+          DYLD_FALLBACK_LIBRARY_PATH: /opt/homebrew/lib
+          XDG_DATA_HOME: ${{ runner.temp }}/xdg
+          RSX_BACKEND: vulkan
+          PS3_NO_USER_INPUT: '1'
+        run: |
+          chmod +x des_host
+          mkdir -p "$XDG_DATA_HOME"
+          ./des_host > window.log 2>&1 &
+          pid=$!
+          for i in $(seq 1 90); do
+            kill -0 $pid 2>/dev/null || break
+            grep -q "^\[VK\] device:" window.log && break
+            sleep 1
+          done
+          sleep 15
+          screencapture -x window.png || echo "no screenshot"
+          alive=0
+          if kill -0 $pid 2>/dev/null; then alive=1; fi
+          kill $pid 2>/dev/null || true
+          sleep 2
+          kill -9 $pid 2>/dev/null || true
+          tail -n 200 window.log
+          [ "$alive" = 1 ] || { echo "::error::des_host ended before the screenshot"; exit 1; }
+          grep -q "setup opens" window.log || { echo "::error::des_host did not start setup"; exit 1; }
+          if grep -qE "SDL video init failed|SDL_CreateWindow failed|nothing serves the first thread" window.log; then
+            echo "::error::the window did not open"; exit 1
+          fi
+          grep -q "^\[VK\] device:" window.log || { echo "::error::no Vulkan device"; exit 1; }
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: ${{ !cancelled() }}
+        with:
+          name: window-macos-${{ github.sha }}
+          path: |
+            window.log
+            window.png
+          if-no-files-found: warn
