@@ -90,7 +90,7 @@ jobs:
           set -o pipefail
           cmake -S ps3recomp -B ps3recomp/build_split -G Ninja -DCMAKE_BUILD_TYPE=Release -DPS3RECOMP_BUILD_TESTS=OFF \
             -DPS3RECOMP_RSX_HAL=ON -DPS3RECOMP_GAME_SPLIT=ON -DPS3RECOMP_NO_DECRYPT=ON \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 | tee rt_cfg.log
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.3 | tee rt_cfg.log
           grep -q "Renderer: *the GPU layer's Vulkan backend" rt_cfg.log
           grep -q "Renderer: *the compile service's spv target" rt_cfg.log
 

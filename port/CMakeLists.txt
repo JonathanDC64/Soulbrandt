@@ -1,7 +1,9 @@
 cmake_minimum_required(VERSION 3.20)
-# The oldest macOS the Mac build runs on (docs/178): 13, Ventura, which every Apple silicon Mac can update to. Read
-# before project(); ignored off a Mac. The pinned ps3recomp's runtime is configured with the same.
-set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "The oldest macOS the Mac build runs on")
+# The oldest macOS the Mac build runs on (docs/178): 13, Ventura, which every Apple silicon Mac can update to. 13.3,
+# not 13.0: the menus' std::format of a float needs the system C++ library's to_chars for floats, which 13.3 brought
+# (a Mac on 13.0 to 13.2 gets 13.3 or later as an update). Read before project(); ignored off a Mac. The pinned
+# ps3recomp's runtime is configured with the same.
+set(CMAKE_OSX_DEPLOYMENT_TARGET "13.3" CACHE STRING "The oldest macOS the Mac build runs on")
 project(des_boot LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 17)
