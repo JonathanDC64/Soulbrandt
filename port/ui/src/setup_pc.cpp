@@ -31,6 +31,9 @@
 #include <thread>
 
 namespace ui::setup {
+#if defined(__APPLE__)
+Power mac_power();  // (power_mac.cpp: IOKit's power sources)
+#endif
 namespace {
 
 std::string utf8(const std::filesystem::path& p) {
@@ -194,6 +197,12 @@ unsigned long long free_memory_bytes() {
 #endif
 }
 
+#if defined(__APPLE__)
+// A Mac: IOKit's power sources (power_mac.cpp), as it has no /sys.
+Power platform_power() {
+    return mac_power();
+}
+#else
 // /sys/class/power_supply: a laptop's charger is a "Mains" supply ("USB" for USB-C), with online 1 while plugged in;
 // its battery a "Battery" of scope System (a pad's or a mouse's battery says Device). On battery: a system battery, a
 // charger, and no charger online. A desktop has neither.
@@ -221,6 +230,7 @@ Power platform_power() {
     out.onBattery = battery && charger && !online;
     return out;
 }
+#endif
 
 Display platform_display() {
     auto* window = static_cast<SDL_Window*>(host::window());

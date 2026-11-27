@@ -80,10 +80,12 @@ struct Estimate {
 Estimate setup_time();
 
 // The PC's power: whether it has a battery of its own (a laptop), and whether it runs on it now (not plugged in).
-// Both false when it cannot tell: a desktop has no battery to ask.
+// Both false when it cannot tell: a desktop has no battery to ask. percent: the battery's charge, read on a Mac only
+// (the problem report reads its own elsewhere); -1 when not read.
 struct Power {
     bool battery = false;
     bool onBattery = false;
+    int percent = -1;
 };
 Power power();
 
