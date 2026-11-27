@@ -431,6 +431,15 @@ std::vector<TabDesc> make_tabs() {
                 "<b>Esc</b> menu (Start) &nbsp; <b>G</b> or <b>Tab</b> Select<br/><br/>"
                 "The mouse buttons and wheel need Mouse look on. Change Buttons changes any of these."),
         }},
+        {"Camera", {
+            toggle("Camera follows your movement", "DES_CAM_FOLLOW",
+                "On, as in the original: running sideways swings the camera round behind you. Off: the camera keeps "
+                "its direction until you turn it with the right stick or the mouse. Locked on, it follows the "
+                "target either way."),
+            toggle("Lock on with no target turns the camera", "DES_CAM_RESET",
+                "On, as in the original: lock on (R3) with nothing to lock on to turns the camera behind you. Off: "
+                "the camera stays where it is."),
+        }},
         {"Mouse", {
             toggle("Mouse look", "DES_MOUSE_LOOK",
                 "Turn the camera with the mouse, and use the mouse buttons and wheel in the game. Smoothest at 60 fps "
