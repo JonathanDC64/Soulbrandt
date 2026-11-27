@@ -56,8 +56,25 @@ jobs:
           path: ps3recomp
           persist-credentials: false
 
-      - name: Install Ninja
-        run: brew install ninja
+      - name: Install Ninja and ccache
+        run: |
+          brew install ninja ccache
+          {
+            echo "CCACHE_DIR=$GITHUB_WORKSPACE/.ci-cache/ccache"
+            echo "CCACHE_MAXSIZE=1G"
+            echo "CMAKE_C_COMPILER_LAUNCHER=ccache"
+            echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache"
+          } >> "$GITHUB_ENV"
+
+      # ccache: the runtime's and des_host's compiles that did not change come from the newest entry of this branch
+      # (or of master). It is saved after every push, one key per commit, failed builds too: a run that stops on a
+      # compile error has compiled everything else.
+      - name: Restore ccache's cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ github.workspace }}/.ci-cache/ccache
+          key: ccache-mac-native-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          restore-keys: ccache-mac-native-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Show toolchain
         run: |
@@ -100,3 +117,14 @@ jobs:
         run: |
           file build/host/des_host
           lipo -info build/host/des_host | grep -q arm64
+
+      - name: ccache's numbers
+        if: ${{ !cancelled() }}
+        run: ccache -s
+
+      - name: Save ccache's cache
+        if: ${{ !cancelled() && github.event_name == 'push' }}
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ github.workspace }}/.ci-cache/ccache
+          key: ccache-mac-native-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
