@@ -32,8 +32,8 @@ void set_data_dir(const std::filesystem::path& dir);  // (the crash dialog proce
 // the saves and the shader cache are then all in the exe's folder, so the whole install moves as one folder.
 bool portable();
 // The system's folders the player's files go under: %APPDATA% and %LOCALAPPDATA%; on Linux both $XDG_DATA_HOME, else
-// ~/.local/share. DES_USER_FOLDERS=<folder> (tests) puts them in a folder of the test's: <folder>\Roaming and
-// <folder>\Local on Windows, <folder> itself on Linux.
+// ~/.local/share; on a Mac both ~/Library/Application Support. DES_USER_FOLDERS=<folder> (tests) puts them in a
+// folder of the test's: <folder>\Roaming and <folder>\Local on Windows, <folder> itself elsewhere.
 setup::UserFolders user_folders();
 // Where this PC's player keeps each part (setup_folder.hpp), found once a process, from what is on disk: the settings
 // folder (data_dir's, when nothing is given), the folder that holds the saves' gamedata (where a player's start of the
