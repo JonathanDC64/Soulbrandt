@@ -158,6 +158,7 @@ int main()
         const int32_t counts[8] = {119, 28, 2, 1, 3, 1, 0, 0};
         for (uint32_t i = 0; i < 8; i++) put(p, 0x0B0 + 4 * i, (uint32_t)counts[i]);
         put(p, 0x0D8, 0x139C021Au);
+        put(p, 0x0D0, 1u << 24 | 0xC0);   // a flags word with its top byte set: live players' records, refused by 0.2.0
         const float colours[4] = {1.333f, 1.6f, 1.875f, 1.004f};
         for (uint32_t i = 0; i < 4; i++) putf(p, 0x1C0 + 4 * i, colours[i]);
         put(p, 0x310, 2), put(p, 0x320, 3);   // list A's kinds
@@ -179,6 +180,7 @@ int main()
         const Bad bad[] = {
             {0x0AC, 101, 2}, {0x0AE, 10000, 2}, {0x0B0, 0xFFFFFFFFu, 4}, {0x0CC, 1000000000u, 4},
             {0x0D4, 0xFFFEFFFFu, 4}, {0x0DC, 0x80000000u, 4}, {0x310, 4, 4}, {0xB10, 4, 4},
+            {0x0D0, 1u << 24 | 0xC1, 4}, {0x0D0, 1u << 8 | 0xC0, 4},   // a flags word: low byte not 0xC0, or a middle byte set
         };
         for (const Bad& x : bad) {
             std::vector<uint8_t> p = game_record();
