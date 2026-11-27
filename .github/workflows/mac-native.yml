@@ -124,6 +124,21 @@ jobs:
             echo "::error::des_host loads a library from outside macOS (above)"; exit 1
           fi
 
+      # The player's program has no decryptor and no keys (as host.yml checks the Windows and Linux ones).
+      - name: No decryptor in des_host
+        run: |
+          grep -q "^PS3RECOMP_NO_DECRYPT:BOOL=ON" ps3recomp/build_split/CMakeCache.txt \
+            || { echo "::error::the runtime was built with its decryptor"; exit 1; }
+          if grep -qE "[ _]edat_decrypt_file( |$)" build/host/des_host.map; then
+            echo "::error::des_host has edat_decrypt_file"; exit 1
+          fi
+          python tools/release/package.py check-keys --rev HEAD --ps3recomp ps3recomp --file build/host/des_host
+
+      # Its first run: macOS loads it and its frameworks, its constructors run (the command line, the processor
+      # check), and it says it is a program that starts. It opens no window yet (docs/178, step M3).
+      - name: The program starts
+        run: PS3_NO_USER_INPUT=1 build/host/des_host --program-check
+
       - name: ccache's numbers
         if: ${{ !cancelled() }}
         run: ccache -s
