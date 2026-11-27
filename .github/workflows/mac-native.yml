@@ -113,10 +113,16 @@ jobs:
       - name: Build des_host
         run: cmake --build build/host --target des_host -- -k 0
 
-      - name: Verify architecture
+      # Arm64, and nothing loaded from Homebrew (the runner has it; a player's Mac does not): only the system's own
+      # libraries and frameworks.
+      - name: Verify architecture and libraries
         run: |
           file build/host/des_host
           lipo -info build/host/des_host | grep -q arm64
+          otool -L build/host/des_host | tee libs.txt
+          if tail -n +2 libs.txt | grep -Ev '^[[:space:]]+(/usr/lib/|/System/Library/)'; then
+            echo "::error::des_host loads a library from outside macOS (above)"; exit 1
+          fi
 
       - name: ccache's numbers
         if: ${{ !cancelled() }}
