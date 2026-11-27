@@ -25,7 +25,7 @@ from des_setup import fetch, journal, protocol, signing, update  # noqa: E402
 import package  # noqa: E402
 
 EXE = "Game.exe" if os.name == "nt" else "Game"
-PLAYER = "windows" if os.name == "nt" else "linux"   # this system's player's download
+PLAYER = "windows" if os.name == "nt" else "macos" if sys.platform == "darwin" else "linux"   # this system's download
 SEED, OTHER = bytes(range(32)), bytes(range(1, 33))   # the tests' release key, and a key the build does not list
 _keys = tempfile.TemporaryDirectory()
 _keys_patch = mock.patch.object(signing, "KEYS", Path(_keys.name) / "release-keys.txt")
@@ -78,7 +78,7 @@ class FeedTest(unittest.TestCase):
             rel = release(tag, assets=("sums", "sig"))
             rel["assets"] += [{"name": n, "size": 0, "browser_download_url": f"http://127.0.0.1:1/{n}"} for n in names]
             return rel
-        own, ext = update.player_asset("0.2.1"), "windows.zip" if PLAYER == "windows" else "linux.tar.xz"
+        own, ext = update.player_asset("0.2.1"), "windows.zip" if PLAYER == "windows" else f"{PLAYER}.tar.xz"
         new = f"NewName-0.2.1-{ext}"
         self.assertEqual(update.player_asset_in({own, new}, "0.2.1"), own)   # both: the old name's
         self.assertEqual(update.player_asset_in({new, "SHA256SUMS"}, "0.2.1"), new)
@@ -87,6 +87,27 @@ class FeedTest(unittest.TestCase):
             self.assertIsNone(update.player_asset_in(names, "0.2.1"), names)
         self.assertEqual(update.newer([named("v0.2.1", new), release("v0.2.0")], "0.2.0")[0], "0.2.1")
         self.assertIsNone(update.newer([named("v0.2.1", "NewName-0.2.1-source.zip")], "0.2.0"))
+
+    def test_each_systems_download(self):
+        for system, name in (("windows", "DemonsSoulsRecomp-0.2.1-windows.zip"),
+                             ("linux", "DemonsSoulsRecomp-0.2.1-linux.tar.xz"),
+                             ("macos", "DemonsSoulsRecomp-0.2.1-macos.tar.xz")):
+            with mock.patch.object(update, "system", return_value=system):
+                self.assertEqual(update.player_asset("0.2.1"), name)
+                # (a Mac takes its own download, never the Linux one)
+                self.assertIsNone(update.player_asset_in({"DemonsSoulsRecomp-0.2.1-source.zip"}, "0.2.1"))
+        self.assertEqual(update.system(), PLAYER)
+
+    def test_a_mac_app_is_not_swapped(self):
+        self.assertTrue(update.in_mac_app("/Applications/Soulbrandt.app/Contents/MacOS"))
+        self.assertTrue(update.in_mac_app("/Users/a/Soulbrandt.app/Contents"))
+        for folder in ("/Users/a/Games/Soulbrandt", "/Users/a/Soulbrandt.app", "/Users/a/x.app.d/Contents/MacOS",
+                       "C:/Games/DemonsSoulsRecomp-0.2.1"):
+            self.assertFalse(update.in_mac_app(folder), folder)
+        with self.assertRaises(update.UpdateFailed) as e:
+            update._apply(Path("/Applications/Soulbrandt.app/Contents/MacOS"), Path("/nowhere"), "0.2.0", "0.2.1",
+                          None, 1)
+        self.assertIn("not updated in place", e.exception.message)
 
     def test_check_lines(self):
         with tempfile.TemporaryDirectory() as tmp:
