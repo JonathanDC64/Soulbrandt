@@ -22,6 +22,8 @@ Two labels are used below:
 
 > **Built (2026-11-20): crystal lizards that get away come back**, `DES_LIZARD_RETURN`, off by default (section 7). A crystal lizard that gets away is back the next time its area loads, without using up one of its returns. Only a kill uses one.
 
+> **Built (2026-11-27): hold Up or Down for the first spell or item**, `DES_SLOT_HOLD`, off by default (section 8). Up held for the chosen time goes back to the first spell, Down to the first item, as in the later games.
+
 ## Summary
 
 | Feature | Verdict | Effort |
@@ -29,6 +31,7 @@ Two labels are used below:
 | Change Appearance | **Built** (section 1.10): `DES_APPEARANCE` adds a row to the statue's menu that opens Edit Appearance. Keeping the changes reloads the Nexus. | Done. |
 | Change Tendency | **Built** (section 1.12): `DES_TENDENCY` adds a row to the statue's menu. It lists the worlds with their levels now, or the character, then the five levels; YES sets the value and saves. | Done. |
 | Crystal lizards that get away | **Built** (section 7): `DES_LIZARD_RETURN` makes a crystal lizard that gets away come back at its area's next load, without using up a return. A kill uses one, as before. | Done. |
+| Hold Up or Down for the first spell or item | **Built** (section 8): `DES_SLOT_HOLD` (milliseconds) makes a long Up go back to the first spell and a long Down to the first item. | Done. |
 | Change Name and Change Body | **Built** (section 1.11): `DES_IDENTITY`, with `DES_APPEARANCE`, adds both rows. The name goes through the on-screen keyboard. A new body takes off worn armour made only for the other body, opens Edit Appearance, then the Nexus reloads. | Done. |
 | Stat respec | **Built** (section 1.9): `DES_RESPEC` makes the statue in front of the Nexus spawn open a menu whose Respecialization resets to the class, refunds the levels and opens the level-up screen. The Maiden in Black's menu has the same row after Seek Soul Power. | Done. No on-screen prompt at the statue yet. |
 | Use several souls at once | **Built** (section 2.5): `DES_SOULS_AT_ONCE` makes Use on a soul stack ask how many, in Drop's count picker. | Done. |
@@ -842,6 +845,40 @@ One copy of the game, offline, from the pinned regression save (a new character)
 - Turning the option on during play (off at the start, on after 1-1 loaded, then 1-1 loaded again) made the edit at that next load.
 - No script error in any run.
 
+## 8. Hold Up or Down for the first spell or item
+
+Asked for in issue #739 (2026-11-26): holding Up or Down on the D-pad for about half a second goes back to the first spell or item slot, as in the later Souls games, with the time a setting. Built as `DES_SLOT_HOLD` (Settings > Game > Items, "Hold for the first spell or item": Off, 0.3, 0.5, 0.8 or 1 second). Off by default; the original game has no hold.
+
+### 8.1 How the game steps the slots (read)
+
+- The HUD's four equipment slots are dialogs of one class (vtable 0x018697B0). Each frame their update (0x007ADB80) calls the D-pad step 0x007AB920. With no menu up, the step reads the press of the dialog's direction (0x00F55A18 with input 0x80 for the spells, 0x81 for the items) and moves that slot.
+- **Items** (PGD + 0x2A0): seven entries from +0x0C (-1 empty), the one in use at +0x28. The items' step 0x00902A68 moves to the next filled entry; from none (-1) it picks the first filled one.
+- **Spells** (PGD + 0x23C): two lists of seven spell ids, the sorceries from +0x18 (count +0x08 + +0x0C) and the miracles from +0x44 (count +0x34 + +0x38). The spell in use is an id at +0x60, -1 none. The spells' step 0x009052D8 finds that id in the lists and moves to the next attuned spell; from none it picks the first attuned spell in the game's own order.
+- After a step the D-pad step starts the HUD's switch animation (dialog +0xF9 for the spells, +0xFC for the items) and plays the menu tick (0x0072D970(0)).
+
+### 8.2 The option
+
+- `port/des_item_hotkeys.cpp` already wraps 0x007ADB80 for the item keys (#410). The hold is checked there, on the spells' dialog for Up and the items' for Down.
+- "Held" is pad 0 as the game last read it (`g_pad0_buttons`, cellPad), so a pad, the keyboard's layout and a test's presses count alike. The time is real time, as the player holds the button.
+- The press itself still steps once, as in the original game. When the hold reaches the time, it goes back once per hold:
+  - items: the slot in use becomes the first filled entry, what the step picks from none;
+  - spells: the spell in use is set to none and the spells' step is run, which picks the first attuned spell.
+- The D-pad step's own tests apply (no menu up, the HUD takes input), and its animation and tick follow. Already on the first, nothing happens.
+- `DES_ITEM_KEYS_LOG=1` prints a line for each hold, for example `[items] Down held: slot 1, the first item (from slot 3)`.
+
+### 8.3 Test (2026-11-27)
+
+One copy of the game, offline, on a scratch copy of the megamule save (a character with two quick items and Heal). Through the debug console the copy's character got three sorceries (ids 1000, 1001 and 1007) and a third quick item. `DES_SLOT_HOLD=500`, presses from a route:
+
+| Step | HUD | Log |
+|---|---|---|
+| Start | Crescent Moon Grass, Heal | |
+| Down | Half Moon Grass | |
+| Down held 1 s | the press steps to the third item, then Crescent Moon Grass | `Down held: slot 1, the first item (from slot 3)` |
+| Up, Up | Soul Arrow, then Flame Toss | |
+| Up held 1 s | the press steps to the third sorcery, then Soul Arrow | `Up held: spell 1000, the first (from spell 1007)` |
+| Option off (set to 0 during the run), Down held 1 s | one step only (Half Moon Grass) | none |
+
 ## Appendix: addresses
 
 All are read in code unless marked.
@@ -858,6 +895,8 @@ All are read in code unless marked.
 | 0x002802E0, 0x002737A0, 0x00273620 | live character HP, MP, stamina refresh |
 | 0x008F6680, 0x008F65E8 | slot counts (Intelligence; Faith) |
 | 0x009060E0 | unattune one spell (the reset calls it for each entry of two 7-entry lists) |
+| 0x009052D8 | the spells' step (PGD + 0x23C): to the next attuned spell; from none (+0x60 = -1) to the first (section 8) |
+| 0x00902A68 | the items' step (PGD + 0x2A0): to the next filled entry; from none (+0x28 = -1) to the first (section 8) |
 | 0x00919D60 | current values from max |
 | 0x0090FCD0 | reset stats to the class (caller 0x004171F8) |
 | 0x0090F508 | one level down (callers 0x004159A8, 0x0041A420, 0x002D5308) |
