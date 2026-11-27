@@ -231,18 +231,22 @@ void ControlsPage::update_rows() {
             else if (mKeys) text = slot_label(t, s);
             else if (t == kKickTarget) text = kick_label(device);
             else text = pad_value_label(t, device);
-            set_text_content(v.texts[s], text);
-            set_class(v.texts[s], "none", text == "None" || text == "None (Kick)");
             if (v.art) {
-                // A picture of one of the PS3's buttons; the others (the Kick's extra ones, none) by name.
+                // A picture of one of the PS3's buttons; the others (the extra ones, none) by name. A row with a back
+                // button or paddle added shows its own button's picture, then "+ Right back button".
                 const int host = t == kKickTarget ? pad_kick() : kick_takes(t) ? -1 : pad_map()[t];
                 const std::string art = wait || host < 0 || host >= kPadCount ? std::string() : pad_art(host);
+                const std::string added = wait || art.empty() || t == kKickTarget ? "" : pad_added_label(t, device);
+                if (!added.empty()) text = "+ " + added;
                 set_class(v.values[s], "named", art.empty() && !wait);
+                set_class(v.values[s], "added", !added.empty());
                 if (art != v.artShown) {
                     v.artShown = art;
                     v.art->SetInnerRML(art);
                 }
             }
+            set_text_content(v.texts[s], text);
+            set_class(v.texts[s], "none", text == "None" || text == "None (Kick)");
         }
         set_class(v.row, "modified", modified);
         set_class(v.row, "waiting", waiting);
@@ -269,7 +273,8 @@ void ControlsPage::update_help() {
                    "to another, it leaves the one it had.</menu-helptext>"
                  : "<menu-helptext>Choose a row, then press the button for it. Esc cancels.<br/><br/>A row is the "
                    "game's button; its box shows the button on your pad that presses it. Give a row a button another "
-                   "row had, and the two swap.<br/><br/>Kick: " +
+                   "row had, and the two swap.<br/><br/>A back button or paddle is added to the row's button, so "
+                   "both press it. Press the same one again on that row to take it off.<br/><br/>Kick: " +
                        std::string(kKickAbout) + "</menu-helptext>";
     rml += "<menu-facts><menu-fact><menu-fact-name>Variable</menu-fact-name><menu-fact-value class=\"key\">" +
            std::string(key_of(mKeys)) + "</menu-fact-value></menu-fact></menu-facts></menu-helpbox>";

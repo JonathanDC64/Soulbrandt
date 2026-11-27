@@ -24,6 +24,13 @@ unsigned through_map(unsigned buttons, const std::array<signed char, 16>& from) 
     return out;
 }
 
+unsigned through_added(unsigned host, const std::array<unsigned, 16>& added) noexcept {
+    unsigned out = 0;
+    for (int g = 0; g < 16; g++)
+        if (host & added[g]) out |= 1u << g;
+    return out;
+}
+
 unsigned chord_mask(int chord) noexcept {
     return chord == 1 ? (kSelect | kStart) : (kL3 | kR3);
 }

@@ -29,28 +29,45 @@ extern const char* const kPadLabels[kPadCount];
 extern const int kPadRows[kPadCount];
 extern const char* const kPadSections[kPadCount];
 
-using PadMap = std::array<int, kPadCount>;
-// The pad button each game button reads (an index into kPadNames).
-PadMap pad_map();
-void save_pad_map(const PadMap& m);
-// Gives game button `button` the pad button `value`. A game button that had it takes the old one instead, so no pad
-// button presses two game buttons.
-void assign(PadMap& m, int button, int value);
-bool pad_modified(int button);
-
-// The Kick row: a pad button that kicks (R1 as a kick, with Settings > Controls > Forward attack at Own key) and then
-// does nothing else. Its pad button is one of the 16 (kPadNames) or one some pads have beyond them (the extra ones,
-// pad_map.h in the runtime: paddle1 to paddle4, misc, touchpad), an index into both: 0-15, then 16 on. kKickTarget is
-// its Capture target.
+// A pad button: one of the 16 (kPadNames) or one some pads have beyond them (the extra ones, pad_map.h in the runtime:
+// paddle1 to paddle4, misc, touchpad), an index into both: 0-15, then 16 on.
 constexpr int kPadExtraCount = 6;
 constexpr int kPadHostCount = kPadCount + kPadExtraCount;
-constexpr int kKickTarget = kPadCount;
 extern const char* const kPadExtraNames[kPadExtraCount];
 const char* pad_host_name(int host);
-// A pad button's name as the pad in use calls it: "Square", "P1", "Right back", "R4", "Share".
+// A pad button's name as the pad in use calls it: "Square", "P1", "Right back button", "R4", "Share".
 std::string pad_host_label(int host, prompts::Device device);
+
+using PadMap = std::array<int, kPadCount>;
+// The pad button each game button reads (an index into kPadNames; -1: none, in a PAD_MAP written by hand).
+PadMap pad_map();
+// The pad buttons added to each game button's own (bit i: pad button i). From these screens, back buttons and paddles
+// (the extra ones), so an action can have its usual button and a back button too (#747).
+using PadExtras = std::array<unsigned, kPadCount>;
+PadExtras pad_extras();
+bool pad_modified(int button);
+// Game button `button`'s added pad buttons as shown ("Right back button", two joined by " + "), "" for none.
+std::string pad_added_label(int button, prompts::Device device);
+
+// The Kick row: a pad button that kicks (R1 as a kick, with Settings > Controls > Forward attack at Own key) and then
+// does nothing else, one of the 22. kKickTarget is its Capture target.
+constexpr int kKickTarget = kPadCount;
 int pad_kick();  // -1: none
-void set_pad_kick(int host);
+
+// The Gamepad page as PAD_MAP's text has it (pad_rows.cpp, on its own: no settings): "circle=circle|paddle1" gives
+// Circle a back button beside its own, "kick=paddle2" is the Kick's.
+struct PadRows {
+    PadMap button{};
+    PadExtras extra{};
+    int kick = -1;
+};
+PadRows parse_pad_rows(const std::string& text);
+std::string pad_rows_text(const PadRows& r);
+// A Capture's choice: pad button `host` for game button `target`, or for the Kick (kKickTarget). One of the 16
+// replaces the row's own, and a row that had it takes the old one (the two swap); the row's added ones stay. An extra
+// one is added to the row, or taken off when the row had it. A pad button works one thing: an extra one given to a
+// row or the Kick leaves the others, and the Kick lets go of one given to a row.
+void give_pad_button(PadRows& r, int target, int host);
 // Forward attack is Own key: the Kick row's button kicks.
 bool kick_on();
 // Game button `button`'s pad button is the Kick's, with the Kick on: nothing presses that game button.
@@ -108,8 +125,9 @@ std::string slot_label(int t, int slot);
 // ---- These menus with Same buttons as the game (settings.cpp's menu_follow_buttons) ----
 
 // The pad button each game button reads, as in the game (pad_map): menu_pad.hpp's through_map turns a pad's buttons
-// into the game's with it (input.hpp's menu_buttons). The Kick's button keeps its game button here: a kick means
-// nothing in these menus, so Select stays Help when the Kick is on Select.
+// into the game's with it (input.hpp's menu_buttons), and through_added with the ones added to it (pad_extras). The
+// Kick's button keeps its game button here: a kick means nothing in these menus, so Select stays Help when the Kick is
+// on Select.
 std::array<signed char, kPadCount> game_button_sources();
 // The key a keyboard key stands for in these menus: Enter for a key that works Cross, Esc for one that works Circle
 // (on its own, without a modifier; a "menu:" one too, since those are the game's menus' own), so it confirms and goes

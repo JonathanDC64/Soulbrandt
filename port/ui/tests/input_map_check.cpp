@@ -1,8 +1,10 @@
 // Written for Demon's Souls. The menus' keys on their own (CMakeLists.txt's input_map_check): a pad's buttons as keys
 // with the chord rule (menu_pad.hpp), each key's command for the F1 menu and its pages (menu_input.hpp), what is held,
-// and the prompts' buttons for each device (prompts.hpp). No window, no pads: frames of button states in, keys out.
+// and the prompts' buttons for each device (prompts.hpp), and Change Buttons' Gamepad rows as PAD_MAP's text
+// (controls_model.hpp's PadRows). No window, no pads: frames of button states in, keys out.
 // Prints a line per failure and "input_map_check: N checks, M failed"; exit 1 on a failure.
 #include "button_pages.hpp"
+#include "controls_model.hpp"
 #include "input.hpp"
 #include "menu_input.hpp"
 #include "menu_pad.hpp"
@@ -136,6 +138,68 @@ void check_through_map() {
     std::array<signed char, 16> two = same;
     two[15] = 14;  // the game's Square reads the pad's Cross too
     check(through_map(kCross, two) == (kCross | kSquare), "two game buttons on one pad button");
+
+    // A back button added to a game button (#747): either presses it. The host word: the 16, then the extra ones.
+    std::array<unsigned, 16> added{};
+    constexpr unsigned kPaddle1 = 1u << 16, kPaddle2 = 1u << 17;
+    added[13] = kPaddle1;  // the game's Circle: the pad's Circle, and paddle 1
+    check(through_added(kPaddle1, added) == kCircle, "added: paddle 1 is the game's Circle");
+    check(through_added(kPaddle2 | kCross, added) == 0, "added: another paddle, or a button of the 16, adds nothing");
+    check((through_map(kCircle, same) | through_added(kCircle, added)) == kCircle, "added: Circle still Circle");
+    pad.buttons = through_map(0, swapped) | through_added(kPaddle1, added);
+    check(pad_keys(pad, 0, st)[kPadCancel], "added: paddle 1 goes back as Circle does");
+}
+
+// Change Buttons' Gamepad rows and PAD_MAP's text (pad_rows.cpp).
+void check_pad_rows() {
+    using namespace ui::controls;
+    g_where = "pad_rows";
+    constexpr int kCircleB = 13, kCrossB = 14, kSquareB = 15, kR1B = 11, kPaddle1 = kPadCount, kPaddle2 = kPadCount + 1;
+    PadRows r = parse_pad_rows("");
+    bool same = r.kick == -1;
+    for (int i = 0; i < kPadCount; i++) same = same && r.button[i] == i && r.extra[i] == 0;
+    check(same, "empty: every button its own, nothing added, no Kick");
+    check(pad_rows_text(r).empty(), "empty: written back empty");
+
+    r = parse_pad_rows("cross=circle,circle=cross,kick=paddle2");
+    check(r.button[kCrossB] == kCircleB && r.button[kCircleB] == kCrossB && r.kick == kPaddle2, "swapped, a Kick");
+    check(pad_rows_text(r) == "circle=cross,cross=circle,kick=paddle2", "swapped: written back in button order");
+
+    // A paddle added to Circle, then given again: taken off.
+    r = parse_pad_rows("");
+    give_pad_button(r, kCircleB, kPaddle1);
+    check(r.button[kCircleB] == kCircleB && r.extra[kCircleB] == 1u << kPaddle1, "paddle 1 added to Circle");
+    check(pad_rows_text(r) == "circle=circle|paddle1", "added: written as cellPad reads it");
+    check(parse_pad_rows(pad_rows_text(r)).extra[kCircleB] == 1u << kPaddle1, "added: read back");
+    give_pad_button(r, kCircleB, kPaddle1);
+    check(r.extra[kCircleB] == 0 && pad_rows_text(r).empty(), "paddle 1 again on Circle: taken off");
+
+    // A row's own button changed: its paddle stays. The two swap as before.
+    give_pad_button(r, kCircleB, kPaddle1);
+    give_pad_button(r, kCircleB, kSquareB);
+    check(r.button[kCircleB] == kSquareB && r.button[kSquareB] == kCircleB && r.extra[kCircleB] == 1u << kPaddle1,
+          "Circle on Square: swapped, the paddle kept");
+    check(pad_rows_text(r) == "circle=square|paddle1,square=circle", "swapped with a paddle: written");
+
+    // A pad button works one thing: a paddle moves from row to row, and from the Kick to a row and back.
+    give_pad_button(r, kCrossB, kPaddle1);
+    check(r.extra[kCircleB] == 0 && r.extra[kCrossB] == 1u << kPaddle1, "paddle 1 to Cross: Circle lets go of it");
+    give_pad_button(r, kKickTarget, kPaddle1);
+    check(r.kick == kPaddle1 && r.extra[kCrossB] == 0, "paddle 1 to the Kick: Cross lets go of it");
+    give_pad_button(r, kR1B, kPaddle1);
+    check(r.kick == -1 && r.extra[kR1B] == 1u << kPaddle1, "paddle 1 to R1: the Kick lets go of it");
+    give_pad_button(r, kKickTarget, kSquareB);
+    check(r.kick == kSquareB && r.button[kCircleB] == kSquareB, "Square to the Kick: Circle keeps it (kick_takes)");
+    give_pad_button(r, kCrossB, kSquareB);
+    check(r.kick == -1 && r.button[kCrossB] == kSquareB, "Square to Cross: the Kick lets go of it");
+
+    // Written by hand: "none", only a paddle, two of the 16; a part that isn't a name leaves the pair out, as cellPad.
+    r = parse_pad_rows("select=none,cross=paddle1,r1=r1|square,circle=circle|bogus");
+    check(r.button[0] == -1 && r.extra[0] == 0, "select=none: no button");
+    check(r.button[kCrossB] == -1 && r.extra[kCrossB] == 1u << kPaddle1, "cross=paddle1: the paddle alone");
+    check(r.button[kR1B] == kR1B && r.extra[kR1B] == 1u << kSquareB, "r1=r1|square: R1, Square added");
+    check(r.button[kCircleB] == kCircleB && r.extra[kCircleB] == 0, "a name that isn't one: the pair left out");
+    check(pad_rows_text(r) == "select=none,r1=r1|square,cross=paddle1", "written back as read");
 }
 
 void check_commands() {
@@ -298,6 +362,7 @@ void check_prompts() {
 int main() {
     check_pad();
     check_through_map();
+    check_pad_rows();
     check_commands();
     check_holds();
     check_prompts();

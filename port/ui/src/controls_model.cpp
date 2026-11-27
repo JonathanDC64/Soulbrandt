@@ -18,11 +18,9 @@
 
 namespace ui::controls {
 
-const char* const kPadNames[kPadCount] = {"select", "l3", "r3", "start", "up", "right", "down", "left",
-                                          "l2", "r2", "l1", "r1", "triangle", "circle", "cross", "square"};
+// (kPadNames and kPadExtraNames: pad_rows.cpp)
 const char* const kPadLabels[kPadCount] = {"Select", "L3", "R3", "Start", "Up", "Right", "Down", "Left",
                                            "L2", "R2", "L1", "R1", "Triangle", "Circle", "Cross", "Square"};
-const char* const kPadExtraNames[kPadExtraCount] = {"paddle1", "paddle2", "paddle3", "paddle4", "misc", "touchpad"};
 const int kPadRows[kPadCount] = {14, 13, 15, 12, 10, 11, 8, 9, 1, 2, 3, 0, 4, 6, 7, 5};
 const char* const kPadSections[kPadCount] = {"Face buttons", nullptr, nullptr, nullptr, "Shoulders", nullptr,
                                              nullptr, nullptr, "Sticks", nullptr, "Start and Select", nullptr,
@@ -70,13 +68,6 @@ static_assert(sizeof kTargets / sizeof kTargets[0] == kTargetCount);
 namespace {
 
 constexpr unsigned long long kCaptureTimeoutMs = 8000;
-
-int name_index(const std::string& s) {
-    for (int i = 0; i < kPadCount; i++) {
-        if (same_name(s.c_str(), kPadNames[i])) return i;
-    }
-    return -1;
-}
 
 // "game=value" pairs separated by commas (or spaces or semicolons), as cellPad reads them.
 template <typename F>
@@ -202,11 +193,10 @@ int either_side(int vk) {
     }
 }
 
-// The pad buttons held that a capture for `target` can take, as host buttons (bit i: kPadHostCount's i): the 16, and
-// for the Kick also the extra ones some pads have.
-unsigned capture_buttons(int target) {
-    const unsigned b = input::pad_buttons();
-    return target == kKickTarget ? b | input::pad_extra_buttons() << kPadCount : b;
+// The pad buttons held that a capture can take, as host buttons (bit i: kPadHostCount's i): the 16, then the extra
+// ones some pads have (a row adds those to its own button, and the Kick takes them as its button).
+unsigned capture_buttons() {
+    return input::pad_buttons() | input::pad_extra_buttons() << kPadCount;
 }
 
 // Nothing is held: no key, mouse button or pad button (the press that started the capture would otherwise be taken
@@ -222,47 +212,20 @@ bool input_neutral() {
 
 }  // namespace
 
-PadMap pad_map() {
-    PadMap m;
-    for (int i = 0; i < kPadCount; i++) m[i] = i;
-    each_pair(settings::get("PAD_MAP"), [&](const std::string& game, const std::string& v) {
-        const int dst = name_index(game), src = name_index(v);
-        if (dst >= 0 && src >= 0) m[dst] = src;
-    });
-    return m;
-}
-
 namespace {
 
-int host_index(const std::string& s) {
-    for (int i = 0; i < kPadHostCount; i++) {
-        if (same_name(s.c_str(), pad_host_name(i))) return i;
-    }
-    return -1;
-}
-
-// PAD_MAP as the rows write it: the game buttons moved, then the Kick's button ("kick=paddle1").
-void write_pad_map(const PadMap& m, int kick) {
-    std::string out;
-    for (int i = 0; i < kPadCount; i++) {
-        if (m[i] == i) continue;
-        if (!out.empty()) out += ',';
-        out += std::string(kPadNames[i]) + "=" + kPadNames[m[i]];
-    }
-    if (kick >= 0) out += std::string(out.empty() ? "" : ",") + "kick=" + pad_host_name(kick);
-    settings::set("PAD_MAP", out);
+PadRows pad_rows() {
+    return parse_pad_rows(settings::get("PAD_MAP"));
 }
 
 }  // namespace
 
-void save_pad_map(const PadMap& m) {
-    write_pad_map(m, pad_kick());
+PadMap pad_map() {
+    return pad_rows().button;
 }
 
-const char* pad_host_name(int host) {
-    if (host >= 0 && host < kPadCount) return kPadNames[host];
-    if (host >= kPadCount && host < kPadHostCount) return kPadExtraNames[host - kPadCount];
-    return "";
+PadExtras pad_extras() {
+    return pad_rows().extra;
 }
 
 std::string pad_host_label(int host, prompts::Device device) {
@@ -290,15 +253,7 @@ std::string pad_host_label(int host, prompts::Device device) {
 }
 
 int pad_kick() {
-    int kick = -1;
-    each_pair(settings::get("PAD_MAP"), [&](const std::string& game, const std::string& v) {
-        if (same_name(game.c_str(), "kick")) kick = host_index(v);  // (named again, it replaces)
-    });
-    return kick;
-}
-
-void set_pad_kick(int host) {
-    write_pad_map(pad_map(), host >= 0 && host < kPadHostCount ? host : -1);
+    return pad_rows().kick;
 }
 
 bool kick_on() {
@@ -331,9 +286,22 @@ bool kick_takes(int button) {
     return kick >= 0 && button >= 0 && button < kPadCount && pad_map()[button] == kick && kick_on();
 }
 
+std::string pad_added_label(int button, prompts::Device device) {
+    std::string out;
+    if (button < 0 || button >= kPadCount) return out;
+    const unsigned added = pad_extras()[button];
+    for (int h = 0; h < kPadHostCount; h++) {
+        if (added & (1u << h)) out += (out.empty() ? "" : " + ") + pad_host_label(h, device);
+    }
+    return out;
+}
+
 std::string pad_value_label(int button, prompts::Device device) {
-    if (kick_takes(button)) return "None (Kick)";
-    return pad_host_label(pad_map()[button], device);
+    const std::string added = pad_added_label(button, device);
+    const int own = pad_map()[button];
+    const bool kick = kick_takes(button);
+    if (kick || own < 0) return added.empty() ? (kick ? "None (Kick)" : "None") : added;
+    return pad_host_label(own, device) + (added.empty() ? "" : " + " + added);
 }
 
 std::string kick_label(prompts::Device device) {
@@ -345,15 +313,9 @@ const char* const kKickAbout =
     "This button kicks and does nothing else. Choosing it sets Settings > Controls > Forward attack to Own key, so "
     "attacking alone no longer kicks. A back button or paddle works too, when the pad reports it.";
 
-void assign(PadMap& m, int button, int value) {
-    for (int i = 0; i < kPadCount; i++) {
-        if (i != button && m[i] == value) m[i] = m[button];
-    }
-    m[button] = value;
-}
-
 bool pad_modified(int button) {
-    return pad_map()[button] != button;
+    const PadRows r = pad_rows();
+    return r.button[button] != button || r.extra[button] != 0;
 }
 
 int target_index(const std::string& name) {
@@ -567,17 +529,13 @@ void Capture::update_pad() {
         cancel();
     } else if (!mArmed) {
         mArmed = input_neutral();
-    } else if (const unsigned b = capture_buttons(mTarget); b != 0) {
+    } else if (const unsigned b = capture_buttons(); b != 0) {
         int host = 0;
         while (!(b & (1u << host))) host++;
-        if (mTarget == kKickTarget) {
-            set_pad_kick(host);  // (the game button that had it, if any, then has none while the Kick is on)
-            kick_chosen();
-        } else {
-            PadMap m = pad_map();
-            assign(m, mTarget, host);
-            write_pad_map(m, pad_kick() == host ? -1 : pad_kick());  // (a pad button works one thing)
-        }
+        PadRows r = pad_rows();
+        give_pad_button(r, mTarget, host);
+        settings::set("PAD_MAP", pad_rows_text(r));
+        if (mTarget == kKickTarget) kick_chosen();
         play_sound(kSoundBindingChanged);
         cancel();
     }

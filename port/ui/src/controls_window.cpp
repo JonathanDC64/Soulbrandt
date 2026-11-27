@@ -164,7 +164,8 @@ void ControlsWindow::render_pad_page(Pane& pane) {
             play_sound(kSoundClick);
             mCapture.start(kKickTarget, true, 0);
         });
-    pane.add_rml("<br/>Choose a row, then press the button for it. Esc cancels.<br/><br/>Kick: " +
+    pane.add_rml("<br/>Choose a row, then press the button for it. Esc cancels. A back button or paddle is added to "
+                 "the row's button, so both press it; press it again on that row to take it off.<br/><br/>Kick: " +
                  std::string(kKickAbout) + "<br/><br/>(PAD_MAP)");
 }
 
