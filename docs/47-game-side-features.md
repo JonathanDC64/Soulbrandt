@@ -194,7 +194,7 @@ Not approach A or B: at the user's choice, the respec is at the statue in the Ne
 
 **At the Maiden in Black.** Once her leveling is unlocked, her menu is Seek Soul Power, Talk and Leave. With the knob on it is Seek Soul Power, Respecialization, Talk and Leave. Respecialization asks the same question. YES respecs and then goes on as her Seek Soul Power does, so she opens the level-up screen. NO, Circle and the cap's notice put her menu back. Her other rows, and her question before the menu ("Seek Soul Power?", YES or NO, on the first talk), are the game's own.
 
-**No prompt.** The statue shows no "Examine" prompt. The HUD draws the action prompt only for a target that the game's action search found, and the statue is not one (see below).
+**No prompt.** The statue shows no "Examine" prompt. The HUD draws the action prompt only for a target that the game's action search found, and the statue is not one (see below). When the game shows a prompt of its own there (a message on the floor, a bloodstain), Cross is the game's: it reads the message, and the statue opens once the player steps out of that target's reach (issue #748). The test is the prompt's fields: menus+0x80C above 0 and +0x818 not -1 (the search puts a prompt up with 0x00723360(text id, flag, 1) and takes it down with 0x007233E0(-1), which sets both to -1).
 
 **How it works** (`port/des_respec.cpp`). No hook in the lift, so no re-lift. `des_respec_tick` runs once a frame from `des_menu_tick` (des_menu_sfx.cpp), just before the menus' update, and calls the game's functions from there.
 
