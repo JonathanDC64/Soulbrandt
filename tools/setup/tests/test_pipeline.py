@@ -330,21 +330,25 @@ class RunTest(unittest.TestCase):
 
 
 # A stand-in for `des_host --shaders <game folder>` (port/des_prework.cpp's des_prework_shaders): it writes its
-# arguments beside itself, then prints the lines that mode.txt there asks for and exits with its status.
+# arguments beside itself, then prints the lines that mode.txt there asks for and exits with its status. Each part
+# (--shaders-part) writes a file of its own: the parts run at once, and on Windows two processes appending to one
+# file can write over each other (a part's line went missing, 11-27). The whole pass, run once and alone, writes
+# order.txt: "whole" and the parts that had started before it.
 FAKE_HOST = r'''
 import os, sys, time
 from pathlib import Path
 here = Path(__file__).resolve().parent
 if sys.argv[1] == "--shaders-part":   # (a part: its arguments in args_part<i>.txt, 10 shaders, 1 of them compiled)
     (here / f"args_part{sys.argv[2]}.txt").write_text("\n".join(sys.argv[1:]), encoding="utf-8")
-    (here / "order.txt").open("a", encoding="utf-8").write(f"part {sys.argv[2]}\n")
+    (here / f"part{sys.argv[2]}.started").write_text("", encoding="utf-8")
     if (here / "mode.txt").read_text(encoding="utf-8").strip() == "part-crash" and sys.argv[2] == "1":
         sys.exit(3)
     print("shaders 5 10", flush=True)
     print("shaders 10 10", flush=True)
     print("shaders done 1 9 0 0.5", flush=True)
     sys.exit(0)
-(here / "order.txt").open("a", encoding="utf-8").write("whole\n")
+parts = sorted(p.stem for p in here.glob("part*.started"))
+(here / "order.txt").open("a", encoding="utf-8").write(" ".join(["whole"] + parts) + "\n")
 (here / "args.txt").write_text("\n".join(sys.argv[1:]), encoding="utf-8")
 ready = os.environ.get("FAKE_READY", "")
 (here / "ready_seen.txt").write_text(str(bool(ready) and Path(ready).exists()), encoding="utf-8")
@@ -453,8 +457,7 @@ class ShadersTest(unittest.TestCase):
             self.assertIn("--shaders-part", log)
             self.assertIn("shaders done 1 9 0 0.5", log)
         order = (self.host / "order.txt").read_text(encoding="utf-8").split()
-        self.assertEqual(order[-1], "whole")                         # the whole pass last, once
-        self.assertEqual(sorted(order[:-1]), ["0", "1", "2", "part", "part", "part"])
+        self.assertEqual(order, ["whole", "part0", "part1", "part2"])   # the whole pass once, after the three parts
         self.assertIn("@progress shaders 30/30", lines)               # the parts' counts added up
         self.assertTrue(any("3 compiled in 3 processes at once" in x and "3 of 3 finished" in x for x in lines), lines)
         self.assertIn("@step shaders done", lines)
@@ -463,7 +466,8 @@ class ShadersTest(unittest.TestCase):
         rc, lines = self.run_in_parts("part-crash", 3)
         self.assertEqual(rc, 0, lines)
         self.assertTrue(any("2 of 3 finished" in x for x in lines), lines)
-        self.assertEqual((self.host / "order.txt").read_text(encoding="utf-8").split()[-1], "whole")
+        self.assertEqual((self.host / "order.txt").read_text(encoding="utf-8").split(),
+                         ["whole", "part0", "part1", "part2"])
         self.assertIn("@done ok", lines)
 
     def test_one_part_is_the_whole_pass_alone(self):
