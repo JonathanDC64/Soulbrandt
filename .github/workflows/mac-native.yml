@@ -15,6 +15,8 @@ on:
       - 'port/**'
       - 'ps3recomp.pin'
       - '.github/workflows/mac-native.yml'
+      - 'scripts/game_build_desc.py'
+      - 'tools/setup/des_setup/game_build_macos.json'
   workflow_dispatch:
     inputs:
       runner:
@@ -149,3 +151,68 @@ jobs:
         with:
           path: ${{ github.workspace }}/.ci-cache/ccache
           key: ccache-mac-native-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+
+  # Setup builds the game part on a Mac from game_build_macos.json, as on Linux from game_build_linux.json (ci.yml's
+  # description jobs say how): CMake's commands for des_game.dylib (DES_SPLIT=ON DES_SPLIT_FREESTANDING=ON), with
+  # empty files where the lift goes and the paths as placeholders (scripts/game_build_desc.py). The compiler is
+  # Homebrew's clang with its ld64.lld, as setup's own toolchain is, not Xcode's. The headers list needs a build of
+  # the lift, which no Mac here has, so it comes from a cross-compile of the lift (docs/178 2.6) and is left out of
+  # the check. When the check fails, the job writes the build's description (with the committed headers) and keeps
+  # it, to commit after a change to the game part's flags.
+  desc-mac:
+    name: Game build description (macOS arm64)
+    runs-on: ${{ inputs.runner || 'macos-15' }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
+
+      - name: Read the ps3recomp pin
+        id: pin
+        run: python .github/scripts/read_pin.py >> "$GITHUB_OUTPUT"
+
+      - name: Check out the pinned ps3recomp
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: ${{ steps.pin.outputs.repo }}
+          ref: ${{ steps.pin.outputs.commit }}
+          path: ps3recomp
+          persist-credentials: false
+
+      - name: Ninja, and LLVM's clang and lld
+        run: |
+          brew install ninja llvm lld
+          {
+            echo "DES_CC=$(brew --prefix llvm)/bin/clang"
+            echo "DES_CXX=$(brew --prefix llvm)/bin/clang++"
+          } >> "$GITHUB_ENV"
+          echo "$(brew --prefix lld)/bin" >> "$GITHUB_PATH"
+
+      - name: Empty files where the lift goes
+        run: python .github/scripts/placeholder_lift.py "$RUNNER_TEMP/lift" >> "$GITHUB_ENV"
+
+      # As des_host is configured above (no build type, no developer code, no vkd3d); the menus are des_host's alone.
+      - name: Configure
+        run: |
+          cmake -S port -B build/desc -G Ninja "-DCMAKE_C_COMPILER=$DES_CC" "-DCMAKE_CXX_COMPILER=$DES_CXX" \
+            -DCMAKE_BUILD_TYPE= -DCMAKE_CXX_FLAGS_DEBUG= -DCMAKE_C_FLAGS_DEBUG= "-DRECOMP_DIR=$DES_LIFT" \
+            -DDES_SPLIT=ON -DDES_SPLIT_FREESTANDING=ON -DDES_VKD3D=OFF -DDES_UI=OFF -DDES_DEV=OFF
+
+      - name: game_build_macos.json matches CMake's commands
+        run: python scripts/game_build_desc.py build/desc --check --commands-only
+
+      - name: The description this build writes
+        if: ${{ failure() }}
+        run: |
+          cp tools/setup/des_setup/game_build_macos.json "$RUNNER_TEMP/game_build_macos.json"
+          python scripts/game_build_desc.py build/desc --keep-headers --out "$RUNNER_TEMP/game_build_macos.json"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: ${{ failure() }}
+        with:
+          name: game_build_macos-${{ github.sha }}
+          path: ${{ runner.temp }}/game_build_macos.json
+          if-no-files-found: ignore
