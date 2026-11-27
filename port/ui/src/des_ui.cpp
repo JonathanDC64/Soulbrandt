@@ -199,9 +199,12 @@ std::atomic<unsigned> sChordMask{kL3 | kR3};  // the menu chord, refreshed while
 // The pad's own buttons that make the chord, for the watch thread, which reads the pads as they are: with Same buttons
 // as the game on, the ones Change Buttons put the chord's buttons on (chord_pad_mask; refreshed with sChordMask).
 std::atomic<unsigned> sChordPadMask{kL3 | kR3};
+// Change Buttons left a button of the chord with no pad button (a box cleared, #747), so the game never sees the chord:
+// the pad's own chord buttons make it instead (input.hpp's chord_on_own_buttons; refreshed with sChordMask).
+std::atomic<bool> sChordOwn{false};
 
 unsigned chord_pad_mask(unsigned mask) {
-    if (ui::settings::get_int("menu_follow_buttons") == 0) return mask;
+    if (!ui::input::menus_follow() || ui::input::chord_on_own_buttons()) return mask;
     const auto from = ui::controls::game_button_sources();
     unsigned out = 0;
     for (int g = 0; g < 16; g++)
@@ -487,6 +490,15 @@ ui::input::PadState read_pads(bool& neutral) {
     }
     if (ui::stick_preview_takes_left()) pad.lx = pad.ly = 0.f;  // (being tried out in Settings: the D-pad moves the menu)
     return pad;
+}
+
+// The buttons the menu chord is looked for in over the game: the game's own pad 0 read (with Same buttons as the game,
+// the chord's game buttons wherever Change Buttons put them), or the pad's own while the chord's game buttons have
+// none (sChordOwn). The pads are read only then: otherwise the frame's fast path reads none.
+unsigned chord_buttons() {
+    if (!sChordOwn.load(std::memory_order_relaxed)) return g_pad0_buttons;
+    bool neutral = true;
+    return read_pads(neutral).buttons;
 }
 
 // No key or mouse button is held (the keyboard pad's keys can be any, PAD_KEYS): the game gets its input back only
@@ -1127,7 +1139,7 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
     // Fast path: nothing showing, nothing queued (input, a trophy pop-up), no chord pressed, and the frame rate counter
     // off.
     const unsigned mask = sChordMask;
-    const bool chordDown = (g_pad0_buttons & mask) == mask;
+    const bool chordDown = (chord_buttons() & mask) == mask;
     const bool chordEdge = chordDown && !sChordWasDown;
     sChordWasDown = chordDown;
     // The startup work (des_prework.cpp) runs before the game, with its window over the blank frames. So does the
@@ -1172,6 +1184,7 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
     const int chord = ui::settings::get_int("pad_menu_chord");
     sChordMask = ui::input::chord_mask(chord);
     sChordPadMask = chord_pad_mask(sChordMask);
+    sChordOwn = ui::input::chord_on_own_buttons();
 
     if (!sActive) {
         // Waking: what is held now is not a press (the chord, or the key that opened the menu, is handled here).
@@ -1268,7 +1281,7 @@ void frame(void*, void* back_buffer, unsigned index, unsigned width, unsigned he
         // Asleep until F1 or the chord. The chord may still read as held from before: only a new press counts.
         sActive = false;
         ui::input::reset_input_state();
-        sChordWasDown = (g_pad0_buttons & sChordMask) == sChordMask;
+        sChordWasDown = (chord_buttons() & sChordMask) == sChordMask;
     }
 }
 
@@ -1623,6 +1636,7 @@ extern "C" void des_ui_early_init(void) {
     sOpenPending = sSetupOnly || env_on("DES_UI_OPEN");
     sChordMask = ui::input::chord_mask(ui::settings::get_int("pad_menu_chord"));
     sChordPadMask = chord_pad_mask(sChordMask);
+    sChordOwn = ui::input::chord_on_own_buttons();
 
     sStartScreen = !sSetupOnly && (env_on("DES_UI_START") || (ui::settings::get_int("show_start_screen") != 0 &&
                                                               !env_on("DES_SKIP_UI") && !ui::settings::scripted_run()));
