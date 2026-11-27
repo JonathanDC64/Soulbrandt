@@ -101,9 +101,14 @@ def firmware_job(sprx: Path, entry: dict, version="") -> Job:
 
 # ---- the player's RPCS3 (read only) ----
 
+def _mac() -> bool:
+    return sys.platform == "darwin"
+
+
 def find(path):
-    """The RPCS3 program: `path` itself, the one in that folder, or a command on
-    PATH. None when there is none."""
+    """The RPCS3 program: `path` itself, the one in that folder (on a Mac, in
+    the RPCS3 app there, or in the app `path` is), or a command on PATH. None
+    when there is none."""
     if not path:
         return None
     p = Path(path)
@@ -116,29 +121,58 @@ def find(path):
     return Path(hit).absolute() if hit else None
 
 
+APP_PROGRAM = Path("Contents", "MacOS", "rpcs3")   # RPCS3's program in its app, on a Mac
+
+
 def _program_names(folder: Path) -> list:
-    """What RPCS3's program is called in its folder: rpcs3.exe on Windows; rpcs3, or an AppImage, on Linux."""
-    if os.name == "nt":
+    """What RPCS3's program is called in its folder: rpcs3.exe on Windows; rpcs3, or an AppImage, on Linux; on a Mac
+    the program in RPCS3.app (or another rpcs3*.app there), or in the app that the folder is, else a plain rpcs3."""
+    if os.name == "nt" and not _mac():
         return ["rpcs3.exe"]
     try:
-        images = sorted(n for n in os.listdir(folder) if n.lower().startswith("rpcs3") and n.endswith(".AppImage"))
+        names = sorted(os.listdir(folder))
     except OSError:
-        images = []
-    return ["rpcs3"] + images
+        names = []
+    if _mac():
+        apps = ["RPCS3.app"] + [n for n in names if n.lower().startswith("rpcs3") and n.lower().endswith(".app")
+                                and n.lower() != "rpcs3.app"]
+        own = [str(APP_PROGRAM)] if folder.suffix.lower() == ".app" else []
+        return own + [str(a / APP_PROGRAM) for a in map(Path, apps)] + ["rpcs3"]
+    return ["rpcs3"] + [n for n in names if n.lower().startswith("rpcs3") and n.endswith(".AppImage")]
+
+
+def app_of(exe):
+    """The app that RPCS3's program is in on a Mac (RPCS3.app, for RPCS3.app/Contents/MacOS/rpcs3), else None."""
+    p = Path(exe)
+    if p.parent.name == "MacOS" and p.parent.parent.name == "Contents" and p.parents[2].suffix.lower() == ".app":
+        return p.parents[2]
+    return None
+
+
+def program_dir(exe) -> Path:
+    """The folder RPCS3 calls its own (File.cpp get_executable_dir), where it looks for `portable`: the program's
+    folder, but on a Mac the one that holds the app (RPCS3's executable path is the app there)."""
+    app = app_of(exe)
+    return app.parent if app else Path(exe).parent
 
 
 def where(path) -> str:
-    """What the lines and sentences name: the folder of rpcs3.exe (or rpcs3), else the path itself (an AppImage)."""
+    """What the lines and sentences name: the folder of rpcs3.exe (or rpcs3), RPCS3.app on a Mac, else the path
+    itself (an AppImage)."""
     p = Path(path)
+    app = app_of(p)
+    if app:
+        return str(app)
     return str(p.parent if p.name.lower() in ("rpcs3.exe", "rpcs3") else p)
 
 
 def is_shared(data, exe) -> bool:
     """Setup cannot give this RPCS3 a folder of its own: a `portable` folder
-    beside the program wins over the environment (File.cpp get_config_dir), or
-    this program ignored the redirect before (an old build). Starting it then
-    replaces its last log, as any start does (docs/90 2.5)."""
-    return (Path(exe).parent / "portable").is_dir() or _key(exe) in _shared_list(data)
+    beside the program (beside the app, on a Mac) wins over the environment
+    (File.cpp get_config_dir), or this program ignored the redirect before (an
+    old build). Starting it then replaces its last log, as any start does
+    (docs/90 2.5)."""
+    return (program_dir(exe) / "portable").is_dir() or _key(exe) in _shared_list(data)
 
 
 def remember_shared(data, exe):
@@ -163,10 +197,17 @@ def _key(p) -> str:
 def player_dirs(exe) -> dict:
     """Where the player's RPCS3 keeps its config, its cache (PPU Debug's dumps)
     and its log, worked out as File.cpp does: `portable/` beside the program
-    first; on Windows then RPCS3_CONFIG_DIR, cut after its last separator, then
-    the program's folder; on Linux the XDG folders."""
-    home = Path(exe).parent
+    (beside the app, on a Mac) first; on Windows then RPCS3_CONFIG_DIR, cut
+    after its last separator, then the program's folder; on Linux the XDG
+    folders; on a Mac ~/Library's, by HOME (it reads no XDG variable there, and
+    its cache is never the portable folder)."""
+    home = program_dir(exe)
     portable = home / "portable"
+    if _mac():
+        user = Path(os.environ.get("HOME") or Path.home()) / "Library"
+        cache = user / "Caches" / "rpcs3"
+        return {"config": portable if portable.is_dir() else user / "Application Support" / "rpcs3",
+                "cache": cache, "log": cache}
     if os.name == "nt":
         cfg = portable
         if not cfg.is_dir():
@@ -310,6 +351,10 @@ def redirect(home: Path):
     """The child's environment that gives RPCS3 setup's folder for everything it
     writes, and the lock file that shows it did (docs/90 2.3, I12)."""
     home = Path(home)
+    if _mac():
+        # RPCS3 on a Mac takes its folders from HOME alone: <HOME>/Library/Application Support/rpcs3 and
+        # <HOME>/Library/Caches/rpcs3, its log's folder (File.cpp).
+        return {"HOME": str(home)}, home / "Library" / "Caches" / "rpcs3" / "RPCS3.buf"
     if os.name == "nt":
         # RPCS3 cuts the value after its last separator, so it must end in one.
         return {"RPCS3_CONFIG_DIR": str(home) + os.sep}, home / "RPCS3.buf"

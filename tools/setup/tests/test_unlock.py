@@ -15,6 +15,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -24,6 +25,16 @@ from test_lift import FakeTree  # noqa: E402
 FAKE = Path(__file__).with_name("fake_rpcs3.py")
 PROGRAM = "rpcs3.exe" if os.name == "nt" else "rpcs3"
 FAST = {"stall": 10.0, "poll": 0.05}          # the watchdog only for the test that hangs
+# The variables RPCS3 finds the player's folders by (a Mac's RPCS3 reads HOME alone): the tests set them to folders
+# of their own, so that this PC's stay out of the tests.
+PLAYER_ENV = ("RPCS3_CONFIG_DIR", "XDG_CONFIG_HOME", "XDG_CACHE_HOME") + (("HOME",) if sys.platform == "darwin" else ())
+
+
+def player_env(base: Path) -> dict:
+    env = {"XDG_CONFIG_HOME": str(base / "xdg-config"), "XDG_CACHE_HOME": str(base / "xdg-cache")}
+    if sys.platform == "darwin":
+        env["HOME"] = str(base / "home")
+    return env
 
 
 def sha(b: bytes) -> str:
@@ -127,13 +138,12 @@ class Tree:
         self.tmp.cleanup()
 
 
-class UnlockTest(unittest.TestCase):
+class TreeCase(unittest.TestCase):
     def setUp(self):
         # The player's RPCS3 folders come from the environment: keep this PC's out of the tests.
-        self._env = {k: os.environ.pop(k, None) for k in ("RPCS3_CONFIG_DIR", "XDG_CONFIG_HOME", "XDG_CACHE_HOME")}
+        self._env = {k: os.environ.pop(k, None) for k in PLAYER_ENV}
         self.t = Tree()
-        os.environ["XDG_CONFIG_HOME"] = str(self.t.base / "xdg-config")
-        os.environ["XDG_CACHE_HOME"] = str(self.t.base / "xdg-cache")
+        os.environ.update(player_env(self.t.base))
         self._running = rpcs3.running
 
     def tearDown(self):
@@ -150,6 +160,8 @@ class UnlockTest(unittest.TestCase):
         self.assertNotIn(-1, at, [w for w, i in zip(want, at) if i < 0])
         self.assertEqual(at, sorted(at), lines)
 
+
+class UnlockTest(TreeCase):
     def test_unlock_then_stage(self):
         exe = rpcs3.find(self.t.rpcs3)
         put(rpcs3.player_dirs(exe)["log"] / "RPCS3.log", b"RPCS3 v0.0.0-fake Alpha | test\n")
@@ -178,6 +190,8 @@ class UnlockTest(unittest.TestCase):
         home = self.t.work / "rpcs3"
         if os.name == "nt":
             self.assertEqual(c["env"]["RPCS3_CONFIG_DIR"], str(home) + "\\")
+        elif sys.platform == "darwin":
+            self.assertEqual(c["env"]["HOME"], str(home))
         else:
             self.assertEqual((c["env"]["XDG_CONFIG_HOME"], c["env"]["XDG_CACHE_HOME"]),
                              (str(home / "config"), str(home / "cache")))
@@ -387,3 +401,88 @@ class UnlockTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MacLayoutTest(unittest.TestCase):
+    """RPCS3 on a Mac (File.cpp): its program is RPCS3.app/Contents/MacOS/rpcs3, it looks for `portable` beside the
+    app, and its folders come from HOME. Worked out here on every system, as on a Mac."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.base = Path(tmp.name)
+        self.apps = self.base / "Applications"
+        self.app = self.apps / "RPCS3.app"
+        self.program = self.app / "Contents" / "MacOS" / "rpcs3"
+        put(self.program, b"a stand-in")
+        self.lib = self.base / "home" / "Library"
+        for patch in (mock.patch.object(rpcs3, "_mac", return_value=True),
+                      mock.patch.dict(os.environ, {"HOME": str(self.base / "home")})):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def test_the_app_or_the_folder_that_holds_it(self):
+        for given in (self.apps, self.app, self.program):
+            self.assertEqual(rpcs3.find(given), self.program.absolute(), given)
+        self.assertEqual(rpcs3.where(self.program), str(self.app))
+        (self.base / "empty").mkdir()
+        self.assertIsNone(rpcs3.find(self.base / "empty"))
+
+    def test_an_app_by_another_name(self):
+        other = self.base / "Downloads" / "rpcs3-v0.0.38-macos.app" / "Contents" / "MacOS" / "rpcs3"
+        put(other, b"a stand-in")
+        self.assertEqual(rpcs3.find(self.base / "Downloads"), other.absolute())
+        self.assertEqual(rpcs3.where(other), str(other.parents[2]))
+
+    def test_its_folders_by_home(self):
+        cache = self.lib / "Caches" / "rpcs3"
+        self.assertEqual(rpcs3.player_dirs(self.program),
+                         {"config": self.lib / "Application Support" / "rpcs3", "cache": cache, "log": cache})
+        self.assertFalse(rpcs3.is_shared(self.base / "data", self.program))
+
+    def test_portable_beside_the_app(self):
+        (self.app / "Contents" / "MacOS" / "portable").mkdir()     # (not where RPCS3 looks)
+        self.assertFalse(rpcs3.is_shared(self.base / "data", self.program))
+        (self.apps / "portable").mkdir()
+        dirs = rpcs3.player_dirs(self.program)
+        self.assertEqual((dirs["config"], dirs["cache"]), (self.apps / "portable", self.lib / "Caches" / "rpcs3"))
+        self.assertTrue(rpcs3.is_shared(self.base / "data", self.program))
+
+    def test_the_redirect_is_home(self):
+        env, lock = rpcs3.redirect(self.base / "work")
+        self.assertEqual(env, {"HOME": str(self.base / "work")})
+        self.assertEqual(lock, self.base / "work" / "Library" / "Caches" / "rpcs3" / "RPCS3.buf")
+
+
+@unittest.skipUnless(sys.platform == "darwin", "RPCS3's app, as a Mac runs it")
+class MacAppUnlockTest(TreeCase):
+    """The unlock with the stand-in in an app, as RPCS3 is on a Mac: the host names its program (rpcs3_arg)."""
+
+    def setUp(self):
+        super().setUp()
+        macos = self.t.base / "Applications" / "RPCS3.app" / "Contents" / "MacOS"
+        macos.mkdir(parents=True)
+        for name in (PROGRAM, "fake_rpcs3.py", "fake.json"):
+            shutil.move(str(self.t.rpcs3 / name), str(macos / name))
+        self.t.rpcs3 = macos
+        self.app = macos.parents[1]
+        self.req = pipeline.make_request(self.t.dump, rpcs3_path=macos / PROGRAM)
+
+    def test_unlock_from_the_app(self):
+        rc, lines = self.t.run(request=self.req)
+        self.assertEqual(rc, 0, lines)
+        self.assertIn(f"@rpcs3 own {self.app}", lines)
+        c = self.t.calls()[0]
+        self.assertFalse(c["outside"])
+        self.assertEqual(c["env"]["HOME"], str(self.t.work / "rpcs3"))
+
+    def test_portable_beside_the_app(self):
+        (self.app.parent / "portable").mkdir()
+        rc, lines = self.t.run(check_only=True, request=self.req)
+        self.assertEqual(rc, 0, lines)
+        self.assertIn(f"@rpcs3 shared {self.app}", lines)
+        rpcs3.running = lambda exe: False
+        rc, lines = self.t.run(unlock_only=True, request=self.req)
+        self.assertEqual(rc, 0, lines)
+        self.assertNotIn(str(self.t.work), json.dumps(self.t.calls()[0]["env"]))
+        self.assertTrue((self.app.parent / "portable" / "dev_hdd0").is_dir())

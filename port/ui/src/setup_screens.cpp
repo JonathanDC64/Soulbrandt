@@ -1047,6 +1047,23 @@ void SetupFilesWindow::draw_check() {
 
 // ---- 4. Getting your game's files ----
 
+namespace {
+
+#ifdef __APPLE__
+// A Mac's RPCS3 is an app in Applications, and its folders are written with "/".
+constexpr const char* kGetRpcs3 =
+    "Download RPCS3 for macOS and move RPCS3 to Applications. If macOS will not open it the first time, open System "
+    "Settings, then Privacy & Security, and choose Open Anyway.";
+constexpr const char* kEbootIn = "PS3_GAME/USRDIR";
+constexpr const char* kSdatIn = "chr, chr/c0000, menu, script and script/talk";
+#else
+constexpr const char* kGetRpcs3 = "Download RPCS3 and unzip it into a folder of its own, for example C:\\RPCS3.";
+constexpr const char* kEbootIn = "PS3_GAME\\USRDIR";
+constexpr const char* kSdatIn = "chr, chr\\c0000, menu, script and script\\talk";
+#endif
+
+}  // namespace
+
 SetupHelpWindow::SetupHelpWindow(Props props) : SetupPage("setup-help"), mProps(std::move(props)) {
     using S = RailStep::State;
     set_rail({{"Your game", "", S::Now}, {"Build", build_time(), S::Todo}, options_step(), {"Play", "", S::Todo}});
@@ -1060,6 +1077,11 @@ SetupHelpWindow::SetupHelpWindow(Props props) : SetupPage("setup-help"), mProps(
         int n = 0;
         for (const char* step : steps) text(list, "setup-guide-item", std::to_string(++n) + ". " + step);
     };
+    const std::string eboot_step = std::string("In RPCS3, choose Utilities, then Decrypt PS3 Binaries, and pick "
+                                               "EBOOT.BIN in your disc copy's ") +
+                                   kEbootIn + " folder. RPCS3 writes EBOOT.elf next to it.";
+    const std::string sdat_step = std::string("Do the same for the .sdat files in USRDIR's ") + kSdatIn +
+                                  " folders: 26 files. You can pick all the .sdat files of a folder at once.";
     auto* stack = append(content(), "setup-stack");
     guide(callout(stack, "info", "Step 1: copy your disc to a folder",
                   "Skip this if you already have the game as a folder with PS3_GAME in it. If you play it in RPCS3, "
@@ -1071,7 +1093,7 @@ SetupHelpWindow::SetupHelpWindow(Props props) : SetupPage("setup-help"), mProps(
     guide(callout(stack, "info", "Step 2: get RPCS3 ready",
                   "RPCS3 is the free PS3 emulator. Setup has it unlock the game's encrypted files; setup never "
                   "decrypts anything itself."),
-          {"Download RPCS3 and unzip it into a folder of its own, for example C:\\RPCS3.",
+          {kGetRpcs3,
            "Start RPCS3. Choose File, then Add Games, and pick your disc copy. Demon's Souls shows in RPCS3's list. "
            "You do not need to play it there."});
     callout(stack, "info", "Step 3: come back here",
@@ -1079,10 +1101,7 @@ SetupHelpWindow::SetupHelpWindow(Props props) : SetupPage("setup-help"), mProps(
             "RPCS3 save, trophies and settings can come across too.");
     guide(callout(stack, "info", "Or decrypt the files yourself",
                   "In place of step 3: decrypt the 27 files with RPCS3, then press I have decrypted files."),
-          {"In RPCS3, choose Utilities, then Decrypt PS3 Binaries, and pick EBOOT.BIN in your disc copy's "
-           "PS3_GAME\\USRDIR folder. RPCS3 writes EBOOT.elf next to it.",
-           "Do the same for the .sdat files in USRDIR's chr, chr\\c0000, menu, script and script\\talk folders: 26 "
-           "files. You can pick all the .sdat files of a folder at once.",
+          {eboot_step.c_str(), sdat_step.c_str(),
            "Press I have decrypted files. Choose your disc copy, and the decrypted files if they are not next to the "
            "originals."});
     std::vector<Action> actions;

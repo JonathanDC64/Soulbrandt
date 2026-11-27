@@ -27,7 +27,8 @@ DES_SETUP_CC and DES_SETUP_LD in the environment, so the setup screens' runs
 use it too) replaces the pinned LLVM download, which is then not fetched.
 
 --rpcs3 is the RPCS3 route (docs/90): the folder that holds rpcs3.exe (Linux:
-rpcs3 or an AppImage), or the program. The decrypted files the folders lack
+rpcs3 or an AppImage; a Mac: RPCS3.app, or the app), or the program. The
+decrypted files the folders lack
 are then made by that RPCS3 (`rpcs3 --decrypt`) in the unlock phase, before
 the fetch, on copies in <data>/setup/unlock/ and with a folder of setup's own
 for RPCS3's files, so neither the dump nor RPCS3's folder is written to (an

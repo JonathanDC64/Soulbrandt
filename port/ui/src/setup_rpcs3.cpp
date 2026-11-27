@@ -11,6 +11,8 @@
 #include <psapi.h>
 #include <shlobj.h>
 #include <shobjidl.h>
+#elif defined(__APPLE__)
+#include <libproc.h>
 #endif
 
 #include <algorithm>
@@ -229,6 +231,110 @@ std::vector<std::filesystem::path> platform_programs() {
 const char* kLookedIn =
     "RPCS3's shortcuts, a running RPCS3, the programs Windows has started, Desktop, Documents and Downloads, and two "
     "folders deep on each drive";
+const char* kProgramShown = "rpcs3.exe";
+
+#elif defined(__APPLE__)
+
+// RPCS3's program in its app (the app's CFBundleExecutable).
+std::filesystem::path app_program(const std::filesystem::path& app) {
+    return app / "Contents" / "MacOS" / "rpcs3";
+}
+
+bool is_app(const std::filesystem::path& p) {
+    return lower(utf8(p.extension())) == ".app";
+}
+
+// The app that RPCS3's program is in (RPCS3.app, for RPCS3.app/Contents/MacOS/rpcs3), or empty.
+std::filesystem::path app_of(const std::filesystem::path& program) {
+    const auto macos = program.parent_path(), contents = macos.parent_path(), app = contents.parent_path();
+    if (utf8(macos.filename()) == "MacOS" && utf8(contents.filename()) == "Contents" && is_app(app)) return app;
+    return {};
+}
+
+// RPCS3's program in `folder`: in the app that `folder` is, in RPCS3.app there or another rpcs3*.app, else a plain
+// rpcs3 (a build of one's own). Empty if none.
+std::filesystem::path program_in(const std::filesystem::path& folder) {
+    if (is_app(folder)) return is_file(app_program(folder)) ? app_program(folder) : std::filesystem::path{};
+    if (is_file(app_program(folder / "RPCS3.app"))) return app_program(folder / "RPCS3.app");
+    std::error_code ec;
+    size_t entries = 0;
+    for (std::filesystem::directory_iterator it(folder, std::filesystem::directory_options::skip_permission_denied, ec),
+         end;
+         !ec && it != end && entries < kMaxEntries; it.increment(ec), ++entries) {
+        const auto& p = it->path();
+        if (lower(utf8(p.filename())).rfind("rpcs3", 0) == 0 && is_app(p) && is_file(app_program(p)))
+            return app_program(p);
+    }
+    if (is_file(folder / "rpcs3")) return folder / "rpcs3";
+    return {};
+}
+
+bool is_program_name(const std::filesystem::path& p) {
+    return utf8(p.filename()) == "rpcs3";
+}
+
+std::filesystem::path home_dir() {
+    return env("HOME");
+}
+
+// What the card shows and setup keeps (settings.ini's rpcs3_dir): the app, else the program's folder.
+std::filesystem::path shown_folder(const std::filesystem::path& program) {
+    const auto app = app_of(program);
+    return app.empty() ? program.parent_path() : app;
+}
+
+// The folder RPCS3 calls its own, where it looks for portable/ (File.cpp get_executable_dir; its executable's path
+// is the app on a Mac): the one that holds the app.
+std::filesystem::path own_dir(const std::filesystem::path& program) {
+    const auto app = app_of(program);
+    return app.empty() ? program.parent_path() : app.parent_path();
+}
+
+// Where RPCS3 keeps its settings (File.cpp get_config_dir; des_setup/rpcs3.py player_dirs): portable/ beside the app
+// first, else ~/Library/Application Support/rpcs3, by HOME (a Mac's RPCS3 reads no XDG variable).
+std::filesystem::path config_dir(const std::filesystem::path& program) {
+    if (is_dir(own_dir(program) / "portable")) return own_dir(program) / "portable";
+    return home_dir() / "Library" / "Application Support" / "rpcs3";
+}
+
+// RPCS3 has run as this user: its settings folder is there.
+bool has_run(const std::filesystem::path& folder) {
+    const auto program = program_in(folder);
+    return !program.empty() && is_dir(config_dir(program));
+}
+
+// A running RPCS3: each process's program (libproc; a Mac has no /proc). One this user may not ask about is left out.
+void running_programs(std::vector<std::filesystem::path>& out) {
+    std::vector<pid_t> pids(4096);
+    int got = 0;
+    for (;;) {
+        got = proc_listallpids(pids.data(), int(pids.size() * sizeof(pid_t)));  // (the number of ids it wrote)
+        if (got <= 0) return;
+        if (size_t(got) < pids.size()) break;
+        pids.resize(pids.size() * 2);
+    }
+    char buf[PROC_PIDPATHINFO_MAXSIZE];
+    for (int i = 0; i < got; ++i) {
+        const int n = proc_pidpath(pids[i], buf, sizeof buf);
+        if (n <= 0) continue;
+        const std::filesystem::path p = from_utf8(std::string(buf, size_t(n)));
+        if (is_program_name(p)) out.push_back(p);
+    }
+}
+
+// A running RPCS3, then RPCS3's app in the Mac's Applications and the player's, Downloads and Desktop.
+std::vector<std::filesystem::path> platform_programs() {
+    std::vector<std::filesystem::path> out;
+    running_programs(out);
+    const auto home = home_dir();
+    for (const auto& dir : {std::filesystem::path("/Applications"), home / "Applications", home / "Downloads",
+                            home / "Desktop"})
+        if (const auto p = program_in(dir); !p.empty()) out.push_back(p);
+    return out;
+}
+
+const char* kLookedIn = "a running RPCS3, and Applications (the Mac's and yours), Downloads and Desktop";
+const char* kProgramShown = "RPCS3.app";
 
 #else
 
@@ -290,7 +396,20 @@ std::vector<std::filesystem::path> platform_programs() {
 }
 
 const char* kLookedIn = "the installed programs, and AppImages in Applications, Downloads, Desktop and .local/bin";
+const char* kProgramShown = "rpcs3 or RPCS3's AppImage";
 
+#endif
+
+#ifndef __APPLE__
+// What the card shows and setup keeps (settings.ini's rpcs3_dir): the program's folder.
+std::filesystem::path shown_folder(const std::filesystem::path& program) {
+    return program.parent_path();
+}
+
+// The folder RPCS3 looks for portable/ in (File.cpp get_executable_dir): the program's.
+std::filesystem::path own_dir(const std::filesystem::path& program) {
+    return program.parent_path();
+}
 #endif
 
 // ---- The same everywhere ----
@@ -404,11 +523,11 @@ void read_library(Rpcs3& r) {
 Rpcs3 check(const std::filesystem::path& program, bool ranOnly) {
     Rpcs3 r;
     if (!is_file(program) || !is_program_name(program)) return r;
-    const auto folder = program.parent_path();
+    const auto folder = shown_folder(program);
     if (ranOnly && !has_run(folder)) return r;
     r.folder = folder;
     r.program = program;
-    r.portable = is_dir(folder / "portable");
+    r.portable = is_dir(own_dir(program) / "portable");
     read_library(r);
     return r;
 }
@@ -458,6 +577,10 @@ Rpcs3 rpcs3_at(const std::filesystem::path& path) {
 
 std::string rpcs3_looked_in() {
     return kLookedIn;
+}
+
+std::string rpcs3_program_shown() {
+    return kProgramShown;
 }
 
 std::string rpcs3_arg(const Rpcs3& r) {

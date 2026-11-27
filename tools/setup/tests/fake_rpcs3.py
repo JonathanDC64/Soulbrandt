@@ -1,6 +1,7 @@
 """A stand-in for `rpcs3 --decrypt <file>...` in the unlock tests (test_unlock.py, docs/90 test T8). It works out its
-folders as RPCS3 does (File.cpp: a `portable` folder beside it first, then RPCS3_CONFIG_DIR on Windows, cut after its
-last separator, or the XDG folders on Linux), writes there what a start of RPCS3 writes (its lock RPCS3.buf, its
+folders as RPCS3 does (File.cpp: a `portable` folder beside it (beside its app, on a Mac) first, then
+RPCS3_CONFIG_DIR on Windows, cut after its last separator, the XDG folders on Linux, or HOME's Library on a Mac),
+writes there what a start of RPCS3 writes (its lock RPCS3.buf, its
 config, an empty TTY.log and a dev_hdd0 tree, but no RPCS3.log: measured, docs/90 2.3), then decrypts its inputs in
 order and names the outputs as decrypt_binaries.cpp does (EBOOT.BIN -> EBOOT.elf, x.sprx -> x.prx, x.sdat ->
 x.sdat.unedat). The bytes come from a fixture folder.
@@ -34,9 +35,20 @@ MODES = dict((m.split("=", 1) + [""])[:2] for m in CFG.get("mode", "ok").split("
 HEARTBEAT = "import sys, time\nfor _ in range(400):\n    open(sys.argv[1], 'a').write('.')\n    time.sleep(0.05)\n"
 
 
+MAC = sys.platform == "darwin"
+
+
+def own_dir():
+    """File.cpp get_executable_dir: this folder, or on a Mac the one that holds the app it is in."""
+    parts = HERE.replace("\\", "/").rstrip("/").split("/")
+    if MAC and len(parts) > 3 and parts[-2:] == ["Contents", "MacOS"] and parts[-3].lower().endswith(".app"):
+        return os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
+    return HERE
+
+
 def folders():
     """(config, cache), as RPCS3 works them out."""
-    portable = os.path.join(HERE, "portable")
+    portable = os.path.join(own_dir(), "portable")
     if os.path.isdir(portable):
         config = portable
     elif "ignore" in MODES:
@@ -44,10 +56,14 @@ def folders():
     elif os.name == "nt":
         v = os.environ.get("RPCS3_CONFIG_DIR", "").replace("\\", "/")
         config = v[:v.rfind("/") + 1] if "/" in v else HERE
+    elif MAC:
+        config = os.path.join(os.environ["HOME"], "Library", "Application Support", "rpcs3")
     else:
         config = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "rpcs3")
     if os.name == "nt":
         return config, config
+    if MAC:
+        return config, os.path.join(os.environ["HOME"], "Library", "Caches", "rpcs3")
     cache = os.environ.get("XDG_CACHE_HOME") or os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.cache")
     return config, os.path.join(cache, "rpcs3")
 
@@ -78,7 +94,7 @@ def main():
     paths = [argv[i + 1] for i, a in enumerate(argv) if a == "--decrypt" and i + 1 < len(argv)]
     config, cache = folders()
     call = {"inputs": paths, "cwd": os.getcwd(), "stdin": sys.stdin.read() if sys.stdin else None,
-            "env": {k: os.environ.get(k) for k in ("RPCS3_CONFIG_DIR", "XDG_CONFIG_HOME", "XDG_CACHE_HOME",
+            "env": {k: os.environ.get(k) for k in ("RPCS3_CONFIG_DIR", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "HOME",
                                                     "QT_COMMAND_LINE_PARSER_NO_GUI_MESSAGE_BOXES")},
             "outside": not (inside(config) and inside(cache))}
     with open(CFG["calls"], "a", encoding="utf-8") as f:
