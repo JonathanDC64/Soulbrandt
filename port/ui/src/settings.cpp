@@ -170,6 +170,8 @@ constexpr Def kDefs[] = {
     {"PAD_RUMBLE", "1", Apply::Live},          // cellPad's vibration thread, live; 0 = no pad vibrates
     {"PAD_DEADZONE_LEFT", "", Apply::Live},    // cellPad, live: tilt where the stick starts counting; "" = the default
     {"PAD_DEADZONE_RIGHT", "", Apply::Live},   // (and PAD_DEADZONE_ANTI: des_options.cpp's run_defaults)
+    {"PAD_AXIAL_LEFT", "0", Apply::Live},      // cellPad, live: the left stick's axial deadzone, percent; 0 = off
+    {"PAD_SMOOTH_LEFT", "0", Apply::Live},     // cellPad, each poll: the left stick's smoothing, 1-3; 0 = off
     {"DES_ROLLDIR", "1", Apply::Live},         // des_roll_dir, read at each roll; 0 = locked-on rolls go 4 ways only
     {"DES_KICK", "0", Apply::Live},            // des_kick, at each attack: 1 = attacking never kicks, the Kick key does
     {"keys_layout", "souls", Apply::UiOnly},   // the layout PAD_KEYS changes; a file without this line is older
