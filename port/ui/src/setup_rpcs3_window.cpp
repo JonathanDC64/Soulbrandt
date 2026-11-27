@@ -243,7 +243,8 @@ void SetupRpcs3Window::picked(const PickedFolder& folder) {
     if (what == Picking::Rpcs3) {
         const setup::Rpcs3 r = setup::rpcs3_at(folder.folder);
         if (!r.found()) {
-            mPickProblem = "There is no RPCS3 in this folder. Pick the folder that holds rpcs3.exe.";
+            mPickProblem =
+                "There is no RPCS3 in this folder. Pick the folder that holds " + setup::rpcs3_program_shown() + ".";
             return;
         }
         mProps.rpcs3 = r;
@@ -624,7 +625,8 @@ SetupRpcs3MissingWindow::SetupRpcs3MissingWindow(Props props)
               {"Play", "", RailStep::State::Todo}});
     set_heading("RPCS3 was not found",
                 "Setup looked in the usual places and did not find RPCS3. If it is somewhere else, show setup the "
-                "folder that holds rpcs3.exe. If you do not have it yet, it takes a few minutes to get ready.");
+                "folder that holds " + setup::rpcs3_program_shown() +
+                    ". If you do not have it yet, it takes a few minutes to get ready.");
     auto* field = append(content(), "setup-field");
     field->SetClass("folder", true);
     icon(field, "setup-folder");
@@ -660,7 +662,8 @@ void SetupRpcs3MissingWindow::tick() {
     const setup::Rpcs3 r = setup::rpcs3_at(folder.folder);
     std::fprintf(stderr, "[setup] RPCS3 picked: %s, %s\n", utf8(folder.folder).c_str(), r.found() ? "found" : "none");
     if (!r.found()) {
-        callout(mProblem, "err", "There is no RPCS3 in this folder", "Pick the folder that holds rpcs3.exe.");
+        callout(mProblem, "err", "There is no RPCS3 in this folder",
+                "Pick the folder that holds " + setup::rpcs3_program_shown() + ".");
         return;
     }
     auto found = mProps.onFound;

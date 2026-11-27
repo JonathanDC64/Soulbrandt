@@ -7,7 +7,7 @@ listed; nothing is ever written, renamed or locked under RPCS3's folders. A
 file that is missing or cannot be read counts as absent, so the check always
 gets an answer.
 
-Where things are (Windows; on Linux the .yml files sit in <R> itself):
+Where things are (Windows; on Linux and a Mac the .yml files sit in <R> itself):
   <R>                         RPCS3's config folder (rpcs3.player_dirs)
   <R>config/vfs.yml           $(EmulatorDir), /dev_hdd0/ and /dev_flash/ (RPCS3's defaults when absent)
   <R>config/games.yml         the library: a supported disc's folder or ISO file, by its TITLE_ID (older builds:

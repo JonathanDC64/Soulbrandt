@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from des_setup import __main__ as cli, pipeline, protocol, rpcs3, rpcs3_import, rpcs3_library as lib  # noqa: E402
 from des_setup import gamefiles, sfo, yaml_subset  # noqa: E402
 from test_lift import FakeTree  # noqa: E402
-from test_unlock import FAST, PROGRAM, Tree, put, sha, snapshot  # noqa: E402
+from test_unlock import FAST, PLAYER_ENV, PROGRAM, Tree, player_env, put, sha, snapshot  # noqa: E402
 
 RUN_SETUP = Path(__file__).resolve().parents[1] / "run_setup.py"
 T0 = 1792000000                 # the fixture save's times, Unix seconds
@@ -162,13 +162,12 @@ class Library:
 
 
 class Base(unittest.TestCase):
-    ENV = ("RPCS3_CONFIG_DIR", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "PS3_SAVEDATA_ROOT", "PS3_TROPHY_DIR")
+    ENV = PLAYER_ENV + ("PS3_SAVEDATA_ROOT", "PS3_TROPHY_DIR")
 
     def setUp(self):
         self._env = {k: os.environ.pop(k, None) for k in self.ENV}
         self.t = Tree()
-        os.environ["XDG_CONFIG_HOME"] = str(self.t.base / "xdg-config")
-        os.environ["XDG_CACHE_HOME"] = str(self.t.base / "xdg-cache")
+        os.environ.update(player_env(self.t.base))
         self.lib = Library(self.t)
         self.gamedata = self.t.base / "install" / "gamedata"
         self._free = pipeline.free_bytes

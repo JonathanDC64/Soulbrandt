@@ -30,7 +30,9 @@ if mode == "old":
     sys.stderr.write("Unknown option 'installpkg'.\n")
     sys.exit(1)
 assert sys.argv[1:3] == ["--headless", "--installpkg"] and os.path.isabs(sys.argv[3]) and os.path.isfile(sys.argv[3])
-home = os.environ.get("RPCS3_CONFIG_DIR") or os.path.join(os.environ["XDG_CONFIG_HOME"], "rpcs3")
+home = os.environ.get("RPCS3_CONFIG_DIR") or (
+    os.path.join(os.environ["HOME"], "Library", "Application Support", "rpcs3") if sys.platform == "darwin"
+    else os.path.join(os.environ["XDG_CONFIG_HOME"], "rpcs3"))
 if mode == "ok":
     game = os.path.join(home, "dev_hdd0", "game", "BCJS30022")
     os.makedirs(game)

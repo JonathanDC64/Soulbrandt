@@ -3,7 +3,8 @@
 // list that the card shows. The engine (tools/setup/des_setup/rpcs3.py) reads the rest when the page checks. Only
 // reads: nothing is ever written in RPCS3's folders. Where to look is the one fact that differs by platform (Windows:
 // shortcuts, a running RPCS3, Windows' record of programs started, the usual folders; Linux: PATH and AppImages, since
-// the engine has no Flatpak route yet); the rest is the same everywhere.
+// the engine has no Flatpak route yet; a Mac: a running RPCS3 and RPCS3.app in the usual folders); the rest is the same
+// everywhere.
 #pragma once
 
 #include <filesystem>
@@ -15,8 +16,9 @@ namespace ui::setup {
 struct Rpcs3 {
     enum class Library { None, Folder, Iso };
 
-    std::filesystem::path folder;   // the folder that holds the program; empty: no RPCS3
-    std::filesystem::path program;  // what the engine runs (--rpcs3): rpcs3.exe, rpcs3 or an AppImage
+    std::filesystem::path folder;   // the folder that holds the program (on a Mac, RPCS3's app); empty: no RPCS3
+    std::filesystem::path program;  // what the engine runs (--rpcs3): rpcs3.exe, rpcs3, an AppImage, or
+                                    // RPCS3.app/Contents/MacOS/rpcs3
     bool portable = false;          // a portable folder beside the program: setup starts it only while it is closed
     Library library = Library::None;  // Demon's Souls (a disc of setup_pc.hpp's kDiscs) in RPCS3's game list
     std::filesystem::path game;       // that entry: the folder that holds PS3_GAME, or the ISO file
@@ -35,6 +37,10 @@ Rpcs3 rpcs3_at(const std::filesystem::path& path);
 
 // Where find_rpcs3 looks, as the page that found none says it: "RPCS3's shortcuts, ...".
 std::string rpcs3_looked_in();
+
+// What the folder of the player's RPCS3 holds, as the pages name it: "rpcs3.exe"; "RPCS3.app" on a Mac (the folder
+// that holds the app; the app itself counts too); "rpcs3 or RPCS3's AppImage" on Linux.
+std::string rpcs3_program_shown();
 
 // What the engine is given as --rpcs3 for it: the program's path.
 std::string rpcs3_arg(const Rpcs3& r);
