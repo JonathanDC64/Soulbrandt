@@ -116,6 +116,7 @@ extern "C" void des_vram_heap(ppu_context* ctx, uint32_t)
 {
     const uint32_t local = vm_rsx_local_size();
     if (local <= 0x10000000u) return;   /* a PS3's 256 MB: the game's own 248 */
+    if (uint32_t(ctx->gpr[3]) != 0x0F800000u) return;   /* (not the size it expects: left alone) */
     ctx->gpr[3] = local - kHeapLess;
     static bool said = false;
     if (!said) {
