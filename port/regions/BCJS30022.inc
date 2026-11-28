@@ -10,6 +10,18 @@ DES_REGION_ADDR(0x0001BB38, 0x00019968)  /* hook des_dbgmenu_hook: the frame fun
 DES_REGION_ADDR(0x00020F44, 0x0001DF1C)  /* hook des_dbgmenu_hook: create_debug_menu (0x00015A58) has returned the menu */
 DES_REGION_ADDR(0x00023750, 0x00021948)  /* call */
 DES_REGION_ADDR(0x0002F270, 0x0002CDB8)  /* hook des_vram_heap: lis r3,0x0F80, LOCAL's size */
+DES_REGION_ADDR(0x0003167C, 0x0002F1C4)  /* hook des_heap_size: MO's lis, the size it takes */
+DES_REGION_ADDR(0x000316C4, 0x0002F20C)  /* hook des_heap_size: MO's lis, its arena's size */
+DES_REGION_ADDR(0x00031730, 0x0002F278)  /* hook des_heap_size: MO's lis, the size recorded */
+DES_REGION_ADDR(0x00031874, 0x0002F3BC)  /* hook des_heap_size: TEMP's lis, the size it takes */
+DES_REGION_ADDR(0x000318BC, 0x0002F404)  /* hook des_heap_size: TEMP's lis, its arena's size */
+DES_REGION_ADDR(0x00031928, 0x0002F470)  /* hook des_heap_size: TEMP's lis, the size recorded */
+DES_REGION_ADDR(0x00031A14, 0x0002F55C)  /* hook des_heap_size: HAVOK's lis, the size it takes */
+DES_REGION_ADDR(0x00031A5C, 0x0002F5A4)  /* hook des_heap_size: HAVOK's lis, its arena's size */
+DES_REGION_ADDR(0x00031AC8, 0x0002F610)  /* hook des_heap_size: HAVOK's lis, the size recorded */
+DES_REGION_ADDR(0x00038FFC, 0x00036B44)  /* hook des_heap_size: LUA's lis, the size it takes */
+DES_REGION_ADDR(0x00039044, 0x00036B8C)  /* hook des_heap_size: LUA's lis, its arena's size */
+DES_REGION_ADDR(0x000390B0, 0x00036BF8)  /* hook des_heap_size: LUA's lis, the size recorded */
 DES_REGION_ADDR(0x00039210, 0x00036D58)  /* hook + call des_luaheap: Lua's heap, alloc */
 DES_REGION_ADDR(0x00039540, 0x00037088)  /* hook + call des_luaheap: Lua's heap, block size */
 DES_REGION_ADDR(0x00039790, 0x000372D8)  /* hook + call des_luaheap: Lua's heap, realloc */
@@ -25,6 +37,9 @@ DES_REGION_ADDR(0x0003A0D8, 0x00037C20)  /* hook + call des_luaheap: Lua's heap,
 DES_REGION_ADDR(0x0003B3FC, 0x00038F44)  /* hook des_coreres_size: CORERES's lis, the size it takes */
 DES_REGION_ADDR(0x0003B444, 0x00038F8C)  /* hook des_coreres_size: CORERES's lis, its arena's size */
 DES_REGION_ADDR(0x0003B4B0, 0x00038FF8)  /* hook des_coreres_size: CORERES's lis, the size recorded */
+DES_REGION_ADDR(0x0003C5FC, 0x0003A144)  /* hook des_heap_size: FFX's lis, the size it takes */
+DES_REGION_ADDR(0x0003C644, 0x0003A18C)  /* hook des_heap_size: FFX's lis, its arena's size */
+DES_REGION_ADDR(0x0003C6B0, 0x0003A1F8)  /* hook des_heap_size: FFX's lis, the size recorded */
 DES_REGION_ADDR(0x0003C758, 0x0003A2A0)  /* hook + call des_luaheap: Lua's small heap, free */
 DES_REGION_ADDR(0x0003C9A8, 0x0003A4F0)  /* hook + call des_luaheap: Lua's small heap, realloc aligned */
 DES_REGION_ADDR(0x0003CA98, 0x0003A5E0)  /* hook + call des_luaheap: Lua's small heap, alloc aligned */
@@ -37,6 +52,15 @@ DES_REGION_ADDR(0x0003D2E8, 0x0003AE30)  /* hook + call des_luaheap: Lua's small
 DES_REGION_ADDR(0x0003D478, 0x0003AFC0)  /* hook + call des_luaheap: Lua's small heap, alloc */
 DES_REGION_ADDR(0x0003D548, 0x0003B090)  /* hook + call des_luaheap: Lua's small heap, alloc */
 DES_REGION_ADDR(0x0003D618, 0x0003B160)  /* hook + call des_luaheap: Lua's small heap, realloc */
+DES_REGION_ADDR(0x0003D7FC, 0x0003B344)  /* hook des_heap_size: HGSYS's lis, the size it takes */
+DES_REGION_ADDR(0x0003D844, 0x0003B38C)  /* hook des_heap_size: HGSYS's lis, its arena's size */
+DES_REGION_ADDR(0x0003D8B0, 0x0003B3F8)  /* hook des_heap_size: HGSYS's lis, the size recorded */
+DES_REGION_ADDR(0x0003FBFC, 0x0003D744)  /* hook des_heap_size: MAIN's lis, the size it takes */
+DES_REGION_ADDR(0x0003FC44, 0x0003D78C)  /* hook des_heap_size: MAIN's lis, its arena's size */
+DES_REGION_ADDR(0x0003FCB0, 0x0003D7F8)  /* hook des_heap_size: MAIN's lis, the size recorded */
+DES_REGION_ADDR(0x00041FFC, 0x0003FB44)  /* hook des_heap_size: MENU's lis, the size it takes */
+DES_REGION_ADDR(0x00042044, 0x0003FB8C)  /* hook des_heap_size: MENU's lis, its arena's size */
+DES_REGION_ADDR(0x000420B0, 0x0003FBF8)  /* hook des_heap_size: MENU's lis, the size recorded */
 DES_REGION_ADDR(0x0006C860, 0x0006A180)  /* hook des_coop_hook: the ghost colour upload returned (the material put back) */
 DES_REGION_ADDR(0x00080E88, 0x0007E7A8)  /* hook des_coop_hook: the ghost colour upload starting (a player's own glow colour) */
 DES_REGION_ADDR(0x000B14C8, 0x000AEDE8)  /* call kSpacingPlay */
