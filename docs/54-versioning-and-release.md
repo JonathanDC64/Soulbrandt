@@ -563,6 +563,14 @@ Nothing is published. You read the draft and publish it. Only this workflow has 
   - Unzipped into a new folder, the exe started setup's screens and found the engine beside it with no `DES_SETUP_SCRIPT`.
   - A whole real setup from that folder, with the pinned compiler zip and a new data folder: ok after 1,610 s. The compile was 1,531 s of it, at master's rule, which gave one compile at a time with about 7 GB free (docs/53 section 16). Then a player's start loaded the game DLL and libsre, compiled the 3,603 shaders and reached the game.
 
+### 8.2b The Mac app (11-28, from 0.2.1)
+
+- **Name.** `DemonsSoulsRecomp-<version>-macos.zip`: the native app for Apple silicon (docs/178 route B), zipped with `ditto`. It is listed in the same `SHA256SUMS` and covered by the same attestation.
+- **Built from the tag by mac-native.yml.** release.yml calls it (`workflow_call`) beside host.yml, with all of its checks: the app's program starts on the app's own Vulkan loader and MoltenVK and opens setup's window on GitHub's Mac. Called from a tag, it packages the tag (`package.py build --rev <tag>`), so the app and its zip carry the release's version. The draft job then checks the name, adds the zip to `SHA256SUMS` and runs the game-file check on the unzipped app with `.github/mac-app-files-allow.txt`. The program's entry, `Contents/MacOS/<PRODUCT_NAME>`, is written at run time, because only PRODUCT_NAME may write the name people see.
+- **Signed ad hoc.** There is no Apple account, so macOS asks the player to allow the app once (Privacy & Security, Open Anyway).
+- **No machine.** GitHub's macOS arm64 machines are sometimes short. A Mac job that gets none fails with "not acquired by Runner", and the release run fails with it: re-run its failed jobs (`gh run rerun <run> --failed`).
+- **Updates.** A Mac app is never updated in place (`update.py` `in_mac_app`). On a Mac, `update.py` looks for this zip (`player_asset`), so the app still learns that a newer version is out. The player then puts the new app in place of the old one.
+
 ### 8.3 The notes
 
 - **Where they come from.** Merged pull requests on master's first-parent line since the previous `v` tag, read from `Merge pull request #N from owner/branch`. The title comes from the merge commit's body.

@@ -5,6 +5,9 @@
 #
 # Ninja keeps going past a failed file (-k 0), so one run lists every error. Not a required check: GitHub's macOS
 # machines sometimes take long to come, or none comes (ps3recomp's macos.yml says more).
+#
+# release.yml calls it for a version tag (workflow_call), as it calls host.yml: the app is then the release's Mac
+# download, with the tag's version in it and in its zip's name.
 name: Mac native
 
 on:
@@ -27,6 +30,7 @@ on:
         type: choice
         options: [ macos-15, macos-26 ]
         default: macos-15
+  workflow_call:
 
 concurrency:
   group: mac-native-${{ github.ref }}
@@ -377,8 +381,12 @@ jobs:
           name: des_host-macos-${{ github.sha }}
           path: host-mac
 
+      # (for a release's version tag the tag itself, so the version is the release's, as release.yml packages it;
+      # else HEAD, a -dev version)
       - name: The program folder (package.py --macos-host)
-        run: python tools/release/package.py build --rev HEAD --ps3recomp ps3recomp --macos-host host-mac --out pkg
+        env:
+          REV: ${{ github.ref_type == 'tag' && github.ref_name || 'HEAD' }}
+        run: python tools/release/package.py build --rev "$REV" --ps3recomp ps3recomp --macos-host host-mac --out pkg
 
       # Built here, at the commit the pins name (the SDK tag of the Vulkan-Headers ps3recomp builds with), for the
       # app's oldest macOS: Khronos publishes no Mac build of the loader.
@@ -464,11 +472,12 @@ jobs:
           grep -q "^\[VK\] device:" app.log || { echo "::error::no Vulkan device"; exit 1; }
           grep -q "setup opens" app.log || { echo "::error::it did not start setup"; exit 1; }
 
+      # (named as update.py's player_asset names a Mac's download, so a Mac app learns of the next release)
       - name: The zip
         run: |
           app=$(ls -d dist/*.app)
           version=$(grep '^version=' "$app/Contents/Resources/setup/release-info.txt" | cut -d= -f2 | tr -d '\r')
-          ditto -c -k --sequesterRsrc --keepParent "$app" "dist/DemonsSoulsRecomp-$version-macos-native.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$app" "dist/DemonsSoulsRecomp-$version-macos.zip"
           ls -l dist
           shasum -a 256 dist/*.zip
 

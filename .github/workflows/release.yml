@@ -27,9 +27,19 @@ jobs:
     permissions:
       contents: read
 
+  # The native Mac app (Apple silicon), the Mac download, built from the tag by mac-native.yml itself (its checks
+  # included: it starts and opens setup's window on GitHub's Mac). Signed ad hoc: there is no Apple account. When
+  # GitHub has no Mac for a job, that job fails with "not acquired by Runner" and this run with it: re-run its failed
+  # jobs (gh run rerun <run> --failed).
+  mac:
+    name: The Mac app
+    uses: ./.github/workflows/mac-native.yml
+    permissions:
+      contents: read
+
   draft:
     name: Draft the release
-    needs: host
+    needs: [ host, mac ]
     runs-on: ubuntu-latest
     # The "release" environment: in the repository's settings it can require the maintainer's approval before this
     # job runs (docs/105 section 7).
@@ -74,10 +84,32 @@ jobs:
           name: des_host-linux-${{ github.sha }}
           path: host-linux
 
+      # The Mac app's zip (mac-native.yml's app-mac job), as a Mac player downloads it.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: mac-native-app-${{ github.sha }}
+          path: mac
+
       - name: Package
         run: >
           python tools/release/package.py build --rev "$GITHUB_REF_NAME" --host host/des_host.exe
           --linux-host host-linux --out dist
+
+      # Beside the other downloads, and in SHA256SUMS, which the attestation below and the maintainer's signature
+      # cover. It must be this tag's version (mac-native.yml packages the tag when a tag calls it).
+      - name: The Mac app
+        run: |
+          want="DemonsSoulsRecomp-${GITHUB_REF_NAME#v}-macos.zip"
+          got=$(cd mac && ls)
+          if [ "$got" != "$want" ]; then
+            echo "::error::mac-native.yml's artifact holds \"$got\", not $want"
+            exit 1
+          fi
+          cp "mac/$want" dist/
+          (cd dist && sha256sum "$want") >> dist/SHA256SUMS
+          cat dist/SHA256SUMS
+          mkdir mac-app
+          (cd mac-app && unzip -q "../mac/$want")
 
       - name: No game-derived files in the package
         run: |
@@ -90,6 +122,11 @@ jobs:
             --allow .github/host-files-allow.txt
           python .github/scripts/check_game_files.py --dir host-linux --allow .github/game-files-allow.txt \
             --allow .github/host-files-allow.txt
+          # (the app's program: des_host under the name people see, which only PRODUCT_NAME may write)
+          printf 'Contents/MacOS/%s   # the program of the Mac app, des_host (mac-native.yml)\n' \
+            "$(tr -d '\r\n' < PRODUCT_NAME)" > "$RUNNER_TEMP/mac-program-allow.txt"
+          python .github/scripts/check_game_files.py --dir mac-app --allow .github/game-files-allow.txt \
+            --allow .github/mac-app-files-allow.txt --allow "$RUNNER_TEMP/mac-program-allow.txt"
 
       # The LGPL libraries in the downloads (FFmpeg, vkd3d) ask for their source to be offered with them. The
       # third-party-sources release holds the exact archives host.yml built from. A version with no archive there, by
@@ -113,4 +150,5 @@ jobs:
           # (the title has the name people see, PRODUCT_NAME, docs/130; the files keep the technical name)
           gh release create "$TAG" --draft --verify-tag $pre --title "$(tr -d '\r\n' < PRODUCT_NAME) ${TAG#v}" \
             --notes-file dist/notes.md dist/DemonsSoulsRecomp-*-source.zip dist/DemonsSoulsRecomp-*-windows.zip \
-            dist/DemonsSoulsRecomp-*-linux.tar.xz dist/DemonsSoulsRecomp-*-symbols.zip dist/SHA256SUMS
+            dist/DemonsSoulsRecomp-*-linux.tar.xz dist/DemonsSoulsRecomp-*-macos.zip \
+            dist/DemonsSoulsRecomp-*-symbols.zip dist/SHA256SUMS
