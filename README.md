@@ -27,15 +27,15 @@
 
 </div>
 
-Soulbrandt is a PC port of *Demon's Souls* (PS3, 2009). The game's original code has been converted to run directly on Windows and Linux, with no emulator.
+Soulbrandt is a PC port of *Demon's Souls* (PS3, 2009). The game's original code has been converted to run directly on Windows and Linux, with no emulator. A Mac version is new and has never been tested on a real Mac.
 
 You need your own copy of the game: the US version, **BLUS30443**, or the European version, **BLES00932** (both version 1.00, on disc or from the PlayStation Store), or the Japanese or Asian disc, **BCJS30022** or **BCAS20071**, with its 1.04 update. This project includes no game files.
 
 ## Status
 
-**0.2.0, the current release, is an alpha.** Download it from the [Releases](https://github.com/JonathanDC64/Soulbrandt/releases) page.
+**0.2.1, the current release, is an alpha.** Download it from the [Releases](https://github.com/JonathanDC64/Soulbrandt/releases) page.
 
-The game plays from start to finish (a tester has beaten it), but not every part has been tried on every setting, so expect bugs. Seamless co-op is new in 0.2.0 and still being tested. What [isn't supported yet](#not-supported-yet) is below; please [report](#problems) anything you find. Questions and help: [Discord](https://discord.gg/BzmwDeca8s).
+The game plays from start to finish (a tester has beaten it), but not every part has been tried on every setting, so expect bugs. Seamless co-op is new in 0.2.0 and still being tested. The [Mac version](#mac) is new in 0.2.1 and no one has played it on a Mac yet. What [isn't supported yet](#not-supported-yet) is below; please [report](#problems) anything you find. Questions and help: [Discord](https://discord.gg/BzmwDeca8s).
 
 ## Highlights
 
@@ -75,6 +75,8 @@ Press **F1** (or **L3 + R3** on a controller, or Select + Start: Settings > Inte
 - A deadzone for each stick, set as how far you tilt it, with a live picture of the stick (Settings > Controls).
 - For a stick that trembles while you run straight: an axial deadzone and smoothing for the left stick, both off by default (Settings > Controls).
 - Mouse sensitivity, inverted axes, and switching lock-on targets with a flick of the mouse.
+- **Camera** (Settings > Controls > Camera): whether the camera follows your movement, whether walls and corners turn it, and whether lock-on with no target turns it. All as in the original by default.
+- Hold Up or Down for 0.3 to 1 second to go back to your first spell or first item (Settings > Game > Items). Off by default.
 - **Roll in any direction while locked on**: the roll goes where the stick points. It's on by default; turn off **Roll toward the stick** in Settings > Controls for the original's four directions.
 - The mouse in the game's own menus: point and click. Experimental, and off by default.
 
@@ -84,6 +86,7 @@ Press **F1** (or **L3 + R3** on a controller, or Select + Start: Settings > Inte
 
 **Game**
 - Skip the logos and the opening movie, and go straight into your last save.
+- **Free camera**: the developers' camera, to fly around with time stopped or running (Settings > Controls > Camera). Off by default; online play is off while it's on.
 - **Stat respec**: the Maiden in Black, or the statue in front of where you wake in the Nexus, puts your stats back to your class's and gives back the souls your levels cost, to spend again. Off by default: turn on **Stat respec in the Nexus** in Settings > Game.
 - Use several soul items at once, as Drop does. On by default: turn off **Use several souls at once** in Settings > Game for the original's one at a time.
 - **Change Appearance** at the statue in front of where you wake in the Nexus: the game's own Edit Appearance, with your character. Off by default: turn on **Change appearance in the Nexus** in Settings > Game.
@@ -117,6 +120,7 @@ Press **F1** (or **L3 + R3** on a controller, or Select + Start: Settings > Inte
 - Put mods in the mods folder (Mods in the menu or on the start screen, then Open the mods folder) and turn each one on or off there. Mods for the PS3 game or RPCS3 that replace the game's files work, and the game's own files are never changed.
 - A mod that changes how the game plays keeps you offline, so you never meet players without it. Mods that only change the look or sound keep online play. Seamless co-op works with any mod; everyone in the party should have the same ones.
 - When two mods change the same thing, the one higher in the list wins; the arrows on each mod move it. The list is kept in `mods\load_order.txt`, which mod managers can use too (docs/143).
+- With any mod on, the game gets more memory than a PS3 has (video memory up to 1 GB, a file loader that takes bigger files, and bigger memory areas for the world, graphics, effects, sound and menus), so big texture mods load. Without mods nothing changes.
 - After you turn mods on or off, **Restart now** restarts the game with them and goes straight back into your game. Closing the menu with mod changes waiting asks whether to restart.
 
 **The program**
@@ -133,7 +137,7 @@ Press **F1** (or **L3 + R3** on a controller, or Select + Start: Settings > Inte
 
 - Your own copy of Demon's Souls for the PS3, as a folder with `PS3_GAME` in it: the US (BLUS30443) or European (BLES00932) disc, version 1.00, or the Japanese (BCJS30022) or Asian (BCAS20071) disc with its 1.04 update, as a folder or a `.pkg` file that setup has RPCS3 install. The US and European PlayStation Store versions (NPUB30910, NPEB01202) work once installed in RPCS3. Setup cannot use ISO files yet.
 - RPCS3, the free PS3 emulator. Setup has it unlock the game's encrypted files. You don't need the PS3 system software. (Or decrypt the files yourself: see below.)
-- Windows 10 or 11 (64-bit) with a graphics card that supports DirectX 12, or Linux (see [Linux](#linux)).
+- Windows 10 or 11 (64-bit) with a graphics card that supports DirectX 12, or Linux (see [Linux](#linux)), or a Mac with Apple silicon on macOS 13.3 or later (see [Mac](#mac); untested).
 - A processor with SSE4.1, which most have since about 2011.
 - An internet connection during setup. Setup downloads a compiler and Python (about 60 MB on Windows, about 130 MB on Linux). If a download fails, setup says why, and gives the file's address and the folder to put your own copy in.
 
@@ -141,18 +145,18 @@ Press **F1** (or **L3 + R3** on a controller, or Select + Start: Settings > Inte
 
 These steps are for the release download.
 
-1. Download the zip for Windows (`DemonsSoulsRecomp-X.Y.Z-windows.zip`) or the tarball for Linux (`DemonsSoulsRecomp-X.Y.Z-linux.tar.xz`), and unpack it into a folder of its own.
-2. Start `Soulbrandt.exe` (on Linux, `Soulbrandt`). Setup opens.
+1. Download the zip for Windows (`DemonsSoulsRecomp-X.Y.Z-windows.zip`) or the tarball for Linux (`DemonsSoulsRecomp-X.Y.Z-linux.tar.xz`), and unpack it into a folder of its own. On a Mac, download `DemonsSoulsRecomp-X.Y.Z-macos.zip` and unzip it: it holds the app.
+2. Start `Soulbrandt.exe` (on Linux, `Soulbrandt`; on a Mac, `Soulbrandt.app`). Setup opens.
 3. Pick how setup gets your game's files:
    - **Import from RPCS3**: setup finds the game in RPCS3's list and has your RPCS3 unlock its files. It can bring your save, trophies and some settings across too. If RPCS3 has several copies, setup lets you pick one.
    - **I have decrypted files**: your disc copy, plus the 27 files you decrypted yourself (`EBOOT.elf` and the `.sdat` files).
    - **Show me how**: step by step, with free tools only.
-4. Start the build. It runs on your PC and can take a while; setup shows an estimate first. You can stop it and carry on later. Setup builds in AppData on Windows (`~/.local/share` on Linux) and needs about 4 GB free there; to build on another drive, press **Change** next to **Build folder** first. On Linux that drive must be formatted for Linux: setup can't build on a FAT32 or exFAT drive.
+4. Start the build. It runs on your PC and can take a while; setup shows an estimate first. You can stop it and carry on later. Setup builds in AppData on Windows (`~/.local/share` on Linux, `~/Library/Application Support` on a Mac) and needs about 4 GB free there; to build on another drive, press **Change** next to **Build folder** first. On Linux that drive must be formatted for Linux: setup can't build on a FAT32 or exFAT drive.
 5. Pick a preset: **Original** plays as on the PS3; **Enhanced** sets 60 fps, a resolution that fits your display, SMAA, 16x anisotropic filtering, the sharp scaling filter, borderless fullscreen, and HDR when Windows has HDR on for your display. Then a few choices (HDR among them, on Windows) and your online name. You can change anything later in Settings.
 
 Then press **Play**.
 
-**Where your files go:** your settings, logs, saves, shader cache and setup's build go in one folder, `%LOCALAPPDATA%\Soulbrandt` on Windows (`~/.local/share/Soulbrandt` on Linux), unless you chose another build folder. Files an earlier version already keeps in its own places (saves and the shader cache beside the program, settings in `%APPDATA%\DemonsSoulsRecomp`, the build in `%LOCALAPPDATA%\DemonsSoulsRecomp`) stay where they are and are still used. Nothing is moved or deleted. If you unpack a new version into another folder, its start screen offers to copy the saves from the earlier one (or to find that folder); the saves there stay as they are.
+**Where your files go:** your settings, logs, saves, shader cache and setup's build go in one folder, `%LOCALAPPDATA%\Soulbrandt` on Windows (`~/.local/share/Soulbrandt` on Linux, `~/Library/Application Support/Soulbrandt` on a Mac), unless you chose another build folder. Files an earlier version already keeps in its own places (saves and the shader cache beside the program, settings in `%APPDATA%\DemonsSoulsRecomp`, the build in `%LOCALAPPDATA%\DemonsSoulsRecomp`) stay where they are and are still used. Nothing is moved or deleted. If you unpack a new version into another folder, its start screen offers to copy the saves from the earlier one (or to find that folder); the saves there stay as they are.
 
 **A portable install:** put an empty file named `portable.txt` next to `Soulbrandt.exe` before its first start. Your settings, logs, saves, shader cache and setup's build then stay inside the program's folder, and you can move or rename that folder. It must be a folder you can write to, not one under Program Files: if it isn't, the game says so and doesn't start.
 
@@ -166,11 +170,15 @@ CI builds the Linux program on every change, and each release includes a Linux d
 
 Linux is newer and less tested than Windows. Players run it on desktop Linux and on the Steam Deck, on Vulkan ([docs/106](docs/106-setup-on-linux.md)).
 
-macOS is not supported.
-
 On a Steam Deck, keys and the mouse stay out of the game while its controls are on, because Steam's desktop layout presses them too. The same goes for a Steam Controller when Steam runs but didn't start the game, on Windows too. To use a keyboard on a docked Deck, set `PAD_KEYBOARD_WITH_PAD=1`.
 
 On a Steam Deck the game runs best with **Manual GPU Clock Control** at **800 MHz** and the **Thermal Power (TDP) Limit** at **15 W** (Quick Access menu > Performance).
+
+### Mac
+
+From 0.2.1 each release includes a Mac download: a native app for Macs with Apple silicon (M1 or newer) on macOS 13.3 or later. Intel Macs aren't supported. **It has never been tested on a real Mac.** CI builds it on GitHub's Macs, starts it and checks that setup's window opens, but no one has played the game on it yet. Please [report](#problems) what you find, including when it works.
+
+The app isn't signed with an Apple account, so the first time macOS refuses to open it. Open System Settings > Privacy & Security and choose **Open Anyway** (macOS 15 and later), or Control-click the app and choose **Open** (macOS 13 and 14). You only do this once. Setup works as on Windows and Linux, and finds RPCS3's Mac app. The game renders on Vulkan through MoltenVK, which comes inside the app. The app doesn't update itself: when a new version is out, download its app and put it in place of the old one.
 
 ### Online play
 
@@ -180,7 +188,7 @@ Online play is on by default and uses this project's own server. Setup asks for 
 
 - The Japanese and Asian discs without their 1.04 update, the Japanese PlayStation Store version (NPJA00102) and the US demo don't work.
 - Setup can't read ISO files, and it needs RPCS3 to unlock the game's files (or files you decrypted yourself).
-- macOS isn't supported, and running the Windows download through CrossOver hasn't been tested all the way through. Linux and the Steam Deck are less tested than Windows.
+- The Mac version has never been tested on a real Mac, and Intel Macs aren't supported. Linux and the Steam Deck are less tested than Windows.
 
 ### Problems
 
