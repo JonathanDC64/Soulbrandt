@@ -1,0 +1,4 @@
+# The Mac app (mac-native.yml's zip, unpacked) only: release.yml's game-file check of the release's Mac download.
+# The app's program (des_host under the name people see, Contents/MacOS/<PRODUCT_NAME>) is added by release.yml from
+# PRODUCT_NAME, which is the only file that may write that name (tools/ci/check_product_name.py).
+Contents/Frameworks/libMoltenVK.dylib   # MoltenVK, from its pinned release (tools/release/macos_native_app.json)

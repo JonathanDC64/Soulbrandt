@@ -45,7 +45,7 @@ def tearDownModule():
 def release(tag, assets=(PLAYER, "sums", "sig"), draft=False, pre=False, body="", base="http://127.0.0.1:1"):
     v = tag.lstrip("v")
     names = {"windows": f"DemonsSoulsRecomp-{v}-windows.zip", "sums": "SHA256SUMS", "sig": "SHA256SUMS.sig",
-             "linux": f"DemonsSoulsRecomp-{v}-linux.tar.xz", "macos": f"DemonsSoulsRecomp-{v}-macos.tar.xz"}
+             "linux": f"DemonsSoulsRecomp-{v}-linux.tar.xz", "macos": f"DemonsSoulsRecomp-{v}-macos.zip"}
     return {"tag_name": tag, "draft": draft, "prerelease": pre, "body": body,
             "html_url": f"https://github.com/{update.REPO}/releases/tag/{tag}", "published_at": "2026-10-25T10:00:00Z",
             "assets": [{"name": names[a], "size": 0, "browser_download_url": f"{base}/{names[a]}"} for a in assets]}
@@ -78,7 +78,7 @@ class FeedTest(unittest.TestCase):
             rel = release(tag, assets=("sums", "sig"))
             rel["assets"] += [{"name": n, "size": 0, "browser_download_url": f"http://127.0.0.1:1/{n}"} for n in names]
             return rel
-        own, ext = update.player_asset("0.2.1"), "windows.zip" if PLAYER == "windows" else f"{PLAYER}.tar.xz"
+        own, ext = update.player_asset("0.2.1"), "linux.tar.xz" if PLAYER == "linux" else f"{PLAYER}.zip"
         new = f"NewName-0.2.1-{ext}"
         self.assertEqual(update.player_asset_in({own, new}, "0.2.1"), own)   # both: the old name's
         self.assertEqual(update.player_asset_in({new, "SHA256SUMS"}, "0.2.1"), new)
@@ -91,7 +91,7 @@ class FeedTest(unittest.TestCase):
     def test_each_systems_download(self):
         for system, name in (("windows", "DemonsSoulsRecomp-0.2.1-windows.zip"),
                              ("linux", "DemonsSoulsRecomp-0.2.1-linux.tar.xz"),
-                             ("macos", "DemonsSoulsRecomp-0.2.1-macos.tar.xz")):
+                             ("macos", "DemonsSoulsRecomp-0.2.1-macos.zip")):
             with mock.patch.object(update, "system", return_value=system):
                 self.assertEqual(update.player_asset("0.2.1"), name)
                 # (a Mac takes its own download, never the Linux one)
@@ -190,12 +190,12 @@ class CertificateTest(unittest.TestCase):
 
 def make_package(version, files, name="DemonsSoulsRecomp") -> bytes:
     """This system's player's download as package.py writes it, <name>-<version>/ with release-files.txt:
-    a zip on Windows, a tar.xz on Linux (the program executable)."""
+    a tar.xz on Linux (the program executable), else a zip (Windows; a Mac, whose download is the app's zip)."""
     top = f"{name}-{version}/"
     entries = [(top + k, 0o755 if k == EXE else 0o644, v) for k, v in files.items()]
     entries.append(package.manifest(entries, top))
     buf = io.BytesIO()
-    if PLAYER == "windows":
+    if PLAYER != "linux":
         with zipfile.ZipFile(buf, "w") as z:
             for name, _mode, data in entries:
                 z.writestr(name, data)
@@ -209,7 +209,7 @@ def make_package(version, files, name="DemonsSoulsRecomp") -> bytes:
 
 
 def unpack_package(data, dest):
-    if PLAYER == "windows":
+    if PLAYER != "linux":
         with zipfile.ZipFile(io.BytesIO(data)) as z:
             z.extractall(dest)
     else:
