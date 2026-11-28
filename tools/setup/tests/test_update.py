@@ -78,7 +78,7 @@ class FeedTest(unittest.TestCase):
             rel = release(tag, assets=("sums", "sig"))
             rel["assets"] += [{"name": n, "size": 0, "browser_download_url": f"http://127.0.0.1:1/{n}"} for n in names]
             return rel
-        own, ext = update.player_asset("0.2.1"), "windows.zip" if PLAYER == "windows" else f"{PLAYER}.tar.xz"
+        own, ext = update.player_asset("0.2.1"), "linux.tar.xz" if PLAYER == "linux" else f"{PLAYER}.zip"
         new = f"NewName-0.2.1-{ext}"
         self.assertEqual(update.player_asset_in({own, new}, "0.2.1"), own)   # both: the old name's
         self.assertEqual(update.player_asset_in({new, "SHA256SUMS"}, "0.2.1"), new)
@@ -190,12 +190,12 @@ class CertificateTest(unittest.TestCase):
 
 def make_package(version, files, name="DemonsSoulsRecomp") -> bytes:
     """This system's player's download as package.py writes it, <name>-<version>/ with release-files.txt:
-    a zip on Windows, a tar.xz on Linux (the program executable)."""
+    a tar.xz on Linux (the program executable), else a zip (Windows; a Mac, whose download is the app's zip)."""
     top = f"{name}-{version}/"
     entries = [(top + k, 0o755 if k == EXE else 0o644, v) for k, v in files.items()]
     entries.append(package.manifest(entries, top))
     buf = io.BytesIO()
-    if PLAYER == "windows":
+    if PLAYER != "linux":
         with zipfile.ZipFile(buf, "w") as z:
             for name, _mode, data in entries:
                 z.writestr(name, data)
@@ -209,7 +209,7 @@ def make_package(version, files, name="DemonsSoulsRecomp") -> bytes:
 
 
 def unpack_package(data, dest):
-    if PLAYER == "windows":
+    if PLAYER != "linux":
         with zipfile.ZipFile(io.BytesIO(data)) as z:
             z.extractall(dest)
     else:
