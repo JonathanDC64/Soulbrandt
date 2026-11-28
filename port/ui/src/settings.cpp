@@ -197,6 +197,7 @@ std::map<std::string, std::string, std::less<>> sPinnedValues;
 std::map<std::string, std::string, std::less<>> sInEffect;
 std::string sPath;
 bool sPathResolved = false;
+bool sModsApplied = false;   // mods::apply has run (apply_mods_early, or load_and_apply_env)
 
 bool env_set(const char* name) {
     const char* v = std::getenv(name);
@@ -934,6 +935,24 @@ std::string seamless_endpoint() {
     return intro;
 }
 
+void apply_mods_early() {
+    if (sModsApplied) return;
+    // (The same as load_and_apply_env's step: the environment's DES_MODS is what pinned_value would give, and with an
+    // order file, settings.ini's DES_MODS is never moved, adopt_setting.)
+    const char* given = std::getenv("DES_MODS");
+    bool order = false;
+    if (!env_set("PS3_VFS_MODS") && !(given && *given)) {
+        if (const std::filesystem::path dir = mods::folder(report::data_dir()); !dir.empty())
+            mods::read_order(dir, &order);
+        if (!order) return;   // (settings.ini's DES_MODS may name some: load_and_apply_env)
+    }
+    sModsApplied = true;
+    if (given && *given)
+        mods::apply(report::data_dir(), std::string(given));
+    else
+        mods::apply(report::data_dir());
+}
+
 void load_and_apply_env() {
     for (const Def& d : kDefs) {
         if (d.apply == Apply::UiOnly) continue;
@@ -957,14 +976,17 @@ void load_and_apply_env() {
         std::fprintf(stderr, "[ui] gamepad: %s kicks (the Kick row)\n", kick);
     // Mods before the network: a gameplay mod keeps it off. Which mods are on is the mods folder's order file
     // (mods.hpp); settings.ini's DES_MODS, from before it, moves there once. DES_MODS in the environment still wins
-    // (a test run's mods).
-    if (pinned("DES_MODS")) {
-        mods::apply(report::data_dir(), pinned_value("DES_MODS"));
-    } else {
-        if (const std::string before = get("DES_MODS");
-            !before.empty() && mods::adopt_setting(mods::folder(report::data_dir()), before))
-            store("DES_MODS", "");
-        mods::apply(report::data_dir());
+    // (a test run's mods). (Usually done already: apply_mods_early.)
+    if (!sModsApplied) {
+        sModsApplied = true;
+        if (pinned("DES_MODS")) {
+            mods::apply(report::data_dir(), pinned_value("DES_MODS"));
+        } else {
+            if (const std::string before = get("DES_MODS");
+                !before.empty() && mods::adopt_setting(mods::folder(report::data_dir()), before))
+                store("DES_MODS", "");
+            mods::apply(report::data_dir());
+        }
     }
     apply_network();
     apply_window();

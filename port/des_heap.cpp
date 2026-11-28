@@ -27,11 +27,13 @@
 #include <utility>
 
 extern "C" uint8_t* vm_base; /* host base of the flat guest address space */
+extern "C" uint32_t vm_rsx_local_base(void);   /* ps3recomp runtime/memory/vm.h */
 
 namespace {
 
 constexpr uint32_t HBASE = 0x60000000u;
-constexpr uint32_t HEND  = 0xC0000000u;     /* 1.5 GB */
+/* The heap runs from HBASE to where RSX local memory starts (ensure_init): 0xC0000000 (1.5 GB), or lower with more
+ * video memory (des_vram.cpp), 0x90000000 at the lowest (768 MB). */
 constexpr uint32_t ALIGNB = 16u;
 constexpr uint32_t MIN_SPLIT = 32u;
 
@@ -51,7 +53,7 @@ void rm_free(uint32_t a, uint32_t s) {
     for (auto it = r.first; it != r.second; ++it)
         if (it->second == a) { g_free_size.erase(it); break; }
 }
-void ensure_init() { if (!g_init) { g_init = true; add_free(HBASE, HEND - HBASE); } }
+void ensure_init() { if (!g_init) { g_init = true; add_free(HBASE, vm_rsx_local_base() - HBASE); } }
 
 /* Carve a block of at least `need` bytes. Returns (block_addr, block_size) or (0,0). */
 std::pair<uint32_t,uint32_t> carve(uint32_t need) {

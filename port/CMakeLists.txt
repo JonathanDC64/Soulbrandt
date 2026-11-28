@@ -200,6 +200,7 @@ add_executable(des_boot
     "${CMAKE_CURRENT_SOURCE_DIR}/des_luagc.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/des_luaheap.cpp"           # room for Lua when its heap is full
     "${CMAKE_CURRENT_SOURCE_DIR}/des_memstat.cpp"           # DES_MEMSTAT: how full the game's heaps get
+    "${CMAKE_CURRENT_SOURCE_DIR}/des_vram.cpp"              # more memory for mods (docs/143)
     "${CMAKE_CURRENT_SOURCE_DIR}/des_pantheon.cpp"         # the checks on Pantheon records from other players
     "${CMAKE_CURRENT_SOURCE_DIR}/des_prework.cpp"           # startup work: the shader cache, behind a progress bar
     "${CMAKE_CURRENT_SOURCE_DIR}/des_pso_predict.cpp"       # the pipelines the game can ask for, from its files
@@ -273,6 +274,7 @@ else()
             "${CMAKE_CURRENT_SOURCE_DIR}/des_item_hotkeys.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/des_luagc.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/des_luaheap.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/des_vram.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/des_pantheon.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/des_dev.cpp"
             APPEND PROPERTY COMPILE_DEFINITIONS DS_SHADOW_STACK=1)

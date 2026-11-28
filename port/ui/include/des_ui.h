@@ -35,6 +35,18 @@ void des_ui_privacy_wait(void);
  * des_ui_early_init. A build without the UI does the first two. */
 void des_ui_net_off(const char* why);
 
+/* The mods in use found now, ahead of the other settings (des_ui_early_init
+ * reads those): for des_vram.cpp, from ps3_title_launch, before the guest space
+ * is reserved, since the mods decide its video memory. Sets PS3_VFS_MODS as
+ * the settings would. A build without the UI does nothing. */
+void des_ui_mods_early(void);
+
+/* The most room one file of the mods in use takes in the game's file loader
+ * (mods.cpp: a .dcx file's unpacked size, another's own), in bytes, 0 with no
+ * mods; `which` gets "<mod>: <file>". For des_vram.cpp, once des_ui_launch has
+ * found the mods. A build without the UI has 0. */
+unsigned long long des_ui_mods_largest_load(char* which, unsigned n);
+
 /* Setup's screens alone (ps3_title_window_only_init), in place of
  * des_ui_early_init: settings.ini, the overlay and setup's start screen, whose
  * Play starts the game in a new process of this program and closes this one. */

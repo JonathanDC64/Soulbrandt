@@ -3821,6 +3821,7 @@ extern "C" int des_prework_shaders(const char* game, const char* eboot);   /* de
 extern "C" int des_prework_shaders_part(const char* game, const char* eboot, unsigned part, unsigned parts);
 extern "C" int des_prework_pso_predict(const char* game, const char* eboot, const char* out, int hdr);
 extern "C" void des_prework_elf(const char* path);
+extern "C" void des_vram_choose(void);   /* des_vram.cpp: more video memory with mods */
 
 /* main's ELF, as boot_main reads its arguments: the first that is not a
  * --username or --psnr flag (or its value). */
@@ -3858,7 +3859,10 @@ extern "C" int ps3_title_launch(int* argc, char*** argv)
     if (*argc == 2 && std::strcmp((*argv)[1], "--program-check") == 0) return 0;
     run_defaults();
     const int launch = des_ui_launch(argc, argv);
-    if (launch == -1) des_prework_elf(main_elf(*argc, *argv));   /* (-1: PS3_LAUNCH_BOOT) */
+    if (launch == -1) {   /* (-1: PS3_LAUNCH_BOOT) */
+        des_vram_choose();   /* (the mods in use are known now, and the guest space is not reserved yet) */
+        des_prework_elf(main_elf(*argc, *argv));
+    }
     return launch;
 }
 

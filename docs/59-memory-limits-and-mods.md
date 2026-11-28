@@ -589,6 +589,14 @@ Risk is low: a missing overlay file falls through to today's path.
 
 F1 and M1 come first: they are cheap and make every later test readable.
 
+**Done since (2026-11-28, `port/des_vram.cpp`, docs/143 section 4), with mods on only:**
+- **M4.** The game's video memory heap is not sized from localSize: it is a constant, 248 MB (`func_0002F270` is
+  `lis r3,0x0F80; blr`, read by `func_00023EE8`). ps3recomp's `PS3_LOCAL_MB` grows local memory downward from the
+  stacks (512 MB at 0xB0000000), and a hook after that `lis` gives the heap the new size less 8 MB.
+- **M2, for CORERES only.** Hooks after its three `lis` give it 64 MB, or the mods' largest file plus 8 MB, up to
+  96 MB: what the sys_memory window has left. A file bigger than CORERES never loads (the loader waits for room,
+  so the loading screen stays up), not the fatal states of 1.5.
+
 ## 4. Open questions
 
 1. Do heap internals or callers assume the original sizes anywhere other than the 39
