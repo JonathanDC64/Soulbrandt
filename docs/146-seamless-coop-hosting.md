@@ -1201,10 +1201,12 @@ their first instruction):
 - The light walls a player walks through (press Cross, a walk, then the wall is gone) are gone in every player's game.
   The walk's prompt outside boss rooms (`OnDistanceActionAttribute(..., HELPID_GO_TO_IN, ..., possible_chr_type,
   everytime)`, or `ATTR_HOST + ATTR_LIVE + ATTR_GREY`) was the host's alone; it is offered to a blue phantom too
-  (`+ ATTR_WHITE`): 1-1's three, one each in 1-2 and 1-3, three each in 2-1, 2-2, 4-1 and 4-2
-  (`light_walls_for_friends`). Its handler doesn't check who walks, so in the friend's game its walk runs as the
+  (`+ ATTR_WHITE`): 1-1's three, one each in 1-2 and 1-3, three each in 2-1, 2-2, 4-1 and 4-2, three in 3-1, two
+  each in 3-2, 5-1 and 5-2 (`light_walls_for_friends`). Tower of Latria's and the Valley's scripts write the
+  prompt's message as its number (`10010403`), and 3-1's prompts are `once`; until 0.2.1 those nine stayed the
+  host's (a tester's run through the whole game). Its handler doesn't check who walks, so in the friend's game its walk runs as the
   host's: the walk, the wall dropped, the wall's flag (a progress flag in 2-1 and 2-2). The wall's delete
-  (`LuaCallStart(<id>, 1)`) reaches the other games and drops it there too, but sets no flag. So after a friend's
+  (`LuaCallStart(<id>, 1)`, or `, 2` in 3-1 and 3-2 and 5-2) reaches the other games and drops it there too, but sets no flag. So after a friend's
   walk the host's flag stayed clear, and the wall was back for everyone at the host's next load (two copies, 11-22).
   The walker's game now also sends `LuaCallStart(7600000 + <id>, 76)`, outside `NotNetMessage`, and each other
   game's `SEAMLESS_WallPassed_<id>` sets the flags the walk sets for another player there (2-2's 572 sets 571's
