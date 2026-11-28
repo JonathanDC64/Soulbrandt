@@ -1404,6 +1404,13 @@ extern "C" void des_ui_net_off(const char* why) {
     std::fprintf(stderr, "[ui] network: %s\n", why ? why : "Off");
 }
 
+// des_ui.h. The mods in use, ahead of the other settings (settings.hpp's apply_mods_early): for des_vram.cpp, before
+// the guest space is reserved. Not with DES_UI=0, which reads no settings (des_ui_early_init).
+extern "C" void des_ui_mods_early(void) {
+    if (const char* v = std::getenv("DES_UI"); v && !std::strcmp(v, "0")) return;
+    ui::settings::apply_mods_early();
+}
+
 // des_ui.h. The game's main thread, before the game's code: the frame hook shows the note while this waits (and wakes
 // the overlay until it does: with no document up it sleeps). With RSX_PRESENT=0 nothing is drawn, so nothing can ask.
 extern "C" void des_ui_privacy_wait(void) {

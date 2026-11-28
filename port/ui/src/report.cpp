@@ -84,6 +84,7 @@ extern "C" void ps3_diag_report(FILE* out, unsigned sample_sec);   // boot_main.
 extern "C" void* rsx_d3d12_device(void);                           // the D3D12 backend's device, or null
 extern "C" int cellPad_host_controller(int i, char* id, int idn, char* name, int namen);  // cellPad.h: the i-th pad
 extern "C" unsigned ppu_boot_frames_presented(void);               // boot_main.cpp: the game's frames so far
+extern "C" uint32_t vm_rsx_local_size(void);                        // ps3recomp vm.h: RSX local memory's size
 
 namespace ui::report {
 
@@ -2009,6 +2010,8 @@ std::string system_info() {
     // The mods in use (mods.hpp), as the game found them at start; the crash dialog's process reads none itself (its
     // environment's PS3_VFS_MODS, below, names them).
     if (game_process) o << "Mods: " << mods::summary() << "\n";
+    // The video memory the game has: a PS3's 256 MB, or more with mods on (des_vram.cpp, PS3_LOCAL_MB).
+    if (game_process) o << "Video memory: " << (vm_rsx_local_size() >> 20) << " MB\n";
     // The renderer that runs (the runtime's route switch, rsx_out.h), with why it is D3D12 when Vulkan was asked for.
     // None in a process that never started one (the crash dialog takes the game's from its report: renderer line).
     {

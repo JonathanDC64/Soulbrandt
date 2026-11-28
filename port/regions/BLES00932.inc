@@ -9,6 +9,7 @@ DES_REGION_ADDR(0x00013874, 0x0001473C)  /* data kOnlineTagCases */
 DES_REGION_ADDR(0x0001BB38, 0x0001C708)  /* hook des_dbgmenu_hook: the frame function's emptied debug menu call (0x00015A50 is a blr) */
 DES_REGION_ADDR(0x00020F44, 0x00021B2C)  /* hook des_dbgmenu_hook: create_debug_menu (0x00015A58) has returned the menu */
 DES_REGION_ADDR(0x00023750, 0x00024338)  /* call */
+DES_REGION_ADDR(0x0002F270, 0x0002FE58)  /* hook des_vram_heap: lis r3,0x0F80, LOCAL's size */
 DES_REGION_ADDR(0x00039210, 0x00039DF8)  /* hook + call des_luaheap: Lua's heap, alloc */
 DES_REGION_ADDR(0x00039540, 0x0003A128)  /* hook + call des_luaheap: Lua's heap, block size */
 DES_REGION_ADDR(0x00039790, 0x0003A378)  /* hook + call des_luaheap: Lua's heap, realloc */
@@ -21,6 +22,9 @@ DES_REGION_ADDR(0x00039D50, 0x0003A938)  /* hook + call des_luaheap: Lua's heap,
 DES_REGION_ADDR(0x00039E30, 0x0003AA18)  /* hook + call des_luaheap: Lua's heap, realloc aligned */
 DES_REGION_ADDR(0x00039F20, 0x0003AB08)  /* hook + call des_luaheap: Lua's heap, realloc aligned */
 DES_REGION_ADDR(0x0003A0D8, 0x0003ACC0)  /* hook + call des_luaheap: Lua's heap, alloc aligned */
+DES_REGION_ADDR(0x0003B3FC, 0x0003BFE4)  /* hook des_coreres_size: CORERES's lis, the size it takes */
+DES_REGION_ADDR(0x0003B444, 0x0003C02C)  /* hook des_coreres_size: CORERES's lis, its arena's size */
+DES_REGION_ADDR(0x0003B4B0, 0x0003C098)  /* hook des_coreres_size: CORERES's lis, the size recorded */
 DES_REGION_ADDR(0x0003C758, 0x0003D340)  /* hook + call des_luaheap: Lua's small heap, free */
 DES_REGION_ADDR(0x0003C9A8, 0x0003D590)  /* hook + call des_luaheap: Lua's small heap, realloc aligned */
 DES_REGION_ADDR(0x0003CA98, 0x0003D680)  /* hook + call des_luaheap: Lua's small heap, alloc aligned */

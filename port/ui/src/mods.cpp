@@ -164,6 +164,23 @@ bool locked_file(const fs::path& p, const std::string& low) {
     return f.read(magic, 4) && std::memcmp(magic, "NPD", 4) == 0;
 }
 
+// The room a file takes in the game's file loader, which holds a whole file at once (docs/59 1.5): a DCX's unpacked
+// size (its DCS part: "DCX\0" at 0, "DCS\0" at 0x18, the size big-endian at 0x1C), any other file's own size. Only
+// a .dcx file of 512 KB or more is opened: a smaller one can't unpack to anything near the loader's 12.25 MB.
+std::uint64_t load_size(const fs::path& p, const std::string& low) {
+    std::error_code ec;
+    const std::uint64_t size = fs::file_size(p, ec);
+    if (ec) return 0;
+    if (!ends_with(low, ".dcx") || size < (512u << 10)) return size;
+    std::ifstream f(p, std::ios::binary);
+    unsigned char h[0x20] = {};
+    if (!f.read(reinterpret_cast<char*>(h), sizeof h) || std::memcmp(h, "DCX", 4) != 0 ||
+        std::memcmp(h + 0x18, "DCS", 4) != 0)
+        return size;
+    const std::uint64_t unpacked = (std::uint64_t(h[0x1C]) << 24) | (h[0x1D] << 16) | (h[0x1E] << 8) | h[0x1F];
+    return unpacked > size ? unpacked : size;
+}
+
 // The part of a file's name after its last dot, lowercase ("" when it has none): "dcx" for "x.parambnd.dcx".
 std::string last_ending(const std::string& lowName) {
     const std::size_t dot = lowName.rfind('.');
@@ -287,6 +304,10 @@ void walk(Mod& m) {
             if (m.gameplay.size() < kGameplayShown) m.gameplay.push_back(generic);
         }
         if (m.locked.size() < kGameplayShown && locked_file(it->path(), low)) m.locked.push_back(generic);
+        if (const std::uint64_t load = load_size(it->path(), low); load > m.largestLoad) {
+            m.largestLoad = load;
+            m.largestLoadFile = generic;
+        }
     }
     std::sort(m.areas.begin(), m.areas.end());
     if (!m.usable()) return;
@@ -742,4 +763,21 @@ std::string summary() {
     return std::to_string(sInUse.size()) + ": " + join(parts, ", ");
 }
 
+std::uint64_t largest_load(std::string* which) {
+    const Mod* most = nullptr;
+    for (const Mod& m : sInUse)
+        if (!most || m.largestLoad > most->largestLoad) most = &m;
+    if (!most) return 0;
+    if (which) *which = most->name + ": " + most->largestLoadFile;
+    return most->largestLoad;
+}
+
 }  // namespace ui::mods
+
+// des_ui.h: for des_vram.cpp, the file loader's heap.
+extern "C" unsigned long long des_ui_mods_largest_load(char* which, unsigned n) {
+    std::string w;
+    const std::uint64_t size = ui::mods::largest_load(&w);
+    if (which && n) std::snprintf(which, n, "%s", w.c_str());
+    return size;
+}

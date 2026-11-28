@@ -209,14 +209,28 @@ the game's own files in place, or changes the program. That is the server's job:
 - **Script mods** (`.luabnd.dcx.sdat` and the talk scripts): a plain script file works. A published mod's
   replacement for the tutorial's script loaded and the level ran as usual. A script locked again for the PS3
   can't be read (section 1).
-- **Very large texture mods** can run out of the game's memory and crash, as on a PS3 and in RPCS3. Raising the
-  game's memory limits is the next step (docs/59, items M1-M4).
+- **Bigger texture mods** get more memory than a PS3 has. With any mod on, the game starts with:
+  - **512 MB of video memory**, twice a PS3's, so the game's heap for textures and models is 504 MB instead of 248.
+    It costs about 265 MB more RAM.
+  - **A bigger file loader heap.** The game loads each file whole into a 12.25 MB heap, so a texture file bigger
+    than that never finishes loading (the loading screen stays up). With mods it is 64 MB, or the mods' largest file
+    plus 8 MB, up to 96 MB.
+
+  A texture mod with every map texture at twice the disc's size loads and draws in every world. A single file that
+  needs more than about 88 MB unpacked still can't load; the log names it. Without mods, the game has a PS3's sizes.
 
 ## 5. How it works
 
-- **At start** (`port/ui/src/mods.cpp`, called from `settings.cpp`'s `load_and_apply_env` before the network rows):
-  the mods that are on and usable become `PS3_VFS_MODS`, their game-file folders separated by `|`, the first one first.
-  The log says which mods are on, which of their files make them gameplay mods, and which were left out and why.
+- **At start** (`port/ui/src/mods.cpp`): the mods that are on and usable become `PS3_VFS_MODS`, their game-file
+  folders separated by `|`, the first one first. The log says which mods are on, which of their files make them
+  gameplay mods, and which were left out and why. This runs before the game's memory is laid out, because the mods
+  decide its size (`port/des_vram.cpp`, from `ps3_title_launch` through `settings.cpp`'s `apply_mods_early`). The
+  one exception is a settings.ini from before the order file: its `DES_MODS` moves to the order file in
+  `load_and_apply_env`, and that first start keeps a PS3's sizes.
+- **Memory** (`port/des_vram.cpp`): with mods on, ps3recomp's `PS3_LOCAL_MB` makes RSX local memory 512 MB, and
+  instruction hooks give the game's video memory heap that size less 8 MB, and the file loader's heap (CORERES) its
+  size. While walking the mods' files, `mods.cpp` notes the largest one the loader must hold: a `.dcx` file's
+  unpacked size from its header, another file's own size. Problem reports have a "Video memory:" line.
 - **In the runtime** (ps3recomp `runtime/syscalls/sys_fs.c`, `ps3_vfs_ps3game_fallback`): every path the game opens
   below the game's folder (`PS3_VFS_ROOT`) or its update (`PS3_VFS_UPDATE`) is looked up in each mod folder in order.
   The first mod that has the file gives it; otherwise the update, then the disc. Paths outside the game's folder (saves,
@@ -238,6 +252,9 @@ the game's own files in place, or changes the program. That is the server's job:
 | `DES_MODS_DIR=<folder>` | Another mods folder (a test's), with its own order file. |
 | `PS3_VFS_MODS=<folder>\|<folder>` | The mods' game-file folders, given directly, in that order. Neither `DES_MODS` nor the order file is read, and the Mods window says so. |
 | `PS3_FSLOG=1` | Logs every file the game opens, to see what a mod would need to replace. |
+| `DES_VRAM_MB=<256-1024>` | Video memory of that size, with or without mods (256: a PS3's, to compare). |
+| `DES_CORERES_MB=<12-96>` | The file loader's heap of that size, with or without mods (12: the game's own). |
+| `DES_MEMSTAT=1` | Logs how full the game's heaps get, the video memory heap (LOCAL) and the file loader's (CORERES) among them. |
 | `DES_UI_OPEN=mods` | Opens the Mods window at start (for screenshots, with `DES_UI_KEYS` and `DES_UI_SHOT`). |
 
 `port/ui/tests/mods_check.cpp` (CI, Windows and Linux) checks the look and gameplay rules, where a mod's files are
@@ -249,5 +266,5 @@ mod covers which, and `PS3_VFS_MODS` in the order file's order. ps3recomp's `lib
 ## 7. Known limits
 
 - **Linux:** names are case-sensitive, so a mod's folders and files must be named as the game names them.
-- **Memory** for very large texture mods (section 4).
+- **Memory** for very large texture mods: more than a PS3's, but not without end (section 4).
 - **Folder listings** are not merged (section 5).

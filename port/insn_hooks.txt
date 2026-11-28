@@ -358,3 +358,14 @@
 0x00211548=des_coop_hook   # stw r29,0xD8(r1) before bl 0x0090E4B0, the character's writer, in the save's build 0x002112F8 (the player's game data: its character's +0x49C): a friend's save has the form it goes home in, not a blue phantom's
 0x00211550=des_coop_hook   # the nop after that bl: the type back
 0x00509678=des_coop_hook   # stdu at the start of the flags' writer 0x00509678 (r3 the flags): a friend's save writes its own world's flags
+
+# des_vram_heap (port/des_vram.cpp): the game's video memory heap (LOCAL) is a constant 248 MB, 8 MB less than a
+# PS3's local memory. With more local memory (PS3_LOCAL_MB: with mods on, or DES_VRAM_MB), it takes that less 8 MB.
+0x0002F270=des_vram_heap   # lis r3,0x0F80 in func_0002F270 (then blr), which func_00023EE8 asks for LOCAL's size
+
+# des_coreres_size (port/des_vram.cpp): the file loader's heap (CORERES) is a constant 12.25 MB, and the loader
+# asks it for a whole file at once (docs/59 1.5). A mod's bigger texture files don't fit, and the load waits
+# forever. With mods on (or DES_CORERES_MB) the heap's three sizes are bigger.
+0x0003B3FC=des_coreres_size   # lis r3,0xC4 in CORERES's creator func_0003B3B8: the size it takes (func_00C35520)
+0x0003B444=des_coreres_size   # lis r5,0xC4: the size its arena is made with (func_00AC7D00)
+0x0003B4B0=des_coreres_size   # lis r5,0xC4: the size the memory manager's ranges record (func_00A361B0)

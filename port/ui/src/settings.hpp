@@ -43,6 +43,12 @@ std::string describe();
 // game's options are read.
 void load_and_apply_env();
 
+// The mods in use (mods::apply), ahead of the rest of the settings: from ps3_title_launch, before the guest space is
+// reserved, since the mods decide its video memory (des_vram.cpp). When the environment names them (DES_MODS, or a
+// test's PS3_VFS_MODS) or the mods folder has its order file; otherwise load_and_apply_env does it as before, with
+// settings.ini's DES_MODS from before the order file. load_and_apply_env does not do it again.
+void apply_mods_early();
+
 const Def* find(std::string_view key);
 std::span<const Def> defs();  // every setting, in kDefs' order
 std::string get(std::string_view key);  // the value, or its default

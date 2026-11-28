@@ -27,6 +27,7 @@ void ps3_diag_report(FILE* out, unsigned sample_sec) {
     (void)sample_sec;
 }
 unsigned ppu_boot_frames_presented(void) { return 0; }
+uint32_t vm_rsx_local_size(void) { return 256u << 20; }  // (ps3recomp vm.h: a PS3's local memory)
 long long ps3_ms_since_frame(void) { return -1; }
 uint64_t des_frame_count(void) { return 0; }  // (des_options.cpp: the frame rate counter's frames)
 uint64_t des_frame_at_us(uint64_t n) {

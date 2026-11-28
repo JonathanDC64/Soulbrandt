@@ -118,7 +118,7 @@ void sample(bool quiet = false)
         const uint32_t end = vm_read32(arena + (h.second ? kAtEnd2 : kAtEnd));
         const uint32_t free = vm_read32(arena + (h.second ? kAtFree2 : kAtFree));
         const uint32_t size = end - first;
-        if (!guest(first) || end <= first || size > 0x10000000u || free > size) {
+        if (!guest(first) || end <= first || size > 0x40000000u || free > size) {   /* (LOCAL: up to 1 GB, des_vram.cpp) */
             if (!h.odd)
                 fprintf(stderr, "[memstat] %s: the arena at %08X doesn't read as one (start %08X, end %08X, free %u)\n",
                         h.name, arena, first, end, free);

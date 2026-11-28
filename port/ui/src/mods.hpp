@@ -11,6 +11,7 @@
 // Online play: a mod that changes how the game plays (gameplay_file) keeps the whole session offline; mods that only
 // change how it looks or sounds do not. This file decides which; settings.cpp and des_ui.cpp act on it.
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -54,6 +55,9 @@ struct Mod {
     std::vector<std::string> areas;     // the game's folders it has files in ("menu", "param"), A to Z
     std::vector<std::string> gameplay;  // the first few of its files that make it a gameplay mod (below root, '/')
     std::vector<std::string> locked;    // the first few of its files that are locked as on the PS3 (NPD), unusable
+    std::uint64_t largestLoad = 0;      // the most room one of its files takes in the game's file loader, which
+                                        // holds a whole file at once: a .dcx file's unpacked size, another's own
+    std::string largestLoadFile;        // that file (below root, '/')
     bool loose = false;                 // it has no game folders (problem says so); plan() may find where its files go
     std::vector<Move> moves;            // plan(): where each loose file goes, from the game's own files; place()
                                         // moves them
@@ -149,6 +153,9 @@ bool from_environment();
 std::string gameplay_names();
 // One line for reports: "none", or "2: Texture Pack (look, 120 files), Rebalance (gameplay, 3 files)".
 std::string summary();
+// The most room one file of the mods in use takes in the game's file loader (Mod::largestLoad), 0 with none; and
+// which, as "<mod>: <file>", when `which` is given. For the loader's heap (des_vram.cpp).
+std::uint64_t largest_load(std::string* which = nullptr);
 
 // Text and names for the screens.
 const char* kind_label(Kind kind);  // "Look only" / "Gameplay"

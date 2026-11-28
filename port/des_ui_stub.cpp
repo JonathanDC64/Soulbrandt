@@ -33,6 +33,13 @@ void des_ui_net_off(const char* why) {
     std::fprintf(stderr, "[ui] network: %s\n", why ? why : "Off");
 }
 
+void des_ui_mods_early(void) {}  // (no settings: mods only through a test's PS3_VFS_MODS)
+
+unsigned long long des_ui_mods_largest_load(char* which, unsigned n) {
+    if (which && n) which[0] = 0;
+    return 0;  // (no Mods window: mods only through a test's PS3_VFS_MODS, unmeasured)
+}
+
 void des_mouse_take(int* dx, int* dy) {
     *dx = 0;
     *dy = 0;

@@ -36,8 +36,8 @@ std::vector<std::string> mods_good_to_know() {
         "it's on. Seamless co-op works with any mod, when everyone in the party has the same ones.",
         "When two mods change the same thing, the one higher in the list wins. To move a mod, use the arrows on its "
         "card, or " + buttons + ".",
-        "Mods made for the PS3 game or for RPCS3 work when they replace the game's files. Very large texture mods can "
-        "run out of memory, as on a PS3.",
+        "Mods made for the PS3 game or for RPCS3 work when they replace the game's files. With mods on, the game has "
+        "more memory than on a PS3, so larger texture mods fit. Very large ones can still run out.",
     };
 }
 
