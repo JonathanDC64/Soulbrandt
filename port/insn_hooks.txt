@@ -369,3 +369,30 @@
 0x0003B3FC=des_coreres_size   # lis r3,0xC4 in CORERES's creator func_0003B3B8: the size it takes (func_00C35520)
 0x0003B444=des_coreres_size   # lis r5,0xC4: the size its arena is made with (func_00AC7D00)
 0x0003B4B0=des_coreres_size   # lis r5,0xC4: the size the memory manager's ranges record (func_00A361B0)
+
+# des_heap_size (port/des_vram.cpp): with mods on, eight more MemMan heaps get bigger sizes (MAIN, HGSYS, HAVOK, FFX,
+# MO, LUA, MENU, TEMP), from the bigger memory window. Each creator has the same three lis as CORERES's (docs/59 1.1).
+0x0003FBFC=des_heap_size   # MAIN lis r3: the block it takes from the game's memory window
+0x0003FC44=des_heap_size   # MAIN lis r5: its arena's size
+0x0003FCB0=des_heap_size   # MAIN lis r5: the range the memory manager records
+0x00031A14=des_heap_size   # HAVOK lis r3: the block it takes from the game's memory window
+0x00031A5C=des_heap_size   # HAVOK lis r5: its arena's size
+0x00031AC8=des_heap_size   # HAVOK lis r5: the range the memory manager records
+0x0003D7FC=des_heap_size   # HGSYS lis r3: the block it takes from the game's memory window
+0x0003D844=des_heap_size   # HGSYS lis r5: its arena's size
+0x0003D8B0=des_heap_size   # HGSYS lis r5: the range the memory manager records
+0x0003C5FC=des_heap_size   # FFX lis r3: the block it takes from the game's memory window
+0x0003C644=des_heap_size   # FFX lis r5: its arena's size
+0x0003C6B0=des_heap_size   # FFX lis r5: the range the memory manager records
+0x0003167C=des_heap_size   # MO lis r3: the block it takes from the game's memory window
+0x000316C4=des_heap_size   # MO lis r5: its arena's size
+0x00031730=des_heap_size   # MO lis r5: the range the memory manager records
+0x00038FFC=des_heap_size   # LUA lis r3: the block it takes from the game's memory window
+0x00039044=des_heap_size   # LUA lis r5: its arena's size
+0x000390B0=des_heap_size   # LUA lis r5: the range the memory manager records
+0x00041FFC=des_heap_size   # MENU lis r3: the block it takes from the game's memory window
+0x00042044=des_heap_size   # MENU lis r5: its arena's size
+0x000420B0=des_heap_size   # MENU lis r5: the range the memory manager records
+0x00031874=des_heap_size   # TEMP lis r3: the block it takes from the game's memory window
+0x000318BC=des_heap_size   # TEMP lis r5: its arena's size
+0x00031928=des_heap_size   # TEMP lis r5: the range the memory manager records

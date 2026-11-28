@@ -209,15 +209,20 @@ the game's own files in place, or changes the program. That is the server's job:
 - **Script mods** (`.luabnd.dcx.sdat` and the talk scripts): a plain script file works. A published mod's
   replacement for the tutorial's script loaded and the level ran as usual. A script locked again for the PS3
   can't be read (section 1).
-- **Bigger texture mods** get more memory than a PS3 has. With any mod on, the game starts with:
-  - **512 MB of video memory**, twice a PS3's, so the game's heap for textures and models is 504 MB instead of 248.
-    It costs about 265 MB more RAM.
+- **Bigger mods** get more memory than a PS3 has. With any mod on, the game starts with:
+  - **Up to 1 GB of video memory**, four times a PS3's, so the game's heap for textures and models is 1016 MB instead
+    of 248. The PC pays RAM only for what the mods fill: the runtime commits the first 256 MB up front, as on a PS3,
+    and the rest as the game uses it.
+  - **A memory window twice a PS3's,** 511 MB in place of 256, where the game's heaps come from. Eight of them are
+    bigger with mods: the main heap (86 to 160 MB), the graphics system's (13 to 32), Havok's (20 to 40), effects
+    (9 to 20), sound (4 to 12), Lua (2.4 to 6), menus (2 to 6) and TEMP (1 to 3). That is room for heavier models,
+    areas, effects and sounds.
   - **A bigger file loader heap.** The game loads each file whole into a 12.25 MB heap, so a texture file bigger
     than that never finishes loading (the loading screen stays up). With mods it is 64 MB, or the mods' largest file
-    plus 8 MB, up to 96 MB.
+    plus 8 MB, up to what the window has left: about 212 MB.
 
   A texture mod with every map texture at twice the disc's size loads and draws in every world. A single file that
-  needs more than about 88 MB unpacked still can't load; the log names it. Without mods, the game has a PS3's sizes.
+  needs more than about 204 MB unpacked still can't load; the log names it. Without mods, the game has a PS3's sizes.
 
 ## 5. How it works
 
@@ -227,10 +232,12 @@ the game's own files in place, or changes the program. That is the server's job:
   decide its size (`port/des_vram.cpp`, from `ps3_title_launch` through `settings.cpp`'s `apply_mods_early`). The
   one exception is a settings.ini from before the order file: its `DES_MODS` moves to the order file in
   `load_and_apply_env`, and that first start keeps a PS3's sizes.
-- **Memory** (`port/des_vram.cpp`): with mods on, ps3recomp's `PS3_LOCAL_MB` makes RSX local memory 512 MB, and
-  instruction hooks give the game's video memory heap that size less 8 MB, and the file loader's heap (CORERES) its
-  size. While walking the mods' files, `mods.cpp` notes the largest one the loader must hold: a `.dcx` file's
-  unpacked size from its header, another file's own size. Problem reports have a "Video memory:" line.
+- **Memory** (`port/des_vram.cpp`): with mods on, ps3recomp's `PS3_LOCAL_MB` makes RSX local memory 1 GB and its
+  `PS3_SYSMEM_MB` the memory window 511 MB (from 0x30100000). Instruction hooks give the game's video memory heap
+  local memory's size less 8 MB, eight of its other heaps their bigger sizes, and the file loader's heap (CORERES)
+  its size. Each hook changes a size only if it is the game's own. While walking the mods' files, `mods.cpp` notes
+  the largest one the loader must hold: a `.dcx` file's unpacked size from its header, another file's own size.
+  Problem reports have "Video memory:" and "Game memory window:" lines.
 - **In the runtime** (ps3recomp `runtime/syscalls/sys_fs.c`, `ps3_vfs_ps3game_fallback`): every path the game opens
   below the game's folder (`PS3_VFS_ROOT`) or its update (`PS3_VFS_UPDATE`) is looked up in each mod folder in order.
   The first mod that has the file gives it; otherwise the update, then the disc. Paths outside the game's folder (saves,
@@ -253,7 +260,9 @@ the game's own files in place, or changes the program. That is the server's job:
 | `PS3_VFS_MODS=<folder>\|<folder>` | The mods' game-file folders, given directly, in that order. Neither `DES_MODS` nor the order file is read, and the Mods window says so. |
 | `PS3_FSLOG=1` | Logs every file the game opens, to see what a mod would need to replace. |
 | `DES_VRAM_MB=<256-1024>` | Video memory of that size, with or without mods (256: a PS3's, to compare). |
-| `DES_CORERES_MB=<12-96>` | The file loader's heap of that size, with or without mods (12: the game's own). |
+| `DES_SYSMEM_MB=<256-511>` | The game's memory window of that size, with or without mods (256: a PS3's). |
+| `DES_MODS_HEAPS=0` | The game's own heap sizes with mods on (the window, video memory and the file loader's heap still grow). |
+| `DES_CORERES_MB=<12-...>` | The file loader's heap of that size, with or without mods (12: the game's own; the most is what the window has left). |
 | `DES_MEMSTAT=1` | Logs how full the game's heaps get, the video memory heap (LOCAL) and the file loader's (CORERES) among them. |
 | `DES_UI_OPEN=mods` | Opens the Mods window at start (for screenshots, with `DES_UI_KEYS` and `DES_UI_SHOT`). |
 
