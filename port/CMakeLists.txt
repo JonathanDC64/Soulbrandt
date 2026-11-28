@@ -193,6 +193,7 @@ add_executable(des_boot
     "${CMAKE_CURRENT_SOURCE_DIR}/des_chrins.cpp"            # ChrIns worker: done flag before the done event
     "${CMAKE_CURRENT_SOURCE_DIR}/des_guest_exit.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/des_souls_use.cpp"         # DES_SOULS_AT_ONCE: Use several soul items at once
+    "${CMAKE_CURRENT_SOURCE_DIR}/des_storage.cpp"           # DES_STORAGE: Send to Storage from the inventory
     "${CMAKE_CURRENT_SOURCE_DIR}/des_respec.cpp"            # DES_RESPEC: stat respec at the Nexus statue and the Maiden
     "${CMAKE_CURRENT_SOURCE_DIR}/des_dbgmenu.cpp"           # DES_DBGMENU: the game's own debug menus, offline (docs/180)
     "${CMAKE_CURRENT_SOURCE_DIR}/des_keybinds.cpp"          # the port's own keys (Kick, the item slots)
@@ -269,6 +270,7 @@ else()
             "${CMAKE_CURRENT_SOURCE_DIR}/des_chrins.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/des_guest_exit.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/des_souls_use.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/des_storage.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/des_respec.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/des_dbgmenu.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/des_item_hotkeys.cpp"
@@ -984,6 +986,18 @@ target_include_directories(pantheon_check BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE
 if(MSVC)
     target_compile_options(pantheon_check PRIVATE /EHsc /Zc:__cplusplus)
     target_compile_definitions(pantheon_check PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()
+
+# Storage's production layout, capacity and picker over a synthetic guest memory;
+# no game files. Use the host's configured compiler on Windows and Linux.
+add_executable(storage_check EXCLUDE_FROM_ALL tests/storage_check.cpp)
+add_executable(storage_navigation_check EXCLUDE_FROM_ALL tests/storage_navigation_check.cpp)
+target_include_directories(storage_check BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/tests/storage_stub")
+target_compile_definitions(storage_check PRIVATE PS3_GAME_SPLIT)
+if(MSVC)
+    target_compile_options(storage_check PRIVATE /EHsc /Zc:__cplusplus)
+    target_compile_definitions(storage_check PRIVATE _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(storage_navigation_check PRIVATE /EHsc /Zc:__cplusplus)
 endif()
 
 message(STATUS "des_boot: renderer calls through the route switch (DES_RSX_HAL=${DES_RSX_HAL}): ${_des_hal}")

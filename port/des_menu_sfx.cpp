@@ -172,6 +172,7 @@ extern "C" void des_souls_menu_tick(ppu_context* ctx);   /* des_souls_use.cpp: t
 extern "C" void des_respec_tick(ppu_context* ctx);       /* des_respec.cpp: the statue's menu and the respec */
 extern "C" void des_seamless_tick(ppu_context* ctx);     /* des_seamless_game.cpp: seamless co-op's game side */
 extern "C" void des_lua_gc_tick(double dt);             /* des_luagc.cpp: Lua's garbage above 30 fps */
+extern "C" void des_storage_tick(ppu_context* ctx);      /* des_storage.cpp: Storage navigation and inventory picker */
 
 extern "C" void des_menu_tick(ppu_context* ctx)
 {
@@ -182,6 +183,7 @@ extern "C" void des_menu_tick(ppu_context* ctx)
     des_respec_tick(ctx);
     des_seamless_tick(ctx);
     des_lua_gc_tick(ctx->fpr[1]);
+    des_storage_tick(ctx);
     if (s_test) {
         const int64_t now = now_ms();
         if (now >= s_test_next) {

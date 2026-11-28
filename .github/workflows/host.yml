@@ -452,6 +452,18 @@ jobs:
           cmake --build build/host --target pantheon_check
           build/host/pantheon_check.exe
 
+      # Storage's full production source over synthetic memory: capacity, picker ownership and layout failures.
+      - name: Storage
+        shell: bash
+        run: |
+          cmake --build build/host --target storage_check storage_navigation_check
+          build/host/storage_check.exe
+          build/host/storage_check.exe --allocation-failure
+          build/host/storage_navigation_check.exe
+          for n in $(seq 0 64); do
+            build/host/storage_check.exe --layout-failure "$n" || exit 1
+          done
+
       # Both routes: the runtime has the Vulkan backend, and des_host links the route switch, the core on D3D12
       # and on Vulkan, and the Vulkan start's fallback (the port finds PS3RECOMP_RSX_HAL itself, DES_RSX_HAL=AUTO).
       - name: Both routes in des_host
@@ -1018,6 +1030,17 @@ jobs:
         run: |
           cmake --build build/host --target pantheon_check
           build/host/pantheon_check
+
+      # Storage, as on Windows above, built with the host's configured compiler.
+      - name: Storage
+        run: |
+          cmake --build build/host --target storage_check storage_navigation_check
+          build/host/storage_check
+          build/host/storage_check --allocation-failure
+          build/host/storage_navigation_check
+          for n in $(seq 0 64); do
+            build/host/storage_check --layout-failure "$n" || exit 1
+          done
 
       # The player's program has no decryptor and no keys: it opens the decrypted copies setup made.
       - name: No decryptor in des_host
