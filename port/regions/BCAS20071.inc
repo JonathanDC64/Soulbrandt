@@ -207,6 +207,8 @@ DES_REGION_ADDR(0x00313B24, 0x00311B94)  /* hook des_net_sync */
 DES_REGION_ADDR(0x003147EC, 0x0031285C)  /* hook des_ghost_rate */
 DES_REGION_ADDR(0x00314ABC, 0x00312B2C)  /* hook des_ghost_rate */
 DES_REGION_ADDR(0x00315030, 0x003130A0)  /* hook des_ghost_rate */
+DES_REGION_ADDR(0x0037A3A0, 0x00378708)  /* hook des_coop_hook: an effect's target test, the souls' byte (a friend in body form gets no soul-only effect) */
+DES_REGION_ADDR(0x0037CA58, 0x0037ADC0)  /* call */
 DES_REGION_ADDR(0x00391818, 0x0038FB80)  /* hook des_net_replay */
 DES_REGION_ADDR(0x003957B8, 0x00393B20)  /* hook des_net_replay */
 DES_REGION_ADDR(0x003A596C, 0x003A3CD4)  /* hook des_net_replay */

@@ -693,12 +693,54 @@ bool has_effect(uint32_t chr, uint32_t fx)
     return false;
 }
 
+// Which characters an effect applies to (SpEffectParam's target bytes, 0x0037A340): +0xA the living, +0xB souls, +0xC
+// blue phantoms, +0xD black phantoms. Each is a test of the character's type (+0x68): souls are types 1-4, 8, 10 and 11
+// (8 a soul-form host), the living any other, blue phantoms 1, black phantoms 2. The game tests them when it gives an
+// effect (0x00377988), an equipped item's at a load (0x00371F70), and not again after, so a friend, a blue phantom
+// (type 1) in either form, gets the soul-only ones in body form: the Cling Ring's most HP x1.4 (2013, the ring's
+// behaviour 4013), and soul form's x0.5 (8). In body form a friend is alive, as a body-form host is: for its own
+// character the souls' byte counts only for an effect that also names the living. Effects for blue phantoms (2014, a
+// ring's) and for every player (2012) apply as before. Here: after lbz r28,0xB(r9), the souls' byte; r0 the living's,
+// r29 the character.
+void soul_only_effect(ppu_context* ctx, co::Mode m)
+{
+    if (m != co::Mode::Join || !ctx->gpr[28] || ctx->gpr[0]) return;
+    const uint32_t chr = (uint32_t)ctx->gpr[29];
+    if (!chr || chr != player_chr() || !own_kept() || !body_form()) return;
+    ctx->gpr[28] = 0;
+}
+
+// And the ones it has from soul form (the Cling Ring's, given at the load) go when it comes back to body form without
+// a load (a boss kill, the Stone of Ephemeral Eyes): each soul-only effect (by its row, +0x1C: souls, and neither the
+// living nor blue phantoms) is taken off as EraseEventSpecialEffect takes one (0x0037CA58, by its id: 0x00278C10),
+// then the most HP is worked out again (0x002802E0). The number taken off.
+int drop_soul_only(ppu_context* ctx, uint32_t chr)
+{
+    const uint32_t list = rd(chr + 0x304);
+    if (!guest_ok(list)) return 0;
+    std::vector<uint32_t> ids;
+    uint32_t n = rd(list + 4);
+    for (int k = 0; k < 64 && guest_ok(n); ++k, n = rd(n + 0x20)) {
+        const uint32_t row = rd(n + 0x1C);
+        if (guest_ok(row) && vm_read8(row + 0xB) && !vm_read8(row + 0xA) && !vm_read8(row + 0xC))
+            ids.push_back(rd(n + 0x18));
+    }
+    for (uint32_t id : ids) {
+        call_addr(ctx, DES_AT(0x0037CA58u), {list, id});
+        std::fprintf(stderr, "[coop] body form: effect %u taken off (it is for souls only)\n", id);
+    }
+    if (!ids.empty()) call_addr(ctx, DES_AT(0x002802E0u), {chr});
+    return (int)ids.size();
+}
+
 // Body form's health on a blue phantom: the summoned load makes it in soul form, and soul form's effect (half the most
-// HP) comes a little after its arrival. It goes as a revival takes it (EraseEventSpecialEffect(10000, 101)), then a
-// full recover, as the game gives at a load.
+// HP) comes a little after its arrival. It goes as a revival takes it (EraseEventSpecialEffect(10000, 101)), with the
+// other soul-only effects, then a full recover, as the game gives at a load.
 void body_health(ppu_context* ctx)
 {
     call_addr(ctx, DES_AT(0x00446C68u), {0, 10000, kSoulFx});   // EraseEventSpecialEffect(10000, 101)
+    const uint32_t pc = player_chr();
+    if (guest_ok(pc)) drop_soul_only(ctx, pc);
     call_addr(ctx, DES_AT(0x00439358u), {0});                   // RequestFullRecover
 }
 
@@ -1187,9 +1229,13 @@ void forms_tick(ppu_context* ctx, bool arrived)
                      (int32_t)vm_read32(pc + 0x68));
     }
     last_type = (int32_t)vm_read32(pc + 0x68);
-    if (!dead && body_form() && has_effect(pc, kSoulEffect)) {
-        body_health(ctx);
-        std::fprintf(stderr, "[coop] in body form: soul form's effect taken off, full HP\n");
+    if (!dead && body_form()) {
+        if (has_effect(pc, kSoulEffect)) {
+            body_health(ctx);
+            std::fprintf(stderr, "[coop] in body form: soul form's effect taken off, full HP\n");
+        } else {
+            drop_soul_only(ctx, pc);
+        }
     }
 }
 
@@ -3876,6 +3922,9 @@ extern "C" void des_coop_hook(ppu_context* ctx, uint32_t addr)
     const co::Mode m = co::active();
     if (m == co::Mode::Off) return;
     switch (addr) {
+    case 0x0037A3A0u:   // an effect's target test (0x0037A340), after lbz r28,0xB(r9): the souls' byte
+        soul_only_effect(ctx, m);
+        break;
     case 0x00080E88u:   // the ghost colour upload's first instruction (cmpwi r5,0): a player's own glow colour
         tint_begin(ctx);
         break;

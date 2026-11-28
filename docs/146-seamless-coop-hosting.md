@@ -168,8 +168,8 @@ set).
   moment ago, facing the way the host faces. A friend watching a cutscene
   in its own world (an area's opening one, say) goes when the cutscene ends: the game's load waits for it.
 - **Body form or soul form.** A friend joins in the form it has. In the host's world it is a blue phantom either way,
-  with its form's health: full in body form, half in soul form (as the game gives a summoned soul). A friend in body
-  form who dies is a soul from then on. A boss kill revives every friend in soul form, as it revives the host: at
+  with its form's health: full in body form, half in soul form (as the game gives a summoned soul). The Cling Ring
+  adds health only in soul form, as it does for the host. A friend in body form who dies is a soul from then on. A boss kill revives every friend in soul form, as it revives the host: at
   once if it stands, or when it comes back if it is dead. Each friend goes home in the form it has then.
 - **The Stone of Ephemeral Eyes** works during co-op for any player in soul form, the host too: it brings the player
   back in body form, as it does alone. A friend stays a blue phantom. In body form it can't be used, as in the game.
@@ -1387,9 +1387,28 @@ host's boss kill while the friend was away don't count in the friend's world.
 - **Health.** A load in soul form gives soul form's effect (SpEffect 8: the most HP x0.5) a little after the arrival.
   The scripts' effect ids are behaviours: `0x00595B80` finds the id in BehaviorParam, and the row's `+0x14` names the
   effect. Behaviour 101 is SpEffect 8, which the game's revivals erase (`EraseEventSpecialEffect(10000, 101)`). A
-  friend in body form has it erased whenever its effect list (`chr+0x304`: each entry's `+0x18` is its effect, `+0x20`
-  the next) holds it, then a full recover. A friend in soul form keeps it, as the game's summoned souls do (their most
-  HP is full at the arrival and half once the effect comes).
+  friend in body form doesn't get it (the soul-only effects, below), and has it erased whenever its effect list
+  (`chr+0x304`: each entry's `+0x18` is its effect, `+0x1C` its row, `+0x20` the next) holds it, then a full recover.
+  A friend in soul form keeps it, as the game's summoned souls do (their most HP is full at the arrival and half once
+  the effect comes).
+- **Soul-only effects.** Who an effect applies to is in its SpEffectParam row's target bytes. The game tests them
+  against the character's type (`+0x68`) when it gives the effect (`0x0037A340`, from `0x00377988`; an equipped item's
+  at a load, from `0x00371F70`), and not again after:
+  - `+0xA` the living: any type but 1-4, 8, 10 and 11;
+  - `+0xB` souls: those types (8 is a soul-form host);
+  - `+0xC` blue phantoms (1) and `+0xD` black phantoms (2).
+
+  A friend is a blue phantom in either form, so in body form it still passed the souls' test. The Cling Ring (its
+  behaviour 4013 gives SpEffect 2013: the most HP x1.4, for souls) raised a body-form friend's most HP from 659 to 922
+  (a Discord report, 11-28). In body form a friend is alive, as a body-form host is:
+  - a hook after the souls' byte's read (`lbz r28,0xB(r9)`, US `0x0037A3A0`, the same instruction on all four discs)
+    clears that byte for the friend's own character when the effect doesn't also name the living;
+  - when it comes back to body form without a load (a boss kill, the Stone), each soul-only effect it got as a soul
+    (souls in its row, neither the living nor blue phantoms) is taken off as `EraseEventSpecialEffect` takes one
+    (`0x0037CA58`, by its id), and its most HP is worked out again (`0x002802E0`).
+
+  The soul-only effects on the US disc are 4, 8, 9, 11, 1514, 1515 and 2013. Effects for blue phantoms (2014, a
+  ring's) and for every player (2012) apply in both forms, as before.
 - **A boss kill** (a flag of the kill's handlers, from the host) revives a friend in soul form as `BlockClear2` and
   `BlockClear2_1` revive a soul-form host: soul form's effect erased and a full recover, with no animation. The host's
   handler queues "The Demon Was Destroyed" and then "You Revived" (`SetTextEffect` 1, then 3); a blue phantom's
@@ -1445,6 +1464,15 @@ the newer generation, and saves as usual.
   (two copies on one PC): a body-form join, a death, the revival at Phalanx's kill and Leave home all as described;
   that test found the texts' order and the spawn-in animation, both fixed since (scripted: "The Demon Was
   Destroyed", then "You Revived", once each). Not run on the other discs.
+- The Cling Ring, scripted (11-28, US disc, two copies on this PC): the friend's tutorial character wore the ring in
+  its own world, then joined.
+  - In body form, without the hook: 659 of 922 HP, with the ring's effect (the report).
+  - In body form, with it: 659 of 659, with neither the ring's effect nor soul form's.
+  - Joined as a soul: the ring's effect on, as for a soul.
+  - Revived to body form 25 s after the arrival, as a boss kill revives it: the ring's effect taken off, 659 of 659.
+    Without the change, a revival kept 922.
+
+  Not run on the other discs (the hook's instruction and the removal's code match the US disc's).
 - What a friend's talk changes (a conversation heard, a choice made, an item given) stays in its copy of the host's
   world: it is neither kept in the friend's own world nor sent to the host. Only the Archstones' seal is shared.
 - Warp and Unstuck (11-24): two copies on this PC in the Nexus, A hosting and B joined. A walked forward 8 s; B's
