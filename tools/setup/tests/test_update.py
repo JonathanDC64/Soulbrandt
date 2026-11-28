@@ -45,7 +45,7 @@ def tearDownModule():
 def release(tag, assets=(PLAYER, "sums", "sig"), draft=False, pre=False, body="", base="http://127.0.0.1:1"):
     v = tag.lstrip("v")
     names = {"windows": f"DemonsSoulsRecomp-{v}-windows.zip", "sums": "SHA256SUMS", "sig": "SHA256SUMS.sig",
-             "linux": f"DemonsSoulsRecomp-{v}-linux.tar.xz", "macos": f"DemonsSoulsRecomp-{v}-macos.tar.xz"}
+             "linux": f"DemonsSoulsRecomp-{v}-linux.tar.xz", "macos": f"DemonsSoulsRecomp-{v}-macos.zip"}
     return {"tag_name": tag, "draft": draft, "prerelease": pre, "body": body,
             "html_url": f"https://github.com/{update.REPO}/releases/tag/{tag}", "published_at": "2026-10-25T10:00:00Z",
             "assets": [{"name": names[a], "size": 0, "browser_download_url": f"{base}/{names[a]}"} for a in assets]}
@@ -91,7 +91,7 @@ class FeedTest(unittest.TestCase):
     def test_each_systems_download(self):
         for system, name in (("windows", "DemonsSoulsRecomp-0.2.1-windows.zip"),
                              ("linux", "DemonsSoulsRecomp-0.2.1-linux.tar.xz"),
-                             ("macos", "DemonsSoulsRecomp-0.2.1-macos.tar.xz")):
+                             ("macos", "DemonsSoulsRecomp-0.2.1-macos.zip")):
             with mock.patch.object(update, "system", return_value=system):
                 self.assertEqual(update.player_asset("0.2.1"), name)
                 # (a Mac takes its own download, never the Linux one)

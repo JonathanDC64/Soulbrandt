@@ -87,12 +87,15 @@ def system() -> str:
 
 
 def player_asset(version, name=NAME) -> str:
-    """The player's download of `version` for this system (package.py's names): the zip on Windows, the tar.xz
-    (--linux-host, --macos-host) on Linux and macOS, which keeps the program's execute bit. fetch.unpack takes
-    both."""
+    """The player's download of `version` for this system: package.py's zip on Windows and its tar.xz on Linux
+    (--linux-host), which keeps the program's execute bit (fetch.unpack takes both); on a Mac the app's zip
+    (mac-native.yml's, which release.yml puts in the release). A Mac app is never swapped (in_mac_app): its download
+    is how the app learns that a newer version is out, and the player puts the new app in place of the old."""
     if system() == "windows":
         return f"{name}-{version}-windows.zip"
-    return f"{name}-{version}-{system()}.tar.xz"
+    if system() == "macos":
+        return f"{name}-{version}-macos.zip"
+    return f"{name}-{version}-linux.tar.xz"
 
 
 def in_mac_app(install) -> bool:
