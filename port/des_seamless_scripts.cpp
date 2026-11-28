@@ -564,20 +564,22 @@ int walls_for_watchers(std::string& t)
     return (int)adds.size();
 }
 
-// The light walls that aren't a boss's (1-1's three, one each in 1-2 and 1-3, three each in 2-1, 2-2, 4-1 and 4-2): each
-// area's script offers the walk through one only to the host, alive or a soul
+// The light walls that aren't a boss's (1-1's three, one each in 1-2 and 1-3, three each in 2-1, 2-2, 4-1 and 4-2, three
+// in 3-1, two each in 3-2, 5-1 and 5-2): each area's script offers the walk through one only to the host, alive or a soul
 // (OnDistanceActionAttribute(<id>, LOCAL_PLAYER or 10000, <wall>, "OnEvent_<id>", ..., HELPID_GO_TO_IN, ...,
 // possible_chr_type or ATTR_HOST + ATTR_LIVE + ATTR_GREY, everytime)). A friend got no prompt and waited for the host to
-// walk through first. It is offered to a blue phantom too (ATTR_WHITE). Its handler has no check of who walks, so a
-// friend's walk runs as the host's does in the host's game: the walk, the wall dropped, the wall's flag set (in 2-1 and
-// 2-2 a progress flag, kept for the friend's own world). The others' games drop it too (light_walls_for_all). A boss's
-// fog is a region's prompt (OnPlayerActionInRegionAttribute) and stays as it is: the host walks in first. Returns the
-// number of edits.
+// walk through first. (Tower of Latria's and the Valley's scripts write the prompt's message as its number, 10010403, and
+// 3-1's prompts are `once`: matched only by name and `everytime`, those nine stayed the host's, as a tester's run through
+// the whole game found in 0.2.0.) It is offered to a blue phantom too (ATTR_WHITE). Its handler has no check of who
+// walks, so a friend's walk runs as the host's does in the host's game: the walk, the wall dropped, the wall's flag set
+// (in 2-1 and 2-2 a progress flag, kept for the friend's own world). The others' games drop it too
+// (light_walls_for_all). A boss's fog is a region's prompt (OnPlayerActionInRegionAttribute) and stays as it is: the
+// host walks in first. Returns the number of edits.
 const std::regex& light_wall_prompt()
 {
     static const std::regex re("(OnDistanceActionAttribute\\(\\s*(\\d+)\\s*,\\s*(?:LOCAL_PLAYER|10000)\\s*,\\s*\\d+\\s*,\\s*\"(\\w+)\"\\s*,"
-                               "[^,\\n]*,\\s*HELPID_GO_TO_IN\\s*,[^,\\n]*,[^,\\n]*,\\s*)(possible_chr_type|ATTR_HOST\\s*\\+\\s*ATTR_LIVE\\s*\\+"
-                               "\\s*ATTR_GREY)(\\s*,\\s*everytime\\s*\\))");
+                               "[^,\\n]*,\\s*(?:HELPID_GO_TO_IN|10010403)\\s*,[^,\\n]*,[^,\\n]*,\\s*)(possible_chr_type|ATTR_HOST\\s*\\+\\s*"
+                               "ATTR_LIVE\\s*\\+\\s*ATTR_GREY)(\\s*,\\s*(?:everytime|once)\\s*\\))");
     return re;
 }
 
@@ -626,8 +628,14 @@ int light_walls_for_all(std::string& t)
     const std::regex sync("\\n([ \\t]*)if\\s+Luafunc_PlaySynchroAnimation\\(\\s*proxy\\s*,\\s*param\\s*,\\s*ANIMEID_WALK\\s*\\)"
                           "\\s*==\\s*true\\s+then[^\\n]*\\n(?:[^\\n]*\\n)*?\\1end[^\\n]*\\n");
     const std::regex flag("SetEventFlag\\(\\s*(\\d+)\\s*,\\s*(?:true|1)\\s*\\)");
-    const std::regex drop("LuaCallStart\\(\\s*(\\d+)\\s*,\\s*1\\s*\\)");
+    // a wall dropped: LuaCallStart(<wall>, 1), or <wall>, 2 in Tower of Latria's and the Valley's scripts
+    const std::regex drop("LuaCallStart\\(\\s*(\\d+\\s*,\\s*[12])\\s*\\)");
     const std::regex anim_end("OnChrAnimEnd\\(\\s*\\d+\\s*,\\s*10000\\s*,\\s*ANIMEID_WALK\\s*,\\s*\"(\\w+)\"");
+    // LuaCall(<wall>, <n>, "<f>", once): a wall's drop as LuaCallStart(<wall>, <n>) reaches it ("<wall>,<n>")
+    const auto registration = [](const std::string& drop_id, const char* tail) {
+        const size_t c = drop_id.find(',');
+        return std::regex("LuaCall\\(\\s*" + drop_id.substr(0, c) + "\\s*,\\s*" + drop_id.substr(c + 1) + "\\s*,\\s*\"" + tail);
+    };
     std::vector<std::pair<std::string, std::string>> walls;   // {id, handler}
     for (auto it = std::sregex_iterator(t.begin(), t.end(), light_wall_prompt()); it != std::sregex_iterator(); ++it)
         if (live((size_t)it->position(0))) walls.push_back({(*it)[2].str(), (*it)[3].str()});
@@ -642,28 +650,39 @@ int light_walls_for_all(std::string& t)
         const size_t walk = (size_t)m.position(0) + (size_t)m.length(0);   // the walker's part, after the branch
         const std::vector<std::string> flags = ids_in(m[0].str(), flag);
         const std::string rest = body.substr(walk);
-        std::vector<std::string> dropped = ids_in(rest, drop);
+        std::vector<std::string> dropped;   // "<wall>,<n>"
+        const auto add_drops = [&](const std::string& code) {
+            for (std::string x : ids_in(code, drop)) {
+                x.erase(std::remove_if(x.begin(), x.end(), [](unsigned char c) { return std::isspace(c) != 0; }), x.end());
+                if (std::find(dropped.begin(), dropped.end(), x) == dropped.end()) dropped.push_back(x);
+            }
+        };
+        add_drops(rest);
         for (const std::string& f : ids_in(rest, anim_end)) {
             size_t fa, fe;
-            if (!func_span(t, f, &fa, &fe)) continue;
-            for (const std::string& x : ids_in(t.substr(fa, fe - fa), drop))
-                if (std::find(dropped.begin(), dropped.end(), x) == dropped.end()) dropped.push_back(x);
+            if (func_span(t, f, &fa, &fe)) add_drops(t.substr(fa, fe - fa));
         }
         std::vector<std::string> deletes;   // each dropped wall's delete function, from its registration
         for (const std::string& x : dropped) {
             std::smatch r;
             size_t da, de;
-            if (std::regex_search(t, r, std::regex("LuaCall\\(\\s*" + x + "\\s*,\\s*1\\s*,\\s*\"(\\w+)\"")) &&
-                func_span(t, r[1].str(), &da, &de))
+            if (std::regex_search(t, r, registration(x, "(\\w+)\"")) && func_span(t, r[1].str(), &da, &de))
                 deletes.push_back(r[1].str());
         }
         // where the walker tells the others: after the walk's local block (the first NotNetMessage_end after the branch)
         const size_t local_end = rest.find("NotNetMessage_end");
-        const std::regex reg("\\n([ \\t]*)proxy:LuaCall\\(\\s*" + id + "\\s*,\\s*1\\s*,\\s*\"\\w+\"\\s*,\\s*once\\s*\\)\\s*;[^\\n]*\\n");
+        // where each game takes it: beside the wall's own delete registration, or the first dropped wall's (5-1's 181
+        // drops with 180's call, LuaCallStart(180, 1), and has no registration of its own)
+        const auto reg_line = [&](const std::string& drop_id, std::smatch* out) {
+            const size_t c = drop_id.find(',');
+            const std::regex re("\\n([ \\t]*)proxy:LuaCall\\(\\s*" + drop_id.substr(0, c) + "\\s*,\\s*" + drop_id.substr(c + 1) +
+                                "\\s*,\\s*\"\\w+\"\\s*,\\s*once\\s*\\)\\s*;[^\\n]*\\n");
+            return std::regex_search(t, *out, re) && live((size_t)out->position(0) + 1 + (*out)[1].length());
+        };
         std::smatch rm;
-        if (flags.empty() || deletes.empty() || local_end == std::string::npos || !std::regex_search(t, rm, reg) ||
-            !live((size_t)rm.position(0) + 1 + rm[1].length()))
-            continue;
+        const bool found = reg_line(id + ",1", &rm) || reg_line(id + ",2", &rm) ||
+                           (!dropped.empty() && reg_line(dropped.front(), &rm));
+        if (flags.empty() || deletes.empty() || local_end == std::string::npos || !found) continue;
         const size_t tell_line = t.find('\n', a + walk + local_end);
         if (tell_line == std::string::npos) continue;
         // (inserted from the end of the text backwards: the registration may come before or after the handler)
